@@ -1,0 +1,30 @@
+name: Client CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/OvcinaHra.Client/**'
+      - 'src/OvcinaHra.Shared/**'
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore
+        run: dotnet restore src/OvcinaHra.Client
+      - name: Build
+        run: dotnet build src/OvcinaHra.Client --no-restore -c Release
+      - name: Publish
+        run: dotnet publish src/OvcinaHra.Client -c Release -o publish --no-build
+      - name: Upload publish artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-publish
+          path: publish/wwwroot

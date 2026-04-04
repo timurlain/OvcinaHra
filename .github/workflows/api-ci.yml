@@ -1,0 +1,34 @@
+name: API CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/OvcinaHra.Api/**'
+      - 'src/OvcinaHra.Shared/**'
+      - 'tests/OvcinaHra.Api.Tests/**'
+      - 'Directory.Build.props'
+      - 'Directory.Packages.props'
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore
+        run: dotnet restore OvcinaHra.slnx
+      - name: Build
+        run: dotnet build OvcinaHra.slnx --no-restore -c Release
+      - name: Test
+        run: dotnet test tests/OvcinaHra.Api.Tests --no-build -c Release --logger "trx;LogFileName=results.trx"
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: tests/OvcinaHra.Api.Tests/TestResults/results.trx
