@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OvcinaHra.Api/OvcinaHra.Api.csproj" />
+    <Project Path="src/OvcinaHra.Client/OvcinaHra.Client.csproj" />
+    <Project Path="src/OvcinaHra.Import/OvcinaHra.Import.csproj" />
+    <Project Path="src/OvcinaHra.Shared/OvcinaHra.Shared.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OvcinaHra.Api.Tests/OvcinaHra.Api.Tests.csproj" />
+    <Project Path="tests/OvcinaHra.E2E/OvcinaHra.E2E.csproj" />
+  </Folder>
+</Solution>

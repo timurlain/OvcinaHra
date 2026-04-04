@@ -1,0 +1,6 @@
+@OvcinaHra.Api_HostAddress = http://localhost:5217
+
+GET {{OvcinaHra.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
