@@ -6,9 +6,11 @@
     </div>
 
     <main>
-        <div class="top-row px-4">
+        <div class="top-row px-4 d-flex align-items-center">
             <AuthorizeView>
                 <Authorized>
+                    <GameSelector />
+                    <div style="flex: 1"></div>
                     <span class="me-3">@context.User.Identity?.Name</span>
                     <button class="btn btn-outline-secondary btn-sm" @onclick="Logout">Odhlásit</button>
                 </Authorized>

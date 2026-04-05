@@ -1,6 +1,8 @@
 @page "/questy"
 @attribute [Authorize]
 @inject ApiClient Api
+@inject GameContextService GameContext
+@implements IDisposable
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="mb-0">Questy</h1>
@@ -32,9 +34,6 @@ else
             </DxFormLayoutItem>
             <DxFormLayoutItem Caption="Typ" ColSpanMd="4">
                 <DxComboBox Data="@questTypeValues" @bind-Value="@questType" TextFieldName="Display" ValueFieldName="Value" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Hra ID" ColSpanMd="4">
-                <DxSpinEdit @bind-Value="@gameId" MinValue="1" />
             </DxFormLayoutItem>
             <DxFormLayoutItem Caption="Pořadí v řetězu" ColSpanMd="4">
                 <DxSpinEdit @bind-Value="@chainOrder" MinValue="0" />
@@ -87,20 +86,28 @@ else
     private List<QuestListDto> quests = []; private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
     private string modalTitle = "", name = ""; private string? error, description, fullText, timeSlot, rewardNotes;
     private int? editingId; private QuestType questType = QuestType.General;
-    private int gameId = 1, chainOrder, parentQuestId, rewardXp, rewardMoney;
+    private int chainOrder, parentQuestId, rewardXp, rewardMoney;
+    private int gameId => GameContext.SelectedGameId ?? 1;
 
     private static readonly List<EnumItem<QuestType>> questTypeValues = Enum.GetValues<QuestType>()
         .Select(v => new EnumItem<QuestType>(v, v.GetDisplayName())).ToList();
     record EnumItem<T>(T Value, string Display);
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
-    private async Task LoadAsync() { loading = true; quests = await Api.GetListAsync<QuestListDto>("/api/quests/by-game/1"); loading = false; }
+    protected override async Task OnInitializedAsync()
+    {
+        await GameContext.InitializeAsync();
+        GameContext.OnGameChanged += OnGameChanged;
+        await LoadAsync();
+    }
+    private async Task LoadAsync() { loading = true; quests = await Api.GetListAsync<QuestListDto>($"/api/quests/by-game/{gameId}"); loading = false; }
+    private async void OnGameChanged() { await LoadAsync(); StateHasChanged(); }
+    public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
 
     private void OpenModal(QuestListDto? q)
     {
         error = null;
-        if (q is null) { editingId = null; name = ""; questType = QuestType.General; gameId = 1; chainOrder = 0; parentQuestId = 0; description = null; fullText = null; timeSlot = null; rewardXp = 0; rewardMoney = 0; rewardNotes = null; modalTitle = "Nový quest"; }
-        else { editingId = q.Id; name = q.Name; questType = q.QuestType; gameId = q.GameId; chainOrder = q.ChainOrder ?? 0; parentQuestId = q.ParentQuestId ?? 0; modalTitle = $"Upravit: {q.Name}"; _ = LoadDetailAsync(q.Id); }
+        if (q is null) { editingId = null; name = ""; questType = QuestType.General; chainOrder = 0; parentQuestId = 0; description = null; fullText = null; timeSlot = null; rewardXp = 0; rewardMoney = 0; rewardNotes = null; modalTitle = "Nový quest"; }
+        else { editingId = q.Id; name = q.Name; questType = q.QuestType; chainOrder = q.ChainOrder ?? 0; parentQuestId = q.ParentQuestId ?? 0; modalTitle = $"Upravit: {q.Name}"; _ = LoadDetailAsync(q.Id); }
         isModalVisible = true;
     }
 

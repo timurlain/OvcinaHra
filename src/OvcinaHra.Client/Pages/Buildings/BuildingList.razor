@@ -1,6 +1,8 @@
 @page "/budovy"
 @attribute [Authorize]
 @inject ApiClient Api
+@inject GameContextService GameContext
+@implements IDisposable
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="mb-0">Budovy</h1>
@@ -32,9 +34,6 @@ else
             <DxFormLayoutItem Caption="Popis" ColSpanMd="12">
                 <DxMemo @bind-Text="@description" Rows="3" />
             </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Hra ID" ColSpanMd="6">
-                <DxSpinEdit @bind-Value="@gameId" MinValue="1" />
-            </DxFormLayoutItem>
             <DxFormLayoutItem Caption="Lokace ID" ColSpanMd="6">
                 <DxSpinEdit @bind-Value="@locationId" MinValue="0" />
             </DxFormLayoutItem>
@@ -65,16 +64,24 @@ else
 @code {
     private List<BuildingListDto> buildings = []; private bool loading = true, isModalVisible, isDeleteVisible, isSaving, isPrebuilt;
     private string modalTitle = "", name = ""; private string? error, description; private int? editingId;
-    private int gameId = 1, locationId;
+    private int locationId;
+    private int gameId => GameContext.SelectedGameId ?? 1;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
-    private async Task LoadAsync() { loading = true; buildings = await Api.GetListAsync<BuildingListDto>("/api/buildings/by-game/1"); loading = false; }
+    protected override async Task OnInitializedAsync()
+    {
+        await GameContext.InitializeAsync();
+        GameContext.OnGameChanged += OnGameChanged;
+        await LoadAsync();
+    }
+    private async Task LoadAsync() { loading = true; buildings = await Api.GetListAsync<BuildingListDto>($"/api/buildings/by-game/{gameId}"); loading = false; }
+    private async void OnGameChanged() { await LoadAsync(); StateHasChanged(); }
+    public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
 
     private void OpenModal(BuildingListDto? b)
     {
         error = null;
-        if (b is null) { editingId = null; name = ""; description = null; gameId = 1; locationId = 0; isPrebuilt = false; modalTitle = "Nová budova"; }
-        else { editingId = b.Id; name = b.Name; gameId = b.GameId; locationId = b.LocationId ?? 0; isPrebuilt = b.IsPrebuilt; modalTitle = $"Upravit: {b.Name}"; _ = LoadDetailAsync(b.Id); }
+        if (b is null) { editingId = null; name = ""; description = null; locationId = 0; isPrebuilt = false; modalTitle = "Nová budova"; }
+        else { editingId = b.Id; name = b.Name; locationId = b.LocationId ?? 0; isPrebuilt = b.IsPrebuilt; modalTitle = $"Upravit: {b.Name}"; _ = LoadDetailAsync(b.Id); }
         isModalVisible = true;
     }
 

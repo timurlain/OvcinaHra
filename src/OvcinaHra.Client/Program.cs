@@ -18,6 +18,7 @@ builder.Services.AddScoped<ApiClient>();
 builder.Services.AddScoped<JwtAuthStateProvider>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<JwtAuthStateProvider>());
 builder.Services.AddScoped<TokenRefreshService>();
+builder.Services.AddScoped<GameContextService>();
 builder.Services.AddAuthorizationCore();
 builder.Services.AddDevExpressBlazor();
 

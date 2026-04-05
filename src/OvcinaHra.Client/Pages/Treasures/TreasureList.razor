@@ -1,6 +1,8 @@
 @page "/poklady"
 @attribute [Authorize]
 @inject ApiClient Api
+@inject GameContextService GameContext
+@implements IDisposable
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="mb-0">Poklady</h1>
@@ -30,11 +32,8 @@ else
             <DxFormLayoutItem Caption="Název" ColSpanMd="12">
                 <DxTextBox @bind-Text="@title" />
             </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Obtížnost" ColSpanMd="6">
+            <DxFormLayoutItem Caption="Obtížnost" ColSpanMd="12">
                 <DxComboBox Data="@difficultyValues" @bind-Value="@difficulty" TextFieldName="Display" ValueFieldName="Value" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Hra ID" ColSpanMd="6">
-                <DxSpinEdit @bind-Value="@gameId" MinValue="1" />
             </DxFormLayoutItem>
             <DxFormLayoutItem Caption="Nápověda" ColSpanMd="12">
                 <DxMemo @bind-Text="@clue" Rows="2" />
@@ -70,20 +69,28 @@ else
     private List<TreasureQuestListDto> treasures = []; private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
     private string modalTitle = "", title = ""; private string? error, clue; private int? editingId;
     private TreasureQuestDifficulty difficulty = TreasureQuestDifficulty.Start;
-    private int gameId = 1, locationId, secretStashId;
+    private int locationId, secretStashId;
+    private int gameId => GameContext.SelectedGameId ?? 1;
 
     private static readonly List<EnumItem<TreasureQuestDifficulty>> difficultyValues = Enum.GetValues<TreasureQuestDifficulty>()
         .Select(v => new EnumItem<TreasureQuestDifficulty>(v, v.GetDisplayName())).ToList();
     record EnumItem<T>(T Value, string Display);
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
-    private async Task LoadAsync() { loading = true; treasures = await Api.GetListAsync<TreasureQuestListDto>("/api/treasure-quests/by-game/1"); loading = false; }
+    protected override async Task OnInitializedAsync()
+    {
+        await GameContext.InitializeAsync();
+        GameContext.OnGameChanged += OnGameChanged;
+        await LoadAsync();
+    }
+    private async Task LoadAsync() { loading = true; treasures = await Api.GetListAsync<TreasureQuestListDto>($"/api/treasure-quests/by-game/{gameId}"); loading = false; }
+    private async void OnGameChanged() { await LoadAsync(); StateHasChanged(); }
+    public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
 
     private void OpenModal(TreasureQuestListDto? t)
     {
         error = null;
-        if (t is null) { editingId = null; title = ""; clue = null; difficulty = TreasureQuestDifficulty.Start; gameId = 1; locationId = 0; secretStashId = 0; modalTitle = "Nový poklad"; }
-        else { editingId = t.Id; title = t.Title; difficulty = t.Difficulty; gameId = t.GameId; locationId = t.LocationId ?? 0; secretStashId = t.SecretStashId ?? 0; modalTitle = $"Upravit: {t.Title}"; _ = LoadDetailAsync(t.Id); }
+        if (t is null) { editingId = null; title = ""; clue = null; difficulty = TreasureQuestDifficulty.Start; locationId = 0; secretStashId = 0; modalTitle = "Nový poklad"; }
+        else { editingId = t.Id; title = t.Title; difficulty = t.Difficulty; locationId = t.LocationId ?? 0; secretStashId = t.SecretStashId ?? 0; modalTitle = $"Upravit: {t.Title}"; _ = LoadDetailAsync(t.Id); }
         isModalVisible = true;
     }
 
