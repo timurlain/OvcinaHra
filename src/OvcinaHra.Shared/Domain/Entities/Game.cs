@@ -12,6 +12,12 @@ public class Game
     public GameStatus Status { get; set; }
     public string? ImagePath { get; set; }
 
+    /// <summary>
+    /// ID of this game in registrace-ovčina. Null = not yet linked.
+    /// Set via "Link s registrací" once registration opens.
+    /// </summary>
+    public int? ExternalGameId { get; set; }
+
     public ICollection<GameLocation> GameLocations { get; set; } = [];
     public ICollection<GameItem> GameItems { get; set; } = [];
     public ICollection<SecretStash> SecretStashes { get; set; } = [];

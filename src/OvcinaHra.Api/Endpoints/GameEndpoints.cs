@@ -17,6 +17,8 @@ public static class GameEndpoints
         group.MapPost("/", Create);
         group.MapPut("/{id:int}", Update);
         group.MapDelete("/{id:int}", Delete);
+        group.MapPost("/{id:int}/link", LinkToRegistrace);
+        group.MapDelete("/{id:int}/link", UnlinkFromRegistrace);
 
         return group;
     }
@@ -25,7 +27,7 @@ public static class GameEndpoints
     {
         var games = await db.Games
             .OrderByDescending(g => g.StartDate)
-            .Select(g => new GameListDto(g.Id, g.Name, g.Edition, g.StartDate, g.EndDate, g.Status))
+            .Select(g => new GameListDto(g.Id, g.Name, g.Edition, g.StartDate, g.EndDate, g.Status, g.ExternalGameId))
             .ToListAsync();
 
         return TypedResults.Ok(games);
@@ -38,7 +40,7 @@ public static class GameEndpoints
             return TypedResults.NotFound();
 
         return TypedResults.Ok(new GameDetailDto(
-            game.Id, game.Name, game.Edition, game.StartDate, game.EndDate, game.Status, game.ImagePath));
+            game.Id, game.Name, game.Edition, game.StartDate, game.EndDate, game.Status, game.ImagePath, game.ExternalGameId));
     }
 
     private static async Task<Created<GameDetailDto>> Create(CreateGameDto dto, WorldDbContext db)
@@ -56,7 +58,7 @@ public static class GameEndpoints
         await db.SaveChangesAsync();
 
         var result = new GameDetailDto(
-            game.Id, game.Name, game.Edition, game.StartDate, game.EndDate, game.Status, game.ImagePath);
+            game.Id, game.Name, game.Edition, game.StartDate, game.EndDate, game.Status, game.ImagePath, game.ExternalGameId);
 
         return TypedResults.Created($"/api/games/{game.Id}", result);
     }
@@ -84,6 +86,28 @@ public static class GameEndpoints
             return TypedResults.NotFound();
 
         db.Games.Remove(game);
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
+    }
+
+    private static async Task<Results<NoContent, NotFound>> LinkToRegistrace(int id, LinkGameDto dto, WorldDbContext db)
+    {
+        var game = await db.Games.FindAsync(id);
+        if (game is null)
+            return TypedResults.NotFound();
+
+        game.ExternalGameId = dto.ExternalGameId;
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
+    }
+
+    private static async Task<Results<NoContent, NotFound>> UnlinkFromRegistrace(int id, WorldDbContext db)
+    {
+        var game = await db.Games.FindAsync(id);
+        if (game is null)
+            return TypedResults.NotFound();
+
+        game.ExternalGameId = null;
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
     }

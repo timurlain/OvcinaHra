@@ -2,7 +2,7 @@ using OvcinaHra.Shared.Domain.Enums;
 
 namespace OvcinaHra.Shared.Dtos;
 
-public record GameListDto(int Id, string Name, int Edition, DateOnly StartDate, DateOnly EndDate, GameStatus Status);
+public record GameListDto(int Id, string Name, int Edition, DateOnly StartDate, DateOnly EndDate, GameStatus Status, int? ExternalGameId);
 
 public record GameDetailDto(
     int Id,
@@ -11,7 +11,8 @@ public record GameDetailDto(
     DateOnly StartDate,
     DateOnly EndDate,
     GameStatus Status,
-    string? ImagePath);
+    string? ImagePath,
+    int? ExternalGameId);
 
 public record CreateGameDto(
     string Name,
@@ -26,3 +27,8 @@ public record UpdateGameDto(
     DateOnly StartDate,
     DateOnly EndDate,
     GameStatus Status);
+
+/// <summary>
+/// Links this game to a game in registrace-ovčina.
+/// </summary>
+public record LinkGameDto(int ExternalGameId);

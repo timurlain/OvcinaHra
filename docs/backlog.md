@@ -24,6 +24,35 @@ Reuse registrace-ovčina as the shared identity provider for all Ovčina apps in
 
 ---
 
+## Game Sync — Registrace as Source of Truth (Option B)
+
+**Priority:** When registrace integration begins
+
+OvčinaHra games link to registrace-ovčina games via `ExternalGameId`. Registrace is the source of truth for game editions (players register *for* a game there).
+
+### What's done
+- `ExternalGameId` (nullable int) added to Game entity
+- `POST /api/games/{id}/link` — sets ExternalGameId
+- `DELETE /api/games/{id}/link` — clears it
+- ExternalGameId visible in list and detail DTOs
+
+### What's next (when registrace API is ready)
+1. **Registrace side:** Add `GET /api/games` endpoint listing available games (id, name, edition, dates)
+2. **OvčinaHra UI:** "Link s registrací" button on game edit page:
+   - Calls registrace API to list games
+   - Organizer picks the matching game
+   - Sets `ExternalGameId`
+3. OvčinaHra can still create games independently (draft/planning before registration opens)
+4. Future: auto-sync game name/dates changes from registrace
+
+### Flow
+1. Organizer creates game world in OvčinaHra (planning phase, no ExternalGameId)
+2. When registration opens, organizer clicks "Link s registrací" and picks the game
+3. Both apps now share the same game identity via ExternalGameId
+4. Auth tokens from registrace can include the game ID for context
+
+---
+
 ## Map Bounding Box — World Boundaries per Game
 
 **Priority:** Phase 6 (Map UI)
