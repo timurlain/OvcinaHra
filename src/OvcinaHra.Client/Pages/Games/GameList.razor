@@ -56,10 +56,6 @@ else
         }
 
         <div class="d-flex gap-2 mt-3">
-            @if (editingId.HasValue)
-            {
-                <button class="btn btn-outline-danger" @onclick="DeleteAsync" disabled="@isSaving" data-testid="delete-game">Smazat</button>
-            }
             <div style="flex: 1"></div>
             <button class="btn btn-secondary" @onclick="CloseModal" disabled="@isSaving">Zrušit</button>
             <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving" data-testid="save-game">
@@ -70,13 +66,14 @@ else
     </BodyContentTemplate>
 </DxPopup>
 
-@* Delete confirmation *@
-<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
+@* Create confirmation *@
+<DxPopup @bind-Visible="@isCreateConfirmVisible" HeaderText="Vytvořit novou hru?" Width="400px">
     <BodyContentTemplate Context="popupContext">
-        <p>Opravdu chcete smazat hru <strong>@model.Name</strong>?</p>
+        <p>Opravdu chcete vytvořit nový ročník hry <strong>@model.Name</strong>?</p>
+        <p class="text-muted small">Tato akce vytvoří nový záznam v databázi.</p>
         <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
-            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
+            <button class="btn btn-secondary" @onclick="() => isCreateConfirmVisible = false">Zrušit</button>
+            <button class="btn btn-primary" @onclick="ConfirmSaveAsync">Vytvořit</button>
         </div>
     </BodyContentTemplate>
 </DxPopup>
@@ -87,7 +84,7 @@ else
 
     // Modal state
     private bool isModalVisible;
-    private bool isDeleteVisible;
+    private bool isCreateConfirmVisible;
     private bool isSaving;
     private string modalTitle = "";
     private string? error;
@@ -155,49 +152,37 @@ else
     private async Task SaveAsync()
     {
         error = null;
-        isSaving = true;
-        try
+        if (editingId.HasValue)
         {
-            if (editingId.HasValue)
+            // Edit — save directly
+            isSaving = true;
+            try
             {
                 await Api.PutAsync($"/api/games/{editingId}", model.ToUpdateDto());
+                isModalVisible = false;
+                await LoadDataAsync();
             }
-            else
-            {
-                await Api.PostAsync<CreateGameDto, GameDetailDto>("/api/games", model.ToCreateDto());
-            }
-            isModalVisible = false;
-            await LoadDataAsync();
+            catch (Exception ex) { error = ex.Message; }
+            finally { isSaving = false; }
         }
-        catch (Exception ex)
+        else
         {
-            error = ex.Message;
-        }
-        finally
-        {
-            isSaving = false;
+            // Create — show confirmation first
+            isCreateConfirmVisible = true;
         }
     }
 
-    private void DeleteAsync() => isDeleteVisible = true;
-
-    private async Task ConfirmDeleteAsync()
+    private async Task ConfirmSaveAsync()
     {
+        isCreateConfirmVisible = false;
         isSaving = true;
         try
         {
-            await Api.DeleteAsync($"/api/games/{editingId}");
-            isDeleteVisible = false;
+            await Api.PostAsync<CreateGameDto, GameDetailDto>("/api/games", model.ToCreateDto());
             isModalVisible = false;
             await LoadDataAsync();
         }
-        catch (Exception ex)
-        {
-            error = ex.Message;
-        }
-        finally
-        {
-            isSaving = false;
-        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
     }
 }

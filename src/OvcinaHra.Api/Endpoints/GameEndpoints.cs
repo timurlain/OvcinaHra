@@ -16,7 +16,6 @@ public static class GameEndpoints
         group.MapGet("/{id:int}", GetById);
         group.MapPost("/", Create);
         group.MapPut("/{id:int}", Update);
-        group.MapDelete("/{id:int}", Delete);
         group.MapPost("/{id:int}/link", LinkToRegistrace);
         group.MapDelete("/{id:int}/link", UnlinkFromRegistrace);
 
@@ -75,17 +74,6 @@ public static class GameEndpoints
         game.EndDate = dto.EndDate;
         game.Status = dto.Status;
 
-        await db.SaveChangesAsync();
-        return TypedResults.NoContent();
-    }
-
-    private static async Task<Results<NoContent, NotFound>> Delete(int id, WorldDbContext db)
-    {
-        var game = await db.Games.FindAsync(id);
-        if (game is null)
-            return TypedResults.NotFound();
-
-        db.Games.Remove(game);
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
     }
