@@ -9,7 +9,8 @@
     <div class="d-flex gap-2 align-items-center">
         <div class="btn-group btn-group-sm">
             <button class="btn @(activeStyle == "tourist" ? "btn-secondary" : "btn-outline-secondary")" @onclick='() => ToggleStyle("tourist")'>Turistická</button>
-            <button class="btn @(activeStyle == "vector" ? "btn-secondary" : "btn-outline-secondary")" @onclick='() => ToggleStyle("vector")'>Vektorová</button>
+            <button class="btn @(activeStyle == "aerial" ? "btn-secondary" : "btn-outline-secondary")" @onclick='() => ToggleStyle("aerial")'>Letecká</button>
+            <button class="btn @(activeStyle == "basic" ? "btn-secondary" : "btn-outline-secondary")" @onclick='() => ToggleStyle("basic")'>Základní</button>
             <button class="btn @(activeStyle == "osm" ? "btn-secondary" : "btn-outline-secondary")" @onclick='() => ToggleStyle("osm")'>OSM</button>
         </div>
         @if (placingMode)

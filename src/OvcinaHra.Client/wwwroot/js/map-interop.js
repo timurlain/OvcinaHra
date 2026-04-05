@@ -27,25 +27,7 @@ window.ovcinaMap = {
     },
 
     _mapyCzRasterStyle: function (apiKey) {
-        return {
-            version: 8,
-            sources: {
-                'mapy-cz': {
-                    type: 'raster',
-                    tiles: ['https://api.mapy.cz/v1/maptiles/outdoor/256/{z}/{x}/{y}?apikey=' + apiKey],
-                    tileSize: 256,
-                    maxzoom: 19,
-                    attribution: '&copy; <a href="https://www.mapy.cz">Mapy.cz</a>'
-                }
-            },
-            layers: [{
-                id: 'mapy-cz-tiles',
-                type: 'raster',
-                source: 'mapy-cz',
-                minzoom: 0,
-                maxzoom: 19
-            }]
-        };
+        return this._makeRasterStyle('outdoor', apiKey);
     },
 
     init: function (elementId, dotnetRef, centerLat, centerLon, zoom, mapyCzApiKey) {
@@ -87,6 +69,10 @@ window.ovcinaMap = {
             style = 'https://api.mapy.cz/v1/maptiles/outdoor/tiles.json?apikey=' + this._apiKey;
         } else if (styleKey === 'tourist' && this._apiKey) {
             style = this._mapyCzRasterStyle(this._apiKey);
+        } else if (styleKey === 'aerial' && this._apiKey) {
+            style = this._makeRasterStyle('aerial', this._apiKey);
+        } else if (styleKey === 'basic' && this._apiKey) {
+            style = this._makeRasterStyle('basic', this._apiKey);
         } else {
             style = this._rasterStyle; // OSM fallback
         }
@@ -176,6 +162,28 @@ window.ovcinaMap = {
             this._map = null;
         }
         this._dotnetRef = null;
+    },
+
+    _makeRasterStyle: function (styleName, apiKey) {
+        return {
+            version: 8,
+            sources: {
+                'mapy-cz': {
+                    type: 'raster',
+                    tiles: ['https://api.mapy.cz/v1/maptiles/' + styleName + '/256/{z}/{x}/{y}?apikey=' + apiKey],
+                    tileSize: 256,
+                    maxzoom: 19,
+                    attribution: '&copy; <a href="https://www.mapy.cz">Mapy.cz</a>'
+                }
+            },
+            layers: [{
+                id: 'mapy-cz-tiles',
+                type: 'raster',
+                source: 'mapy-cz',
+                minzoom: 0,
+                maxzoom: 19
+            }]
+        };
     },
 
     _escapeHtml: function (text) {
