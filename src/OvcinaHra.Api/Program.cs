@@ -30,6 +30,7 @@ app.MapBuildingEndpoints();
 app.MapCraftingEndpoints();
 app.MapTreasureQuestEndpoints();
 app.MapTimelineEndpoints();
+app.MapSearchEndpoints();
 
 app.Run();
 
