@@ -12,6 +12,7 @@
     [Parameter] public int Zoom { get; set; } = 16;
     [Parameter] public EventCallback<OvcinaMapClickEventArgs> OnMapClick { get; set; }
     [Parameter] public EventCallback<int> OnMarkerClick { get; set; }
+    [Parameter] public EventCallback OnStyleLoaded { get; set; }
 
     private readonly string _elementId = $"map-{Guid.NewGuid():N}";
     private DotNetObjectReference<MapView>? _dotnetRef;
@@ -41,8 +42,11 @@
     public async Task FitBoundsAsync(double swLat, double swLon, double neLat, double neLon)
         => await JS.InvokeVoidAsync("ovcinaMap.fitBounds", swLat, swLon, neLat, neLon);
 
-    public async Task SwitchStyleAsync(bool useVector)
-        => await JS.InvokeVoidAsync("ovcinaMap.switchStyle", useVector);
+    /// <summary>
+    /// Switch tile style: "tourist" (Mapy.cz raster), "vector" (Mapy.cz vector), "osm" (OpenStreetMap fallback)
+    /// </summary>
+    public async Task SwitchStyleAsync(string styleKey)
+        => await JS.InvokeVoidAsync("ovcinaMap.switchStyle", styleKey);
 
     public async Task UpdateMarkerPositionAsync(int id, double lat, double lon)
         => await JS.InvokeVoidAsync("ovcinaMap.updateMarkerPosition", id, lat, lon);
@@ -54,6 +58,10 @@
     [JSInvokable]
     public async Task OnMarkerClicked(int id)
         => await OnMarkerClick.InvokeAsync(id);
+
+    [JSInvokable]
+    public async Task OnStyleLoadedCallback()
+        => await OnStyleLoaded.InvokeAsync();
 
     public async ValueTask DisposeAsync()
     {

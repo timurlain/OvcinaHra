@@ -6,46 +6,61 @@ window.ovcinaMap = {
     _elementId: null,
     _apiKey: null,
 
-    // Tile source styles
-    _styles: {
-        raster: {
-            version: 8,
-            sources: {
-                'mapy-cz': {
-                    type: 'raster',
-                    tiles: ['https://mapserver.mapy.cz/turist-m/{z}-{x}-{y}'],
-                    tileSize: 256,
-                    maxzoom: 19,
-                    attribution: '&copy; <a href="https://www.mapy.cz">Mapy.cz</a> &copy; <a href="https://www.openstreetmap.org">OSM</a>'
-                }
-            },
-            layers: [{
-                id: 'mapy-cz-tiles',
+    _rasterStyle: {
+        version: 8,
+        sources: {
+            'osm': {
                 type: 'raster',
-                source: 'mapy-cz',
-                minzoom: 0,
-                maxzoom: 19
-            }]
+                tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                tileSize: 256,
+                maxzoom: 19,
+                attribution: '&copy; <a href="https://www.openstreetmap.org">OpenStreetMap</a>'
+            }
         },
-        vectorUrl: function (apiKey) {
-            return 'https://api.mapy.cz/v1/maptiles/outdoor/tiles.json?apikey=' + apiKey;
-        }
+        layers: [{
+            id: 'osm-tiles',
+            type: 'raster',
+            source: 'osm',
+            minzoom: 0,
+            maxzoom: 19
+        }]
+    },
+
+    _mapyCzRasterStyle: {
+        version: 8,
+        sources: {
+            'mapy-cz': {
+                type: 'raster',
+                tiles: ['https://mapserver.mapy.cz/turist-m/{z}-{x}-{y}'],
+                tileSize: 256,
+                maxzoom: 19,
+                attribution: '&copy; <a href="https://www.mapy.cz">Mapy.cz</a>'
+            }
+        },
+        layers: [{
+            id: 'mapy-cz-tiles',
+            type: 'raster',
+            source: 'mapy-cz',
+            minzoom: 0,
+            maxzoom: 19
+        }]
     },
 
     init: function (elementId, dotnetRef, centerLat, centerLon, zoom, mapyCzApiKey) {
         this._dotnetRef = dotnetRef;
         this._elementId = elementId;
-        this._apiKey = mapyCzApiKey || null;
+        this._apiKey = (mapyCzApiKey && mapyCzApiKey.length > 5) ? mapyCzApiKey : null;
 
-        var style = this._apiKey
-            ? this._styles.vectorUrl(this._apiKey)
-            : this._styles.raster;
-
+        // Start with Mapy.cz raster (tourist), fall back to OSM
         this._map = new maplibregl.Map({
             container: elementId,
-            style: style,
+            style: this._mapyCzRasterStyle,
             center: [centerLon, centerLat],
             zoom: zoom
+        });
+
+        this._map.on('error', function (e) {
+            console.warn('Map tile error:', e.error?.message || e);
         });
 
         this._map.on('click', (e) => {
@@ -58,40 +73,31 @@ window.ovcinaMap = {
         this._map.addControl(new maplibregl.ScaleControl(), 'bottom-left');
     },
 
-    switchStyle: function (useVector) {
+    switchStyle: function (styleKey) {
         if (!this._map) return;
 
-        // Save current markers, center, zoom
         var center = this._map.getCenter();
         var zoom = this._map.getZoom();
-        var savedMarkers = {};
-        for (var id in this._markers) {
-            var m = this._markers[id];
-            savedMarkers[id] = {
-                lngLat: m.getLngLat(),
-                popup: m.getPopup() ? m.getPopup().getHTML() : null,
-                color: m.getElement().style.backgroundColor
-            };
+        var style;
+
+        if (styleKey === 'vector' && this._apiKey) {
+            style = 'https://api.mapy.cz/v1/maptiles/outdoor/tiles.json?apikey=' + this._apiKey;
+        } else if (styleKey === 'tourist') {
+            style = this._mapyCzRasterStyle;
+        } else {
+            style = this._rasterStyle; // OSM fallback
         }
 
-        // Switch style
-        var style = (useVector && this._apiKey)
-            ? this._styles.vectorUrl(this._apiKey)
-            : this._styles.raster;
+        // Clear markers before style change
+        this.clearMarkers();
 
         this._map.setStyle(style);
-
-        // Restore markers after style loads
         this._map.once('styledata', () => {
             this._map.setCenter(center);
             this._map.setZoom(zoom);
-            for (var id in savedMarkers) {
-                var s = savedMarkers[id];
-                this.addMarker(parseInt(id), s.lngLat.lat, s.lngLat.lng,
-                    '', '', s.color);
-                if (s.popup) {
-                    this._markers[id].getPopup().setHTML(s.popup);
-                }
+            // Blazor will re-add markers via LoadAndDisplayLocationsAsync
+            if (this._dotnetRef) {
+                this._dotnetRef.invokeMethodAsync('OnStyleLoadedCallback');
             }
         });
     },

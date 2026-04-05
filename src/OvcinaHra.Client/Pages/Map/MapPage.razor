@@ -8,8 +8,9 @@
     <h1 class="mb-0">Mapa</h1>
     <div class="d-flex gap-2 align-items-center">
         <div class="btn-group btn-group-sm">
-            <button class="btn @(useVector ? "btn-outline-secondary" : "btn-secondary")" @onclick="() => ToggleStyle(false)">Turistická</button>
-            <button class="btn @(useVector ? "btn-secondary" : "btn-outline-secondary")" @onclick="() => ToggleStyle(true)">Vektorová</button>
+            <button class="btn @(activeStyle == "tourist" ? "btn-secondary" : "btn-outline-secondary")" @onclick='() => ToggleStyle("tourist")'>Turistická</button>
+            <button class="btn @(activeStyle == "vector" ? "btn-secondary" : "btn-outline-secondary")" @onclick='() => ToggleStyle("vector")'>Vektorová</button>
+            <button class="btn @(activeStyle == "osm" ? "btn-secondary" : "btn-outline-secondary")" @onclick='() => ToggleStyle("osm")'>OSM</button>
         </div>
         @if (placingMode)
         {
@@ -26,7 +27,8 @@
 <MapView @ref="mapView"
          CenterLat="49.4532461" CenterLon="18.0203242" Zoom="16"
          OnMapClick="HandleMapClick"
-         OnMarkerClick="HandleMarkerClick" />
+         OnMarkerClick="HandleMarkerClick"
+         OnStyleLoaded="HandleStyleLoaded" />
 
 @* Location detail popup *@
 <DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="550px">
@@ -82,7 +84,8 @@
 @code {
     private MapView mapView = null!;
     private List<LocationListDto> locations = [];
-    private bool placingMode, isModalVisible, isDeleteVisible, isSaving, useVector;
+    private bool placingMode, isModalVisible, isDeleteVisible, isSaving;
+    private string activeStyle = "tourist";
     private string modalTitle = "", locName = "";
     private string? error, locDescription, locNpcInfo, locSetupNotes;
     private int? editingId;
@@ -120,10 +123,14 @@
         }
     }
 
-    private async Task ToggleStyle(bool vector)
+    private async Task ToggleStyle(string style)
     {
-        useVector = vector;
-        await mapView.SwitchStyleAsync(vector);
+        activeStyle = style;
+        await mapView.SwitchStyleAsync(style);
+    }
+
+    private async Task HandleStyleLoaded()
+    {
         await LoadAndDisplayLocationsAsync();
     }
 
