@@ -1,7 +1,10 @@
-﻿@page "/"
+@page "/"
+@attribute [Authorize]
 
-<PageTitle>Home</PageTitle>
+<h1>OvčinaHra</h1>
 
-<h1>Hello, world!</h1>
-
-Welcome to your new app.
+<AuthorizeView>
+    <Authorized>
+        <p>Vítej, <strong>@context.User.Identity?.Name</strong>! Vyber si sekci z menu vlevo.</p>
+    </Authorized>
+</AuthorizeView>

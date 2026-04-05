@@ -1,7 +1,7 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
+<div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand" href="">OvcinaHra.Client</a>
-        <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
+        <a class="navbar-brand" href="">OvčinaHra</a>
+        <button title="Navigační menu" class="navbar-toggler" @onclick="ToggleNavMenu">
             <span class="navbar-toggler-icon"></span>
         </button>
     </div>
@@ -11,17 +11,47 @@
     <nav class="nav flex-column">
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
+                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Přehled
             </NavLink>
         </div>
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="counter">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Counter
+            <NavLink class="nav-link" href="hry">
+                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Správa hry
             </NavLink>
         </div>
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="weather">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Weather
+            <NavLink class="nav-link" href="lokace">
+                <span class="bi bi-geo-alt-fill-nav-menu" aria-hidden="true"></span> Lokace
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="predmety">
+                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Předměty
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="prisery">
+                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Příšery
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="questy">
+                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Questy
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="poklady">
+                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Poklady
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="budovy">
+                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Budovy
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="hledani">
+                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Hledání
             </NavLink>
         </div>
     </nav>
@@ -29,11 +59,6 @@
 
 @code {
     private bool collapseNavMenu = true;
-
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
-
-    private void ToggleNavMenu()
-    {
-        collapseNavMenu = !collapseNavMenu;
-    }
+    private void ToggleNavMenu() => collapseNavMenu = !collapseNavMenu;
 }

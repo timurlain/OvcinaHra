@@ -1,0 +1,83 @@
+@page "/login"
+@inject HttpClient Http
+@inject JwtAuthStateProvider AuthProvider
+@inject TokenRefreshService RefreshService
+@inject NavigationManager Nav
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h4>OvčinaHra — Přihlášení</h4>
+                </div>
+                <div class="card-body">
+                    @if (errorMessage is not null)
+                    {
+                        <div class="alert alert-danger">@errorMessage</div>
+                    }
+
+                    <div class="mb-3">
+                        <label class="form-label">Jméno</label>
+                        <input class="form-control" @bind="name" placeholder="Tvoje jméno" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input class="form-control" type="email" @bind="email" placeholder="email@ovcina.cz" />
+                    </div>
+
+                    <button class="btn btn-primary w-100" @onclick="LoginDev" disabled="@loading">
+                        @if (loading) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                        Přihlásit (dev)
+                    </button>
+
+                    <p class="text-muted mt-3 small">
+                        Toto je vývojové přihlášení. V produkci bude přesměrování na registrace-ovčina.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string name = "Organizátor";
+    private string email = "org@ovcina.cz";
+    private string? errorMessage;
+    private bool loading;
+
+    private async Task LoginDev()
+    {
+        loading = true;
+        errorMessage = null;
+
+        try
+        {
+            var response = await Http.PostAsJsonAsync("/api/auth/dev-token",
+                new { Name = name, Email = email });
+
+            if (response.IsSuccessStatusCode)
+            {
+                var token = await response.Content.ReadFromJsonAsync<OvcinaHra.Client.Auth.TokenResponse>();
+                if (token is not null)
+                {
+                    await AuthProvider.SetTokenAsync(token.Token);
+                    RefreshService.ScheduleRefresh(token.ExpiresInSeconds);
+                    Nav.NavigateTo("/");
+                }
+            }
+            else
+            {
+                errorMessage = "Přihlášení selhalo. Zkuste to znovu.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Chyba: {ex.Message}";
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+}
