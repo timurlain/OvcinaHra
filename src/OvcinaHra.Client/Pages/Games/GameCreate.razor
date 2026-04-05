@@ -5,16 +5,30 @@
 
 <h1>Nová hra</h1>
 
+@if (error is not null)
+{
+    <div class="alert alert-danger">@error</div>
+}
+
 <GameForm Model="model" OnSave="Save" OnCancel="Cancel" />
 
 @code {
     private GameFormModel model = new();
+    private string? error;
 
     private async Task Save()
     {
-        var created = await Api.PostAsync<CreateGameDto, GameDetailDto>("/api/games", model.ToCreateDto());
-        if (created is not null)
-            Nav.NavigateTo($"/hry/{created.Id}");
+        error = null;
+        try
+        {
+            var created = await Api.PostAsync<CreateGameDto, GameDetailDto>("/api/games", model.ToCreateDto());
+            if (created is not null)
+                Nav.NavigateTo($"/hry/{created.Id}");
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
     }
 
     private void Cancel() => Nav.NavigateTo("/hry");

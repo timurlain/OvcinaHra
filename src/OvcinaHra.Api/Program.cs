@@ -26,7 +26,11 @@ try
             .Enrich.FromLogContext()
             .Enrich.WithProperty("Application", "OvcinaHra.Api")
             .WriteTo.Console(outputTemplate:
-                "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}");
+                "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
+            .WriteTo.File(
+                Path.Combine(context.HostingEnvironment.ContentRootPath, "..", "..", "logs", "api-.log"),
+                rollingInterval: RollingInterval.Day,
+                outputTemplate: "[{Timestamp:HH:mm:ss.fff} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}");
     });
 
     builder.Services.AddOpenApi();
