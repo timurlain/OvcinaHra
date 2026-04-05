@@ -9,7 +9,25 @@ window.ovcinaMap = {
 
         this._map = new maplibregl.Map({
             container: elementId,
-            style: 'https://demotiles.maplibre.org/style.json',
+            style: {
+                version: 8,
+                sources: {
+                    'mapy-cz': {
+                        type: 'raster',
+                        tiles: ['https://mapserver.mapy.cz/turist-m/{z}-{x}-{y}'],
+                        tileSize: 256,
+                        maxzoom: 19,
+                        attribution: '&copy; <a href="https://www.mapy.cz">Mapy.cz</a> &copy; <a href="https://www.openstreetmap.org">OSM</a>'
+                    }
+                },
+                layers: [{
+                    id: 'mapy-cz-tiles',
+                    type: 'raster',
+                    source: 'mapy-cz',
+                    minzoom: 0,
+                    maxzoom: 19
+                }]
+            },
             center: [centerLon, centerLat],
             zoom: zoom
         });
