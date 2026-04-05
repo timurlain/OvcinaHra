@@ -1,0 +1,134 @@
+@page "/questy"
+@attribute [Authorize]
+@inject ApiClient Api
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Questy</h1>
+    <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nový quest</button>
+</div>
+
+@if (loading) { <p>Načítám...</p> }
+else
+{
+    <OvcinaGrid Data="@quests" KeyFieldName="Id" LayoutKey="grid-layout-quests"
+                RowClick="@(e => OpenModal((QuestListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+        <Columns>
+            <DxGridDataColumn FieldName="Name" Caption="Název" />
+            <DxGridDataColumn FieldName="QuestType" Caption="Typ" Width="140px">
+                <CellDisplayTemplate>@(((QuestType)context.Value).GetDisplayName())</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="ChainOrder" Caption="Pořadí v řetězu" Width="140px" Visible="false" />
+            <DxGridDataColumn FieldName="ParentQuestId" Caption="Nadřazený quest" Width="140px" Visible="false" />
+            <DxGridDataColumn FieldName="GameId" Caption="Hra ID" Width="80px" />
+        </Columns>
+    </OvcinaGrid>
+}
+
+<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="700px">
+    <BodyContentTemplate Context="popupContext">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Název" ColSpanMd="8">
+                <DxTextBox @bind-Text="@name" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Typ" ColSpanMd="4">
+                <DxComboBox Data="@questTypeValues" @bind-Value="@questType" TextFieldName="Display" ValueFieldName="Value" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Hra ID" ColSpanMd="4">
+                <DxSpinEdit @bind-Value="@gameId" MinValue="1" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Pořadí v řetězu" ColSpanMd="4">
+                <DxSpinEdit @bind-Value="@chainOrder" MinValue="0" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Nadřazený quest ID" ColSpanMd="4">
+                <DxSpinEdit @bind-Value="@parentQuestId" MinValue="0" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Popis (organizátor)" ColSpanMd="12">
+                <DxMemo @bind-Text="@description" Rows="2" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Herní text (hráči)" ColSpanMd="12">
+                <DxMemo @bind-Text="@fullText" Rows="3" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Časový slot" ColSpanMd="12">
+                <DxTextBox @bind-Text="@timeSlot" />
+            </DxFormLayoutItem>
+            <DxFormLayoutGroup Caption="Odměny" ColSpanMd="12">
+                <DxFormLayoutItem Caption="XP" ColSpanMd="4">
+                    <DxSpinEdit @bind-Value="@rewardXp" MinValue="0" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Groše" ColSpanMd="4">
+                    <DxSpinEdit @bind-Value="@rewardMoney" MinValue="0" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Poznámky" ColSpanMd="4">
+                    <DxTextBox @bind-Text="@rewardNotes" />
+                </DxFormLayoutItem>
+            </DxFormLayoutGroup>
+        </DxFormLayout>
+        @if (error is not null) { <div class="alert alert-danger mt-2">@error</div> }
+        <div class="d-flex gap-2 mt-3">
+            @if (editingId.HasValue) { <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true">Smazat</button> }
+            <div style="flex: 1"></div>
+            <button class="btn btn-secondary" @onclick="() => isModalVisible = false">Zrušit</button>
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving">Uložit</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Smazat quest <strong>@name</strong>?</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    private List<QuestListDto> quests = []; private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
+    private string modalTitle = "", name = ""; private string? error, description, fullText, timeSlot, rewardNotes;
+    private int? editingId; private QuestType questType = QuestType.General;
+    private int gameId = 1, chainOrder, parentQuestId, rewardXp, rewardMoney;
+
+    private static readonly List<EnumItem<QuestType>> questTypeValues = Enum.GetValues<QuestType>()
+        .Select(v => new EnumItem<QuestType>(v, v.GetDisplayName())).ToList();
+    record EnumItem<T>(T Value, string Display);
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+    private async Task LoadAsync() { loading = true; quests = await Api.GetListAsync<QuestListDto>("/api/quests/by-game/1"); loading = false; }
+
+    private void OpenModal(QuestListDto? q)
+    {
+        error = null;
+        if (q is null) { editingId = null; name = ""; questType = QuestType.General; gameId = 1; chainOrder = 0; parentQuestId = 0; description = null; fullText = null; timeSlot = null; rewardXp = 0; rewardMoney = 0; rewardNotes = null; modalTitle = "Nový quest"; }
+        else { editingId = q.Id; name = q.Name; questType = q.QuestType; gameId = q.GameId; chainOrder = q.ChainOrder ?? 0; parentQuestId = q.ParentQuestId ?? 0; modalTitle = $"Upravit: {q.Name}"; _ = LoadDetailAsync(q.Id); }
+        isModalVisible = true;
+    }
+
+    private async Task LoadDetailAsync(int id)
+    {
+        var d = await Api.GetAsync<QuestDetailDto>($"/api/quests/{id}");
+        if (d is not null) { description = d.Description; fullText = d.FullText; timeSlot = d.TimeSlot; rewardXp = d.RewardXp ?? 0; rewardMoney = d.RewardMoney ?? 0; rewardNotes = d.RewardNotes; StateHasChanged(); }
+    }
+
+    private async Task SaveAsync()
+    {
+        error = null; isSaving = true;
+        try
+        {
+            int? xp = rewardXp > 0 ? rewardXp : null; int? money = rewardMoney > 0 ? rewardMoney : null;
+            int? chain = chainOrder > 0 ? chainOrder : null; int? parent = parentQuestId > 0 ? parentQuestId : null;
+            if (editingId.HasValue)
+                await Api.PutAsync($"/api/quests/{editingId}", new UpdateQuestDto(name, questType, description, fullText, timeSlot, xp, money, rewardNotes, chain, parent));
+            else
+                await Api.PostAsync<CreateQuestDto, QuestListDto>("/api/quests", new CreateQuestDto(name, questType, gameId, description, fullText, timeSlot, xp, money, rewardNotes, chain, parent));
+            isModalVisible = false; await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; } finally { isSaving = false; }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        try { await Api.DeleteAsync($"/api/quests/{editingId}"); isDeleteVisible = false; isModalVisible = false; await LoadAsync(); }
+        catch (Exception ex) { error = ex.Message; }
+    }
+}

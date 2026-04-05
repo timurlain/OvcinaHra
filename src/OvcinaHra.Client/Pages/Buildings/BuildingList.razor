@@ -1,0 +1,105 @@
+@page "/budovy"
+@attribute [Authorize]
+@inject ApiClient Api
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Budovy</h1>
+    <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nová budova</button>
+</div>
+
+@if (loading) { <p>Načítám...</p> }
+else
+{
+    <OvcinaGrid Data="@buildings" KeyFieldName="Id" LayoutKey="grid-layout-buildings"
+                RowClick="@(e => OpenModal((BuildingListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+        <Columns>
+            <DxGridDataColumn FieldName="Name" Caption="Název" />
+            <DxGridDataColumn FieldName="LocationName" Caption="Lokace" Width="180px" />
+            <DxGridDataColumn FieldName="IsPrebuilt" Caption="Představěná" Width="120px">
+                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="GameId" Caption="Hra ID" Width="80px" Visible="false" />
+        </Columns>
+    </OvcinaGrid>
+}
+
+<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="500px">
+    <BodyContentTemplate Context="popupContext">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Název" ColSpanMd="12">
+                <DxTextBox @bind-Text="@name" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Popis" ColSpanMd="12">
+                <DxMemo @bind-Text="@description" Rows="3" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Hra ID" ColSpanMd="6">
+                <DxSpinEdit @bind-Value="@gameId" MinValue="1" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Lokace ID" ColSpanMd="6">
+                <DxSpinEdit @bind-Value="@locationId" MinValue="0" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="" ColSpanMd="12">
+                <DxCheckBox @bind-Checked="@isPrebuilt">Představěná organizátory</DxCheckBox>
+            </DxFormLayoutItem>
+        </DxFormLayout>
+        @if (error is not null) { <div class="alert alert-danger mt-2">@error</div> }
+        <div class="d-flex gap-2 mt-3">
+            @if (editingId.HasValue) { <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true">Smazat</button> }
+            <div style="flex: 1"></div>
+            <button class="btn btn-secondary" @onclick="() => isModalVisible = false">Zrušit</button>
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving">Uložit</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Smazat budovu <strong>@name</strong>?</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    private List<BuildingListDto> buildings = []; private bool loading = true, isModalVisible, isDeleteVisible, isSaving, isPrebuilt;
+    private string modalTitle = "", name = ""; private string? error, description; private int? editingId;
+    private int gameId = 1, locationId;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+    private async Task LoadAsync() { loading = true; buildings = await Api.GetListAsync<BuildingListDto>("/api/buildings/by-game/1"); loading = false; }
+
+    private void OpenModal(BuildingListDto? b)
+    {
+        error = null;
+        if (b is null) { editingId = null; name = ""; description = null; gameId = 1; locationId = 0; isPrebuilt = false; modalTitle = "Nová budova"; }
+        else { editingId = b.Id; name = b.Name; gameId = b.GameId; locationId = b.LocationId ?? 0; isPrebuilt = b.IsPrebuilt; modalTitle = $"Upravit: {b.Name}"; _ = LoadDetailAsync(b.Id); }
+        isModalVisible = true;
+    }
+
+    private async Task LoadDetailAsync(int id)
+    {
+        var d = await Api.GetAsync<BuildingDetailDto>($"/api/buildings/{id}");
+        if (d is not null) { description = d.Description; StateHasChanged(); }
+    }
+
+    private async Task SaveAsync()
+    {
+        error = null; isSaving = true;
+        try
+        {
+            int? locId = locationId > 0 ? locationId : null;
+            if (editingId.HasValue) await Api.PutAsync($"/api/buildings/{editingId}", new UpdateBuildingDto(name, description, locId, isPrebuilt));
+            else await Api.PostAsync<CreateBuildingDto, BuildingDetailDto>("/api/buildings", new CreateBuildingDto(name, gameId, description, locId, isPrebuilt));
+            isModalVisible = false; await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; } finally { isSaving = false; }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        try { await Api.DeleteAsync($"/api/buildings/{editingId}"); isDeleteVisible = false; isModalVisible = false; await LoadAsync(); }
+        catch (Exception ex) { error = ex.Message; }
+    }
+}

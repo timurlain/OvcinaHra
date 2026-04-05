@@ -1,0 +1,160 @@
+@page "/prisery"
+@attribute [Authorize]
+@inject ApiClient Api
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Příšery</h1>
+    <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nová příšera</button>
+</div>
+
+@if (loading)
+{
+    <p>Načítám...</p>
+}
+else
+{
+    <OvcinaGrid Data="@monsters" KeyFieldName="Id" LayoutKey="grid-layout-monsters"
+                RowClick="@(e => OpenModal((MonsterListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+        <Columns>
+            <DxGridDataColumn FieldName="Name" Caption="Název" />
+            <DxGridDataColumn FieldName="MonsterType" Caption="Typ" Width="130px">
+                <CellDisplayTemplate>@(((MonsterType)context.Value).GetDisplayName())</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="Category" Caption="Kategorie" Width="110px" />
+            <DxGridDataColumn FieldName="Attack" Caption="Útok" Width="80px" />
+            <DxGridDataColumn FieldName="Defense" Caption="Obrana" Width="80px" />
+            <DxGridDataColumn FieldName="Health" Caption="Životy" Width="80px" />
+        </Columns>
+    </OvcinaGrid>
+}
+
+<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="650px">
+    <BodyContentTemplate Context="popupContext">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Název" ColSpanMd="8">
+                <DxTextBox @bind-Text="@name" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Kategorie (1-5)" ColSpanMd="4">
+                <DxSpinEdit @bind-Value="@category" MinValue="1" MaxValue="5" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Typ" ColSpanMd="12">
+                <DxComboBox Data="@monsterTypeValues" @bind-Value="@monsterType"
+                            TextFieldName="Display" ValueFieldName="Value" />
+            </DxFormLayoutItem>
+            <DxFormLayoutGroup Caption="Bojové statistiky" ColSpanMd="12">
+                <DxFormLayoutItem Caption="Útok" ColSpanMd="4">
+                    <DxSpinEdit @bind-Value="@attack" MinValue="0" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Obrana" ColSpanMd="4">
+                    <DxSpinEdit @bind-Value="@defense" MinValue="0" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Životy" ColSpanMd="4">
+                    <DxSpinEdit @bind-Value="@health" MinValue="1" />
+                </DxFormLayoutItem>
+            </DxFormLayoutGroup>
+            <DxFormLayoutItem Caption="Schopnosti" ColSpanMd="12">
+                <DxMemo @bind-Text="@abilities" Rows="2" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="AI chování" ColSpanMd="12">
+                <DxMemo @bind-Text="@aiBehavior" Rows="2" />
+            </DxFormLayoutItem>
+            <DxFormLayoutGroup Caption="Odměny" ColSpanMd="12">
+                <DxFormLayoutItem Caption="XP" ColSpanMd="4">
+                    <DxSpinEdit @bind-Value="@rewardXp" MinValue="0" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Groše" ColSpanMd="4">
+                    <DxSpinEdit @bind-Value="@rewardMoney" MinValue="0" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Poznámky" ColSpanMd="4">
+                    <DxTextBox @bind-Text="@rewardNotes" />
+                </DxFormLayoutItem>
+            </DxFormLayoutGroup>
+        </DxFormLayout>
+
+        @if (error is not null) { <div class="alert alert-danger mt-2">@error</div> }
+
+        <div class="d-flex gap-2 mt-3">
+            @if (editingId.HasValue) { <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true" disabled="@isSaving">Smazat</button> }
+            <div style="flex: 1"></div>
+            <button class="btn btn-secondary" @onclick="() => isModalVisible = false" disabled="@isSaving">Zrušit</button>
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving">Uložit</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Opravdu chcete smazat příšeru <strong>@name</strong>?</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    private List<MonsterListDto> monsters = [];
+    private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
+    private string modalTitle = "", name = "";
+    private string? error, abilities, aiBehavior, rewardNotes;
+    private int? editingId;
+    private MonsterType monsterType = MonsterType.Beast;
+    private int category = 1, attack = 1, defense = 1, health = 5;
+    private int rewardXp, rewardMoney;
+
+    private static readonly List<EnumItem<MonsterType>> monsterTypeValues = Enum.GetValues<MonsterType>()
+        .Select(v => new EnumItem<MonsterType>(v, v.GetDisplayName())).ToList();
+    record EnumItem<T>(T Value, string Display);
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+    private async Task LoadAsync() { loading = true; monsters = await Api.GetListAsync<MonsterListDto>("/api/monsters"); loading = false; }
+
+    private void OpenModal(MonsterListDto? m)
+    {
+        error = null;
+        if (m is null)
+        {
+            editingId = null; name = ""; monsterType = MonsterType.Beast; category = 1;
+            attack = 1; defense = 1; health = 5; abilities = null; aiBehavior = null;
+            rewardXp = 0; rewardMoney = 0; rewardNotes = null;
+            modalTitle = "Nová příšera";
+        }
+        else
+        {
+            editingId = m.Id; name = m.Name; monsterType = m.MonsterType; category = m.Category;
+            attack = m.Attack; defense = m.Defense; health = m.Health;
+            modalTitle = $"Upravit: {m.Name}";
+            _ = LoadDetailAsync(m.Id);
+        }
+        isModalVisible = true;
+    }
+
+    private async Task LoadDetailAsync(int id)
+    {
+        var d = await Api.GetAsync<MonsterDetailDto>($"/api/monsters/{id}");
+        if (d is not null) { abilities = d.Abilities; aiBehavior = d.AiBehavior; rewardXp = d.RewardXp ?? 0; rewardMoney = d.RewardMoney ?? 0; rewardNotes = d.RewardNotes; StateHasChanged(); }
+    }
+
+    private async Task SaveAsync()
+    {
+        error = null; isSaving = true;
+        try
+        {
+            int? xp = rewardXp > 0 ? rewardXp : null;
+            int? money = rewardMoney > 0 ? rewardMoney : null;
+            if (editingId.HasValue)
+                await Api.PutAsync($"/api/monsters/{editingId}", new UpdateMonsterDto(name, category, monsterType, attack, defense, health, abilities, aiBehavior, xp, money, rewardNotes));
+            else
+                await Api.PostAsync<CreateMonsterDto, MonsterDetailDto>("/api/monsters", new CreateMonsterDto(name, category, monsterType, attack, defense, health, abilities, aiBehavior, xp, money, rewardNotes));
+            isModalVisible = false; await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        try { await Api.DeleteAsync($"/api/monsters/{editingId}"); isDeleteVisible = false; isModalVisible = false; await LoadAsync(); }
+        catch (Exception ex) { error = ex.Message; }
+    }
+}

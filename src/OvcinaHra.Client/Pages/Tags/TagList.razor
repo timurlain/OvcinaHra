@@ -1,0 +1,90 @@
+@page "/tagy"
+@attribute [Authorize]
+@inject ApiClient Api
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Tagy</h1>
+    <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nový tag</button>
+</div>
+
+@if (loading) { <p>Načítám...</p> }
+else
+{
+    <OvcinaGrid Data="@tags" KeyFieldName="Id" LayoutKey="grid-layout-tags"
+                RowClick="@(e => OpenModal((TagDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+        <Columns>
+            <DxGridDataColumn FieldName="Name" Caption="Název" />
+            <DxGridDataColumn FieldName="Kind" Caption="Druh" Width="140px">
+                <CellDisplayTemplate>@(((TagKind)context.Value).GetDisplayName())</CellDisplayTemplate>
+            </DxGridDataColumn>
+        </Columns>
+    </OvcinaGrid>
+}
+
+<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="400px">
+    <BodyContentTemplate Context="popupContext">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Název" ColSpanMd="12">
+                <DxTextBox @bind-Text="@name" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Druh" ColSpanMd="12">
+                <DxComboBox Data="@kindValues" @bind-Value="@kind" TextFieldName="Display" ValueFieldName="Value" />
+            </DxFormLayoutItem>
+        </DxFormLayout>
+        @if (error is not null) { <div class="alert alert-danger mt-2">@error</div> }
+        <div class="d-flex gap-2 mt-3">
+            @if (editingId.HasValue) { <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true">Smazat</button> }
+            <div style="flex: 1"></div>
+            <button class="btn btn-secondary" @onclick="() => isModalVisible = false">Zrušit</button>
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving">Uložit</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Smazat tag <strong>@name</strong>?</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    private List<TagDto> tags = []; private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
+    private string modalTitle = "", name = ""; private string? error; private int? editingId;
+    private TagKind kind = TagKind.Monster;
+
+    private static readonly List<object> kindValues = Enum.GetValues<TagKind>()
+        .Select(v => (object)new { Value = v, Display = v.GetDisplayName() }).ToList();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+    private async Task LoadAsync() { loading = true; tags = await Api.GetListAsync<TagDto>("/api/tags"); loading = false; }
+
+    private void OpenModal(TagDto? t)
+    {
+        error = null;
+        if (t is null) { editingId = null; name = ""; kind = TagKind.Monster; modalTitle = "Nový tag"; }
+        else { editingId = t.Id; name = t.Name; kind = t.Kind; modalTitle = $"Upravit: {t.Name}"; }
+        isModalVisible = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        error = null; isSaving = true;
+        try
+        {
+            if (editingId.HasValue) await Api.PutAsync($"/api/tags/{editingId}", new UpdateTagDto(name));
+            else await Api.PostAsync<CreateTagDto, TagDto>("/api/tags", new CreateTagDto(name, kind));
+            isModalVisible = false; await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; } finally { isSaving = false; }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        try { await Api.DeleteAsync($"/api/tags/{editingId}"); isDeleteVisible = false; isModalVisible = false; await LoadAsync(); }
+        catch (Exception ex) { error = ex.Message; }
+    }
+}

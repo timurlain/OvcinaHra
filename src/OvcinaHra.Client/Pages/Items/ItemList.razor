@@ -1,0 +1,181 @@
+@page "/predmety"
+@attribute [Authorize]
+@inject ApiClient Api
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Předměty</h1>
+    <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nový předmět</button>
+</div>
+
+@if (loading)
+{
+    <p>Načítám...</p>
+}
+else
+{
+    <OvcinaGrid Data="@items" KeyFieldName="Id" LayoutKey="grid-layout-items"
+                RowClick="@(e => OpenModal((ItemListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+        <Columns>
+            <DxGridDataColumn FieldName="Name" Caption="Název" />
+            <DxGridDataColumn FieldName="ItemType" Caption="Typ" Width="150px">
+                <CellDisplayTemplate>@(((ItemType)context.Value).GetDisplayName())</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="IsCraftable" Caption="Vyrobitelný" Width="120px">
+                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="IsUnique" Caption="Unikátní" Width="100px" Visible="false">
+                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="IsLimited" Caption="Limitovaný" Width="110px" Visible="false">
+                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+        </Columns>
+    </OvcinaGrid>
+}
+
+<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="650px">
+    <BodyContentTemplate Context="popupContext">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Název" ColSpanMd="12">
+                <DxTextBox @bind-Text="@name" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Typ předmětu" ColSpanMd="6">
+                <DxComboBox Data="@itemTypeValues" @bind-Value="@itemType"
+                            TextFieldName="Display" ValueFieldName="Value" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Fyzická forma" ColSpanMd="6">
+                <DxComboBox Data="@physicalFormValues" @bind-Value="@physicalForm"
+                            TextFieldName="Display" ValueFieldName="Value" NullText="(žádná)" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Efekt" ColSpanMd="12">
+                <DxTextBox @bind-Text="@effect" NullText="(3/5), +2/+2, ..." />
+            </DxFormLayoutItem>
+            <DxFormLayoutGroup Caption="Požadavky na povolání" ColSpanMd="12">
+                <DxFormLayoutItem Caption="Válečník" ColSpanMd="3">
+                    <DxSpinEdit @bind-Value="@reqWarrior" MinValue="0" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Lučištník" ColSpanMd="3">
+                    <DxSpinEdit @bind-Value="@reqArcher" MinValue="0" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Mág" ColSpanMd="3">
+                    <DxSpinEdit @bind-Value="@reqMage" MinValue="0" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Zloděj" ColSpanMd="3">
+                    <DxSpinEdit @bind-Value="@reqThief" MinValue="0" />
+                </DxFormLayoutItem>
+            </DxFormLayoutGroup>
+            <DxFormLayoutItem Caption="" ColSpanMd="4">
+                <DxCheckBox @bind-Checked="@isCraftable">Vyrobitelný</DxCheckBox>
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="" ColSpanMd="4">
+                <DxCheckBox @bind-Checked="@isUnique">Unikátní</DxCheckBox>
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="" ColSpanMd="4">
+                <DxCheckBox @bind-Checked="@isLimited">Limitovaný</DxCheckBox>
+            </DxFormLayoutItem>
+        </DxFormLayout>
+
+        @if (error is not null) { <div class="alert alert-danger mt-2">@error</div> }
+
+        <div class="d-flex gap-2 mt-3">
+            @if (editingId.HasValue)
+            {
+                <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true" disabled="@isSaving">Smazat</button>
+            }
+            <div style="flex: 1"></div>
+            <button class="btn btn-secondary" @onclick="() => isModalVisible = false" disabled="@isSaving">Zrušit</button>
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving">Uložit</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Opravdu chcete smazat předmět <strong>@name</strong>?</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    private List<ItemListDto> items = [];
+    private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
+    private string modalTitle = "", name = "";
+    private string? error, effect;
+    private int? editingId;
+    private ItemType itemType = ItemType.Weapon;
+    private PhysicalForm? physicalForm;
+    private bool isCraftable, isUnique, isLimited;
+    private int reqWarrior, reqArcher, reqMage, reqThief;
+
+    private static readonly List<EnumItem<ItemType>> itemTypeValues = Enum.GetValues<ItemType>()
+        .Select(v => new EnumItem<ItemType>(v, v.GetDisplayName())).ToList();
+    private static readonly List<EnumItem<PhysicalForm?>> physicalFormValues = Enum.GetValues<PhysicalForm>()
+        .Select(v => new EnumItem<PhysicalForm?>((PhysicalForm?)v, v.GetDisplayName())).ToList();
+
+    record EnumItem<T>(T Value, string Display);
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        items = await Api.GetListAsync<ItemListDto>("/api/items");
+        loading = false;
+    }
+
+    private void OpenModal(ItemListDto? item)
+    {
+        error = null;
+        if (item is null)
+        {
+            editingId = null; name = ""; effect = null; itemType = ItemType.Weapon; physicalForm = null;
+            isCraftable = false; isUnique = false; isLimited = false;
+            reqWarrior = 0; reqArcher = 0; reqMage = 0; reqThief = 0;
+            modalTitle = "Nový předmět";
+        }
+        else
+        {
+            editingId = item.Id; name = item.Name; itemType = item.ItemType;
+            isCraftable = item.IsCraftable; isUnique = item.IsUnique; isLimited = item.IsLimited;
+            modalTitle = $"Upravit: {item.Name}";
+            _ = LoadDetailAsync(item.Id);
+        }
+        isModalVisible = true;
+    }
+
+    private async Task LoadDetailAsync(int id)
+    {
+        var d = await Api.GetAsync<ItemDetailDto>($"/api/items/{id}");
+        if (d is not null)
+        {
+            effect = d.Effect; physicalForm = d.PhysicalForm;
+            reqWarrior = d.ReqWarrior; reqArcher = d.ReqArcher; reqMage = d.ReqMage; reqThief = d.ReqThief;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        error = null; isSaving = true;
+        try
+        {
+            if (editingId.HasValue)
+                await Api.PutAsync($"/api/items/{editingId}", new UpdateItemDto(name, itemType, effect, physicalForm, isCraftable, reqWarrior, reqArcher, reqMage, reqThief, isUnique, isLimited));
+            else
+                await Api.PostAsync<CreateItemDto, ItemDetailDto>("/api/items", new CreateItemDto(name, itemType, effect, physicalForm, isCraftable, reqWarrior, reqArcher, reqMage, reqThief, isUnique, isLimited));
+            isModalVisible = false;
+            await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        try { await Api.DeleteAsync($"/api/items/{editingId}"); isDeleteVisible = false; isModalVisible = false; await LoadAsync(); }
+        catch (Exception ex) { error = ex.Message; }
+    }
+}

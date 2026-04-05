@@ -1,0 +1,64 @@
+@page "/hledani"
+@attribute [Authorize]
+@inject ApiClient Api
+
+<h1>Hledání</h1>
+
+<div class="mb-3">
+    <div class="input-group" style="max-width: 500px;">
+        <DxTextBox @bind-Text="@query" NullText="Hledat lokace, předměty, příšery, questy..."
+                   InputId="search-input" />
+        <button class="btn btn-primary" @onclick="SearchAsync" disabled="@searching">
+            @if (searching) { <span class="spinner-border spinner-border-sm me-1"></span> }
+            Hledat
+        </button>
+    </div>
+</div>
+
+@if (result is not null)
+{
+    <p class="text-muted mb-2">Nalezeno: @result.TotalCount výsledků pro "<strong>@result.Query</strong>"</p>
+
+    @if (result.Results.Count == 0)
+    {
+        <p>Žádné výsledky.</p>
+    }
+    else
+    {
+        <OvcinaGrid Data="@result.Results" KeyFieldName="Id" LayoutKey="grid-layout-search">
+            <Columns>
+                <DxGridDataColumn FieldName="EntityType" Caption="Typ" Width="120px">
+                    <CellDisplayTemplate>
+                        @(context.Value?.ToString() switch
+                        {
+                            "Location" => "Lokace",
+                            "Item" => "Předmět",
+                            "Monster" => "Příšera",
+                            "Quest" => "Quest",
+                            _ => context.Value?.ToString()
+                        })
+                    </CellDisplayTemplate>
+                </DxGridDataColumn>
+                <DxGridDataColumn FieldName="Name" Caption="Název" />
+                <DxGridDataColumn FieldName="Description" Caption="Popis" />
+            </Columns>
+        </OvcinaGrid>
+    }
+}
+
+@code {
+    private string query = "";
+    private bool searching;
+    private SearchResponseDto? result;
+
+    private async Task SearchAsync()
+    {
+        if (string.IsNullOrWhiteSpace(query) || query.Length < 2) return;
+        searching = true;
+        try
+        {
+            result = await Api.GetAsync<SearchResponseDto>($"/api/search?q={Uri.EscapeDataString(query)}");
+        }
+        finally { searching = false; }
+    }
+}
