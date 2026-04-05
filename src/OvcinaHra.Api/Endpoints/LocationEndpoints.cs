@@ -33,7 +33,7 @@ public static class LocationEndpoints
             .OrderBy(l => l.Name)
             .Select(l => new LocationListDto(
                 l.Id, l.Name, l.LocationKind,
-                l.Coordinates.Latitude, l.Coordinates.Longitude))
+                l.Coordinates.Latitude, l.Coordinates.Longitude, l.ParentLocationId))
             .ToListAsync();
 
         return TypedResults.Ok(locations);
@@ -41,14 +41,18 @@ public static class LocationEndpoints
 
     private static async Task<Results<Ok<LocationDetailDto>, NotFound>> GetById(int id, WorldDbContext db)
     {
-        var loc = await db.Locations.FindAsync(id);
+        var loc = await db.Locations
+            .Include(l => l.Variants)
+            .FirstOrDefaultAsync(l => l.Id == id);
         if (loc is null)
             return TypedResults.NotFound();
 
+        var variants = loc.Variants.Select(v => new LocationVariantDto(v.Id, v.Name, v.LocationKind)).ToList();
         return TypedResults.Ok(new LocationDetailDto(
             loc.Id, loc.Name, loc.Description, loc.LocationKind,
             loc.Coordinates.Latitude, loc.Coordinates.Longitude,
-            loc.ImagePath, loc.PlacementPhotoPath, loc.NpcInfo, loc.SetupNotes));
+            loc.ImagePath, loc.PlacementPhotoPath, loc.NpcInfo, loc.SetupNotes,
+            loc.ParentLocationId, variants));
     }
 
     private static async Task<Created<LocationDetailDto>> Create(CreateLocationDto dto, WorldDbContext db)
@@ -60,7 +64,8 @@ public static class LocationEndpoints
             Coordinates = new GpsCoordinates(dto.Latitude, dto.Longitude),
             Description = dto.Description,
             NpcInfo = dto.NpcInfo,
-            SetupNotes = dto.SetupNotes
+            SetupNotes = dto.SetupNotes,
+            ParentLocationId = dto.ParentLocationId
         };
 
         db.Locations.Add(loc);
@@ -69,7 +74,8 @@ public static class LocationEndpoints
         var result = new LocationDetailDto(
             loc.Id, loc.Name, loc.Description, loc.LocationKind,
             loc.Coordinates.Latitude, loc.Coordinates.Longitude,
-            loc.ImagePath, loc.PlacementPhotoPath, loc.NpcInfo, loc.SetupNotes);
+            loc.ImagePath, loc.PlacementPhotoPath, loc.NpcInfo, loc.SetupNotes,
+            loc.ParentLocationId, []);
 
         return TypedResults.Created($"/api/locations/{loc.Id}", result);
     }
@@ -86,6 +92,7 @@ public static class LocationEndpoints
         loc.Description = dto.Description;
         loc.NpcInfo = dto.NpcInfo;
         loc.SetupNotes = dto.SetupNotes;
+        loc.ParentLocationId = dto.ParentLocationId;
 
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
@@ -109,7 +116,7 @@ public static class LocationEndpoints
             .OrderBy(l => l.Name)
             .Select(l => new LocationListDto(
                 l.Id, l.Name, l.LocationKind,
-                l.Coordinates.Latitude, l.Coordinates.Longitude))
+                l.Coordinates.Latitude, l.Coordinates.Longitude, l.ParentLocationId))
             .ToListAsync();
 
         return TypedResults.Ok(locations);

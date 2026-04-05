@@ -7,7 +7,8 @@ public record LocationListDto(
     string Name,
     LocationKind LocationKind,
     decimal Latitude,
-    decimal Longitude);
+    decimal Longitude,
+    int? ParentLocationId);
 
 public record LocationDetailDto(
     int Id,
@@ -19,7 +20,11 @@ public record LocationDetailDto(
     string? ImagePath,
     string? PlacementPhotoPath,
     string? NpcInfo,
-    string? SetupNotes);
+    string? SetupNotes,
+    int? ParentLocationId,
+    List<LocationVariantDto> Variants);
+
+public record LocationVariantDto(int Id, string Name, LocationKind LocationKind);
 
 public record CreateLocationDto(
     string Name,
@@ -28,7 +33,8 @@ public record CreateLocationDto(
     decimal Longitude,
     string? Description = null,
     string? NpcInfo = null,
-    string? SetupNotes = null);
+    string? SetupNotes = null,
+    int? ParentLocationId = null);
 
 public record UpdateLocationDto(
     string Name,
@@ -37,6 +43,7 @@ public record UpdateLocationDto(
     decimal Longitude,
     string? Description,
     string? NpcInfo,
-    string? SetupNotes);
+    string? SetupNotes,
+    int? ParentLocationId = null);
 
 public record GameLocationDto(int GameId, int LocationId);

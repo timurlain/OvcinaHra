@@ -15,6 +15,15 @@ public class Location
     public string? NpcInfo { get; set; }
     public string? SetupNotes { get; set; }
 
+    /// <summary>
+    /// If set, this location is a variant of the parent (hobbit quest, state change, etc.).
+    /// Variants inherit GPS from the parent and are shown grouped in the UI.
+    /// Only parent locations (ParentLocationId == null) appear as map pins.
+    /// </summary>
+    public int? ParentLocationId { get; set; }
+    public Location? ParentLocation { get; set; }
+    public ICollection<Location> Variants { get; set; } = [];
+
     public ICollection<GameLocation> GameLocations { get; set; } = [];
     public ICollection<SecretStash> SecretStashes { get; set; } = [];
     public ICollection<Building> Buildings { get; set; } = [];

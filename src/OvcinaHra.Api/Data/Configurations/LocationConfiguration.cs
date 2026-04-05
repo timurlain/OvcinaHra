@@ -19,6 +19,11 @@ public class LocationConfiguration : IEntityTypeConfiguration<Location>
             c.Property(p => p.Longitude).HasColumnName("longitude").HasPrecision(10, 7);
         });
 
+        builder.HasOne(e => e.ParentLocation)
+            .WithMany(e => e.Variants)
+            .HasForeignKey(e => e.ParentLocationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.Property<NpgsqlTypes.NpgsqlTsVector>("SearchVector")
             .HasColumnType("tsvector")
             .HasComputedColumnSql(
