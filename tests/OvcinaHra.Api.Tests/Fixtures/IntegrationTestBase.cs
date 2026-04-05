@@ -1,6 +1,9 @@
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OvcinaHra.Api.Data;
+using OvcinaHra.Api.Endpoints;
 
 namespace OvcinaHra.Api.Tests.Fixtures;
 
@@ -20,6 +23,12 @@ public abstract class IntegrationTestBase : IAsyncLifetime
     {
         Factory = new ApiWebApplicationFactory(Postgres.ConnectionString);
         Client = Factory.CreateClient();
+
+        // Get a dev token and set it on the client
+        var tokenResponse = await Client.PostAsJsonAsync("/api/auth/dev-token",
+            new DevTokenRequest("test-user", "test@ovcina.cz", "Test Organizátor"));
+        var token = await tokenResponse.Content.ReadFromJsonAsync<TokenResponse>();
+        Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token!.Token);
 
         using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
