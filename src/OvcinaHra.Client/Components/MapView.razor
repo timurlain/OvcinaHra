@@ -1,0 +1,74 @@
+@implements IAsyncDisposable
+
+<div id="@_elementId" style="width: 100%; height: @Height; border-radius: 4px;"></div>
+
+@code {
+    [Inject] private IJSRuntime JS { get; set; } = null!;
+
+    [Parameter] public string Height { get; set; } = "calc(100vh - 160px)";
+    [Parameter] public double CenterLat { get; set; } = 49.75;
+    [Parameter] public double CenterLon { get; set; } = 17.25;
+    [Parameter] public int Zoom { get; set; } = 13;
+    [Parameter] public EventCallback<OvcinaMapClickEventArgs> OnMapClick { get; set; }
+    [Parameter] public EventCallback<int> OnMarkerClick { get; set; }
+
+    private readonly string _elementId = $"map-{Guid.NewGuid():N}";
+    private DotNetObjectReference<MapView>? _dotnetRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotnetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("ovcinaMap.init", _elementId, _dotnetRef, CenterLat, CenterLon, Zoom);
+        }
+    }
+
+    public async Task AddMarkerAsync(int id, double lat, double lon, string name, string kind, string color = "#e74c3c")
+    {
+        await JS.InvokeVoidAsync("ovcinaMap.addMarker", id, lat, lon, name, kind, color);
+    }
+
+    public async Task RemoveMarkerAsync(int id)
+    {
+        await JS.InvokeVoidAsync("ovcinaMap.removeMarker", id);
+    }
+
+    public async Task ClearMarkersAsync()
+    {
+        await JS.InvokeVoidAsync("ovcinaMap.clearMarkers");
+    }
+
+    public async Task SetCenterAsync(double lat, double lon, int? zoom = null)
+    {
+        await JS.InvokeVoidAsync("ovcinaMap.setCenter", lat, lon, zoom);
+    }
+
+    public async Task FitBoundsAsync(double swLat, double swLon, double neLat, double neLon)
+    {
+        await JS.InvokeVoidAsync("ovcinaMap.fitBounds", swLat, swLon, neLat, neLon);
+    }
+
+    public async Task UpdateMarkerPositionAsync(int id, double lat, double lon)
+    {
+        await JS.InvokeVoidAsync("ovcinaMap.updateMarkerPosition", id, lat, lon);
+    }
+
+    [JSInvokable]
+    public async Task OnMapClicked(double lat, double lng)
+    {
+        await OnMapClick.InvokeAsync(new OvcinaMapClickEventArgs(lat, lng));
+    }
+
+    [JSInvokable]
+    public async Task OnMarkerClicked(int id)
+    {
+        await OnMarkerClick.InvokeAsync(id);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("ovcinaMap.dispose"); } catch { }
+        _dotnetRef?.Dispose();
+    }
+}
