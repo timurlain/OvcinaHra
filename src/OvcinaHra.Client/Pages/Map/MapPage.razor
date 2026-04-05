@@ -6,10 +6,14 @@
 
 <div class="d-flex justify-content-between align-items-center mb-2">
     <h1 class="mb-0">Mapa</h1>
-    <div>
+    <div class="d-flex gap-2 align-items-center">
+        <div class="btn-group btn-group-sm">
+            <button class="btn @(useVector ? "btn-outline-secondary" : "btn-secondary")" @onclick="() => ToggleStyle(false)">Turistická</button>
+            <button class="btn @(useVector ? "btn-secondary" : "btn-outline-secondary")" @onclick="() => ToggleStyle(true)">Vektorová</button>
+        </div>
         @if (placingMode)
         {
-            <span class="badge bg-warning text-dark me-2">Klikni na mapu pro umístění</span>
+            <span class="badge bg-warning text-dark">Klikni na mapu pro umístění</span>
             <button class="btn btn-outline-secondary btn-sm" @onclick="CancelPlacing">Zrušit</button>
         }
         else
@@ -20,7 +24,7 @@
 </div>
 
 <MapView @ref="mapView"
-         CenterLat="49.75" CenterLon="17.25" Zoom="13"
+         CenterLat="49.4532461" CenterLon="18.0203242" Zoom="16"
          OnMapClick="HandleMapClick"
          OnMarkerClick="HandleMarkerClick" />
 
@@ -78,7 +82,7 @@
 @code {
     private MapView mapView = null!;
     private List<LocationListDto> locations = [];
-    private bool placingMode, isModalVisible, isDeleteVisible, isSaving;
+    private bool placingMode, isModalVisible, isDeleteVisible, isSaving, useVector;
     private string modalTitle = "", locName = "";
     private string? error, locDescription, locNpcInfo, locSetupNotes;
     private int? editingId;
@@ -109,7 +113,18 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
+        {
             await LoadAndDisplayLocationsAsync();
+            // Fit to game area bounds
+            await mapView.FitBoundsAsync(49.4504644, 18.0177633, 49.4557139, 18.0229133);
+        }
+    }
+
+    private async Task ToggleStyle(bool vector)
+    {
+        useVector = vector;
+        await mapView.SwitchStyleAsync(vector);
+        await LoadAndDisplayLocationsAsync();
     }
 
     private async void OnGameChanged() { await LoadAndDisplayLocationsAsync(); StateHasChanged(); }
