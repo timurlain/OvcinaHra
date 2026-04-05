@@ -13,5 +13,5 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo Starting API on port 5180...
-dotnet run --project src/OvcinaHra.Api --urls https://localhost:5180
+echo Starting API on port 5280...
+dotnet run --project src/OvcinaHra.Api --urls https://localhost:5280
