@@ -1,68 +1,203 @@
 @page "/hry"
 @attribute [Authorize]
 @inject ApiClient Api
-@inject NavigationManager Nav
 
-<h1>Správa hry</h1>
-
-<div class="mb-3">
-    <button class="btn btn-primary" data-testid="create-game" @onclick="GoToCreate">
-        + Nová hra
-    </button>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Správa hry</h1>
+    <button class="btn btn-primary" data-testid="create-game" @onclick="() => OpenModal(null)">+ Nová hra</button>
 </div>
 
 @if (loading)
 {
     <p>Načítám...</p>
 }
-else if (games.Count == 0)
-{
-    <p class="text-muted">Žádné hry. Vytvoř první!</p>
-}
 else
 {
-    <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>Název</th>
-                <th>Ročník</th>
-                <th>Od</th>
-                <th>Do</th>
-                <th>Stav</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var game in games)
-            {
-                <tr data-testid="game-row">
-                    <td>@game.Name</td>
-                    <td>@game.Edition</td>
-                    <td>@game.StartDate.ToString("d.M.yyyy")</td>
-                    <td>@game.EndDate.ToString("d.M.yyyy")</td>
-                    <td>@game.Status.GetDisplayName()</td>
-                    <td>
-                        <button class="btn btn-sm btn-outline-primary"
-                                @onclick="() => GoToEdit(game.Id)">
-                            Upravit
-                        </button>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
+    <OvcinaGrid Data="@games" KeyFieldName="Id" LayoutKey="grid-layout-games"
+                RowClick="@(e => OpenModal((GameListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+        <Columns>
+            <DxGridDataColumn FieldName="Name" Caption="Název" />
+            <DxGridDataColumn FieldName="Edition" Caption="Ročník" Width="100px" />
+            <DxGridDataColumn FieldName="StartDate" Caption="Od" Width="120px" DisplayFormat="d.M.yyyy" />
+            <DxGridDataColumn FieldName="EndDate" Caption="Do" Width="120px" DisplayFormat="d.M.yyyy" />
+            <DxGridDataColumn FieldName="Status" Caption="Stav" Width="140px">
+                <CellDisplayTemplate>@(((GameStatus)context.Value).GetDisplayName())</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="ExternalGameId" Caption="Registrace ID" Width="130px" Visible="false" />
+        </Columns>
+    </OvcinaGrid>
 }
+
+@* Detail popup *@
+<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="550px">
+    <BodyContentTemplate Context="popupContext">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Název hry" ColSpanMd="12">
+                <DxTextBox @bind-Text="@model.Name" data-testid="game-name" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Ročník" ColSpanMd="4">
+                <DxSpinEdit @bind-Value="@model.Edition" MinValue="1" data-testid="game-edition" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Od" ColSpanMd="4">
+                <DxDateEdit @bind-Date="@startDate" data-testid="game-start-date" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Do" ColSpanMd="4">
+                <DxDateEdit @bind-Date="@endDate" data-testid="game-end-date" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Stav" ColSpanMd="12">
+                <DxComboBox Data="@statusValues" @bind-Value="@model.Status"
+                            TextFieldName="Display" ValueFieldName="Value" data-testid="game-status" />
+            </DxFormLayoutItem>
+        </DxFormLayout>
+
+        @if (error is not null)
+        {
+            <div class="alert alert-danger mt-2">@error</div>
+        }
+
+        <div class="d-flex gap-2 mt-3">
+            @if (editingId.HasValue)
+            {
+                <button class="btn btn-outline-danger" @onclick="DeleteAsync" disabled="@isSaving" data-testid="delete-game">Smazat</button>
+            }
+            <div style="flex: 1"></div>
+            <button class="btn btn-secondary" @onclick="CloseModal" disabled="@isSaving">Zrušit</button>
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving" data-testid="save-game">
+                @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Uložit
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@* Delete confirmation *@
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Opravdu chcete smazat hru <strong>@model.Name</strong>?</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
 
 @code {
     private List<GameListDto> games = [];
     private bool loading = true;
 
+    // Modal state
+    private bool isModalVisible;
+    private bool isDeleteVisible;
+    private bool isSaving;
+    private string modalTitle = "";
+    private string? error;
+    private int? editingId;
+    private GameFormModel model = new();
+
+    // DateEdit works with DateTime, not DateOnly
+    private DateTime startDate
+    {
+        get => model.StartDate.ToDateTime(TimeOnly.MinValue);
+        set => model.StartDate = DateOnly.FromDateTime(value);
+    }
+    private DateTime endDate
+    {
+        get => model.EndDate.ToDateTime(TimeOnly.MinValue);
+        set => model.EndDate = DateOnly.FromDateTime(value);
+    }
+
+    // Status combobox items
+    private static readonly List<StatusItem> statusValues = Enum.GetValues<GameStatus>()
+        .Select(s => new StatusItem(s, s.GetDisplayName()))
+        .ToList();
+
+    record StatusItem(GameStatus Value, string Display);
+
     protected override async Task OnInitializedAsync()
     {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        loading = true;
         games = await Api.GetListAsync<GameListDto>("/api/games");
         loading = false;
     }
 
-    private void GoToCreate() => Nav.NavigateTo("/hry/nova");
-    private void GoToEdit(int id) => Nav.NavigateTo($"/hry/{id}");
+    private void OpenModal(GameListDto? game)
+    {
+        error = null;
+        if (game is null)
+        {
+            editingId = null;
+            model = new GameFormModel();
+            modalTitle = "Nová hra";
+        }
+        else
+        {
+            editingId = game.Id;
+            model = new GameFormModel
+            {
+                Name = game.Name,
+                Edition = game.Edition,
+                StartDate = game.StartDate,
+                EndDate = game.EndDate,
+                Status = game.Status
+            };
+            modalTitle = $"Upravit: {game.Name}";
+        }
+        isModalVisible = true;
+    }
+
+    private void CloseModal() => isModalVisible = false;
+
+    private async Task SaveAsync()
+    {
+        error = null;
+        isSaving = true;
+        try
+        {
+            if (editingId.HasValue)
+            {
+                await Api.PutAsync($"/api/games/{editingId}", model.ToUpdateDto());
+            }
+            else
+            {
+                await Api.PostAsync<CreateGameDto, GameDetailDto>("/api/games", model.ToCreateDto());
+            }
+            isModalVisible = false;
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void DeleteAsync() => isDeleteVisible = true;
+
+    private async Task ConfirmDeleteAsync()
+    {
+        isSaving = true;
+        try
+        {
+            await Api.DeleteAsync($"/api/games/{editingId}");
+            isDeleteVisible = false;
+            isModalVisible = false;
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
 }

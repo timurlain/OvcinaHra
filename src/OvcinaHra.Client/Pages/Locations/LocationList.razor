@@ -1,66 +1,184 @@
 @page "/lokace"
 @attribute [Authorize]
 @inject ApiClient Api
-@inject NavigationManager Nav
 
-<h1>Lokace</h1>
-
-<div class="mb-3">
-    <button class="btn btn-primary" data-testid="create-location" @onclick="GoToCreate">
-        + Nová lokace
-    </button>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Lokace</h1>
+    <button class="btn btn-primary" data-testid="create-location" @onclick="() => OpenModal(null)">+ Nová lokace</button>
 </div>
 
 @if (loading)
 {
     <p>Načítám...</p>
 }
-else if (locations.Count == 0)
-{
-    <p class="text-muted">Žádné lokace.</p>
-}
 else
 {
-    <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>Název</th>
-                <th>Typ</th>
-                <th>Zeměpisná šířka</th>
-                <th>Zeměpisná délka</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var loc in locations)
-            {
-                <tr data-testid="location-row">
-                    <td>@loc.Name</td>
-                    <td>@loc.LocationKind.GetDisplayName()</td>
-                    <td>@loc.Latitude.ToString("F5")</td>
-                    <td>@loc.Longitude.ToString("F5")</td>
-                    <td>
-                        <button class="btn btn-sm btn-outline-primary"
-                                @onclick="() => GoToEdit(loc.Id)">
-                            Upravit
-                        </button>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
+    <OvcinaGrid Data="@locations" KeyFieldName="Id" LayoutKey="grid-layout-locations"
+                RowClick="@(e => OpenModal((LocationListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+        <Columns>
+            <DxGridDataColumn FieldName="Name" Caption="Název" />
+            <DxGridDataColumn FieldName="LocationKind" Caption="Typ" Width="160px">
+                <CellDisplayTemplate>@(((LocationKind)context.Value).GetDisplayName())</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="Latitude" Caption="Šířka" Width="120px" DisplayFormat="F5" />
+            <DxGridDataColumn FieldName="Longitude" Caption="Délka" Width="120px" DisplayFormat="F5" />
+        </Columns>
+    </OvcinaGrid>
 }
+
+@* Detail popup *@
+<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="650px">
+    <BodyContentTemplate Context="popupContext">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Název lokace" ColSpanMd="12">
+                <DxTextBox @bind-Text="@model.Name" data-testid="location-name" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Typ lokace" ColSpanMd="12">
+                <DxComboBox Data="@locationKindValues" @bind-Value="@model.LocationKind"
+                            TextFieldName="Display" ValueFieldName="Value" data-testid="location-kind" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Zeměpisná šířka" ColSpanMd="6">
+                <DxSpinEdit @bind-Value="@model.Latitude" Increment="0.00001m" data-testid="location-lat" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Zeměpisná délka" ColSpanMd="6">
+                <DxSpinEdit @bind-Value="@model.Longitude" Increment="0.00001m" data-testid="location-lon" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Popis (fantasy)" ColSpanMd="12">
+                <DxMemo @bind-Text="@model.Description" Rows="3" data-testid="location-description" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Info pro CP (NPC)" ColSpanMd="12">
+                <DxMemo @bind-Text="@model.NpcInfo" Rows="2" data-testid="location-npc" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Co nachystat na lokaci" ColSpanMd="12">
+                <DxMemo @bind-Text="@model.SetupNotes" Rows="2" data-testid="location-setup" />
+            </DxFormLayoutItem>
+        </DxFormLayout>
+
+        @if (error is not null)
+        {
+            <div class="alert alert-danger mt-2">@error</div>
+        }
+
+        <div class="d-flex gap-2 mt-3">
+            @if (editingId.HasValue)
+            {
+                <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true" disabled="@isSaving" data-testid="delete-location">Smazat</button>
+            }
+            <div style="flex: 1"></div>
+            <button class="btn btn-secondary" @onclick="CloseModal" disabled="@isSaving">Zrušit</button>
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving" data-testid="save-location">
+                @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Uložit
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Opravdu chcete smazat lokaci <strong>@model.Name</strong>?</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
 
 @code {
     private List<LocationListDto> locations = [];
     private bool loading = true;
+    private bool isModalVisible;
+    private bool isDeleteVisible;
+    private bool isSaving;
+    private string modalTitle = "";
+    private string? error;
+    private int? editingId;
+    private LocationFormModel model = new();
 
-    protected override async Task OnInitializedAsync()
+    private static readonly List<LocationKindItem> locationKindValues = Enum.GetValues<LocationKind>()
+        .Select(k => new LocationKindItem(k, k.GetDisplayName()))
+        .ToList();
+
+    record LocationKindItem(LocationKind Value, string Display);
+
+    protected override async Task OnInitializedAsync() => await LoadDataAsync();
+
+    private async Task LoadDataAsync()
     {
+        loading = true;
         locations = await Api.GetListAsync<LocationListDto>("/api/locations");
         loading = false;
     }
 
-    private void GoToCreate() => Nav.NavigateTo("/lokace/nova");
-    private void GoToEdit(int id) => Nav.NavigateTo($"/lokace/{id}");
+    private void OpenModal(LocationListDto? loc)
+    {
+        error = null;
+        if (loc is null)
+        {
+            editingId = null;
+            model = new LocationFormModel();
+            modalTitle = "Nová lokace";
+        }
+        else
+        {
+            editingId = loc.Id;
+            model = new LocationFormModel
+            {
+                Name = loc.Name,
+                LocationKind = loc.LocationKind,
+                Latitude = loc.Latitude,
+                Longitude = loc.Longitude
+            };
+            modalTitle = $"Upravit: {loc.Name}";
+            // Load full detail for description fields
+            _ = LoadDetailAsync(loc.Id);
+        }
+        isModalVisible = true;
+    }
+
+    private async Task LoadDetailAsync(int id)
+    {
+        var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{id}");
+        if (detail is not null)
+        {
+            model.Description = detail.Description;
+            model.NpcInfo = detail.NpcInfo;
+            model.SetupNotes = detail.SetupNotes;
+            StateHasChanged();
+        }
+    }
+
+    private void CloseModal() => isModalVisible = false;
+
+    private async Task SaveAsync()
+    {
+        error = null;
+        isSaving = true;
+        try
+        {
+            if (editingId.HasValue)
+                await Api.PutAsync($"/api/locations/{editingId}", model.ToUpdateDto());
+            else
+                await Api.PostAsync<CreateLocationDto, LocationDetailDto>("/api/locations", model.ToCreateDto());
+
+            isModalVisible = false;
+            await LoadDataAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        isSaving = true;
+        try
+        {
+            await Api.DeleteAsync($"/api/locations/{editingId}");
+            isDeleteVisible = false;
+            isModalVisible = false;
+            await LoadDataAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
 }

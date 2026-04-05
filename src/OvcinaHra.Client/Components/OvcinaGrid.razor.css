@@ -1,0 +1,7 @@
+::deep .ovcina-grid-alt-row {
+    background-color: rgba(0, 0, 0, 0.03);
+}
+
+::deep .ovcina-grid {
+    height: 100%;
+}

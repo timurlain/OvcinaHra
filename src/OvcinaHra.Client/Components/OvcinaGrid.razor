@@ -1,0 +1,61 @@
+<DxGrid Data="@Data"
+        KeyFieldName="@KeyFieldName"
+        SelectionMode="@SelectionMode"
+        AllowSelectRowByClick="true"
+        SelectedDataItems="@SelectedDataItems"
+        SelectedDataItemsChanged="@SelectedDataItemsChanged"
+        RowClick="@RowClick"
+        ShowGroupPanel="@ShowGroupPanel"
+        VirtualScrollingEnabled="true"
+        AutoExpandAllGroupRows="@AutoExpandAllGroupRows"
+        CustomizeElement="@OnCustomizeElement"
+        CssClass="@($"ovcina-grid {CssClass}")"
+        ContextMenus="GridContextMenus.Header | GridContextMenus.DataRow"
+        FilterMenuButtonDisplayMode="GridFilterMenuButtonDisplayMode.Always"
+        LayoutAutoLoading="OnLayoutLoading"
+        LayoutAutoSaving="OnLayoutSaving">
+    <Columns>
+        @Columns
+    </Columns>
+</DxGrid>
+
+@code {
+    [Inject] private IJSRuntime JS { get; set; } = null!;
+
+    [Parameter, EditorRequired] public object Data { get; set; } = null!;
+    [Parameter] public string KeyFieldName { get; set; } = "Id";
+    [Parameter, EditorRequired] public string LayoutKey { get; set; } = "";
+
+    [Parameter] public RenderFragment? Columns { get; set; }
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter] public bool ShowGroupPanel { get; set; }
+    [Parameter] public bool AutoExpandAllGroupRows { get; set; }
+    [Parameter] public GridSelectionMode SelectionMode { get; set; } = GridSelectionMode.Single;
+    [Parameter] public IReadOnlyList<object>? SelectedDataItems { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<object>> SelectedDataItemsChanged { get; set; }
+    [Parameter] public EventCallback<GridRowClickEventArgs> RowClick { get; set; }
+    [Parameter] public Action<GridCustomizeElementEventArgs>? CustomizeElement { get; set; }
+
+    private void OnCustomizeElement(GridCustomizeElementEventArgs e)
+    {
+        if (e.ElementType == GridElementType.DataRow && e.VisibleIndex % 2 == 1)
+            e.CssClass = "ovcina-grid-alt-row";
+
+        CustomizeElement?.Invoke(e);
+    }
+
+    private async Task OnLayoutLoading(GridPersistentLayoutEventArgs e)
+    {
+        if (string.IsNullOrEmpty(LayoutKey)) return;
+        var json = await JS.InvokeAsync<string>("localStorage.getItem", LayoutKey);
+        if (!string.IsNullOrEmpty(json))
+            e.Layout = System.Text.Json.JsonSerializer.Deserialize<GridPersistentLayout>(json);
+    }
+
+    private async Task OnLayoutSaving(GridPersistentLayoutEventArgs e)
+    {
+        if (string.IsNullOrEmpty(LayoutKey)) return;
+        var json = System.Text.Json.JsonSerializer.Serialize(e.Layout);
+        await JS.InvokeVoidAsync("localStorage.setItem", LayoutKey, json);
+    }
+}
