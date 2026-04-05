@@ -480,3 +480,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Client dev settings (contains API keys)
+src/OvcinaHra.Client/wwwroot/appsettings.Development.json
