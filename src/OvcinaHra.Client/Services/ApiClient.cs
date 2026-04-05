@@ -1,15 +1,19 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace OvcinaHra.Client.Services;
 
-/// <summary>
-/// Typed HTTP client wrapper for all API calls.
-/// Handles JSON serialization and common error patterns.
-/// </summary>
 public class ApiClient
 {
     private readonly HttpClient _http;
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() }
+    };
 
     public ApiClient(HttpClient http)
     {
@@ -18,7 +22,7 @@ public class ApiClient
 
     public async Task<List<T>> GetListAsync<T>(string url)
     {
-        return await _http.GetFromJsonAsync<List<T>>(url) ?? [];
+        return await _http.GetFromJsonAsync<List<T>>(url, JsonOptions) ?? [];
     }
 
     public async Task<T?> GetAsync<T>(string url)
@@ -27,19 +31,19 @@ public class ApiClient
         if (response.StatusCode == HttpStatusCode.NotFound)
             return default;
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<T>();
+        return await response.Content.ReadFromJsonAsync<T>(JsonOptions);
     }
 
     public async Task<TResponse?> PostAsync<TRequest, TResponse>(string url, TRequest data)
     {
-        var response = await _http.PostAsJsonAsync(url, data);
+        var response = await _http.PostAsJsonAsync(url, data, JsonOptions);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<TResponse>();
+        return await response.Content.ReadFromJsonAsync<TResponse>(JsonOptions);
     }
 
     public async Task PostAsync<TRequest>(string url, TRequest data)
     {
-        var response = await _http.PostAsJsonAsync(url, data);
+        var response = await _http.PostAsJsonAsync(url, data, JsonOptions);
         response.EnsureSuccessStatusCode();
     }
 
@@ -51,7 +55,7 @@ public class ApiClient
 
     public async Task PutAsync<TRequest>(string url, TRequest data)
     {
-        var response = await _http.PutAsJsonAsync(url, data);
+        var response = await _http.PutAsJsonAsync(url, data, JsonOptions);
         response.EnsureSuccessStatusCode();
     }
 

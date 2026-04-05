@@ -1,11 +1,12 @@
+using System.Security.Claims;
 using System.Text;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Endpoints;
-using System.Security.Claims;
 using Serilog;
 
 // Two-stage bootstrap: early logger catches startup errors
