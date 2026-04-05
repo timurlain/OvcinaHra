@@ -26,24 +26,26 @@ window.ovcinaMap = {
         }]
     },
 
-    _mapyCzRasterStyle: {
-        version: 8,
-        sources: {
-            'mapy-cz': {
+    _mapyCzRasterStyle: function (apiKey) {
+        return {
+            version: 8,
+            sources: {
+                'mapy-cz': {
+                    type: 'raster',
+                    tiles: ['https://api.mapy.cz/v1/maptiles/outdoor/256/{z}/{x}/{y}?apikey=' + apiKey],
+                    tileSize: 256,
+                    maxzoom: 19,
+                    attribution: '&copy; <a href="https://www.mapy.cz">Mapy.cz</a>'
+                }
+            },
+            layers: [{
+                id: 'mapy-cz-tiles',
                 type: 'raster',
-                tiles: ['https://mapserver.mapy.cz/turist-m/{z}-{x}-{y}'],
-                tileSize: 256,
-                maxzoom: 19,
-                attribution: '&copy; <a href="https://www.mapy.cz">Mapy.cz</a>'
-            }
-        },
-        layers: [{
-            id: 'mapy-cz-tiles',
-            type: 'raster',
-            source: 'mapy-cz',
-            minzoom: 0,
-            maxzoom: 19
-        }]
+                source: 'mapy-cz',
+                minzoom: 0,
+                maxzoom: 19
+            }]
+        };
     },
 
     init: function (elementId, dotnetRef, centerLat, centerLon, zoom, mapyCzApiKey) {
@@ -52,9 +54,10 @@ window.ovcinaMap = {
         this._apiKey = (mapyCzApiKey && mapyCzApiKey.length > 5) ? mapyCzApiKey : null;
 
         // Start with Mapy.cz raster (tourist), fall back to OSM
+        var initialStyle = this._apiKey ? this._mapyCzRasterStyle(this._apiKey) : this._rasterStyle;
         this._map = new maplibregl.Map({
             container: elementId,
-            style: this._mapyCzRasterStyle,
+            style: initialStyle,
             center: [centerLon, centerLat],
             zoom: zoom
         });
@@ -82,8 +85,8 @@ window.ovcinaMap = {
 
         if (styleKey === 'vector' && this._apiKey) {
             style = 'https://api.mapy.cz/v1/maptiles/outdoor/tiles.json?apikey=' + this._apiKey;
-        } else if (styleKey === 'tourist') {
-            style = this._mapyCzRasterStyle;
+        } else if (styleKey === 'tourist' && this._apiKey) {
+            style = this._mapyCzRasterStyle(this._apiKey);
         } else {
             style = this._rasterStyle; // OSM fallback
         }
