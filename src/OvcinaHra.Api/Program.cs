@@ -1,79 +1,144 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Endpoints;
+using System.Security.Claims;
+using Serilog;
 
-var builder = WebApplication.CreateBuilder(args);
+// Two-stage bootstrap: early logger catches startup errors
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console()
+    .CreateBootstrapLogger();
 
-builder.Services.AddOpenApi();
-builder.Services.AddDbContext<WorldDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("WorldDb")));
-builder.Services.AddHealthChecks()
-    .AddDbContextCheck<WorldDbContext>();
+try
+{
+    var builder = WebApplication.CreateBuilder(args);
 
-// JWT Authentication
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+    // Serilog
+    builder.Host.UseSerilog((context, loggerConfig) =>
     {
-        options.TokenValidationParameters = new TokenValidationParameters
+        loggerConfig
+            .ReadFrom.Configuration(context.Configuration)
+            .Enrich.FromLogContext()
+            .Enrich.WithProperty("Application", "OvcinaHra.Api")
+            .WriteTo.Console(outputTemplate:
+                "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}");
+    });
+
+    builder.Services.AddOpenApi();
+    builder.Services.AddDbContext<WorldDbContext>(options =>
+        options.UseNpgsql(builder.Configuration.GetConnectionString("WorldDb")));
+    builder.Services.AddHealthChecks()
+        .AddDbContextCheck<WorldDbContext>();
+
+    // JWT Authentication
+    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(options =>
         {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
-            ClockSkew = TimeSpan.FromSeconds(30)
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidateAudience = true,
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+                ValidIssuer = builder.Configuration["Jwt:Issuer"],
+                ValidAudience = builder.Configuration["Jwt:Audience"],
+                IssuerSigningKey = new SymmetricSecurityKey(
+                    Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
+                ClockSkew = TimeSpan.FromSeconds(30)
+            };
+        });
+    builder.Services.AddAuthorization();
+    builder.Services.AddProblemDetails();
+
+    // CORS for Blazor WASM client
+    builder.Services.AddCors(options =>
+    {
+        options.AddPolicy("BlazorClient", policy => policy
+            .WithOrigins(
+                builder.Configuration.GetSection("Cors:Origins").Get<string[]>()
+                ?? ["https://localhost:5290", "http://localhost:5290"])
+            .AllowAnyHeader()
+            .AllowAnyMethod());
+    });
+
+    var app = builder.Build();
+
+    // Global exception handler — logs and returns ProblemDetails
+    app.UseExceptionHandler(error =>
+    {
+        error.Run(async context =>
+        {
+            var ex = context.Features.Get<IExceptionHandlerFeature>()?.Error;
+            if (ex is not null)
+            {
+                Log.Error(ex, "Unhandled exception on {Method} {Path}",
+                    context.Request.Method, context.Request.Path);
+            }
+
+            context.Response.StatusCode = 500;
+            context.Response.ContentType = "application/problem+json";
+            await context.Response.WriteAsJsonAsync(new
+            {
+                type = "https://tools.ietf.org/html/rfc9110#section-15.6.1",
+                title = "Interní chyba serveru",
+                status = 500,
+                detail = app.Environment.IsDevelopment() ? ex?.Message : null,
+                traceId = context.TraceIdentifier
+            });
+        });
+    });
+
+    app.UseSerilogRequestLogging(options =>
+    {
+        options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+        {
+            diagnosticContext.Set("UserId",
+                httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous");
         };
     });
-builder.Services.AddAuthorization();
 
-// CORS for Blazor WASM client
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("BlazorClient", policy => policy
-        .WithOrigins(
-            builder.Configuration.GetSection("Cors:Origins").Get<string[]>()
-            ?? ["https://localhost:5290", "http://localhost:5290"])
-        .AllowAnyHeader()
-        .AllowAnyMethod());
-});
+    if (app.Environment.IsDevelopment())
+    {
+        app.MapOpenApi();
+    }
 
-var app = builder.Build();
+    app.UseHttpsRedirection();
+    app.UseCors("BlazorClient");
+    app.UseAuthentication();
+    app.UseAuthorization();
 
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
+    app.MapHealthChecks("/health").AllowAnonymous();
+
+    // Auth — dev token only in Development, refresh always available
+    app.MapAuthEndpoints(builder.Configuration, app.Environment.IsDevelopment());
+
+    // All CRUD endpoints require authorization
+    app.MapGameEndpoints().RequireAuthorization();
+    app.MapTagEndpoints().RequireAuthorization();
+    app.MapLocationEndpoints().RequireAuthorization();
+    app.MapItemEndpoints().RequireAuthorization();
+    app.MapSecretStashEndpoints().RequireAuthorization();
+    app.MapMonsterEndpoints().RequireAuthorization();
+    app.MapQuestEndpoints().RequireAuthorization();
+    app.MapBuildingEndpoints().RequireAuthorization();
+    app.MapCraftingEndpoints().RequireAuthorization();
+    app.MapTreasureQuestEndpoints().RequireAuthorization();
+    app.MapTimelineEndpoints().RequireAuthorization();
+    app.MapSearchEndpoints().RequireAuthorization();
+
+    app.Run();
 }
-
-app.UseHttpsRedirection();
-app.UseCors("BlazorClient");
-app.UseAuthentication();
-app.UseAuthorization();
-
-app.MapHealthChecks("/health").AllowAnonymous();
-
-// Auth — dev token only in Development, refresh always available
-app.MapAuthEndpoints(builder.Configuration, app.Environment.IsDevelopment());
-
-// All CRUD endpoints require authorization
-app.MapGameEndpoints().RequireAuthorization();
-app.MapTagEndpoints().RequireAuthorization();
-app.MapLocationEndpoints().RequireAuthorization();
-app.MapItemEndpoints().RequireAuthorization();
-app.MapSecretStashEndpoints().RequireAuthorization();
-app.MapMonsterEndpoints().RequireAuthorization();
-app.MapQuestEndpoints().RequireAuthorization();
-app.MapBuildingEndpoints().RequireAuthorization();
-app.MapCraftingEndpoints().RequireAuthorization();
-app.MapTreasureQuestEndpoints().RequireAuthorization();
-app.MapTimelineEndpoints().RequireAuthorization();
-app.MapSearchEndpoints().RequireAuthorization();
-
-app.Run();
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Application terminated unexpectedly");
+}
+finally
+{
+    Log.CloseAndFlush();
+}
 
 public partial class Program;
