@@ -21,11 +21,21 @@ public class JwtAuthStateProvider : AuthenticationStateProvider
     {
         var token = await GetTokenAsync();
         if (string.IsNullOrEmpty(token))
+        {
+            _http.DefaultRequestHeaders.Authorization = null;
             return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
+        }
 
         var identity = ParseToken(token);
         if (identity is null)
+        {
+            _http.DefaultRequestHeaders.Authorization = null;
             return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
+        }
+
+        // Restore the Bearer header on the HttpClient so API calls are authenticated
+        _http.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
         return new AuthenticationState(new ClaimsPrincipal(identity));
     }
