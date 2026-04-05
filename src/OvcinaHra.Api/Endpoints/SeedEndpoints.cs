@@ -28,19 +28,39 @@ public static class SeedEndpoints
 
         var games = new List<Game>
         {
-            // Legacy DB (editions 15-23)
+            // Early era (dates unknown, using Jan 1 placeholder)
+            new() { Name = "Ovčina", Edition = 1, StartDate = new DateOnly(1996, 1, 1), EndDate = new DateOnly(1996, 1, 1), Status = GameStatus.Archived },
+            new() { Name = "Ovčina", Edition = 2, StartDate = new DateOnly(1996, 6, 1), EndDate = new DateOnly(1996, 6, 1), Status = GameStatus.Archived },
+            new() { Name = "Ovčina", Edition = 3, StartDate = new DateOnly(1997, 1, 1), EndDate = new DateOnly(1997, 1, 1), Status = GameStatus.Archived },
+            new() { Name = "Ovčina", Edition = 4, StartDate = new DateOnly(1997, 6, 1), EndDate = new DateOnly(1997, 6, 1), Status = GameStatus.Archived },
+            new() { Name = "Ovčina", Edition = 5, StartDate = new DateOnly(1998, 1, 1), EndDate = new DateOnly(1998, 1, 1), Status = GameStatus.Archived },
+            new() { Name = "Ovčina", Edition = 6, StartDate = new DateOnly(1998, 6, 1), EndDate = new DateOnly(1998, 6, 1), Status = GameStatus.Archived },
+            new() { Name = "Ovčina", Edition = 7, StartDate = new DateOnly(1999, 1, 1), EndDate = new DateOnly(1999, 1, 1), Status = GameStatus.Archived },
+            new() { Name = "Ovčina", Edition = 8, StartDate = new DateOnly(1999, 6, 1), EndDate = new DateOnly(1999, 6, 1), Status = GameStatus.Archived },
+            new() { Name = "Ovčina", Edition = 9, StartDate = new DateOnly(2000, 1, 1), EndDate = new DateOnly(2000, 1, 1), Status = GameStatus.Archived },
+            new() { Name = "Ovčina", Edition = 10, StartDate = new DateOnly(2000, 6, 1), EndDate = new DateOnly(2000, 6, 1), Status = GameStatus.Archived },
+            new() { Name = "Ovčina", Edition = 11, StartDate = new DateOnly(2000, 9, 1), EndDate = new DateOnly(2000, 9, 1), Status = GameStatus.Archived },
+            new() { Name = "Ovčina", Edition = 12, StartDate = new DateOnly(2001, 5, 1), EndDate = new DateOnly(2001, 5, 1), Status = GameStatus.Archived },
+            new() { Name = "Ovčina", Edition = 13, StartDate = new DateOnly(2001, 8, 1), EndDate = new DateOnly(2001, 8, 1), Status = GameStatus.Archived },
+            new() { Name = "Ovčina", Edition = 14, StartDate = new DateOnly(2001, 10, 1), EndDate = new DateOnly(2001, 10, 1), Status = GameStatus.Archived },
+            // Known era (from legacy DB)
             new() { Name = "4 čarodějové", Edition = 15, StartDate = new DateOnly(2002, 6, 1), EndDate = new DateOnly(2002, 6, 1), Status = GameStatus.Archived },
-            new() { Name = "Noldo a prsteny", Edition = 16, StartDate = new DateOnly(2003, 10, 11), EndDate = new DateOnly(2003, 10, 13), Status = GameStatus.Archived },
-            new() { Name = "Ovčina 17", Edition = 17, StartDate = new DateOnly(2003, 5, 1), EndDate = new DateOnly(2003, 5, 1), Status = GameStatus.Archived },
-            new() { Name = "Ovčina 18", Edition = 18, StartDate = new DateOnly(2003, 9, 11), EndDate = new DateOnly(2003, 9, 13), Status = GameStatus.Archived },
+            new() { Name = "Noldo a prsteny", Edition = 16, StartDate = new DateOnly(2002, 10, 11), EndDate = new DateOnly(2002, 10, 13), Status = GameStatus.Archived },
+            new() { Name = "Ovčina", Edition = 17, StartDate = new DateOnly(2003, 5, 1), EndDate = new DateOnly(2003, 5, 1), Status = GameStatus.Archived },
+            new() { Name = "Ovčina", Edition = 18, StartDate = new DateOnly(2003, 9, 11), EndDate = new DateOnly(2003, 9, 13), Status = GameStatus.Archived },
             new() { Name = "Úsvit", Edition = 19, StartDate = new DateOnly(2004, 6, 25), EndDate = new DateOnly(2004, 6, 28), Status = GameStatus.Archived },
-            new() { Name = "Ovčina 20", Edition = 20, StartDate = new DateOnly(2004, 10, 1), EndDate = new DateOnly(2004, 10, 3), Status = GameStatus.Archived },
+            new() { Name = "Ovčina", Edition = 20, StartDate = new DateOnly(2004, 10, 1), EndDate = new DateOnly(2004, 10, 3), Status = GameStatus.Archived },
             new() { Name = "Nová země", Edition = 21, StartDate = new DateOnly(2005, 7, 1), EndDate = new DateOnly(2005, 7, 1), Status = GameStatus.Archived },
             new() { Name = "Vůně ohňů", Edition = 22, StartDate = new DateOnly(2005, 10, 28), EndDate = new DateOnly(2005, 10, 30), Status = GameStatus.Archived },
-            new() { Name = "Neznámé končiny", Edition = 23, StartDate = new DateOnly(2006, 10, 20), EndDate = new DateOnly(2006, 10, 22), Status = GameStatus.Archived },
-            // Recent (from game folders)
-            new() { Name = "S jídlem roste chuť", Edition = 29, StartDate = new DateOnly(2025, 5, 3), EndDate = new DateOnly(2025, 5, 5), Status = GameStatus.Archived },
-            new() { Name = "Balinova pozvánka", Edition = 30, StartDate = new DateOnly(2026, 5, 1), EndDate = new DateOnly(2026, 5, 3), Status = GameStatus.Active },
+            // Pause 2006–2018
+            new() { Name = "Ovčina", Edition = 23, StartDate = new DateOnly(2019, 9, 14), EndDate = new DateOnly(2019, 9, 14), Status = GameStatus.Archived },
+            new() { Name = "Ovčina", Edition = 24, StartDate = new DateOnly(2020, 9, 18), EndDate = new DateOnly(2020, 9, 19), Status = GameStatus.Archived },
+            new() { Name = "Velká Slavnost", Edition = 25, StartDate = new DateOnly(2021, 9, 11), EndDate = new DateOnly(2021, 9, 11), Status = GameStatus.Archived },
+            new() { Name = "Dlouhá Zima", Edition = 26, StartDate = new DateOnly(2022, 9, 10), EndDate = new DateOnly(2022, 9, 10), Status = GameStatus.Archived },
+            new() { Name = "Dlouhá Zima II", Edition = 27, StartDate = new DateOnly(2023, 5, 6), EndDate = new DateOnly(2023, 5, 6), Status = GameStatus.Archived },
+            new() { Name = "Za pokladem ze Severní spouště", Edition = 28, StartDate = new DateOnly(2024, 5, 4), EndDate = new DateOnly(2024, 5, 5), Status = GameStatus.Archived },
+            new() { Name = "S jídlem roste chuť", Edition = 29, StartDate = new DateOnly(2025, 5, 3), EndDate = new DateOnly(2025, 5, 4), Status = GameStatus.Archived },
+            new() { Name = "Balinova pozvánka", Edition = 30, StartDate = new DateOnly(2026, 5, 1), EndDate = new DateOnly(2026, 5, 2), Status = GameStatus.Active },
         };
 
         db.Games.AddRange(games);
