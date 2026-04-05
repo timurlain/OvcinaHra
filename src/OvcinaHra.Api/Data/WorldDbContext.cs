@@ -1,0 +1,36 @@
+using Microsoft.EntityFrameworkCore;
+using OvcinaHra.Shared.Domain.Entities;
+
+namespace OvcinaHra.Api.Data;
+
+public class WorldDbContext(DbContextOptions<WorldDbContext> options) : DbContext(options)
+{
+    public DbSet<Game> Games => Set<Game>();
+    public DbSet<Location> Locations => Set<Location>();
+    public DbSet<GameLocation> GameLocations => Set<GameLocation>();
+    public DbSet<Tag> Tags => Set<Tag>();
+    public DbSet<Item> Items => Set<Item>();
+    public DbSet<GameItem> GameItems => Set<GameItem>();
+    public DbSet<Building> Buildings => Set<Building>();
+    public DbSet<CraftingRecipe> CraftingRecipes => Set<CraftingRecipe>();
+    public DbSet<CraftingIngredient> CraftingIngredients => Set<CraftingIngredient>();
+    public DbSet<CraftingBuildingRequirement> CraftingBuildingRequirements => Set<CraftingBuildingRequirement>();
+    public DbSet<Monster> Monsters => Set<Monster>();
+    public DbSet<MonsterTagLink> MonsterTagLinks => Set<MonsterTagLink>();
+    public DbSet<MonsterLoot> MonsterLoots => Set<MonsterLoot>();
+    public DbSet<Quest> Quests => Set<Quest>();
+    public DbSet<QuestTagLink> QuestTagLinks => Set<QuestTagLink>();
+    public DbSet<QuestLocationLink> QuestLocationLinks => Set<QuestLocationLink>();
+    public DbSet<QuestEncounter> QuestEncounters => Set<QuestEncounter>();
+    public DbSet<QuestReward> QuestRewards => Set<QuestReward>();
+    public DbSet<SecretStash> SecretStashes => Set<SecretStash>();
+    public DbSet<TreasureQuest> TreasureQuests => Set<TreasureQuest>();
+    public DbSet<TreasureItem> TreasureItems => Set<TreasureItem>();
+    public DbSet<GameTimeSlot> GameTimeSlots => Set<GameTimeSlot>();
+    public DbSet<BattlefieldBonus> BattlefieldBonuses => Set<BattlefieldBonus>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(WorldDbContext).Assembly);
+    }
+}
