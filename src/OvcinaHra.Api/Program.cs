@@ -121,6 +121,12 @@ try
     // Auth — dev token only in Development, refresh always available
     app.MapAuthEndpoints(builder.Configuration, app.Environment.IsDevelopment());
 
+    // Seed endpoints — dev only
+    if (app.Environment.IsDevelopment())
+    {
+        app.MapSeedEndpoints().RequireAuthorization();
+    }
+
     // All CRUD endpoints require authorization
     app.MapGameEndpoints().RequireAuthorization();
     app.MapTagEndpoints().RequireAuthorization();
