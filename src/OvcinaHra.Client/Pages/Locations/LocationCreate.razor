@@ -1,0 +1,21 @@
+@page "/lokace/nova"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<h1>Nová lokace</h1>
+
+<LocationForm Model="model" OnSave="Save" OnCancel="Cancel" />
+
+@code {
+    private LocationFormModel model = new();
+
+    private async Task Save()
+    {
+        var created = await Api.PostAsync<CreateLocationDto, LocationDetailDto>("/api/locations", model.ToCreateDto());
+        if (created is not null)
+            Nav.NavigateTo($"/lokace/{created.Id}");
+    }
+
+    private void Cancel() => Nav.NavigateTo("/lokace");
+}

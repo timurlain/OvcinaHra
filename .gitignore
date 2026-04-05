@@ -480,3 +480,7 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Allow E2E test project
+!tests/OvcinaHra.E2E/
+!tests/OvcinaHra.E2E/**

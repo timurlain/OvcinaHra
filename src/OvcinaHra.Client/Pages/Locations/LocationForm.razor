@@ -1,0 +1,75 @@
+@using OvcinaHra.Shared.Domain.Enums
+
+<div class="card">
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label">Název lokace</label>
+            <input class="form-control" data-testid="location-name"
+                   @bind="Model.Name" @bind:event="oninput" />
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Typ lokace</label>
+            <select class="form-select" data-testid="location-kind" @bind="Model.LocationKind">
+                @foreach (var kind in Enum.GetValues<LocationKind>())
+                {
+                    <option value="@kind">@kind.GetDisplayName()</option>
+                }
+            </select>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Zeměpisná šířka (GPS)</label>
+                <input class="form-control" type="number" step="0.00001"
+                       data-testid="location-lat" @bind="Model.Latitude" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Zeměpisná délka (GPS)</label>
+                <input class="form-control" type="number" step="0.00001"
+                       data-testid="location-lon" @bind="Model.Longitude" />
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Popis (fantasy)</label>
+            <textarea class="form-control" rows="3" data-testid="location-description"
+                      @bind="Model.Description"></textarea>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Info pro CP (NPC)</label>
+            <textarea class="form-control" rows="2" data-testid="location-npc"
+                      @bind="Model.NpcInfo"></textarea>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Co nachystat na lokaci</label>
+            <textarea class="form-control" rows="2" data-testid="location-setup"
+                      @bind="Model.SetupNotes"></textarea>
+        </div>
+
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary" data-testid="save-location" @onclick="OnSave">
+                Uložit
+            </button>
+            <button class="btn btn-outline-secondary" @onclick="OnCancel">
+                Zrušit
+            </button>
+            @if (IsEdit)
+            {
+                <button class="btn btn-outline-danger ms-auto" data-testid="delete-location" @onclick="OnDelete">
+                    Smazat
+                </button>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public LocationFormModel Model { get; set; } = default!;
+    [Parameter] public EventCallback OnSave { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+    [Parameter] public bool IsEdit { get; set; }
+}

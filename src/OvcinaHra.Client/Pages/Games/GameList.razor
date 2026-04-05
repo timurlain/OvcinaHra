@@ -1,0 +1,68 @@
+@page "/hry"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<h1>Správa hry</h1>
+
+<div class="mb-3">
+    <button class="btn btn-primary" data-testid="create-game" @onclick="GoToCreate">
+        + Nová hra
+    </button>
+</div>
+
+@if (loading)
+{
+    <p>Načítám...</p>
+}
+else if (games.Count == 0)
+{
+    <p class="text-muted">Žádné hry. Vytvoř první!</p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Název</th>
+                <th>Ročník</th>
+                <th>Od</th>
+                <th>Do</th>
+                <th>Stav</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var game in games)
+            {
+                <tr data-testid="game-row">
+                    <td>@game.Name</td>
+                    <td>@game.Edition</td>
+                    <td>@game.StartDate.ToString("d.M.yyyy")</td>
+                    <td>@game.EndDate.ToString("d.M.yyyy")</td>
+                    <td>@game.Status.GetDisplayName()</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary"
+                                @onclick="() => GoToEdit(game.Id)">
+                            Upravit
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<GameListDto> games = [];
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        games = await Api.GetListAsync<GameListDto>("/api/games");
+        loading = false;
+    }
+
+    private void GoToCreate() => Nav.NavigateTo("/hry/nova");
+    private void GoToEdit(int id) => Nav.NavigateTo($"/hry/{id}");
+}

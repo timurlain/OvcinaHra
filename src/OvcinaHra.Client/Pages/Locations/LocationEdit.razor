@@ -1,0 +1,49 @@
+@page "/lokace/{Id:int}"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<h1>Upravit lokaci</h1>
+
+@if (loading)
+{
+    <p>Načítám...</p>
+}
+else if (location is null)
+{
+    <p class="text-danger">Lokace nenalezena.</p>
+}
+else
+{
+    <LocationForm Model="model" OnSave="Save" OnCancel="Cancel" IsEdit="true" OnDelete="Delete" />
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private LocationDetailDto? location;
+    private LocationFormModel model = new();
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        location = await Api.GetAsync<LocationDetailDto>($"/api/locations/{Id}");
+        if (location is not null)
+            model = LocationFormModel.FromDetail(location);
+        loading = false;
+    }
+
+    private async Task Save()
+    {
+        await Api.PutAsync($"/api/locations/{Id}", model.ToUpdateDto());
+        Nav.NavigateTo("/lokace");
+    }
+
+    private async Task Delete()
+    {
+        await Api.DeleteAsync($"/api/locations/{Id}");
+        Nav.NavigateTo("/lokace");
+    }
+
+    private void Cancel() => Nav.NavigateTo("/lokace");
+}

@@ -1,0 +1,21 @@
+@page "/hry/nova"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<h1>Nová hra</h1>
+
+<GameForm Model="model" OnSave="Save" OnCancel="Cancel" />
+
+@code {
+    private GameFormModel model = new();
+
+    private async Task Save()
+    {
+        var created = await Api.PostAsync<CreateGameDto, GameDetailDto>("/api/games", model.ToCreateDto());
+        if (created is not null)
+            Nav.NavigateTo($"/hry/{created.Id}");
+    }
+
+    private void Cancel() => Nav.NavigateTo("/hry");
+}
