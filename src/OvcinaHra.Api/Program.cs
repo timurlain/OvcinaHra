@@ -93,6 +93,37 @@ try
             options.ClientSecret = msSecret;
         });
     }
+
+    // Seznam (custom OAuth2, not standard OIDC)
+    var seznamConfig = builder.Configuration.GetSection("ExternalAuth:Seznam");
+    if (!string.IsNullOrEmpty(seznamConfig["ClientId"]) && !string.IsNullOrEmpty(seznamConfig["ClientSecret"]))
+    {
+        authBuilder.AddOAuth("Seznam", "Seznam", options =>
+        {
+            options.SignInScheme = "ExternalLogin";
+            options.ClientId = seznamConfig["ClientId"]!;
+            options.ClientSecret = seznamConfig["ClientSecret"]!;
+            options.AuthorizationEndpoint = "https://login.szn.cz/api/v1/oauth/auth";
+            options.TokenEndpoint = "https://login.szn.cz/api/v1/oauth/token";
+            options.UserInformationEndpoint = "https://login.szn.cz/api/v1/user";
+            options.CallbackPath = "/signin-seznam";
+            options.Scope.Add("identity");
+            options.SaveTokens = false;
+            options.ClaimActions.MapJsonKey(System.Security.Claims.ClaimTypes.NameIdentifier, "oauth_user_id");
+            options.ClaimActions.MapJsonKey(System.Security.Claims.ClaimTypes.Email, "email");
+            options.ClaimActions.MapJsonKey(System.Security.Claims.ClaimTypes.Name, "firstname");
+            options.Events.OnCreatingTicket = async context =>
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, context.Options.UserInformationEndpoint);
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", context.AccessToken);
+                using var response = await context.Backchannel.SendAsync(request);
+                response.EnsureSuccessStatusCode();
+                var user = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+                context.RunClaimActions(user);
+            };
+        });
+    }
+
     builder.Services.AddAuthorization();
     builder.Services.AddProblemDetails();
     builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();

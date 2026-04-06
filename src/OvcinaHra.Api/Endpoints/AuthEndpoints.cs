@@ -70,9 +70,24 @@ public static class AuthEndpoints
             return TypedResults.Ok(new UserInfoDto(userId!, email!, name!));
         }).RequireAuthorization();
 
-        // OAuth login — redirects to external provider
-        group.MapGet("/login/{provider}", (string provider) =>
+        // List available OAuth providers (client uses this to show/hide buttons)
+        group.MapGet("/providers", async (IAuthenticationSchemeProvider schemes) =>
         {
+            var all = await schemes.GetAllSchemesAsync();
+            var external = all
+                .Where(s => !string.IsNullOrEmpty(s.DisplayName) && s.Name != "Bearer" && s.Name != "ExternalLogin")
+                .Select(s => new { s.Name, s.DisplayName })
+                .ToList();
+            return Results.Ok(external);
+        }).AllowAnonymous();
+
+        // OAuth login — redirects to external provider
+        group.MapGet("/login/{provider}", async (string provider, IAuthenticationSchemeProvider schemes) =>
+        {
+            var scheme = await schemes.GetSchemeAsync(provider);
+            if (scheme is null)
+                return Results.BadRequest($"Poskytovatel '{provider}' není nakonfigurován.");
+
             var redirectUrl = "/api/auth/callback";
             var properties = new AuthenticationProperties { RedirectUri = redirectUrl };
             return Results.Challenge(properties, [provider]);
