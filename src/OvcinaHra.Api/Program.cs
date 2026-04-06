@@ -142,6 +142,7 @@ try
     app.MapTreasureQuestEndpoints().RequireAuthorization();
     app.MapTimelineEndpoints().RequireAuthorization();
     app.MapSearchEndpoints().RequireAuthorization();
+    app.MapImageEndpoints().RequireAuthorization();
 
     app.Run();
 }
