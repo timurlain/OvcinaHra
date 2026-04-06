@@ -1,0 +1,93 @@
+<div class="image-picker">
+    @if (currentUrl is not null)
+    {
+        <div class="position-relative d-inline-block mb-2">
+            <img src="@currentUrl" alt="@Alt" style="max-width: 100%; max-height: 200px; border-radius: 4px;" />
+            <button class="btn btn-sm btn-danger position-absolute top-0 end-0 m-1"
+                    @onclick="DeleteImage" disabled="@isWorking">&#10005;</button>
+        </div>
+    }
+    <InputFile OnChange="HandleFileSelected" accept=".jpg,.jpeg,.png,.webp" disabled="@isWorking" />
+    @if (errorMessage is not null)
+    {
+        <div class="text-danger small mt-1">@errorMessage</div>
+    }
+</div>
+
+@code {
+    [Inject] private ApiClient Api { get; set; } = null!;
+
+    [Parameter, EditorRequired] public string EntityType { get; set; } = "";
+    [Parameter, EditorRequired] public int EntityId { get; set; }
+    [Parameter] public string? Field { get; set; }
+    [Parameter] public string Alt { get; set; } = "Obrázek";
+
+    private string? currentUrl;
+    private string? errorMessage;
+    private bool isWorking;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (EntityId > 0)
+            await LoadImageUrl();
+    }
+
+    private async Task LoadImageUrl()
+    {
+        try
+        {
+            var urls = await Api.GetAsync<ImageUrlsDto>($"/api/images/{EntityType}/{EntityId}");
+            currentUrl = Field == "placement" ? urls?.PlacementUrl : urls?.ImageUrl;
+        }
+        catch { currentUrl = null; }
+    }
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        errorMessage = null;
+        isWorking = true;
+
+        try
+        {
+            var file = e.File;
+            if (file.Size > 5 * 1024 * 1024)
+            {
+                errorMessage = "Soubor je příliš velký (max 5 MB).";
+                return;
+            }
+
+            var query = Field is not null ? $"?field={Field}" : "";
+            using var content = new MultipartFormDataContent();
+            using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+            var fileContent = new StreamContent(stream);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(file.ContentType);
+            content.Add(fileContent, "file", file.Name);
+
+            var result = await Api.PostMultipartAsync<ImageUploadResult>(
+                $"/api/images/{EntityType}/{EntityId}{query}", content);
+            if (result is not null)
+                currentUrl = result.Url;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isWorking = false;
+        }
+    }
+
+    private async Task DeleteImage()
+    {
+        isWorking = true;
+        try
+        {
+            var query = Field is not null ? $"?field={Field}" : "";
+            await Api.DeleteAsync($"/api/images/{EntityType}/{EntityId}{query}");
+            currentUrl = null;
+        }
+        catch (Exception ex) { errorMessage = ex.Message; }
+        finally { isWorking = false; }
+    }
+}
