@@ -7,9 +7,41 @@
 <div class="container mt-5">
     <div class="row justify-content-center">
         <div class="col-md-6">
-            <div class="card">
+
+            @if (Error is not null)
+            {
+                <div class="alert alert-danger">
+                    @(Error switch
+                    {
+                        "not_registered" => "Nemáš registraci na ovcina.cz. Zaregistruj se nejprve.",
+                        "auth_failed" => "Přihlášení se nezdařilo. Zkus to znovu.",
+                        "no_email" => "Poskytovatel neposlal emailovou adresu.",
+                        "no_token" => "Token nebyl přijat. Zkus to znovu.",
+                        _ => $"Chyba: {Error}"
+                    })
+                </div>
+            }
+
+            <div class="card mb-4">
                 <div class="card-header">
                     <h4>OvčinaHra — Přihlášení</h4>
+                </div>
+                <div class="card-body">
+                    <h5>Přihlásit se</h5>
+                    <div class="d-flex flex-column gap-2" style="max-width: 300px;">
+                        <a href="@(apiBaseUrl)/api/auth/login/Google" class="btn btn-outline-dark">
+                            Přihlásit přes Google
+                        </a>
+                        <a href="@(apiBaseUrl)/api/auth/login/Microsoft" class="btn btn-outline-primary">
+                            Přihlásit přes Microsoft
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Vývojářský přístup</h5>
                 </div>
                 <div class="card-body">
                     @if (errorMessage is not null)
@@ -41,6 +73,11 @@
 </div>
 
 @code {
+    [Inject] private IConfiguration Config { get; set; } = null!;
+    [SupplyParameterFromQuery] private string? Error { get; set; }
+
+    private string apiBaseUrl => Config["ApiBaseUrl"] ?? "https://localhost:5280";
+
     private string name = "Organizátor";
     private string email = "org@ovcina.cz";
     private string? errorMessage;
