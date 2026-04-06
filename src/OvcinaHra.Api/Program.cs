@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
@@ -40,23 +42,57 @@ try
     builder.Services.AddHealthChecks()
         .AddDbContextCheck<WorldDbContext>();
 
-    // JWT Authentication
-    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddJwtBearer(options =>
+    // JWT Authentication + External OAuth
+    var authBuilder = builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
         {
-            options.TokenValidationParameters = new TokenValidationParameters
-            {
-                ValidateIssuer = true,
-                ValidateAudience = true,
-                ValidateLifetime = true,
-                ValidateIssuerSigningKey = true,
-                ValidIssuer = builder.Configuration["Jwt:Issuer"],
-                ValidAudience = builder.Configuration["Jwt:Audience"],
-                IssuerSigningKey = new SymmetricSecurityKey(
-                    Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
-                ClockSkew = TimeSpan.FromSeconds(30)
-            };
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["Jwt:Issuer"],
+            ValidAudience = builder.Configuration["Jwt:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
+            ClockSkew = TimeSpan.FromSeconds(30)
+        };
+    })
+    .AddCookie("ExternalLogin", options =>
+    {
+        options.Cookie.SameSite = SameSiteMode.Lax;
+        options.Cookie.HttpOnly = true;
+    });
+
+    // Conditionally add external OAuth providers
+    var googleId = builder.Configuration["ExternalAuth:Google:ClientId"];
+    var googleSecret = builder.Configuration["ExternalAuth:Google:ClientSecret"];
+    if (!string.IsNullOrEmpty(googleId) && !string.IsNullOrEmpty(googleSecret))
+    {
+        authBuilder.AddGoogle(options =>
+        {
+            options.SignInScheme = "ExternalLogin";
+            options.ClientId = googleId;
+            options.ClientSecret = googleSecret;
         });
+    }
+
+    var msId = builder.Configuration["ExternalAuth:Microsoft:ClientId"];
+    var msSecret = builder.Configuration["ExternalAuth:Microsoft:ClientSecret"];
+    if (!string.IsNullOrEmpty(msId) && !string.IsNullOrEmpty(msSecret))
+    {
+        authBuilder.AddMicrosoftAccount(options =>
+        {
+            options.SignInScheme = "ExternalLogin";
+            options.ClientId = msId;
+            options.ClientSecret = msSecret;
+        });
+    }
     builder.Services.AddAuthorization();
     builder.Services.AddProblemDetails();
     builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
