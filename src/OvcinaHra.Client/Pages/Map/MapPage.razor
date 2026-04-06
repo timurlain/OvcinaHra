@@ -56,6 +56,15 @@
             <DxFormLayoutItem Caption="Co nachystat" ColSpanMd="12">
                 <DxMemo @bind-Text="@locSetupNotes" Rows="2" />
             </DxFormLayoutItem>
+            @if (editingId.HasValue)
+            {
+                <DxFormLayoutItem Caption="Obrázek" ColSpanMd="12">
+                    <ImagePicker EntityType="locations" EntityId="editingId.Value" Alt="Ilustrace lokace" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Foto umístění" ColSpanMd="12">
+                    <ImagePicker EntityType="locations" EntityId="editingId.Value" Field="placement" Alt="Foto umístění" />
+                </DxFormLayoutItem>
+            }
         </DxFormLayout>
 
         @* Variant links *@

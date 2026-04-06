@@ -73,6 +73,12 @@ else
             <DxFormLayoutItem Caption="" ColSpanMd="4">
                 <DxCheckBox @bind-Checked="@isLimited">Limitovaný</DxCheckBox>
             </DxFormLayoutItem>
+            @if (editingId.HasValue)
+            {
+                <DxFormLayoutItem Caption="Obrázek" ColSpanMd="12">
+                    <ImagePicker EntityType="items" EntityId="editingId.Value" Alt="Obrázek předmětu" />
+                </DxFormLayoutItem>
+            }
         </DxFormLayout>
 
         @if (error is not null) { <div class="alert alert-danger mt-2">@error</div> }
