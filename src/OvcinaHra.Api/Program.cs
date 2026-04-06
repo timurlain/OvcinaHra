@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Endpoints;
+using OvcinaHra.Api.Services;
 using Serilog;
 
 // Two-stage bootstrap: early logger catches startup errors
@@ -58,6 +59,7 @@ try
         });
     builder.Services.AddAuthorization();
     builder.Services.AddProblemDetails();
+    builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
 
     // CORS for Blazor WASM client
     builder.Services.AddCors(options =>
