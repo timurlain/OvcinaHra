@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: ovcinahra-postgres
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: ovcinahra
+      POSTGRES_PASSWORD: ovcinahra
+      POSTGRES_DB: ovcinahra
+    volumes:
+      - ovcinahra-pgdata:/var/lib/postgresql/data
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    container_name: ovcinahra-azurite
+    ports:
+      - "10000:10000"
+      - "10001:10001"
+      - "10002:10002"
+    volumes:
+      - ovcinahra-azurite:/data
+
+volumes:
+  ovcinahra-pgdata:
+  ovcinahra-azurite:
