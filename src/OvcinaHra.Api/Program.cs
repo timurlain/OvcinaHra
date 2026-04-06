@@ -61,6 +61,15 @@ try
     builder.Services.AddProblemDetails();
     builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
 
+    builder.Services.AddHttpClient<RegistraceClient>(client =>
+    {
+        var baseUrl = builder.Configuration["Registrace:BaseUrl"];
+        if (!string.IsNullOrEmpty(baseUrl))
+            client.BaseAddress = new Uri(baseUrl);
+        client.DefaultRequestHeaders.Add("X-Api-Key",
+            builder.Configuration["Registrace:ApiKey"] ?? "");
+    });
+
     // CORS for Blazor WASM client
     builder.Services.AddCors(options =>
     {
