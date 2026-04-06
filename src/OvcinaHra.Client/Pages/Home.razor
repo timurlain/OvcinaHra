@@ -1,10 +1,46 @@
 @page "/"
 @attribute [Authorize]
 
-<h1>OvčinaHra</h1>
+<div class="oh-page-header">
+    <span class="oh-page-icon"><i class="bi bi-house-door-fill"></i></span>
+    <h1>OvčinaHra</h1>
+</div>
 
 <AuthorizeView>
     <Authorized>
-        <p>Vítej, <strong>@context.User.Identity?.Name</strong>! Vyber si sekci z menu vlevo.</p>
+        <div class="oh-drozd mb-4">
+            <span class="oh-drozd-icon">🐦</span>
+            <span class="oh-drozd-message">
+                Vítej, <strong>@context.User.Identity?.Name</strong>!
+                Vyber si herní edici nahoře a potom prozkoumej svět z menu vlevo.
+            </span>
+        </div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-lg-3 col-md-6">
+                <div class="oh-stat-card">
+                    <div class="oh-stat-number">—</div>
+                    <div class="oh-stat-label">Lokace</div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="oh-stat-card">
+                    <div class="oh-stat-number">—</div>
+                    <div class="oh-stat-label">Příšery</div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="oh-stat-card">
+                    <div class="oh-stat-number">—</div>
+                    <div class="oh-stat-label">Questy</div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <div class="oh-stat-card">
+                    <div class="oh-stat-number">—</div>
+                    <div class="oh-stat-label">Předměty</div>
+                </div>
+            </div>
+        </div>
     </Authorized>
 </AuthorizeView>

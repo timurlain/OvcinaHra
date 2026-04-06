@@ -1,0 +1,417 @@
+{
+  "Aradhryand": {
+    "desc": "Zde vládne král lesních elfů Thranduil a jeho družina. Elfové v dávných dobách opustili Amon Lanc („Holý vrch“), ve kterém se nyní zabydlely temné síly, odešli na sever a založili svoje království. Elfové prodávají do jezerního města dřevo, kupují z něj víno. Od trpaslíků pak kupují kvalitní kámen.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Azanulinbar-dum": {
+    "desc": "Po staletí zdokonalovali Trpaslíci ze Železných hor Azanulinbar-dum, své sídlo poblíž horních toků řeky Carnen – „Červené vody“. Srovnání s Khazad-dum, „Azan“ nesnese, přesto je krásná. Stěny a podlahy jsou z hladce otesaného kamene, či krásně vyštípaného křišťálu. Většina stropů je vysoká, klenutá a tvarovaná tak, aby vynikly Kouzelné trpasličí lampy, které naplňují měkkou září. Ve městě je mnoho krásných fontán; kamkoli v Azanu jdete, vždy uslyšíte zvuk tekoucí vody.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Bílý kámen - Quest": {
+    "desc": "Uprostřed luk stojí obrovský bílý kámen velmi podivné struktury. Připomíná monument dávno zaniklé kultury, která zde kdysi sídlila.  Opřeš se o něj zády a pohlédneš do kraje. Nad východním obzorem se klene duha, podaří-li se ti najít její konec najdeš i zlatý poklad.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace,šifra duha. žluté f."
+  },
+  "Caras Amarth": {
+    "desc": "Elfí ruiny v opustěném pahorku. Je to tu hotové bludiště malých místností. Ze zdí visí zbytky gobelínů, jdou tu vidět místa, kde visela elfí světla. Bylo to bohaté sídliště, možná by se dalo znova obnovit, pro začátek založit malou osadu na těžbu a obdělávání.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace, Produkční kámen/ dřevo  razítko M"
+  },
+  "Caras Amarth - Karáskov": {
+    "desc": "Elfí ruiny v opustěném pahorku. Je to tu hotové bludiště malých místností. Ze zdí visí zbytky gobelínů, jdou tu vidět místa, kde visela elfí světla. Bylo to bohaté sídliště a teď mu také blyská na lepší časy.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Ceber Fanuin": {
+    "desc": "Krásná elfí věž v prostřed hlubokých hvozdů. Cítíte jemnou magii. Uvnitř se svítí a není to tu opuštěné.\nNěco ale úplně nesedí, jak to, že o takovém místě vůbec nikdo neví? Kdopak tu bydlí?",
+    "npc_info": null,
+    "setup": "Cedulku Lokace -  mana, modrý krepák"
+  },
+  "Dcera řeky": {
+    "desc": "Na sluncem vyhřátém balvanu na břehu bystré řeky ráda vysedává říční víla a mává na vás, má pro vás úkol. Pořádá slavnost vítání nového potěru a chce pozvat všechny své známé z okolí. Doručíte její vzkaz?",
+    "npc_info": null,
+    "setup": null
+  },
+  "Dcera řeky - Quest pro hobity": {
+    "desc": "Na sluncem vyhřátém balvanu na břehu řeky sedává říční víla a češe si rusé vlasy. Teď je smutná, rozbilo se jí zrcátko.  Pomůžete jí najít střepy a poskládat ho?",
+    "npc_info": "Rozházej střepy zrcátka, tak aby ho děti našly a OTOČ ceduli lokace",
+    "setup": "Cedulku Lokace - 2 stranny, 3 stříbrné, Modrý prstýnek, rozbité zrcátko, lektvar osobní neodolatelnosti růžové/bílé faborky"
+  },
+  "Dol - Město": {
+    "desc": "Nové město Dol, zbudované na tom co zbylo po dračím náletu vesele prosperuje. Kdo by to byl řekl, že dračí dech a spáleniště dají vzniknout novému a hezčímu městu.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Dol - Ruiny města": {
+    "desc": "Nové město Dol vesele prosperuje, ale přece jen jim chybí schopný správce a pocit bezpečí, které stín Osamělé hory neskýtá.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - razítko , červené faborky, cedule vesnice, vysílačka, fix s provázkem"
+  },
+  "Dol Guldur": {
+    "desc": "Na místě tak černém jsi ještě nebyl, hrůza a děs tě provází na každém kroku. Tápeš napůl v temnotě a ze stínů kolem spíš tušíš než vidíš zející bránu strašidelné věže. Obrátíš se na útěk nebo polezeš dovnitř?",
+    "npc_info": "Dračák - 3-5 postupových fází.  - Schováváš se za sloupem temného sálu osvětleného živým ohněm. Pozoruješ Vysokou postavu zahalenou v kápi, která jedná se služebníky nepřítele, je jich tu dost, aby tě roztrhali na cucky, kdyby tě odhalili. Postava se otáčí tvým směrem, světlo ohně dopadlo na jeho tvář, poznáváš v ní ALATARA, je to on a zároveň není, jde z něj ochromující hrůza.",
+    "setup": "Cedulku Lokace - Karta pro 1 dobrodruhy se zprávou pro radegasta. Jed - lahvička, červený prstýnek,  fáborky"
+  },
+  "Dolany - Obnovený důl": {
+    "desc": "Nové osídlení kolem  opuštěného dolu, vzkvétá. Vyrostlo tu pěkné hornické městečko. Bohaté žíly vedou stále hlouběji do nitra země.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Dolany - Opuštěný důl": {
+    "desc": "Nové osídlení kolem  opuštěného dolu, vzkvétá. Vyrostlo tu pěkné hornické městečko. Bohaté žíly vedou stále hlouběji do nitra země.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace -3x Železo, Zlaťák , kapsa lokace železo/kámen, zelené faborky"
+  },
+  "Doubravka": {
+    "desc": "Mezi stříbrnými kmeny a mohutných stromů jsou natažené lanové můstky spojující dřevěné talany nahoře ve větvích.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Doubravka - Staleté duby": {
+    "desc": "Kolem malé mýtiny, která připomíná náměstíčko sevřené mezi starými domy, stojí prastaré duby s větvemi rozložitými a propletenými tak, že by se na ních dalo postavit celé město. Když ale okouzleně vstoupíš na mítinku a rozhlídneš se, uvědomíš si 4 páry očí, které na teba ze šera zahlíží a objevují se další.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Elfí chrám": {
+    "desc": "Prošli jste zhrouceným portálem z bílého mramoru. Cítíš posvátnou bázeň, kterou umocňují obří sochy žen v dávném ošacení lemující hlavní vchod.",
+    "npc_info": null,
+    "setup": "cedulku Lokace - razitko beruška, modrý krepák"
+  },
+  "Esgaroth": {
+    "desc": "Esgaroth je dřevěné město, které bylo vystavěno na kůlech zapuštěných do dna Dlouhého jezera. Jeho obyvatelé se živí obchodem po Bystré řece, po níž obchodují s elfy z Temného hvozdu, lidmi z Dolu a trpaslíky z Ereboru. Lidé z Jezerního města využívají k dopravě po Dlouhém jezeře svých člunů. Město je s břehem spojeno dřevěným mostem, který byl v případě nebezpečí stržen. V čele Esgarothu nestojí král, nýbrž zvolená starostka.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Golém": {
+    "desc": "Velký balvan uprostřed louky připomínající na hrubo otesanou postavu. Stojí tu od poslední velké bitvy, při které se ztratil klíč, rozbitý na 3 části, který ho oživoval.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - oranžová ."
+  },
+  "Harpyjí hnízdo": {
+    "desc": "Mezi několika bílými skalami je vklíněné obrovské hnízdo. Fučící vítr k vám přináší táhlé kvílení.",
+    "npc_info": null,
+    "setup": "cedulku Lokace -"
+  },
+  "Havraní skála": {
+    "desc": "Na okraji hustého lesa, kde stromy ustupují a půda se zvedá do skalnatého svahu, se tyčí temná a osamělá Havraní skála. Její ostré, větrné hřebeny trčí k obloze jako zkamenělé prsty a na každém výčnělku sedí havran – desítky, možná stovky těchto černých ptáků zde hnízdí, jejich krákání zní jako varování. Mýtina pod skálou je pokryta kostmi a zbytky dávných cestovatelů, jejichž osudy zde skončily. Vypráví se, že kdo se odváží vystoupit až na vrchol, může za jasného dne dohlédnout až k Osamělé hoře – a možná zahlédnout i víc, než by si přál.\n\nV poslední době se ale havrani vytratili – ze skály se stalo útočiště harpyjí, které svou přítomností ruší přirozenou rovnováhu v okolí. Prastaré větve, kdysi obsypané ptačími hnízdy, jsou nyní potrhané a znečištěné. Místní věří, že kdo skálu očistí a postaví na jejím vrcholu hlídkovou věž, získá nejen výhodný výhled na okolní krajinu, ale také přízeň duchů větru a krkavců – a s nimi možná i ztracené vědění.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Hlavní brána Ereboru": {
+    "desc": "Kdysi velkolepý portál, rozbitý jak chrup vybělené lebky, lemuje temný tunel ustupující do nitra hory. Ocelové panty, které kdysi nesly křídla masivní brány, jsou roztavené. Ze dřevěných částí zbyl jen tlející popel. Ze sluje se táhne teplý pach hniloby a smrti.",
+    "npc_info": "Postupuješ temnotou na jejímž konci řeřaví ohnivé světlo jako uhlíky na dně vyhaslého kotle. Prcháš, nebo jdeš dál? Horko sálá, rudá zář tě osilňuje a pálí do očí, zahlédl jsi rozlehlý sál napněný zlatem a pak tě sežehl takový žár, žes ani nepostřehl odkud se vzal. odevzdej životy a odsyp se do města vskřísit z popela.",
+    "setup": "Cedulku Lokace - červený prstýnek, zlaťák"
+  },
+  "Hnízdiště nestvůr": {
+    "desc": "Křik a tlukot křídel přehlušuje burácení větru v krunách stromů, které jsou poseté okřídlenými tvory.  Zem pod nimi je poseta kostmi, o které se přetahují okřídlení plazi s harpyjemi.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - 2 sříbrné, prstýnek s hadem, ještěří kůže, černé faborky"
+  },
+  "Hraniční kameny": {
+    "desc": "Mezy stromy  stojí dva kameny popsané starými runami, které kdysi rozdělovaly dvě dávné území . Mezerou mezi nimi vane chladný průvan. Přestože vůbec nefouká, jako by vycházel od jinud, z jiného světa. Nic na světě by tě nepřinutilo mezi těmi kameny projít.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Jeskyně - Dungeon": {
+    "desc": "Na úpatí hor jste objevili vstup do jeskyně. Je zahrazený bytelnou rezavou mříží. Nevypadá opuštěně. v měkké hlíně kolem jsou otisky nohou, kopyt a dokonce kol vozu. A v trávě se občas zaleskne rozsypané drahé kamení a kov. Láká vás jeskyni prozkoumat,  ale jak ji otevřít.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - 2 sříbrné a 4 měďáky, Lektvar moudrosti věků - tyrkys"
+  },
+  "Jezerní písčina - JEZERKA": {
+    "desc": "Stojíš na písečném břehu, ve vodní hladině se odráží sluneční svit. Vypadá to jako by jezero bylo skutečně naplněné zlatem. Ale za zlato se platí potem poddaných ...",
+    "npc_info": null,
+    "setup": null
+  },
+  "Jezerní písčina - Quest": {
+    "desc": "Stojíš na písečném břehu, ve vodní hladině se odráží slunečn svit. Vypadá to jako by jezero bylo skutečně naplněné zlatem.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - Modrý prstýnek, kapsa lokace sklo /dřevo, zelené faborky"
+  },
+  "Jezerní písčina -Ohrožená JEZERKA": {
+    "desc": "Stojíš na písečném břehu, ve vodní hladině se odráží sluneční svit. Vypadá to jako by jezero bylo skutečně naplněné zlatem.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Kamenná poušť": {
+    "desc": "Kamenná suť pokrývá úbočí hory, slyšíš pískání svišťů a krákání vran, nikde nic než kámen.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace -šikovný kámen, stříbrný kíč, 3x kámen"
+  },
+  "Kamenná věž - QUEST": {
+    "desc": "Vysoká kruhová stavba se zbytky kamenného schodiště, které stoupá k propadlému ochozu. Vrcholek věže se zhroutil a střecha propadla. V sutinách vidíš zpola zasypanou chodbu.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - 3 sříbrné,  Lektvar nezranitelnosti - oranžový"
+  },
+  "Kamenný kruh": {
+    "desc": "Zdáli jde vidět plný kruh z masivních kamenů. Vítr ohýbající suchou trávu přináší vzdálené vytí.",
+    "npc_info": null,
+    "setup": "cedulku Lokace - fialový prstýnek, šikovný kámen, mana, modré faborky"
+  },
+  "Kobka starého krále": {
+    "desc": "Přišel jsi k hromadě kamení porostlou hustým drnem, kterou zde kdysi někdo navršil. Místo na tebe působí posvátně a trochu děsivě.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Kobka starého krále - Quest": {
+    "desc": "Přišel jsi k hromadě kamení, kterou zde kdysi někdo navršil. Průzkumem jsi objevil zasypaný vstup.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - 4 sříbrné, náhrdelník"
+  },
+  "Kráter": {
+    "desc": "Vyšlapal jsi na nízký kopec zarostlý křovím a namísto vrcholu jsi stanul v mělké proláklině kruhového tvaru. Musela ji vyhloubit tlaková vlna, tohle je určitě kráter po silném výbuchu.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Kráter - Quest pro Hobity": {
+    "desc": "Vyšlapal jsi na nízký kopec zarostlý křovím a namísto vrcholu jsi stanul v mělké proláklině kruhového tvaru. Vypadá to jako kráter. Na jeho dně se lesknou střípky nezvyklého kovu. Je to meteoritické železo, kdyby si ho dokázal posbírat, dalo by se prodat. 1 měrka - 4 stříbrné.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - meteoretické železo, červený prsten mana, modré faborky"
+  },
+  "Ledová jeskyně": {
+    "desc": "Ostrý vítr a bodavý mráz. Slzí ti oči jen co uvidíš namodralou záři linoucí se z otvoru na úpatí hory. V jeskyni je ledové království, rampouch kam se podíváš.",
+    "npc_info": null,
+    "setup": "cedulku Lokace -"
+  },
+  "Ledový průsmyk": {
+    "desc": "Úzká  rozbitá stezka stoupající do hor se nezdá být často užívaná. Ledový vítr z hor tu nepřestává fičet ani v létě, každou zimu zapadá sněhem tak, že průchod je nemožný a za každým balvanem, každou zákrutou může číhat nebezpečí.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Lesní knihovna": {
+    "desc": "Vstoupil jsi do budovy plné starých knih, vzduch je prosycen pachem plísně a prachu. Knihy jsou napsány runovým písmem trpaslíků, nauč se je, chceš-li rozumět starým textům.",
+    "npc_info": null,
+    "setup": "cedulku Lokace - runová abeceda ..."
+  },
+  "Lesní oltář": {
+    "desc": "Místo připomíná pradávné obětiště, v mechu a kapradí jste zahlédli zbytky lebek a to nejen zvířecích. Není to příjemné místo, kouzelnící zde cítí pradávnou magii.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Menhir - Quest": {
+    "desc": "Jako poslední zub v ústech starého muže trčí z krajiny osamělý kámen, který zde zanechal asi zbloudilý zlobr. Ze severní strany je v kameni vyrytý diagram, vypadá jako mapa hvězdné oblohy. Možná je to klíč k pokladu.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - menhir, lektvar štěstí"
+  },
+  "Močál": {
+    "desc": "Na všechny strany se rozprostírají zelené tůňky a třasoviska protkaná trsy ostré trávy a strácí se v závojích husté mlhy. Ponuré pahýly suchých stromů a znepokojivé zvuky nahání husí kůži. V měkkém blátě sis všiml divných a dost velkých stop s dlohými prsty připomínajícími kořeny.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - 7 měďáky, Bahno bezedného močálu, černé faborky"
+  },
+  "Mokřady": {
+    "desc": "Vstoupil si do sluncem zalitého údolíčka. Podmáčené louky na březích bystrého potůčku jsou plné žab a ptáků.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - žíně jednorožce, černé faborky"
+  },
+  "Nový Arnor": {
+    "desc": "Nově založené město na místě zaniklé Gondorské pevnůstky, chránící obchodní stezku. Vůně nových začátků, lesa a kuchyně všech tří národů.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Osamělá hora": {
+    "desc": "Stojíš na vrcholu strmé hory. Široko daleko pod tebou se rozprostírá otevřená krajina.",
+    "npc_info": null,
+    "setup": "cedulku Lokace - 3.část klíče,"
+  },
+  "Ostrov na jezeře": {
+    "desc": "Ve vodní hladině se zrcadlí  ostrůvek s písčitými břehy, zarostlý hustým hájkem. Bystré oko by mohlo rozpoznat v písku  otisky bosých chodidel. Řeka je zde hluboká a prudká.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - modrý prstýnek, lektvar štěstí"
+  },
+  "Ovirská kotlina": {
+    "desc": "Tato hluboká dolina, rozkládající se přímo na jih od Šedých hor, je obklopena prstencem sopečných skal, jež vroubí střed horského úvalu. Květnatý příkop, který protíná její dno, působí nečekaně klidným dojmem uprostřed jinak drsné krajiny. Přirozený terén poskytuje ideální úkryt i pozorovací místo pro každého, kdo by chtěl sledovat průchody skrze Průsmyky. Při druhém pohledu naleznete zetlelé zbytky karavany, kostru vozů a zetlelé kování dosud trčíci z přerostlé trávy. Při pohledu třetím a důkladném vzdadu ve skalách zahlédnete zčernalý vchod do nějaké sluje.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Pavoučí palouček": {
+    "desc": "Les je tu nezvykle temný, větve jsou spletené tlustými vlákny pavučin, ze kterých visí zbytky vysušených tělíček drobných lesních tvorů. V tom jsi ze stromu zaslechl syčivé zvuky. Ve větvích si zahlédl chlupaté tvory s dlouhýma nohama.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Pavoučí palouček - QUEST pro Hobity": {
+    "desc": "V jedné pavučině jsou zapletené klíčky, táhněte je po vlákně až na volný konec, aby jste je uvolnili.  Jeden z nich pasuje zámku u  truhly dole. Pozor, může to být past, nezdržujte se dlouho.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - fialové fáborky, Truhlu se zámkem, s bombony, razítkem pavouka a polštářek , pavučinu ze sysalu a 4 klíčky."
+  },
+  "Polom": {
+    "desc": "Mohutné kmeny stromů tu z kořenů vyvrátila buď vichřice nebo něco opravdu velkého a strašného. Dřevo by se dalo využít na stavbu  domů, paseku vyždáři (vypálit pařezy a podrost) popelem vyhnojená pole slibují bohatou úrodu.",
+    "npc_info": "(Nachystejte si zásobu šišek do chlebníku a pošlete někoho kdo umí házet). Příšera bude hrát obra. Zakladatelé nové vesnice měli postavit 3 aspoň 2patrové stavby z přírodnin. Obr to zkontroluje z větší dálky, počká, jestli ještě nejsou hotoví, může je popohánět. Pak se pokusí stavby šiškami shodit. (Může stavby i rozkopnout, nebo se naopak krýt z astromy) Obr má 10ž. Když ho stavitelé 10x trefí šiškou, je mrtvý. Hráči pak ještě musí opravit všechny stavby, které obr zničil a odevzdat mu 5 kamenů, aby se jeden z nich mohl prohlásit právoplatným pánem a výběrčím daní.",
+    "setup": "Cedulku Lokace -  3 x dřevo"
+  },
+  "Polom - Obrov": {
+    "desc": "Na nedávno vyčistěné mýtině vyrostla nová vesnice, spořádaně prosperuje a platí daně svému pánu a ochránci, krerý  porazil obra.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Proměnlivý strom": {
+    "desc": "Přicházíš k podivnému stromu. Vypadá jako dub.  Náhodou ses podíval tím směrem znovu a místo dubu tam stojí třešeň obsypaná čerstvými plody. Za chvíli je to jilm. Přijdeš blíž a poznáš vrbu. Nejspíš tu někde uniká magická energie. Necítíš žádnou hrozbu, jen slyšíš jak strom zpívá, zpívá o blížícímu se zlu, přichází odněkud zespoda z temnícího lesa pod vámi.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - léčivý lektvar růžový?, šikovný kámen, mana, modré faborky"
+  },
+  "Příbytky skřítků": {
+    "desc": "Nepovšimli jste si malinkých příbytků, okýnek a dvířek v pařezech? Bydlí tu skřítci. Když budete zticha můžete zaslechnout jejich zvonivé hlásky, ale všichni se schovali, když vás viděli přicházet.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - Lektvar štěstí, klíčky rýč, chlupy, krysu, hada ... růžové/bílé faborky"
+  },
+  "Příbytky skřítků - quest jen pro hobity": {
+    "desc": "V jedné pavučině jsou zapletené klíčky, táhněte je po vlákně až na volný konec, aby jste je uvolnili.  Jeden z nich pasuje zámku u  truhly dole. Pozor, může to být past, nezdržujte se dlouho.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Puklina": {
+    "desc": "Pod nohama se ti otevřela hluboká propast, která pohltila cestu a táhne se do nedohledna na obě strany, jako by zde všemohoucí ruka zasadila krajině ránu sekerou. Na dno nedohlédneš a na druhou stranu ani nedohodíš. Tudy se dál nikdo nedostane!",
+    "npc_info": null,
+    "setup": null
+  },
+  "Rhosgobel": {
+    "desc": "Vstoupil jsi do pohádkového údolíčka uprostřed lesů. Ve větvích poskakují veverky, kolem se prohání malí ušáci a dokonce si zakopl o ježka, za kterým se táhne početná rodina. Jelínci a srnečky se tu popásají v celých stádech, ale opravdu bys je neměl lovit. Ve stínu stromů stojí skromná chýše s observatoří na střeše. Je to domov Čaroděje Radagasta.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace -  Nápoj bohů, mana, modré faborky"
+  },
+  "Rozcestí - Quest": {
+    "desc": "Bloudíš lesem, vsadil by ses, že na tomto rozcestí jsi už byl. Kterou cestou se dát, aby ses vymotal? Na chvíli se posadíš na příhodný pařez, který rozšafně roztahuje své pokroucené kořeny do cesty, aby sis odpočal.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - Bludný kořen, zelený prasten"
+  },
+  "Ruiny Dor Rhúnen": {
+    "desc": "Zchátralé ruiny dávného města Dor Rhúnen, kdysi hrdého sídla gondorské kolonie. Zbytky mohutných kamenných zdí a rozpadlé věže vyprávějí o slávě dávno minulých dní.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Ruiny staré pevnosti": {
+    "desc": "Mezi zbytky starých zdí  svítí nově opravené domky,  zahrádky, políčka, ohrady a chlévy oplývají životem a zdejší lid nikomu nepatří.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - razítko , červené faborky, cedule vesnice, vysílačka, fix s provázkem"
+  },
+  "Ruiny staré pevnosti - TROSKOV": {
+    "desc": "Mezi zbytky starých zdí  svítí nově opravené domky,  zahrádky, políčka, ohrady a chlévy oplývají životem.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Sarn Gowiring": {
+    "desc": "Uprostřed mohutného říčního proudu stojí 30 m vysoká pevnost. Je z černošedého kamene a jen tak se do ní dostat nedá. Ledabyste uměli létat. Těžko říci, kdo se v ní schovává. Kolem rostou zvláštní stromy s modrými listy a zlatými lákavými plody.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - léčivý lektvar růžový?,mušlový náhrdelnik"
+  },
+  "Skalbal": {
+    "desc": "Osamělý balvan nad řekou, do kterého jsou vytesané velké kamenné stupně. Je z něj vidět pás mlžných hor na obzoru. V hlíně pod kamenem je spousta medvědích stop. Občas tu můžete zastihnout podivuhodnou bytost, Medděda.",
+    "npc_info": "Zastihli jste tu Medděda. Ale nebude vám pomáhat, dokud mu nedonesete trofej zabitého vrka a skřeta a 3 sudy vína. Aktivuje ji starosta nebo král ve městě.",
+    "setup": "Cedulku Lokace -nápoj znovuzrození - sitě zelený, Medděd"
+  },
+  "Skalní římsa - Quest": {
+    "desc": "Po rozbitém skalním srázu, který připomíná rozsypané kamenné schodiště, ses vydrápal na prostornou římsu. Zíráš do nedozírné dálky a vidíš mravenčí tečky, které připomínají velké stádo jelenů.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - 3 sříbrné,"
+  },
+  "Skřetí cesta": {
+    "desc": "Prašná a zablácená cesta, po které se pravidelně přesouvají skřetí oddíly mezi Dol Guldurem a jejich základnou poblíž Skřetomlat.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Smradlavé díry": {
+    "desc": "Otvory ve skalách hýří bujarým životem, řev, nadávky a nejrůznější předměty lítají vzduchem. Vypadá to, že ty Skřetí díry už jsou zase obydlené.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - Jed - lahvička, tesák latex, černé fáborky"
+  },
+  "Spálená vesnice": {
+    "desc": "Na spáleništi vyrostlo slušné městečko se statky a úrodnými lány okolo. Na památku katastrofy nechali místní stát na návsi naproti nové radnice ohořelý pilíř té staré a pojmenovali ho Spálov.",
+    "npc_info": null,
+    "setup": "Cedulky Lokace - 2 razítka :(  černé a červené faborky, ešus, sirky, cedule vesnice, vysílačka, fix s provázkem"
+  },
+  "Spálená vesnice - Spálov": {
+    "desc": "Na spáleništi vyrostlo slušné městečko se statky a úrodnými lány okolo. Na památku katastrofy nechali místní stát na návsi naproti nové radnice ohořelý pilíř té staré a pojmenovali ho Spálov.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Spálený strom": {
+    "desc": "Vidíš suchý pahýl stromu, který před lety rozštípl blesk.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - zelený prstýnek, šikovný kámen"
+  },
+  "Srdce hvozdu - Quest": {
+    "desc": "Při příchodu na toto místo máš pocit téměř jako při vstupu do kláštera. Těžká dusná atmosféra, skoro jako bys tu nebyl vítán. Samotný vzduch jako by žil a cítil a rostliny, které jste pošlapali, se za vámi opět narovnávají. Koutkem oka jsi zahlédl pohybující stín velkého jelena. Jeho paroží se leskne zlatem.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace -srdce hvozdu,šikovný kámen, Lektvar bezedné many - fialový modré faborky"
+  },
+  "Starý brod": {
+    "desc": "Na široké pláni, kde se jinak mohutná řeka Anduina rozlévá do mělkého koryta, leží Starý brod – místo známé po generace poutníků a obchodníků. ??V suchých obdobích se dá řeka přebrodit.  Klidné místo, lemované bílými oblázky a stromy ohýbajícími se nad vodou.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Starý lom": {
+    "desc": "Rozhrnul jsi křoví a pod nohama se ti rozevřela prudká strž, která svírá do tvaru podkovy malebné údolíčko s říčkou, která ústí do hlubokého jezírka, Podel ní vede spevněná kupecká stezka do nové osady nalepené a částečně zahloubené do skály starého lomu, za ní se otvírá lom nový.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - razítko , červené faborky, cedule vesnice, vysílačka, fix s provázkem, 3x kámen"
+  },
+  "Starý lom - Lomná": {
+    "desc": "Rozhrnul jsi křoví a pod nohama se ti rozevřela prudká strž, která svírá do tvaru podkovy malebné údolíčko s říčkou, která ústí do hlubokého jezírka, Podel ní vede spevněná kupecká stezka do nové osady nalepené a částečně zahloubené do skály starého lomu, za ní se otvírá lom nový.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Temné ruiny": {
+    "desc": "Černé kameny starých zdí působí jako čelisti těsně před sevřením. Slunce ani měsíc si nedokážou najít cestu příkrovem temných mraků a vzduch je prosycený hnilobou. Na zarostlém hřbitově za pobořenou kaplí sis všiml vyvrácených křížů a přeryté hlíny.",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - Jed - lahvička, socha černé bohyně, černé fáborky"
+  },
+  "Trouchnivý most": {
+    "desc": "Most kdysi spojoval břehy prokleté lesní říčky, časem všek zchátral a dravý proud ho pohltil, ponechal jen chatrné zbytky zarůstající rákosím. K překročení vod, ve kterých není radno se koupat, ti neposlouží.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Úrodná pole I": {
+    "desc": "Příhodné místo pro novou vesnici.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Úrodná pole II": {
+    "desc": "Příhodné, ale až druhé místo, pro vesnici.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Úrodné stráně": {
+    "desc": "Narazili jste na úrodné stráně. Vyjímala by se zde vesnice, nebýt těch  zapáchajících děr ve skalách nad ní. Podle hluku, smradu a poházených kostí poznáte skřetí sluje. V takovém sousedství by žádná vesnice dlouho nevydržela.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Úrodné stráně - Skřetomlaty": {
+    "desc": "Nová vesnice na stráni pod skalami pojmenovaná na počest bitvy se skřety, kteří dlouhé věky plenili okolí.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Věčný plamen - Quest": {
+    "desc": "Narazil jsi na malou stavbu z červených kamenů, čtyřmi malými otvory stoupá šedý dým. Zevnitř sálá teplo,  tolik vzácné v téhle pekelné zimě, ale uprostřed žároviště je sotva pár žhavých uhlíků.  Strážkyně věčného ohně se ti odvděčí, jestliže ji pomůžeš oheň zažehnout.",
+    "npc_info": null,
+    "setup": "cedulku Lokace - Lektvar štěstí, červený prsten, modré faborky"
+  },
+  "Vílí palouček": {
+    "desc": "Mezi lehce zelenými stromy prokmitá tlumené světlo. Téměř by jsi přísahal, že slyšíš lehounké chichotání, ale nikoho nevidíš. V trávu okolo velkého stromu ušlapaly víly, které tu v noci tančí tak, že občas rozervou korály.",
+    "npc_info": null,
+    "setup": "Je to ohnivý kmínek, který sem spadl srážkyni věčného ohně. Přišla sem navštívit kamarádku. Běžte pomoct stážkyni věčného ohně nasbírat dříví a obnovit věčný oheň, který nemohla bez ohnivého kamínku udržovat. Obchodníkovi do města pak doneste ukázat razítka vílího paloučku a věčného ohně. Dostanete odměnu 4 stříbrné od studánkové víly a 1 zlaťák od strážkyně."
+  },
+  "Vílí palouček - Quest pro Hobity": {
+    "desc": "Mezi lehce zelenými stromy prokmitá tlumené světlo. Téměř by jsi přísahal, že slyšíš lehounké chichotání, ale nikoho nevidíš. V trávu okolo velkého stromu ušlapaly víly, které tu v noci tančí tak, že občas rozervou korály.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Vlčí shromaždiště": {
+    "desc": "Vlky přestalo bavit chodit ke Skalbalu, žádný se od tama jakživ nevrátil. To byste nevěřili, jak jsou ty bestie inteligentní. Stopy teď směřují k Dol Gulduru, budete je tam sledovat?",
+    "npc_info": null,
+    "setup": "Cedulku Lokace - červený prstýnek, náhrdelník"
+  },
+  "Vlčí shromaždiště - quest": {
+    "desc": "Při pátrání po jeleních stopách jsi narazil na stopy vlků, mnohé jsou až nepřirozeně veliké a podle množství a chaotického uspořádání to vypadá, jako by tu kroužila celá smečka. Tucet vlčích stop se od ostatních oddělil, Jsi dobře vyzbrojen a máš dost kuráže vlky sledovat?",
+    "npc_info": null,
+    "setup": null
+  },
+  "Zaniklé město lesních lidí": {
+    "desc": "Líbezný zvuk zurčící vody tě přivedl k překrásné fontáně stojící na trávou zarostlé dlažbě. Tvá duše i tělo touží napít se této průzračné vody. Když ses sklonil nad kašnou, zaleskly se na hladině hvězdy i přesto, že je jasný den.",
+    "npc_info": null,
+    "setup": null
+  },
+  "Ztracený elfí pramen": {
+    "desc": "Na odlehlém místě hluboko v lese se skrývá Ztracený elfí pramen – kdysi posvátné místo lesních elfů. Prastaré stromy tvoří nad mýtinou přírodní klenbu, kterou sotva proniká světlo. Uprostřed stojí bílá fontána s jemnými elfskými ornamenty a sochou kněžky, jejíž ruce se natahují k nebi, jako by čekala na dar hvězd.\n\nFontána je dnes zpustlá, bez vody, pokrytá mechem a listím. Pramen ustal a místo působí znepokojivě – máte pocit únavy a tíživého spánku.",
+    "npc_info": "Hrdinové musí nejprve porazit temného strážce – Mohylového ducha – a očistit místo jeho zlé přítomnosti. Poté musí přinést vzácnou „Vodu hvězd“ z lokace „Zaniklé město lesních lidí“ (65), nalít ji do fontány a vykonat jednoduchý elfský obřad (stačí krátké zaklínadlo, může provést čaroděj nebo elf ve skupině). Po úspěšném očištění a obnově fontány se toto místo opět stane živým zdrojem  Po obnově pramene se z fontány stane magické místo poskytující pravidelnou produkci many (1 mana za každé období hry).\nNavíc zde bude možné pravidelně nalézt „Léčivý lektvar“magické síly.",
+    "setup": null
+  }
+}

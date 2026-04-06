@@ -58,6 +58,29 @@
             </DxFormLayoutItem>
         </DxFormLayout>
 
+        @* Variant links *@
+        @if (locParentName is not null)
+        {
+            <div class="alert alert-info mt-2 mb-0 py-2">
+                <small>Varianta lokace</small>
+                <a href="#" @onclick="() => NavigateToLocation(locParentId!.Value)" @onclick:preventDefault class="d-block fw-bold">
+                    ← @locParentName
+                </a>
+            </div>
+        }
+        @if (locVariants.Count > 0)
+        {
+            <div class="alert alert-secondary mt-2 mb-0 py-2">
+                <small>Varianty (@locVariants.Count)</small>
+                @foreach (var v in locVariants)
+                {
+                    <a href="#" @onclick="() => NavigateToLocation(v.Id)" @onclick:preventDefault class="d-block">
+                        → @v.Name <span class="text-muted">(@v.LocationKind.GetDisplayName())</span>
+                    </a>
+                }
+            </div>
+        }
+
         @if (error is not null) { <div class="alert alert-danger mt-2">@error</div> }
 
         <div class="d-flex gap-2 mt-3">
@@ -89,7 +112,9 @@
     private string activeStyle = "tourist";
     private string modalTitle = "", locName = "";
     private string? error, locDescription, locNpcInfo, locSetupNotes;
-    private int? editingId;
+    private int? editingId, locParentId;
+    private string? locParentName;
+    private List<LocationVariantDto> locVariants = [];
     private LocationKind locKind = LocationKind.Village;
     private decimal locLat = 49.75m, locLon = 17.25m;
 
@@ -142,7 +167,8 @@
     {
         locations = await Api.GetListAsync<LocationListDto>("/api/locations");
         await mapView.ClearMarkersAsync();
-        foreach (var loc in locations)
+        // Only parent locations get map pins; variants are accessed via parent detail
+        foreach (var loc in locations.Where(l => l.ParentLocationId is null))
         {
             var color = markerColors.GetValueOrDefault(loc.LocationKind, "#e74c3c");
             await mapView.AddMarkerAsync(loc.Id, (double)loc.Latitude, (double)loc.Longitude,
@@ -164,6 +190,7 @@
             locLat = (decimal)e.Latitude;
             locLon = (decimal)e.Longitude;
             locDescription = null; locNpcInfo = null; locSetupNotes = null;
+            locVariants = []; locParentId = null; locParentName = null;
             error = null;
             modalTitle = "Nová lokace";
             isModalVisible = true;
@@ -171,26 +198,44 @@
         }
     }
 
-    private async Task HandleMarkerClick(int id)
+    private async Task HandleMarkerClick(int id) => await OpenLocationDetail(id);
+
+    private async Task NavigateToLocation(int id)
     {
-        var loc = locations.FirstOrDefault(l => l.Id == id);
-        if (loc is null) return;
+        // Close current popup and open the target location
+        isModalVisible = false;
+        StateHasChanged();
+        await Task.Delay(100); // let popup close
+        await OpenLocationDetail(id);
+    }
+
+    private async Task OpenLocationDetail(int id)
+    {
+        var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{id}");
+        if (detail is null) return;
 
         editingId = id;
-        locName = loc.Name;
-        locKind = loc.LocationKind;
-        locLat = loc.Latitude;
-        locLon = loc.Longitude;
+        locName = detail.Name;
+        locKind = detail.LocationKind;
+        locLat = detail.Latitude;
+        locLon = detail.Longitude;
+        locDescription = detail.Description;
+        locNpcInfo = detail.NpcInfo;
+        locSetupNotes = detail.SetupNotes;
+        locVariants = detail.Variants;
+        locParentId = detail.ParentLocationId;
         error = null;
-        modalTitle = $"Upravit: {loc.Name}";
+        modalTitle = $"Upravit: {detail.Name}";
 
-        // Load full detail
-        var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{id}");
-        if (detail is not null)
+        // Resolve parent name if this is a variant
+        if (locParentId.HasValue)
         {
-            locDescription = detail.Description;
-            locNpcInfo = detail.NpcInfo;
-            locSetupNotes = detail.SetupNotes;
+            var parent = locations.FirstOrDefault(l => l.Id == locParentId.Value);
+            locParentName = parent?.Name ?? $"Lokace #{locParentId}";
+        }
+        else
+        {
+            locParentName = null;
         }
 
         isModalVisible = true;

@@ -1,0 +1,338 @@
+/* ============================================================
+   OvčinaHra — DevExpress Component Theme Overrides
+   Replaces office-white defaults with forest green + parchment.
+   ============================================================ */
+
+/* === DxGrid === */
+
+.dxbl-grid {
+    border-color: var(--oh-border);
+    border-radius: var(--oh-radius);
+    overflow: hidden;
+    box-shadow: var(--oh-shadow);
+    font-family: var(--oh-font-body);
+}
+
+/* Grid header */
+.dxbl-grid .dxbl-grid-header-row,
+.dxbl-grid .dxbl-grid-header-row th {
+    background-color: var(--oh-primary) !important;
+    color: var(--oh-header-text) !important;
+    font-family: var(--oh-font-heading);
+    font-weight: 700;
+    font-size: 0.8125rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-color: var(--oh-primary-dark) !important;
+}
+
+/* Grid header sort indicators */
+.dxbl-grid .dxbl-grid-header-row .dxbl-grid-sort-icon {
+    color: var(--oh-header-text) !important;
+    opacity: 0.7;
+}
+
+/* Grid body rows */
+.dxbl-grid .dxbl-grid-table tbody tr {
+    background-color: var(--oh-surface);
+    color: var(--oh-text);
+    transition: background-color var(--oh-transition);
+}
+
+/* Alternating rows — parchment tone */
+.dxbl-grid .dxbl-grid-table tbody tr:nth-child(even),
+.dxbl-grid .ovcina-grid-alt-row {
+    background-color: var(--oh-surface-alt) !important;
+}
+
+/* Grid row hover */
+.dxbl-grid .dxbl-grid-table tbody tr:hover {
+    background-color: var(--oh-primary-surface) !important;
+}
+
+/* Grid selected row */
+.dxbl-grid .dxbl-grid-table tbody tr.dxbl-grid-selected-row,
+.dxbl-grid .dxbl-grid-table tbody tr[data-selected="true"] {
+    background-color: var(--oh-primary-surface) !important;
+    border-left: 3px solid var(--oh-primary);
+}
+
+/* Grid footer/pager */
+.dxbl-grid .dxbl-grid-footer,
+.dxbl-grid .dxbl-pager {
+    background-color: var(--oh-surface);
+    border-color: var(--oh-border);
+}
+
+/* Grid cell borders */
+.dxbl-grid .dxbl-grid-table td {
+    border-color: var(--oh-border);
+}
+
+/* Grid filter row */
+.dxbl-grid .dxbl-grid-filter-row td {
+    background-color: var(--oh-surface-alt);
+}
+
+/* === DxPopup / Modal === */
+
+.dxbl-popup .dxbl-modal-content,
+.dxbl-popup-content {
+    background-color: var(--oh-surface);
+    border: 1px solid var(--oh-card-border);
+    border-radius: var(--oh-radius-lg);
+    box-shadow: var(--oh-shadow-lg);
+}
+
+.dxbl-popup .dxbl-modal-header,
+.dxbl-popup-header {
+    background-color: var(--oh-primary) !important;
+    color: var(--oh-header-text) !important;
+    font-family: var(--oh-font-heading);
+    border-bottom: 1px solid var(--oh-primary-dark);
+    padding: 0.75rem 1.25rem;
+    border-radius: var(--oh-radius-lg) var(--oh-radius-lg) 0 0;
+}
+
+.dxbl-popup .dxbl-modal-header *,
+.dxbl-popup-header *,
+.dxbl-popup .dxbl-modal-header .dxbl-modal-title,
+.dxbl-popup .dxbl-modal-header .dxbl-text,
+.dxbl-popup-header .dxbl-text {
+    color: var(--oh-header-text) !important;
+    font-family: var(--oh-font-heading);
+    font-weight: 700;
+}
+
+.dxbl-popup .dxbl-modal-header .btn-close,
+.dxbl-popup-header .btn-close {
+    filter: invert(1);
+}
+
+.dxbl-popup .dxbl-modal-body,
+.dxbl-popup-body {
+    padding: 1.25rem;
+    background-color: var(--oh-surface);
+}
+
+.dxbl-popup .dxbl-modal-footer,
+.dxbl-popup-footer {
+    background-color: var(--oh-surface-alt);
+    border-top: 1px solid var(--oh-border);
+    padding: 0.75rem 1.25rem;
+}
+
+/* === DxFormLayout === */
+
+.dxbl-fl-group {
+    border-color: var(--oh-border);
+}
+
+.dxbl-fl-group .dxbl-fl-group-header {
+    color: var(--oh-primary);
+    font-family: var(--oh-font-heading);
+    font-weight: 700;
+}
+
+.dxbl-fl label {
+    color: var(--oh-text-secondary);
+    font-weight: 500;
+    font-size: 0.875rem;
+}
+
+/* === DxTextBox, DxComboBox, DxSpinEdit, DxDateEdit === */
+
+.dxbl-edit,
+.dxbl-textbox,
+.dxbl-combobox,
+.dxbl-spin-edit,
+.dxbl-date-edit {
+    font-family: var(--oh-font-body);
+}
+
+.dxbl-edit .dxbl-edit-input-container,
+.dxbl-textbox .dxbl-textbox-input-group,
+.dxbl-combobox .dxbl-combobox-input-group {
+    background-color: var(--oh-surface);
+    border-color: var(--oh-border);
+    border-radius: var(--oh-radius-sm);
+    transition: border-color var(--oh-transition), box-shadow var(--oh-transition);
+}
+
+.dxbl-edit:focus-within .dxbl-edit-input-container,
+.dxbl-textbox:focus-within .dxbl-textbox-input-group,
+.dxbl-combobox:focus-within .dxbl-combobox-input-group {
+    border-color: var(--oh-primary-light) !important;
+    box-shadow: 0 0 0 0.2rem rgba(74, 124, 52, 0.15) !important;
+}
+
+/* === DxButton === */
+
+/* Primary buttons */
+.dxbl-btn-primary,
+.dxbl-btn.dxbl-btn-primary {
+    background-color: var(--oh-primary) !important;
+    border-color: var(--oh-primary) !important;
+    color: var(--oh-header-text) !important;
+    font-weight: 500;
+    border-radius: var(--oh-radius-sm);
+    transition: all var(--oh-transition);
+}
+
+.dxbl-btn-primary:hover,
+.dxbl-btn.dxbl-btn-primary:hover {
+    background-color: var(--oh-primary-light) !important;
+    border-color: var(--oh-primary-light) !important;
+    box-shadow: 0 2px 8px rgba(45, 80, 22, 0.25);
+}
+
+/* Secondary buttons */
+.dxbl-btn-secondary,
+.dxbl-btn.dxbl-btn-secondary {
+    background-color: var(--oh-surface) !important;
+    border-color: var(--oh-border) !important;
+    color: var(--oh-text) !important;
+    border-radius: var(--oh-radius-sm);
+}
+
+.dxbl-btn-secondary:hover,
+.dxbl-btn.dxbl-btn-secondary:hover {
+    background-color: var(--oh-primary-surface) !important;
+    border-color: var(--oh-primary-light) !important;
+    color: var(--oh-primary) !important;
+}
+
+/* Outline buttons */
+.dxbl-btn-outline-primary,
+.dxbl-btn.dxbl-btn-outline-primary {
+    color: var(--oh-primary) !important;
+    border-color: var(--oh-primary) !important;
+}
+
+.dxbl-btn-outline-primary:hover {
+    background-color: var(--oh-primary) !important;
+    color: var(--oh-header-text) !important;
+}
+
+/* === DxTabs === */
+
+.dxbl-tabs .dxbl-tabs-list .dxbl-tabs-item.dxbl-active {
+    border-bottom-color: var(--oh-primary) !important;
+    color: var(--oh-primary) !important;
+}
+
+.dxbl-tabs .dxbl-tabs-list .dxbl-tabs-item {
+    color: var(--oh-text-secondary);
+    font-weight: 500;
+    transition: color var(--oh-transition);
+}
+
+.dxbl-tabs .dxbl-tabs-list .dxbl-tabs-item:hover {
+    color: var(--oh-primary-light);
+}
+
+/* === DxPager === */
+
+.dxbl-pager .dxbl-pager-page-item.dxbl-active {
+    background-color: var(--oh-primary) !important;
+    border-color: var(--oh-primary) !important;
+    color: var(--oh-header-text) !important;
+}
+
+.dxbl-pager .dxbl-pager-page-item:hover:not(.dxbl-active) {
+    background-color: var(--oh-primary-surface);
+    color: var(--oh-primary);
+}
+
+/* === DxMemo (textarea) === */
+
+.dxbl-memo textarea {
+    background-color: var(--oh-surface);
+    border-color: var(--oh-border);
+    font-family: var(--oh-font-body);
+}
+
+.dxbl-memo:focus-within textarea {
+    border-color: var(--oh-primary-light);
+    box-shadow: 0 0 0 0.2rem rgba(74, 124, 52, 0.15);
+}
+
+/* === DxToolbar === */
+
+.dxbl-toolbar {
+    background-color: var(--oh-surface);
+    border-color: var(--oh-border);
+}
+
+/* === DxAccordion === */
+
+.dxbl-accordion .dxbl-accordion-item-header {
+    font-family: var(--oh-font-heading);
+    color: var(--oh-primary);
+}
+
+.dxbl-accordion .dxbl-accordion-item-header:hover {
+    background-color: var(--oh-primary-surface);
+}
+
+/* === DxDropDown / DxComboBox dropdown === */
+
+.dxbl-dropdown-dialog,
+.dxbl-listbox {
+    background-color: var(--oh-surface);
+    border-color: var(--oh-border);
+    border-radius: var(--oh-radius);
+    box-shadow: var(--oh-shadow-lg);
+}
+
+.dxbl-listbox .dxbl-listbox-item:hover,
+.dxbl-listbox .dxbl-listbox-item.dxbl-focused {
+    background-color: var(--oh-primary-surface);
+    color: var(--oh-primary);
+}
+
+.dxbl-listbox .dxbl-listbox-item.dxbl-selected {
+    background-color: var(--oh-primary);
+    color: var(--oh-header-text);
+}
+
+/* === General overrides for DevExpress focus/selection colors === */
+
+.dxbl-focused,
+*:focus-visible {
+    outline-color: var(--oh-primary-light);
+}
+
+/* Checkbox/radio accent */
+.dxbl-checkbox input:checked,
+.dxbl-radio input:checked {
+    accent-color: var(--oh-primary);
+}
+
+/* === Bootstrap overrides for DevExpress context === */
+
+.dropdown-item.active,
+.dropdown-item:active {
+    background-color: var(--oh-primary);
+}
+
+.dropdown-item:hover,
+.dropdown-item:focus {
+    background-color: var(--oh-primary-surface);
+    color: var(--oh-primary);
+}
+
+.nav-link.active {
+    color: var(--oh-primary) !important;
+}
+
+/* Progress bars */
+.progress-bar {
+    background-color: var(--oh-primary);
+}
+
+/* Alerts themed */
+.alert-success { border-left: 4px solid var(--oh-success); }
+.alert-warning { border-left: 4px solid var(--oh-warning); }
+.alert-danger { border-left: 4px solid var(--oh-error); }
+.alert-info { border-left: 4px solid var(--oh-info); }

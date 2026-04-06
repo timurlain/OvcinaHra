@@ -1,6 +1,8 @@
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand" href="">OvčinaHra</a>
+        <a class="navbar-brand" href="">
+            <i class="bi bi-feather me-1"></i> OvčinaHra
+        </a>
         <button title="Navigační menu" class="navbar-toggler" @onclick="ToggleNavMenu">
             <span class="navbar-toggler-icon"></span>
         </button>
@@ -11,57 +13,63 @@
     <nav class="nav flex-column">
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Přehled
+                <i class="bi bi-house-door-fill"></i> Přehled
             </NavLink>
         </div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="mapa">
-                <span class="bi bi-geo-alt-fill-nav-menu" aria-hidden="true"></span> Mapa
+                <i class="bi bi-map-fill"></i> Mapa
             </NavLink>
         </div>
+
+        <div class="oh-nav-section-label">Správa hry</div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="hry">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Správa hry
+                <i class="bi bi-calendar-event-fill"></i> Seznam Ovčin
             </NavLink>
         </div>
+
+        <div class="oh-nav-section-label">Svět</div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="lokace">
-                <span class="bi bi-geo-alt-fill-nav-menu" aria-hidden="true"></span> Lokace
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="predmety">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Předměty
+                <i class="bi bi-geo-alt-fill"></i> Lokace
             </NavLink>
         </div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="prisery">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Příšery
+                <i class="bi bi-bug-fill"></i> Příšery
             </NavLink>
         </div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="questy">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Questy
+                <i class="bi bi-journal-text"></i> Questy
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="predmety">
+                <i class="bi bi-gem"></i> Předměty
             </NavLink>
         </div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="poklady">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Poklady
+                <i class="bi bi-safe-fill"></i> Poklady
             </NavLink>
         </div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="budovy">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Budovy
+                <i class="bi bi-houses-fill"></i> Budovy
             </NavLink>
         </div>
+
+        <div class="oh-nav-section-label">Nástroje</div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="tagy">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Tagy
+                <i class="bi bi-tags-fill"></i> Tagy
             </NavLink>
         </div>
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="hledani">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Hledání
+                <i class="bi bi-search"></i> Hledání
             </NavLink>
         </div>
     </nav>

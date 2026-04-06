@@ -107,25 +107,44 @@ window.ovcinaMap = {
         if (!this._map) return;
         this.removeMarker(id);
 
-        var el = document.createElement('div');
-        el.className = 'ovcina-marker';
-        el.style.backgroundColor = color || '#e74c3c';
-        el.style.width = '14px';
-        el.style.height = '14px';
-        el.style.borderRadius = '50%';
-        el.style.border = '2px solid white';
-        el.style.boxShadow = '0 1px 4px rgba(0,0,0,0.4)';
-        el.style.cursor = 'pointer';
+        var wrapper = document.createElement('div');
+        wrapper.className = 'ovcina-marker-wrapper';
+        wrapper.style.display = 'flex';
+        wrapper.style.flexDirection = 'column';
+        wrapper.style.alignItems = 'center';
+        wrapper.style.cursor = 'pointer';
+
+        var pin = document.createElement('div');
+        pin.className = 'ovcina-marker';
+        pin.style.backgroundColor = color || '#e74c3c';
+        pin.style.width = '14px';
+        pin.style.height = '14px';
+        pin.style.borderRadius = '50%';
+        pin.style.border = '2px solid white';
+        pin.style.boxShadow = '0 1px 4px rgba(0,0,0,0.4)';
+        wrapper.appendChild(pin);
+
+        var label = document.createElement('div');
+        label.className = 'ovcina-marker-label';
+        label.textContent = name;
+        label.style.fontSize = '11px';
+        label.style.fontWeight = '600';
+        label.style.color = '#1a1a2e';
+        label.style.textShadow = '0 0 3px white, 0 0 3px white, 0 0 3px white';
+        label.style.whiteSpace = 'nowrap';
+        label.style.marginTop = '2px';
+        label.style.pointerEvents = 'none';
+        wrapper.appendChild(label);
 
         var popup = new maplibregl.Popup({ offset: 10 })
             .setHTML('<strong>' + this._escapeHtml(name) + '</strong><br><small>' + this._escapeHtml(kind) + '</small>');
 
-        var marker = new maplibregl.Marker({ element: el })
+        var marker = new maplibregl.Marker({ element: wrapper, anchor: 'top' })
             .setLngLat([lon, lat])
             .setPopup(popup)
             .addTo(this._map);
 
-        el.addEventListener('click', (e) => {
+        wrapper.addEventListener('click', (e) => {
             e.stopPropagation();
             if (this._dotnetRef) {
                 this._dotnetRef.invokeMethodAsync('OnMarkerClicked', id);

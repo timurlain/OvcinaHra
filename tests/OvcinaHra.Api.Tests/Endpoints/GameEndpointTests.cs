@@ -70,16 +70,17 @@ public class GameEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
     }
 
     [Fact]
-    public async Task Delete_ExistingGame_ReturnsNoContent()
+    public async Task Delete_ExistingGame_IsDisabled()
     {
-        var dto = new CreateGameDto("To Delete", 1, new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 2));
+        var dto = new CreateGameDto("Protected", 1, new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 2));
         var createResponse = await Client.PostAsJsonAsync("/api/games", dto);
         var created = await createResponse.Content.ReadFromJsonAsync<GameDetailDto>();
 
         var response = await Client.DeleteAsync($"/api/games/{created!.Id}");
-        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
 
+        // Game still exists
         var getResponse = await Client.GetAsync($"/api/games/{created.Id}");
-        Assert.Equal(HttpStatusCode.NotFound, getResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
     }
 }
