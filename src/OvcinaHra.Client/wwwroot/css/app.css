@@ -386,6 +386,38 @@ code {
 .font-heading { font-family: var(--oh-font-heading) !important; }
 .font-mono { font-family: var(--oh-font-mono) !important; }
 
+/* === Collapsed sidebar === */
+
+.sidebar-collapsed .sidebar {
+    width: 60px !important;
+}
+
+.sidebar-collapsed .navbar-brand {
+    font-size: 0;
+}
+
+.sidebar-collapsed .navbar-brand .bi {
+    font-size: 1.15rem;
+}
+
+.sidebar-collapsed .oh-nav-section-label {
+    display: none;
+}
+
+.sidebar-collapsed .nav-item a span,
+.sidebar-collapsed .nav-link {
+    font-size: 0;
+    gap: 0;
+}
+
+.sidebar-collapsed .nav-link .bi {
+    font-size: 1.125rem;
+}
+
+.sidebar-collapsed .nav-footer span {
+    display: none;
+}
+
 /* === Scrollbar styling (subtle, warm) === */
 
 ::-webkit-scrollbar {

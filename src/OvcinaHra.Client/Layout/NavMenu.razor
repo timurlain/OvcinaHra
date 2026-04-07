@@ -77,11 +77,20 @@
     </nav>
 
     <div class="nav-footer">
-        © 2026 Ovčina v@(AppVersion)
+        <button class="collapse-toggle" title="Sbalit menu" @onclick="OnToggle" @onclick:stopPropagation="true">
+            <i class="bi @(Collapsed ? "bi-chevron-right" : "bi-chevron-left")"></i>
+        </button>
+        @if (!Collapsed)
+        {
+            <span>© 2026 Ovčina v@(AppVersion)</span>
+        }
     </div>
 </div>
 
 @code {
+    [Parameter] public bool Collapsed { get; set; }
+    [Parameter] public EventCallback OnToggle { get; set; }
+
     private static string AppVersion =>
         typeof(NavMenu).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()

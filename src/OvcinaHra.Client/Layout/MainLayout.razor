@@ -1,8 +1,8 @@
 @inherits LayoutComponentBase
 
-<div class="page">
+<div class="page @(sidebarCollapsed ? "sidebar-collapsed" : "")">
     <div class="sidebar">
-        <NavMenu />
+        <NavMenu Collapsed="sidebarCollapsed" OnToggle="ToggleSidebar" />
     </div>
 
     <main>
@@ -25,6 +25,9 @@
 
 @code {
     [Inject] private JwtAuthStateProvider AuthProvider { get; set; } = default!;
+
+    private bool sidebarCollapsed;
+    private void ToggleSidebar() => sidebarCollapsed = !sidebarCollapsed;
 
     private async Task Logout()
     {
