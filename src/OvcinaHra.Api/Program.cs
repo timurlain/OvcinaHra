@@ -91,6 +91,8 @@ try
             options.SignInScheme = "ExternalLogin";
             options.ClientId = msId;
             options.ClientSecret = msSecret;
+            options.AuthorizationEndpoint = "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize";
+            options.TokenEndpoint = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
         });
     }
 
@@ -194,7 +196,7 @@ try
         ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor
             | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto
     };
-    forwardedHeadersOptions.KnownNetworks.Clear();
+    forwardedHeadersOptions.KnownIPNetworks.Clear();
     forwardedHeadersOptions.KnownProxies.Clear();
     app.UseForwardedHeaders(forwardedHeadersOptions);
     app.UseHttpsRedirection();
