@@ -59,6 +59,13 @@ public class ApiClient
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task<T?> PostMultipartAsync<T>(string url, MultipartFormDataContent content)
+    {
+        var response = await _http.PostAsync(url, content);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<T>(JsonOptions);
+    }
+
     public async Task<bool> DeleteAsync(string url)
     {
         var response = await _http.DeleteAsync(url);

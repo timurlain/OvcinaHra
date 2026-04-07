@@ -20,8 +20,28 @@ else
             <DxGridDataColumn FieldName="LocationKind" Caption="Typ" Width="160px">
                 <CellDisplayTemplate>@(((LocationKind)context.Value).GetDisplayName())</CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="Latitude" Caption="Šířka" Width="120px" DisplayFormat="F5" />
-            <DxGridDataColumn FieldName="Longitude" Caption="Délka" Width="120px" DisplayFormat="F5" />
+            <DxGridDataColumn FieldName="ParentLocationId" Caption="Rodič / Varianty" Width="200px">
+                <CellDisplayTemplate>
+                    @{
+                        var loc = (LocationListDto)context.DataItem;
+                        if (loc.ParentLocationId.HasValue)
+                        {
+                            var parent = locations.FirstOrDefault(l => l.Id == loc.ParentLocationId.Value);
+                            <span class="text-muted">↳ @(parent?.Name ?? $"#{loc.ParentLocationId}")</span>
+                        }
+                        else
+                        {
+                            var variantCount = locations.Count(l => l.ParentLocationId == loc.Id);
+                            if (variantCount > 0)
+                            {
+                                <span class="badge bg-secondary">@variantCount variant@(variantCount > 1 ? "y" : "a")</span>
+                            }
+                        }
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="Latitude" Caption="Šířka" Width="120px" DisplayFormat="F5" Visible="false" />
+            <DxGridDataColumn FieldName="Longitude" Caption="Délka" Width="120px" DisplayFormat="F5" Visible="false" />
         </Columns>
     </OvcinaGrid>
 }

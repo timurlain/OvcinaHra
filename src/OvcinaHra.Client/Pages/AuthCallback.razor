@@ -1,0 +1,32 @@
+@page "/auth-callback"
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<div class="d-flex justify-content-center align-items-center" style="height: 50vh;">
+    <div class="text-center">
+        <div class="spinner-border text-primary mb-3" role="status"></div>
+        <p>Přihlašování...</p>
+    </div>
+</div>
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        // Extract token from URL fragment via JS interop
+        var token = await JS.InvokeAsync<string>("eval",
+            "new URLSearchParams(window.location.hash.substring(1)).get('token')");
+
+        if (!string.IsNullOrEmpty(token))
+        {
+            // Store token — the JwtAuthStateProvider will pick it up
+            await JS.InvokeVoidAsync("localStorage.setItem", "auth_token", token);
+            Nav.NavigateTo("/", forceLoad: true);
+        }
+        else
+        {
+            Nav.NavigateTo("/login?error=no_token");
+        }
+    }
+}

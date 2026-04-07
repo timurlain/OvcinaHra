@@ -1,8 +1,10 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.IdentityModel.Tokens;
+using OvcinaHra.Api.Services;
 
 namespace OvcinaHra.Api.Endpoints;
 
@@ -67,6 +69,78 @@ public static class AuthEndpoints
             var name = user.FindFirstValue(ClaimTypes.Name);
             return TypedResults.Ok(new UserInfoDto(userId!, email!, name!));
         }).RequireAuthorization();
+
+        // List available OAuth providers (client uses this to show/hide buttons)
+        group.MapGet("/providers", async (IAuthenticationSchemeProvider schemes) =>
+        {
+            var all = await schemes.GetAllSchemesAsync();
+            var external = all
+                .Where(s => !string.IsNullOrEmpty(s.DisplayName) && s.Name != "Bearer" && s.Name != "ExternalLogin")
+                .Select(s => new { s.Name, s.DisplayName })
+                .ToList();
+            return Results.Ok(external);
+        }).AllowAnonymous();
+
+        // OAuth login — redirects to external provider
+        group.MapGet("/login/{provider}", async (string provider, IAuthenticationSchemeProvider schemes) =>
+        {
+            var scheme = await schemes.GetSchemeAsync(provider);
+            if (scheme is null)
+                return Results.BadRequest($"Poskytovatel '{provider}' není nakonfigurován.");
+
+            var redirectUrl = "/api/auth/callback";
+            var properties = new AuthenticationProperties { RedirectUri = redirectUrl };
+            return Results.Challenge(properties, [provider]);
+        }).AllowAnonymous();
+
+        // OAuth callback — verifies with registrace, issues JWT, redirects to client
+        group.MapGet("/callback", async (
+            HttpContext context, RegistraceClient registrace, IConfiguration config) =>
+        {
+            var result = await context.AuthenticateAsync("ExternalLogin");
+            if (!result.Succeeded)
+                return Results.Redirect("/login?error=auth_failed");
+
+            var email = result.Principal?.FindFirstValue(ClaimTypes.Email);
+            var name = result.Principal?.FindFirstValue(ClaimTypes.Name);
+
+            if (string.IsNullOrEmpty(email))
+                return Results.Redirect("/login?error=no_email");
+
+            // Verify with registrace
+            RegistraceUserInfo? userInfo = null;
+            try
+            {
+                userInfo = await registrace.CheckUserAsync(email);
+            }
+            catch
+            {
+                // If registrace is unreachable in dev, allow login anyway
+                if (!context.RequestServices.GetRequiredService<IWebHostEnvironment>().IsDevelopment())
+                    return Results.Redirect("/login?error=registrace_unavailable");
+                userInfo = new RegistraceUserInfo(true, name, ["Organizer"]);
+            }
+
+            if (!userInfo.Exists)
+                return Results.Redirect("/login?error=not_registered");
+
+            // Issue JWT
+            var displayName = userInfo.DisplayName ?? name ?? email;
+            var token = GenerateToken(config, [
+                new(ClaimTypes.NameIdentifier, email),
+                new(ClaimTypes.Email, email),
+                new(ClaimTypes.Name, displayName),
+                new(ClaimTypes.Role, "Organizer")
+            ]);
+
+            // Sign out the external cookie
+            await context.SignOutAsync("ExternalLogin");
+
+            // Redirect to WASM client with token in URL fragment
+            var clientUrl = config.GetSection("Cors:Origins").Get<string[]>()?.FirstOrDefault()
+                ?? "https://localhost:5290";
+            return Results.Redirect($"{clientUrl}/auth-callback#token={token.Token}&expires={token.ExpiresInSeconds}");
+        }).AllowAnonymous();
 
         return group;
     }

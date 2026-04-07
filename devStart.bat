@@ -8,6 +8,18 @@ echo Stopping existing processes...
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr :5280 ^| findstr LISTENING 2^>nul') do taskkill /F /PID %%a >nul 2>&1
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr :5290 ^| findstr LISTENING 2^>nul') do taskkill /F /PID %%a >nul 2>&1
 
+:: Start Docker services (postgres + azurite)
+echo Starting Docker services (postgres, azurite)...
+docker compose up -d
+if errorlevel 1 (
+    echo DOCKER FAILED - is Docker Desktop running?
+    pause
+    exit /b 1
+)
+:: Wait for postgres to be ready
+echo Waiting for postgres...
+timeout /t 3 /nobreak >nul
+
 :: Build solution
 echo Building solution...
 dotnet build OvcinaHra.slnx
@@ -34,7 +46,8 @@ echo Opening browser...
 start chrome https://localhost:5290
 
 echo ========================================
-echo   API:    https://localhost:5280
-echo   Client: https://localhost:5290
+echo   Docker:  postgres:5434, azurite:10000
+echo   API:     https://localhost:5280
+echo   Client:  https://localhost:5290
 echo   OpenAPI: https://localhost:5280/openapi/v1.json
 echo ========================================
