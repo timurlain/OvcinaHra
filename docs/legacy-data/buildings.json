@@ -1,0 +1,86 @@
+[
+  {
+    "name": "Pramen hvězd",
+    "description": null
+  },
+  {
+    "name": "Studna",
+    "description": null
+  },
+  {
+    "name": "Pila",
+    "description": "Produkce suroviny o 4 nahoru. Patří hráčům nebo králi."
+  },
+  {
+    "name": "Důl",
+    "description": "Produkce suroviny o 4 nahoru. Patří hráčům nebo králi."
+  },
+  {
+    "name": "Vinice",
+    "description": "Produkce suroviny o 4 nahoru. Patří hráčům nebo králi."
+  },
+  {
+    "name": "Vesnice",
+    "description": "Dává 3 jídla. A 3 dané suroviny."
+  },
+  {
+    "name": "Stáje",
+    "description": "Ve městě se dají kupovat koně."
+  },
+  {
+    "name": "Psinec",
+    "description": "Ve městě se dají kupovat psi."
+  },
+  {
+    "name": "Velká pec",
+    "description": "Ve městě se dají kupovat zbraně úrovně 5 a kovat legendární zbraně."
+  },
+  {
+    "name": "Velká magická dílna",
+    "description": "Ve městě se dají kupovat kouzla úrovně 5 a tvořit legendární artefakty mimo zbraní."
+  },
+  {
+    "name": "Dům",
+    "description": "Jeden obyvatel má dům - spotřebuje za zimu o 2 dřeva méně"
+  },
+  {
+    "name": "Lazaret",
+    "description": "Za jedno období vyléčí jednoho obyvatele z omrzlin."
+  },
+  {
+    "name": "Statky",
+    "description": "Za každý statek ve vesnici či městě se dá koupit danou hodinu jedno jídlo. Jídlo stojí 6 grošů."
+  },
+  {
+    "name": "Koželužna",
+    "description": "Vesnice produkuje 1 kožešinu."
+  },
+  {
+    "name": "Malá magická dílna",
+    "description": "Ve městě se dají kupovat kouzla úrovně 4."
+  },
+  {
+    "name": "Malá výheň",
+    "description": "Ve městě se dají kupovat zbraně úrovně 4."
+  },
+  {
+    "name": "Prstenová věž",
+    "description": "Dává králi za období 5 jídla, 12 grošů a 2 kouzla dle vlastního výběru a snižuje cenu jídla na statcích o 1."
+  },
+  {
+    "name": "Bradavičné gladiátorské gymnázium Bilba Pytlíka",
+    "description": "Groše se dají měnit za zkušenosti v poměru 5 grošů = 1 zkušenost."
+  },
+  {
+    "name": "Koželužna (II)",
+    "description": "Produkce suroviny o 4 nahoru. Patří hráčům nebo králi."
+  },
+  {
+    "name": "Svatyně",
+    "description": "Otevírá Svatyni"
+  },
+  {
+    "name": "Manufaktura",
+    "description": "Pouze ve městě. Produkce 1 zboží za období, zboží se dává do trhové krabice. Patří postavám nebo králi. Po postavení dává staviteli ihned 5 grošů zpět a jedno zboží se přidá do Trhové krabice.\nKaždé období dá hráči 4 + X grošů, kde X je celkový počet manufaktur ve městě (včetně této) = 1. manufaktura dá tedy 5 grošů za období."
+  }
+]

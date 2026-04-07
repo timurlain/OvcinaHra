@@ -1,44 +1,50 @@
-using Microsoft.JSInterop;
+using OvcinaHra.Shared.Domain.Enums;
+using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Client.Services;
 
 /// <summary>
-/// Holds the currently selected game edition. All per-game pages use this
-/// instead of hardcoding a game ID. Persisted to localStorage.
+/// Holds the active game — the one with Status=Active in the database.
+/// This is a global state, not a per-user selection. All per-game pages use this.
 /// </summary>
 public class GameContextService
 {
-    private const string StorageKey = "selected_game_id";
-    private readonly IJSRuntime _js;
+    private readonly ApiClient _api;
     private int? _selectedGameId;
+    private string? _gameName;
     private bool _initialized;
 
     public event Action? OnGameChanged;
 
-    public GameContextService(IJSRuntime js) => _js = js;
+    public GameContextService(ApiClient api) => _api = api;
 
     public int? SelectedGameId => _selectedGameId;
+    public string? GameName => _gameName;
 
     public async Task InitializeAsync()
     {
         if (_initialized) return;
         try
         {
-            var stored = await _js.InvokeAsync<string?>("localStorage.getItem", StorageKey);
-            if (int.TryParse(stored, out var id))
-                _selectedGameId = id;
+            var games = await _api.GetListAsync<GameListDto>("/api/games");
+            var active = games.FirstOrDefault(g => g.Status == GameStatus.Active);
+            if (active is not null)
+            {
+                _selectedGameId = active.Id;
+                _gameName = $"{active.Name} (#{active.Edition})";
+            }
         }
-        catch { /* pre-render */ }
+        catch { /* offline or API unavailable */ }
         _initialized = true;
     }
 
-    public async Task SetGameAsync(int? gameId)
+    /// <summary>
+    /// Force a reload of the active game from the API.
+    /// </summary>
+    public async Task RefreshAsync()
     {
-        _selectedGameId = gameId;
-        if (gameId.HasValue)
-            await _js.InvokeVoidAsync("localStorage.setItem", StorageKey, gameId.Value.ToString());
-        else
-            await _js.InvokeVoidAsync("localStorage.removeItem", StorageKey);
+        _initialized = false;
+        await InitializeAsync();
         OnGameChanged?.Invoke();
     }
 }

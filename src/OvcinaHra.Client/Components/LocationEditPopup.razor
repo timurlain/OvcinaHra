@@ -1,0 +1,178 @@
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Dtos
+@using OvcinaHra.Client.Pages.Locations
+@inject ApiClient Api
+
+<DxPopup AllowResize="true" @bind-Visible="@isVisible" HeaderText="@modalTitle" Width="975px" MinHeight="700px">
+    <BodyContentTemplate Context="popupContext">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Název" ColSpanMd="8">
+                <DxTextBox @bind-Text="@model.Name" data-testid="location-name" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Typ" ColSpanMd="4">
+                <DxComboBox Data="@kindValues" @bind-Value="@model.LocationKind"
+                            TextFieldName="Display" ValueFieldName="Value" data-testid="location-kind" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Popis (fantasy)" ColSpanMd="12">
+                <DxMemo @bind-Text="@model.Description" Rows="5" data-testid="location-description" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Info pro CP (NPC)" ColSpanMd="12">
+                <DxMemo @bind-Text="@model.NpcInfo" Rows="4" data-testid="location-npc" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Co nachystat na lokaci" ColSpanMd="12">
+                <DxMemo @bind-Text="@model.SetupNotes" Rows="3" data-testid="location-setup" />
+            </DxFormLayoutItem>
+            @if (editingId.HasValue)
+            {
+                <DxFormLayoutItem Caption="Obrázek" ColSpanMd="12">
+                    <ImagePicker EntityType="locations" EntityId="editingId.Value" Alt="Ilustrace lokace" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Foto umístění" ColSpanMd="12">
+                    <ImagePicker EntityType="locations" EntityId="editingId.Value" Field="placement" Alt="Foto umístění" />
+                </DxFormLayoutItem>
+            }
+            <DxFormLayoutItem Caption="GPS" ColSpanMd="12">
+                @if (model.Latitude.HasValue && model.Longitude.HasValue)
+                {
+                    <div class="text-muted small">@($"{model.Latitude.Value:F7}, {model.Longitude.Value:F7}") — upravit na mapě</div>
+                }
+                else
+                {
+                    <div class="text-muted small"><span class="badge bg-warning text-dark">Nepřiřazeno</span> — nastavit na mapě nebo přes kontext. menu</div>
+                }
+            </DxFormLayoutItem>
+        </DxFormLayout>
+
+        @* Variant links *@
+        @if (parentName is not null)
+        {
+            <div class="alert alert-info mt-2 mb-0 py-2">
+                <small>Varianta lokace</small>
+                <a href="#" @onclick="() => OnVariantNavigate.InvokeAsync(parentId!.Value)" @onclick:preventDefault class="d-block fw-bold">
+                    ← @parentName
+                </a>
+            </div>
+        }
+        @if (variants.Count > 0)
+        {
+            <div class="alert alert-secondary mt-2 mb-0 py-2">
+                <small>Varianty (@variants.Count)</small>
+                @foreach (var v in variants)
+                {
+                    <a href="#" @onclick="() => OnVariantNavigate.InvokeAsync(v.Id)" @onclick:preventDefault class="d-block">
+                        → @v.Name <span class="text-muted">(@v.LocationKind.GetDisplayName())</span>
+                    </a>
+                }
+            </div>
+        }
+
+        @if (error is not null) { <div class="alert alert-danger mt-2">@error</div> }
+
+        <div class="d-flex gap-2 mt-3">
+            @if (editingId.HasValue)
+            {
+                <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true" disabled="@isSaving" data-testid="delete-location">Smazat</button>
+            }
+            <div style="flex: 1"></div>
+            <button class="btn btn-secondary" @onclick="Close" disabled="@isSaving">Zrušit</button>
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving" data-testid="save-location">
+                @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Uložit
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Opravdu chcete smazat lokaci <strong>@model.Name</strong>?</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    [Parameter] public EventCallback OnSaved { get; set; }
+    [Parameter] public EventCallback<int> OnVariantNavigate { get; set; }
+    /// <summary>Provides all locations for resolving parent names.</summary>
+    [Parameter] public List<LocationListDto> AllLocations { get; set; } = [];
+
+    private bool isVisible, isDeleteVisible, isSaving;
+    private string modalTitle = "";
+    private string? error;
+    private int? editingId;
+    private LocationFormModel model = new();
+    private int? parentId;
+    private string? parentName;
+    private List<LocationVariantDto> variants = [];
+
+    private static readonly List<KindItem> kindValues = Enum.GetValues<LocationKind>()
+        .Select(k => new KindItem(k, k.GetDisplayName())).ToList();
+    record KindItem(LocationKind Value, string Display);
+
+    /// <summary>Open for editing an existing location.</summary>
+    public async Task OpenAsync(int locationId)
+    {
+        error = null;
+        var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{locationId}");
+        if (detail is null) return;
+
+        editingId = locationId;
+        model = LocationFormModel.FromDetail(detail);
+        modalTitle = $"Upravit: {detail.Name}";
+        variants = detail.Variants;
+        parentId = detail.ParentLocationId;
+        parentName = parentId.HasValue
+            ? AllLocations.FirstOrDefault(l => l.Id == parentId.Value)?.Name ?? $"Lokace #{parentId}"
+            : null;
+        isVisible = true;
+    }
+
+    /// <summary>Open for creating a new location at given coordinates.</summary>
+    public void OpenNew(decimal latitude = 49.4532m, decimal longitude = 18.0203m)
+    {
+        error = null;
+        editingId = null;
+        model = new LocationFormModel { Latitude = latitude, Longitude = longitude };
+        modalTitle = "Nová lokace";
+        variants = [];
+        parentId = null;
+        parentName = null;
+        isVisible = true;
+    }
+
+    public void Close() => isVisible = false;
+
+    private async Task SaveAsync()
+    {
+        error = null; isSaving = true;
+        try
+        {
+            if (editingId.HasValue)
+                await Api.PutAsync($"/api/locations/{editingId}", model.ToUpdateDto());
+            else
+                await Api.PostAsync<CreateLocationDto, LocationDetailDto>("/api/locations", model.ToCreateDto());
+
+            isVisible = false;
+            await OnSaved.InvokeAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        isSaving = true;
+        try
+        {
+            await Api.DeleteAsync($"/api/locations/{editingId}");
+            isDeleteVisible = false;
+            isVisible = false;
+            await OnSaved.InvokeAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
+}

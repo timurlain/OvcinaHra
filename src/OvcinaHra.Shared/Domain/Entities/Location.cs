@@ -9,7 +9,7 @@ public class Location
     public required string Name { get; set; }
     public string? Description { get; set; }
     public LocationKind LocationKind { get; set; }
-    public GpsCoordinates Coordinates { get; set; } = null!;
+    public GpsCoordinates? Coordinates { get; set; }
     public string? ImagePath { get; set; }
     public string? PlacementPhotoPath { get; set; }
     public string? NpcInfo { get; set; }

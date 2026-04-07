@@ -415,6 +415,35 @@ code {
     justify-content: center;
 }
 
+/* === Map legend === */
+
+.map-legend {
+    position: absolute;
+    bottom: 1rem;
+    left: 1rem;
+    background: rgba(255, 248, 240, 0.92);
+    border: 1px solid var(--oh-border);
+    border-radius: var(--oh-radius);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    box-shadow: var(--oh-shadow);
+    z-index: 10;
+}
+
+.map-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.125rem 0;
+}
+
+.map-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
 /* === Scrollbar styling (subtle, warm) === */
 
 ::-webkit-scrollbar {

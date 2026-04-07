@@ -7,14 +7,15 @@ public class LocationFormModel
 {
     public string Name { get; set; } = "";
     public LocationKind LocationKind { get; set; } = LocationKind.Village;
-    public decimal Latitude { get; set; } = 49.75m;
-    public decimal Longitude { get; set; } = 17.25m;
+    public decimal? Latitude { get; set; }
+    public decimal? Longitude { get; set; }
     public string? Description { get; set; }
     public string? NpcInfo { get; set; }
     public string? SetupNotes { get; set; }
+    public int? ParentLocationId { get; set; }
 
-    public CreateLocationDto ToCreateDto() => new(Name, LocationKind, Latitude, Longitude, Description, NpcInfo, SetupNotes);
-    public UpdateLocationDto ToUpdateDto() => new(Name, LocationKind, Latitude, Longitude, Description, NpcInfo, SetupNotes);
+    public CreateLocationDto ToCreateDto() => new(Name, LocationKind, Latitude, Longitude, Description, NpcInfo, SetupNotes, ParentLocationId);
+    public UpdateLocationDto ToUpdateDto() => new(Name, LocationKind, Latitude, Longitude, Description, NpcInfo, SetupNotes, ParentLocationId);
 
     public static LocationFormModel FromDetail(LocationDetailDto dto) => new()
     {
@@ -24,6 +25,7 @@ public class LocationFormModel
         Longitude = dto.Longitude,
         Description = dto.Description,
         NpcInfo = dto.NpcInfo,
-        SetupNotes = dto.SetupNotes
+        SetupNotes = dto.SetupNotes,
+        ParentLocationId = dto.ParentLocationId
     };
 }

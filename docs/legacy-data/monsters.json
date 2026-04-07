@@ -1,0 +1,742 @@
+[
+  {
+    "name": "Zombie",
+    "category": 1,
+    "monsterType": "Undead",
+    "abilities": "Každé kolo souboje hrajou až jako druhé. Hromadný útok. Všechny zombie v souboji vedou útok jako jednu akci. Jejich celkový útok je součet jejich individuálních útoků a jeden hod k6+.",
+    "aiBehavior": "Útočí na nepřítele s nejmenším počtem životů.",
+    "attack": 4,
+    "defense": 4,
+    "health": 10
+  },
+  {
+    "name": "Kostlivec",
+    "category": 1,
+    "monsterType": "Undead",
+    "abilities": null,
+    "aiBehavior": "Útočí na nepřítele s nejmenším počtem životů, Kryje kostlivé lučištníky",
+    "attack": 2,
+    "defense": 7,
+    "health": 7
+  },
+  {
+    "name": "Kostlivý lučištník",
+    "category": 1,
+    "monsterType": "Undead",
+    "abilities": "Útočí na nepřítele s nejmenším počtem životů",
+    "aiBehavior": null,
+    "attack": 4,
+    "defense": 0,
+    "health": 7
+  },
+  {
+    "name": "Přízrak",
+    "category": 2,
+    "monsterType": "Undead",
+    "abilities": "Když zasáhne nepřítele, dá si s ním KNP2: V – zasažený nepřítel přijde o akci",
+    "aiBehavior": "Útočí na nepřítele s nejmenším počtem životů, který ješte neprovedl akci.",
+    "attack": 8,
+    "defense": 6,
+    "health": 15
+  },
+  {
+    "name": "Kostlivý rytíř",
+    "category": 2,
+    "monsterType": "Undead",
+    "abilities": null,
+    "aiBehavior": "Útočí na nepřítele s nejmenším počtem životů.",
+    "attack": 7,
+    "defense": 9,
+    "health": 20
+  },
+  {
+    "name": "Kostlivý mág",
+    "category": 2,
+    "monsterType": "Undead",
+    "abilities": "Neútočí, každé kolo sešle kouzlo jedový mrak: Zraní všechny nepřátele za 3ž jedem.",
+    "aiBehavior": null,
+    "attack": 7,
+    "defense": 1,
+    "health": 15
+  },
+  {
+    "name": "Nafouknutá zombie",
+    "category": 2,
+    "monsterType": "Undead",
+    "abilities": "Pokud je zabita blízkým útokem, hráč, který ji zabil, je zraněn výbuchem za 10 životů.",
+    "aiBehavior": "Útočí na nepřítele s nejmenším počtem životů.",
+    "attack": 6,
+    "defense": 6,
+    "health": 15
+  },
+  {
+    "name": "Mohylový duch",
+    "category": 3,
+    "monsterType": "Undead",
+    "abilities": "Melodie šílenství: v každém kole je druhá postava, která na mohylového ducha útočí, zmatena a útočí místo toho na první postavu, která útočila. Pokud je duch navíc ve své mohyle, má stálý bonus +3/+3 a je imunní proti kouzlům 1. a 0. úrovně.",
+    "aiBehavior": "Útočí na nepřítele s nejmenším počtem životů",
+    "attack": 12,
+    "defense": 8,
+    "health": 25
+  },
+  {
+    "name": "Armáda močálových přízraků",
+    "category": 3,
+    "monsterType": "Undead",
+    "abilities": "6 akcí za kolo, počítá se za 3 bytosti",
+    "aiBehavior": "Útočí na nepřítele s nejmenším počtem životů",
+    "attack": 10,
+    "defense": 5,
+    "health": 50
+  },
+  {
+    "name": "Prstenový přízrak",
+    "category": 3,
+    "monsterType": "Undead",
+    "abilities": "Kdykoliv někoho zraní, vezme mu kromě životů i 3 duše. Ženy mají při útoku na něj +10 do ÚČ.",
+    "aiBehavior": "Inteligentní. Útočí na toho, koho považuje za největší hrozbu.",
+    "attack": 10,
+    "defense": 20,
+    "health": 15
+  },
+  {
+    "name": "Kostěný drak",
+    "category": 4,
+    "monsterType": "Undead",
+    "abilities": "2 akce za kolo. Každé kolo útočí jako první. V souboji, kterého se účastní, nefungují léčivá kouzla.",
+    "aiBehavior": "Inteligentní. Útočí na toho, koho považuje za největší hrozbu.",
+    "attack": 15,
+    "defense": 15,
+    "health": 50
+  },
+  {
+    "name": "Zlomyslná jiskra",
+    "category": 1,
+    "monsterType": "Miscellaneous",
+    "abilities": "Neútočí, každé kolo sesílá kouzlo Jiskra: zraň nepřitele za 3ž.",
+    "aiBehavior": "Cílí hráče, který jako poslední promluvil.",
+    "attack": 1,
+    "defense": 3,
+    "health": 5
+  },
+  {
+    "name": "Kouzelná létající šavle",
+    "category": 1,
+    "monsterType": "Miscellaneous",
+    "abilities": "Kdykoliv utrpí zranění, pokud není smrtelné, okamžitě si ho vyléčí.",
+    "aiBehavior": "Útočí na postavu s nějvětší zbraní.",
+    "attack": 5,
+    "defense": 2,
+    "health": 8
+  },
+  {
+    "name": "Harpyje",
+    "category": 1,
+    "monsterType": "Miscellaneous",
+    "abilities": "Létá. Může být cílem blízkých útoků pouze pokud zrovna útočila.",
+    "aiBehavior": "Útočí na postavu s hlavou nejvýše nad zemí.",
+    "attack": 4,
+    "defense": 4,
+    "health": 8
+  },
+  {
+    "name": "Salamandr",
+    "category": 2,
+    "monsterType": "Miscellaneous",
+    "abilities": "Imunní proti ohni. Každý, kdo na něj útočí blízkým útokem, je automaticky zraněn za 3ž ohněm.",
+    "aiBehavior": "Cílí hráče, který jako poslední promluvil.",
+    "attack": 6,
+    "defense": 6,
+    "health": 15
+  },
+  {
+    "name": "Huorn",
+    "category": 2,
+    "monsterType": "Miscellaneous",
+    "abilities": "Kdykoliv utrpí zranění nižší než 5 životů, ignoruje jej. Oheň jej zraňuje za dvojnásobek.",
+    "aiBehavior": "Útočí na postavu se ohněm, případně se sekerou.",
+    "attack": 7,
+    "defense": 7,
+    "health": 20
+  },
+  {
+    "name": "Harpyjí bojovnice",
+    "category": 2,
+    "monsterType": "Miscellaneous",
+    "abilities": "Létá. Může být cílem blízkých útoků pouze, pokud zrovna útočila.",
+    "aiBehavior": "Útočí na postavu s hlavou nejvýše nad zemí.",
+    "attack": 10,
+    "defense": 5,
+    "health": 15
+  },
+  {
+    "name": "Mrak Černých Vran",
+    "category": 2,
+    "monsterType": "Miscellaneous",
+    "abilities": "Útokem cílí dva nepřátele. Ignorují krytí. Oheň je zraňuje za dvojnásobek.",
+    "aiBehavior": "Útočí  na dva hráče s hlavou nejdále od země.",
+    "attack": 2,
+    "defense": 12,
+    "health": 20
+  },
+  {
+    "name": "Hlídač pod hladinou",
+    "category": 3,
+    "monsterType": "Miscellaneous",
+    "abilities": "Souboj začíná schovaný. Na první útok hází 2k6+. 3 akce.",
+    "aiBehavior": "Všemi útoky cílí hráče, který je nejvíce vzadu. Zasažený hráč nemůže provádět žádnou akci. Takto chycena může být jen jedna postava.",
+    "attack": 10,
+    "defense": 6,
+    "health": 30
+  },
+  {
+    "name": "Ent",
+    "category": 3,
+    "monsterType": "Miscellaneous",
+    "abilities": "Kdykoliv utrpí zranění nižší než 5 životů, ignoruje jej. Oheň jej zraňuje za dvojnásobek.",
+    "aiBehavior": "Útočí na postavu se ohněm, případně se sekerou.",
+    "attack": 15,
+    "defense": 12,
+    "health": 30
+  },
+  {
+    "name": "Lesní Drak",
+    "category": 3,
+    "monsterType": "Miscellaneous",
+    "abilities": "2 akce. Zranění, která způsobí, jsou otrávená a v souboji nemohou být léčena.",
+    "aiBehavior": null,
+    "attack": 13,
+    "defense": 10,
+    "health": 30
+  },
+  {
+    "name": "Kamenný Obr",
+    "category": 3,
+    "monsterType": "Miscellaneous",
+    "abilities": "Imunní proti ohni. Pokud udělí zranění alespoň za 1ž, zvyšuje se zranění na 20 životů. Hráč se může tomuto zranění vyhnout tím, že okamžitě opustí souboj.",
+    "aiBehavior": null,
+    "attack": 5,
+    "defense": 20,
+    "health": 20
+  },
+  {
+    "name": "Ledový Obr",
+    "category": 3,
+    "monsterType": "Miscellaneous",
+    "abilities": "Dostává dvojnásobné zranění ohněm. Postavy, které zasáhne, si musí dřepnout a nemůžou se hýbat ani utéct ze souboje. Toto přetrvá I po skončení souboje. Po souboji lze vyléčit provedením 10 dřepů.",
+    "aiBehavior": "Útočí na nejvyššího hráče.",
+    "attack": 10,
+    "defense": 20,
+    "health": 20
+  },
+  {
+    "name": "Velký drak",
+    "category": 4,
+    "monsterType": "Miscellaneous",
+    "abilities": "Imunní proti ohni. 3 akce. Tou první je vždy ohnivý dech, který zraní každého nepřitele za 10ž ohněm.",
+    "aiBehavior": "Inteligentní.",
+    "attack": 15,
+    "defense": 15,
+    "health": 50
+  },
+  {
+    "name": "Balrog",
+    "category": 4,
+    "monsterType": "Miscellaneous",
+    "abilities": "2 akce. Imunní proti ohni. Dvě faze, první když má víc než 21 životů, druhá 20 a méně. V první fázi je každý nepřítel, který na něj útočí blízkým útokem, zraněn za 7ž ohněm. V druhé fázi příjde o ohnivý štít, ale atributy se změní na 20/10",
+    "aiBehavior": "Inteligentní",
+    "attack": 12,
+    "defense": 10,
+    "health": 40
+  },
+  {
+    "name": "Nekromant",
+    "category": 4,
+    "monsterType": "Miscellaneous",
+    "abilities": "2 Akce, Všichni nemrtví mají +5/+0. Neútočí, ale kouzlí. Kouzla k dispozici: Vysátí: Libovolný nepřitel příjde o 10 životů, nekromant si vyléčí 5. Nekromancie: povolej do souboje kostlivce 5/5 s 10 životy. Korupce: Dej si KNP3 s libovolným nepřítelem. V- tento nepřítel použije svou příští akci na útok na cíl tvé volby. Pokud není poražen, všechny postavy poražené nekromantem se po souboji přidávají na jeho stranu.",
+    "aiBehavior": "Inteligentní",
+    "attack": 5,
+    "defense": 10,
+    "health": 30
+  },
+  {
+    "name": "Snaga",
+    "category": 1,
+    "monsterType": "Goblin",
+    "abilities": "Jsou-li nějací skřeti v záloze, získá +3/+0. Pokud je na konci kola méně skřetů, než postav, snaží se utéct.",
+    "aiBehavior": "Zbabělý, útočí na nejmenšího hráče",
+    "attack": 2,
+    "defense": 2,
+    "health": 5
+  },
+  {
+    "name": "Skřetí hrdlořez",
+    "category": 1,
+    "monsterType": "Goblin",
+    "abilities": "Jsou-li nějací skřeti v záloze, získá +3/+0.",
+    "aiBehavior": "Útočí na hráče, který jako poslední prováděl akci. Kryje lučištníky a další skřety.",
+    "attack": 3,
+    "defense": 4,
+    "health": 10
+  },
+  {
+    "name": "Skřetí lučištník",
+    "category": 1,
+    "monsterType": "Goblin",
+    "abilities": "Když jej nikdo nekryje, dává se na útěk.",
+    "aiBehavior": "Útočí na hráče, který jako poslední prováděl akci.",
+    "attack": 5,
+    "defense": 1,
+    "health": 10
+  },
+  {
+    "name": "Uruk-Hai",
+    "category": 2,
+    "monsterType": "Goblin",
+    "abilities": "Pokud dostane zranění za 3 a méně životů, ignoruje jej.",
+    "aiBehavior": "Útočí na hráče, který jako poslední prováděl akci.",
+    "attack": 6,
+    "defense": 7,
+    "health": 15
+  },
+  {
+    "name": "Uruk bubeník",
+    "category": 2,
+    "monsterType": "Goblin",
+    "abilities": "Neútočí. Všichni skřeti jej brání. Dokud je v souboji, všichni skřeti mají +2/+0",
+    "aiBehavior": null,
+    "attack": 2,
+    "defense": 8,
+    "health": 15
+  },
+  {
+    "name": "Jezdec na Vlku",
+    "category": 2,
+    "monsterType": "Goblin",
+    "abilities": "Když dostane smrtelný zásah, vyléčí se na 10 životů a atributy se mu změní na 5/5. Nikoho nemůže krýt.",
+    "aiBehavior": "Útočí na hráče, který jako poslední prováděl akci.",
+    "attack": 10,
+    "defense": 5,
+    "health": 10
+  },
+  {
+    "name": "Olog-hai",
+    "category": 3,
+    "monsterType": "Goblin",
+    "abilities": "Pokud zraní hráče, dá si s ním KNP2: V- hráč příjde o kus zbroje s kvalitou +1. Pokud je zraněn za 5 a méně životů, zranění ignoruje.",
+    "aiBehavior": "Útočí na hráče, který jako poslední prováděl akci.",
+    "attack": 15,
+    "defense": 10,
+    "health": 30
+  },
+  {
+    "name": "Vlk",
+    "category": 1,
+    "monsterType": "Beast",
+    "abilities": null,
+    "aiBehavior": "Celá tlupa útočí vždy na postavu, jejíž hráč stojí první vpravo od NPC",
+    "attack": 3,
+    "defense": 2,
+    "health": 5
+  },
+  {
+    "name": "Vrrrk",
+    "category": 1,
+    "monsterType": "Beast",
+    "abilities": null,
+    "aiBehavior": "Celá tlupa útočí vždy na postavu, jejíž hráč stojí první vlevo od NPC",
+    "attack": 6,
+    "defense": 3,
+    "health": 7
+  },
+  {
+    "name": "Pavouk Snovač",
+    "category": 1,
+    "monsterType": "Beast",
+    "abilities": null,
+    "aiBehavior": "Útočí na postavu co je nejblíže. Když jsou v souboji, kryje pavouky vrhače",
+    "attack": 3,
+    "defense": 4,
+    "health": 5
+  },
+  {
+    "name": "Pavouk Vrhač",
+    "category": 1,
+    "monsterType": "Beast",
+    "abilities": "Střelec. Začíná souboj schovaný.",
+    "aiBehavior": "Útočí na nejbližší postavu, kterou někdo kryje.",
+    "attack": 6,
+    "defense": 2,
+    "health": 5
+  },
+  {
+    "name": "Medvěd Grizzly",
+    "category": 2,
+    "monsterType": "Beast",
+    "abilities": "Když mu životy klesnou na polovinu, získá do konce souboje +2 UČ a ihned jednou útočí na toho, kdo jej zranil",
+    "aiBehavior": "Útočí na nejvyššího hráče.",
+    "attack": 5,
+    "defense": 10,
+    "health": 20
+  },
+  {
+    "name": "Horský lev",
+    "category": 2,
+    "monsterType": "Beast",
+    "abilities": "Když zasáhne protivníka, poškození, které udílí, je dvojnásobkem rozdílu UČ-OČ",
+    "aiBehavior": "Útočí na hráče s nejdelšími vlasy.",
+    "attack": 7,
+    "defense": 7,
+    "health": 15
+  },
+  {
+    "name": "Pavouk smrtonoš",
+    "category": 2,
+    "monsterType": "Beast",
+    "abilities": "Začíná souboj schovaný.",
+    "aiBehavior": "Útočí na hráče, kterého někdo kryje. Druhé kolo se snaží schovat.",
+    "attack": 10,
+    "defense": 5,
+    "health": 15
+  },
+  {
+    "name": "Pavoučí matka",
+    "category": 2,
+    "monsterType": "Beast",
+    "abilities": "Všichni pavouci v bitvě mají +1/+1. Na konci kola vyvolá tolik pavouků snovačů, aby měla její strana 4 bytosti. Tito pavouci ji kryjí. Ona sama neútočí.",
+    "aiBehavior": null,
+    "attack": 2,
+    "defense": 10,
+    "health": 15
+  },
+  {
+    "name": "Obří masožravá želva",
+    "category": 2,
+    "monsterType": "Beast",
+    "abilities": "Imunní proti střelným zbraním.",
+    "aiBehavior": null,
+    "attack": 6,
+    "defense": 10,
+    "health": 20
+  },
+  {
+    "name": "Obří orel",
+    "category": 2,
+    "monsterType": "Beast",
+    "abilities": "Létá.  Lze na něj útočit pouze střelnými zbraněmi a kouzly. Blízkou zbraní na něj hráč útočit, pouze pokud byl právě cílem útoku.",
+    "aiBehavior": "Útočí na nejvyššího hráče. (počítá se aktuální výška, takže prikrčení pomáhá)",
+    "attack": 12,
+    "defense": 8,
+    "health": 20
+  },
+  {
+    "name": "Oliphant",
+    "category": 3,
+    "monsterType": "Beast",
+    "abilities": "Vede útok vždy na dva nepřátele. Ignoruje krytí, ignoruje schování.",
+    "aiBehavior": "Útočí střídavě na dva hráče vlevo a na dva hráče vpravo.",
+    "attack": 10,
+    "defense": 10,
+    "health": 30
+  },
+  {
+    "name": "Oživlý keř",
+    "category": 1,
+    "monsterType": "Miscellaneous",
+    "abilities": "Jakékoliv zranění ohněm jej okamžitě zabije.",
+    "aiBehavior": null,
+    "attack": 5,
+    "defense": 5,
+    "health": 12
+  },
+  {
+    "name": "Krysí hejno",
+    "category": 2,
+    "monsterType": "Beast",
+    "abilities": "Přenáší nemoci. Zranění, které údělí, není možné v souboji léčit. Oheň jej zraňuje za dvojnásobek. Pro potřeby krysodlaka se počítá jako tři krysy.",
+    "aiBehavior": "Útočí na postavu, která má hlavu nejníže u země.",
+    "attack": 5,
+    "defense": 5,
+    "health": 20
+  },
+  {
+    "name": "Oživlý břečťan",
+    "category": 2,
+    "monsterType": "Miscellaneous",
+    "abilities": "Oheň jej zraňuje za dvojnásobek. Když zasáhne postavu, ta nemůže útočit nebo sesílat kouzla na nikoho jiného než na oživlý břečťan nebo na sebe.",
+    "aiBehavior": "Útočí na postavu, která ještě nejela.",
+    "attack": 7,
+    "defense": 10,
+    "health": 20
+  },
+  {
+    "name": "Pavouk Zabiják",
+    "category": 2,
+    "monsterType": "Beast",
+    "abilities": "Jed: Pokud zasáhne a zraní postavu, ta má do konce tohoto kola -5 do UČ I OČ.",
+    "aiBehavior": "Útočí na postavu, toto kolo ještě nejela a bude útočit.",
+    "attack": 10,
+    "defense": 10,
+    "health": 12
+  },
+  {
+    "name": "Dcera Ungoliant",
+    "category": 3,
+    "monsterType": "Beast",
+    "abilities": "Jed: pokud zasáhne a zraní postavu, ta příjde o akci.",
+    "aiBehavior": "1",
+    "attack": 15,
+    "defense": 12,
+    "health": 20
+  },
+  {
+    "name": "Pán krys",
+    "category": 3,
+    "monsterType": "Beast",
+    "abilities": "Přenáší nemoci. Zranění, které údělí, není možné v souboji léčit. Kdykoliv je zasažen blízkým nebo střeleckým útokem, může veškere poškození přesměrovat na jinou krysu v souboji. Navyšuje limit postav v souboji o dvě krysy.",
+    "aiBehavior": "Útočí na postavu, která má hlavu nejníže u země.",
+    "attack": 15,
+    "defense": 5,
+    "health": 20
+  },
+  {
+    "name": "Skřetí král",
+    "category": 3,
+    "monsterType": "Goblin",
+    "abilities": "Dokud je na živu skřeti neutíkají a mají +2 do UČ. Místo útoku může provést akci povel: všichni skřeti v souboji vedou útok na jeden vybraný cíl.",
+    "aiBehavior": "Směřuje útoky na postavu, u které očekává nejmenší OČ",
+    "attack": 5,
+    "defense": 15,
+    "health": 20
+  },
+  {
+    "name": "Obr Gladiátor",
+    "category": 3,
+    "monsterType": "Legend",
+    "abilities": "2 akce. Uděluje dvojnásobné poškození. Imunní proti kouzlu zrcadlo. Útočí vždy na nepřitele s největším OČ.",
+    "aiBehavior": null,
+    "attack": 15,
+    "defense": 20,
+    "health": 50
+  },
+  {
+    "name": "Kamenný golem",
+    "category": 3,
+    "monsterType": "Miscellaneous",
+    "abilities": "2 akce. Imunní proti střelným zbraním a kouzlům.",
+    "aiBehavior": null,
+    "attack": 20,
+    "defense": 20,
+    "health": 30
+  },
+  {
+    "name": "Harpyjí lučištnice",
+    "category": 3,
+    "monsterType": "Miscellaneous",
+    "abilities": "Střelec. Má OČ 20 proti blízkým útokům.",
+    "aiBehavior": null,
+    "attack": 15,
+    "defense": 5,
+    "health": 20
+  },
+  {
+    "name": "Diamantový golem",
+    "category": 3,
+    "monsterType": "Legend",
+    "abilities": "2 akce. Imunní proti střelným zbraním a kouzlům. Útoky, které jej zasáhnou, jej zraňují za dvojnásobek.",
+    "aiBehavior": null,
+    "attack": 20,
+    "defense": 30,
+    "health": 30
+  },
+  {
+    "name": "Padlý čaroděj",
+    "category": 4,
+    "monsterType": "Legend",
+    "abilities": "Začína souboj s kamenným golemem 25/15, který jej kryje. Padlý čaroděj má 4 akce a může sesilat následující kouzla:  Zatemnění mysli (1/kolo); Ohnivá bouře (1/kolo); Zruš kouzlo (1/kolo); Zrcadlo (1/kolo); Dračí dech (libovolně)",
+    "aiBehavior": null,
+    "attack": 0,
+    "defense": 20,
+    "health": 50
+  },
+  {
+    "name": "Obří hejno škorpiónů",
+    "category": 4,
+    "monsterType": "Legend",
+    "abilities": "Na konci kola zraní každého nepřitele za 10 ž. Útoky a kouzla zasahující 1 cíl způsobují vždy maximálně 1 poškození. Ohnivá bouře zraňuje za dvojnásobek.",
+    "aiBehavior": null,
+    "attack": 0,
+    "defense": 0,
+    "health": 50
+  },
+  {
+    "name": "Prastarý bažinný trol",
+    "category": 4,
+    "monsterType": "Legend",
+    "abilities": "4 akce. Imunní proti ohni. Na konci kola se vždy plně vyléčí.",
+    "aiBehavior": null,
+    "attack": 15,
+    "defense": 20,
+    "health": 40
+  },
+  {
+    "name": "Prastarý drak",
+    "category": 5,
+    "monsterType": "Legend",
+    "abilities": "4 akce. Imunní proti magii. Na začátku každého kola zraní každého nepřítele za 10ž ohněm.",
+    "aiBehavior": null,
+    "attack": 30,
+    "defense": 20,
+    "health": 150
+  },
+  {
+    "name": "Ungoliant",
+    "category": 5,
+    "monsterType": "Legend",
+    "abilities": "6 akcí za kolo. Z toho 2 útoky s UČ40 a 4 útoky s UČ 15.",
+    "aiBehavior": null,
+    "attack": 40,
+    "defense": 20,
+    "health": 100
+  },
+  {
+    "name": "Tom Bombaštík",
+    "category": 5,
+    "monsterType": "Legend",
+    "abilities": null,
+    "aiBehavior": null,
+    "attack": 15,
+    "defense": 15,
+    "health": 30
+  },
+  {
+    "name": "Armáda duchů",
+    "category": 5,
+    "monsterType": "Legend",
+    "abilities": "Ignoruje krytí a schování. Vede 2 útoky na každého protivníka.",
+    "aiBehavior": null,
+    "attack": 20,
+    "defense": 0,
+    "health": 500
+  },
+  {
+    "name": "Pann Tulipann",
+    "category": 3,
+    "monsterType": "Miscellaneous",
+    "abilities": "Oheň jej zraňuje za dvojnásobek. Jednou za kolo může seslat Zruš kouzlo bez spotřebování akce. Jednou za bitvu může seslat Zrcadlo.",
+    "aiBehavior": null,
+    "attack": 9,
+    "defense": 10,
+    "health": 20
+  },
+  {
+    "name": "Jednorožec",
+    "category": 3,
+    "monsterType": "Benevolent",
+    "abilities": "Kdykoliv je zasažen kouzlem, hodí si k6. Při výsledku 4 5 6 nemá kouzlo žádný efekt.",
+    "aiBehavior": null,
+    "attack": 10,
+    "defense": 15,
+    "health": 30
+  },
+  {
+    "name": "Zlatý drak",
+    "category": 4,
+    "monsterType": "Benevolent",
+    "abilities": "Imunní vůči veškeré magii. 3 akce. Při všech hodech kostkou počítá výsledek 1 jako výsledek 6.",
+    "aiBehavior": null,
+    "attack": 0,
+    "defense": 20,
+    "health": 50
+  },
+  {
+    "name": "Lucernička",
+    "category": 1,
+    "monsterType": "Benevolent",
+    "abilities": "Kdykoliv zraní nepřítele, hodí si k6. Při výsledku 6 ztráci zasažená postava akci, pokud ji ještě má.",
+    "aiBehavior": null,
+    "attack": 3,
+    "defense": 3,
+    "health": 10
+  },
+  {
+    "name": "Zalinda, ochránkyně svatyně",
+    "category": 2,
+    "monsterType": "Benevolent",
+    "abilities": "Provadí-li akci Pomoc, cíl pomoci si vyléčí 10ž.",
+    "aiBehavior": null,
+    "attack": 5,
+    "defense": 9,
+    "health": 15
+  },
+  {
+    "name": "Lesní kočka",
+    "category": 2,
+    "monsterType": "Beast",
+    "abilities": "Souboj začíná schovaná. Na útoky hází 2k6+",
+    "aiBehavior": null,
+    "attack": 6,
+    "defense": 8,
+    "health": 10
+  },
+  {
+    "name": "Skřítek",
+    "category": 1,
+    "monsterType": "Benevolent",
+    "abilities": "Útoky s celkovým UČ větším než 10 jej automaticky míjejí.",
+    "aiBehavior": null,
+    "attack": 2,
+    "defense": 2,
+    "health": 5
+  },
+  {
+    "name": "Vesnická domobrana",
+    "category": 1,
+    "monsterType": "Benevolent",
+    "abilities": "Střelec",
+    "aiBehavior": null,
+    "attack": 5,
+    "defense": 2,
+    "health": 10
+  },
+  {
+    "name": "Vesnický hrdina.",
+    "category": 3,
+    "monsterType": "Benevolent",
+    "abilities": "Dokud se účastní souboje má Vesnická domobrana má +1/+3 (nekumuluje se)",
+    "aiBehavior": null,
+    "attack": 8,
+    "defense": 6,
+    "health": 20
+  },
+  {
+    "name": "Tunelový červ",
+    "category": 3,
+    "monsterType": "Beast",
+    "abilities": "Začíná souboj schovaný. 2 akce za kolo, první vždy útočí, druhou se schovává. Na útoky ze schování útočí 2k6+",
+    "aiBehavior": null,
+    "attack": 15,
+    "defense": 5,
+    "health": 30
+  },
+  {
+    "name": "Dračí želva",
+    "category": 3,
+    "monsterType": "Beast",
+    "abilities": "4 akce, 2x útok, 2x parní dech (kouzlo, cíl zraněn za 20ž, sníženo na 5ž pokud udělá 15 dřepů)",
+    "aiBehavior": null,
+    "attack": 8,
+    "defense": 12,
+    "health": 40
+  },
+  {
+    "name": "Kostlivý arcimág",
+    "category": 3,
+    "monsterType": "Undead",
+    "abilities": "Střelec. Jednou za souboj může seslat:   Ohnivý štít, Ohnivou Bouři,Zatemnění mysli, Zrcadlo, Zruš kouzlo",
+    "aiBehavior": null,
+    "attack": 14,
+    "defense": 8,
+    "health": 30
+  }
+]

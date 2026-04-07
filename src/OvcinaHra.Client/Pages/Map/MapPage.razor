@@ -1,4 +1,4 @@
-@page "/mapa"
+@page "/map"
 @attribute [Authorize]
 @inject ApiClient Api
 @inject GameContextService GameContext
@@ -25,107 +25,35 @@
     </div>
 </div>
 
-<MapView @ref="mapView"
-         CenterLat="49.4532461" CenterLon="18.0203242" Zoom="16"
-         OnMapClick="HandleMapClick"
-         OnMarkerClick="HandleMarkerClick"
-         OnStyleLoaded="HandleStyleLoaded" />
+<div style="position: relative;">
+    <MapView @ref="mapView"
+             CenterLat="49.4532461" CenterLon="18.0203242" Zoom="16"
+             OnMapClick="HandleMapClick"
+             OnMarkerClick="HandleMarkerClick"
+             OnStyleLoaded="HandleStyleLoaded" />
 
-@* Location detail popup *@
-<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="550px">
-    <BodyContentTemplate Context="popupContext">
-        <DxFormLayout>
-            <DxFormLayoutItem Caption="Název" ColSpanMd="12">
-                <DxTextBox @bind-Text="@locName" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Typ" ColSpanMd="12">
-                <DxComboBox Data="@kindValues" @bind-Value="@locKind" TextFieldName="Display" ValueFieldName="Value" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Šířka" ColSpanMd="6">
-                <DxSpinEdit @bind-Value="@locLat" Increment="0.00001m" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Délka" ColSpanMd="6">
-                <DxSpinEdit @bind-Value="@locLon" Increment="0.00001m" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Popis" ColSpanMd="12">
-                <DxMemo @bind-Text="@locDescription" Rows="2" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Info pro CP" ColSpanMd="12">
-                <DxMemo @bind-Text="@locNpcInfo" Rows="2" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Co nachystat" ColSpanMd="12">
-                <DxMemo @bind-Text="@locSetupNotes" Rows="2" />
-            </DxFormLayoutItem>
-            @if (editingId.HasValue)
-            {
-                <DxFormLayoutItem Caption="Obrázek" ColSpanMd="12">
-                    <ImagePicker EntityType="locations" EntityId="editingId.Value" Alt="Ilustrace lokace" />
-                </DxFormLayoutItem>
-                <DxFormLayoutItem Caption="Foto umístění" ColSpanMd="12">
-                    <ImagePicker EntityType="locations" EntityId="editingId.Value" Field="placement" Alt="Foto umístění" />
-                </DxFormLayoutItem>
-            }
-        </DxFormLayout>
-
-        @* Variant links *@
-        @if (locParentName is not null)
+    <div class="map-legend">
+        @foreach (var (kind, color) in markerColors)
         {
-            <div class="alert alert-info mt-2 mb-0 py-2">
-                <small>Varianta lokace</small>
-                <a href="#" @onclick="() => NavigateToLocation(locParentId!.Value)" @onclick:preventDefault class="d-block fw-bold">
-                    ← @locParentName
-                </a>
+            <div class="map-legend-item">
+                <span class="map-legend-dot" style="background-color: @color;"></span>
+                <span>@kind.GetDisplayName()</span>
             </div>
         }
-        @if (locVariants.Count > 0)
-        {
-            <div class="alert alert-secondary mt-2 mb-0 py-2">
-                <small>Varianty (@locVariants.Count)</small>
-                @foreach (var v in locVariants)
-                {
-                    <a href="#" @onclick="() => NavigateToLocation(v.Id)" @onclick:preventDefault class="d-block">
-                        → @v.Name <span class="text-muted">(@v.LocationKind.GetDisplayName())</span>
-                    </a>
-                }
-            </div>
-        }
+    </div>
+</div>
 
-        @if (error is not null) { <div class="alert alert-danger mt-2">@error</div> }
-
-        <div class="d-flex gap-2 mt-3">
-            @if (editingId.HasValue)
-            {
-                <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true">Smazat</button>
-            }
-            <div style="flex: 1"></div>
-            <button class="btn btn-secondary" @onclick="() => isModalVisible = false" disabled="@isSaving">Zrušit</button>
-            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving">Uložit</button>
-        </div>
-    </BodyContentTemplate>
-</DxPopup>
-
-<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
-    <BodyContentTemplate Context="popupContext">
-        <p>Smazat lokaci <strong>@locName</strong>?</p>
-        <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
-            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
-        </div>
-    </BodyContentTemplate>
-</DxPopup>
+<LocationEditPopup @ref="locationPopup"
+    AllLocations="locations"
+    OnSaved="LoadAndDisplayLocationsAsync"
+    OnVariantNavigate="NavigateToLocation" />
 
 @code {
     private MapView mapView = null!;
+    private LocationEditPopup locationPopup = null!;
     private List<LocationListDto> locations = [];
-    private bool placingMode, isModalVisible, isDeleteVisible, isSaving;
+    private bool placingMode;
     private string activeStyle = "tourist";
-    private string modalTitle = "", locName = "";
-    private string? error, locDescription, locNpcInfo, locSetupNotes;
-    private int? editingId, locParentId;
-    private string? locParentName;
-    private List<LocationVariantDto> locVariants = [];
-    private LocationKind locKind = LocationKind.Village;
-    private decimal locLat = 49.75m, locLon = 17.25m;
 
     private static readonly Dictionary<LocationKind, string> markerColors = new()
     {
@@ -137,10 +65,6 @@
         [LocationKind.Dungeon] = "#c0392b",
         [LocationKind.PointOfInterest] = "#2980b9"
     };
-
-    private static readonly List<KindItem> kindValues = Enum.GetValues<LocationKind>()
-        .Select(k => new KindItem(k, k.GetDisplayName())).ToList();
-    record KindItem(LocationKind Value, string Display);
 
     protected override async Task OnInitializedAsync()
     {
@@ -176,11 +100,11 @@
     {
         locations = await Api.GetListAsync<LocationListDto>("/api/locations");
         await mapView.ClearMarkersAsync();
-        // Only parent locations get map pins; variants are accessed via parent detail
-        foreach (var loc in locations.Where(l => l.ParentLocationId is null))
+        // Only parent locations with GPS get map pins
+        foreach (var loc in locations.Where(l => l.ParentLocationId is null && l.Latitude.HasValue && l.Longitude.HasValue))
         {
             var color = markerColors.GetValueOrDefault(loc.LocationKind, "#e74c3c");
-            await mapView.AddMarkerAsync(loc.Id, (double)loc.Latitude, (double)loc.Longitude,
+            await mapView.AddMarkerAsync(loc.Id, (double)loc.Latitude!.Value, (double)loc.Longitude!.Value,
                 loc.Name, loc.LocationKind.GetDisplayName(), color);
         }
     }
@@ -193,94 +117,18 @@
         if (placingMode)
         {
             placingMode = false;
-            editingId = null;
-            locName = "";
-            locKind = LocationKind.Village;
-            locLat = (decimal)e.Latitude;
-            locLon = (decimal)e.Longitude;
-            locDescription = null; locNpcInfo = null; locSetupNotes = null;
-            locVariants = []; locParentId = null; locParentName = null;
-            error = null;
-            modalTitle = "Nová lokace";
-            isModalVisible = true;
+            locationPopup.OpenNew((decimal)e.Latitude, (decimal)e.Longitude);
             StateHasChanged();
         }
     }
 
-    private async Task HandleMarkerClick(int id) => await OpenLocationDetail(id);
+    private async Task HandleMarkerClick(int id) => await locationPopup.OpenAsync(id);
 
     private async Task NavigateToLocation(int id)
     {
-        // Close current popup and open the target location
-        isModalVisible = false;
+        locationPopup.Close();
         StateHasChanged();
-        await Task.Delay(100); // let popup close
-        await OpenLocationDetail(id);
-    }
-
-    private async Task OpenLocationDetail(int id)
-    {
-        var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{id}");
-        if (detail is null) return;
-
-        editingId = id;
-        locName = detail.Name;
-        locKind = detail.LocationKind;
-        locLat = detail.Latitude;
-        locLon = detail.Longitude;
-        locDescription = detail.Description;
-        locNpcInfo = detail.NpcInfo;
-        locSetupNotes = detail.SetupNotes;
-        locVariants = detail.Variants;
-        locParentId = detail.ParentLocationId;
-        error = null;
-        modalTitle = $"Upravit: {detail.Name}";
-
-        // Resolve parent name if this is a variant
-        if (locParentId.HasValue)
-        {
-            var parent = locations.FirstOrDefault(l => l.Id == locParentId.Value);
-            locParentName = parent?.Name ?? $"Lokace #{locParentId}";
-        }
-        else
-        {
-            locParentName = null;
-        }
-
-        isModalVisible = true;
-        StateHasChanged();
-    }
-
-    private async Task SaveAsync()
-    {
-        error = null; isSaving = true;
-        try
-        {
-            if (editingId.HasValue)
-            {
-                await Api.PutAsync($"/api/locations/{editingId}",
-                    new UpdateLocationDto(locName, locKind, locLat, locLon, locDescription, locNpcInfo, locSetupNotes));
-            }
-            else
-            {
-                await Api.PostAsync<CreateLocationDto, LocationDetailDto>("/api/locations",
-                    new CreateLocationDto(locName, locKind, locLat, locLon, locDescription, locNpcInfo, locSetupNotes));
-            }
-            isModalVisible = false;
-            await LoadAndDisplayLocationsAsync();
-        }
-        catch (Exception ex) { error = ex.Message; }
-        finally { isSaving = false; }
-    }
-
-    private async Task ConfirmDeleteAsync()
-    {
-        try
-        {
-            await Api.DeleteAsync($"/api/locations/{editingId}");
-            isDeleteVisible = false; isModalVisible = false;
-            await LoadAndDisplayLocationsAsync();
-        }
-        catch (Exception ex) { error = ex.Message; }
+        await Task.Delay(100);
+        await locationPopup.OpenAsync(id);
     }
 }

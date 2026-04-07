@@ -20,6 +20,10 @@ public static class SeedEndpoints
         group.MapPost("/games", SeedGames);
         group.MapPost("/locations", SeedLocations);
         group.MapPost("/location-descriptions", SeedLocationDescriptions);
+        group.MapPost("/restore-variant-links", RestoreVariantLinks);
+        group.MapPost("/items", SeedItems);
+        group.MapPost("/monsters", SeedMonsters);
+        group.MapPost("/buildings", SeedBuildings);
 
         return group;
     }
@@ -260,6 +264,198 @@ public static class SeedEndpoints
 
         await db.SaveChangesAsync();
         return TypedResults.Ok(new SeedResult(updated, $"Aktualizováno {updated} lokací s popisky z Excel."));
+    }
+
+    private static async Task<Ok<SeedResult>> SeedItems(WorldDbContext db, IWebHostEnvironment env)
+    {
+        if (await db.Items.AnyAsync())
+            return TypedResults.Ok(new SeedResult(0, "Předměty už existují. Smaž je nejdřív."));
+
+        var jsonPath = Path.Combine(env.ContentRootPath, "..", "..", "docs", "legacy-data", "items.json");
+        if (!File.Exists(jsonPath))
+            return TypedResults.Ok(new SeedResult(0, $"Soubor nenalezen: {Path.GetFullPath(jsonPath)}"));
+
+        var json = await File.ReadAllTextAsync(jsonPath);
+        var rawItems = JsonSerializer.Deserialize<List<SeedItemData>>(json,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+
+        // Find active game for GameItem records
+        var activeGame = await db.Games.FirstOrDefaultAsync(g => g.Status == GameStatus.Active);
+
+        var items = new List<Item>();
+        foreach (var raw in rawItems)
+        {
+            if (!Enum.TryParse<ItemType>(raw.ItemType, out var itemType)) continue;
+            PhysicalForm? physForm = null;
+            if (raw.PhysicalForm is not null && Enum.TryParse<PhysicalForm>(raw.PhysicalForm, out var pf))
+                physForm = pf;
+
+            var item = new Item
+            {
+                Name = raw.Name,
+                ItemType = itemType,
+                Effect = raw.Effect,
+                PhysicalForm = physForm,
+                IsCraftable = raw.IsCraftable,
+                IsUnique = raw.IsUnique,
+                IsLimited = raw.IsLimited,
+                ClassRequirements = new OvcinaHra.Shared.Domain.ValueObjects.ClassRequirements(
+                    raw.ReqWarrior, raw.ReqArcher, raw.ReqMage, raw.ReqThief)
+            };
+            items.Add(item);
+            db.Items.Add(item);
+        }
+
+        await db.SaveChangesAsync();
+
+        // Create GameItem records for the active game
+        var gameItemCount = 0;
+        if (activeGame is not null)
+        {
+            for (var i = 0; i < items.Count; i++)
+            {
+                var raw = rawItems[i];
+                if (!raw.IsSold && !raw.IsFindable && raw.Price is null) continue;
+
+                db.Set<GameItem>().Add(new GameItem
+                {
+                    GameId = activeGame.Id,
+                    ItemId = items[i].Id,
+                    Price = raw.Price,
+                    StockCount = raw.StockCount,
+                    IsSold = raw.IsSold,
+                    SaleCondition = raw.SaleCondition,
+                    IsFindable = raw.IsFindable
+                });
+                gameItemCount++;
+            }
+            await db.SaveChangesAsync();
+        }
+
+        return TypedResults.Ok(new SeedResult(items.Count,
+            $"Importováno {items.Count} předmětů" +
+            (activeGame is not null ? $", {gameItemCount} přiřazeno ke hře {activeGame.Name} (#{activeGame.Edition})." : ".")));
+    }
+
+    private static async Task<Ok<SeedResult>> SeedMonsters(WorldDbContext db, IWebHostEnvironment env)
+    {
+        if (await db.Monsters.AnyAsync())
+            return TypedResults.Ok(new SeedResult(0, "Příšery už existují. Smaž je nejdřív."));
+
+        var jsonPath = Path.Combine(env.ContentRootPath, "..", "..", "docs", "legacy-data", "monsters.json");
+        if (!File.Exists(jsonPath))
+            return TypedResults.Ok(new SeedResult(0, $"Soubor nenalezen: {Path.GetFullPath(jsonPath)}"));
+
+        var json = await File.ReadAllTextAsync(jsonPath);
+        var rawMonsters = JsonSerializer.Deserialize<List<SeedMonsterData>>(json,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+
+        foreach (var raw in rawMonsters)
+        {
+            if (!Enum.TryParse<MonsterType>(raw.MonsterType, out var mType)) continue;
+
+            db.Monsters.Add(new Monster
+            {
+                Name = raw.Name,
+                Category = raw.Category,
+                MonsterType = mType,
+                Abilities = raw.Abilities,
+                AiBehavior = raw.AiBehavior,
+                Stats = new OvcinaHra.Shared.Domain.ValueObjects.CombatStats(raw.Attack, raw.Defense, raw.Health)
+            });
+        }
+
+        await db.SaveChangesAsync();
+        return TypedResults.Ok(new SeedResult(rawMonsters.Count, $"Importováno {rawMonsters.Count} příšer."));
+    }
+
+    private static async Task<Ok<SeedResult>> SeedBuildings(WorldDbContext db, IWebHostEnvironment env)
+    {
+        if (await db.Buildings.AnyAsync())
+            return TypedResults.Ok(new SeedResult(0, "Budovy už existují. Smaž je nejdřív."));
+
+        var jsonPath = Path.Combine(env.ContentRootPath, "..", "..", "docs", "legacy-data", "buildings.json");
+        if (!File.Exists(jsonPath))
+            return TypedResults.Ok(new SeedResult(0, $"Soubor nenalezen: {Path.GetFullPath(jsonPath)}"));
+
+        var json = await File.ReadAllTextAsync(jsonPath);
+        var rawBuildings = JsonSerializer.Deserialize<List<SeedBuildingData>>(json,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+
+        var activeGame = await db.Games.FirstOrDefaultAsync(g => g.Status == GameStatus.Active);
+        if (activeGame is null)
+            return TypedResults.Ok(new SeedResult(0, "Žádná aktivní hra."));
+
+        foreach (var raw in rawBuildings)
+        {
+            db.Buildings.Add(new Building
+            {
+                Name = raw.Name,
+                Description = raw.Description,
+                GameId = activeGame.Id
+            });
+        }
+
+        await db.SaveChangesAsync();
+        return TypedResults.Ok(new SeedResult(rawBuildings.Count,
+            $"Importováno {rawBuildings.Count} budov do hry {activeGame.Name} (#{activeGame.Edition})."));
+    }
+
+    private record SeedBuildingData(string Name, string? Description);
+
+    private record SeedMonsterData(
+        string Name, int Category, string MonsterType,
+        string? Abilities, string? AiBehavior,
+        int Attack, int Defense, int Health);
+
+    private record SeedItemData(
+        string Name, string ItemType, string? Effect, string? PhysicalForm,
+        bool IsSold, string? SaleCondition, bool IsCraftable, bool IsFindable,
+        int? Price, int ReqWarrior, int ReqArcher, int ReqMage, int ReqThief,
+        bool IsUnique, bool IsLimited, int? StockCount);
+
+    private static async Task<Ok<SeedResult>> RestoreVariantLinks(WorldDbContext db)
+    {
+        var variantLinks = new (string Variant, string Parent)[]
+        {
+            ("Caras Amarth - Karáskov", "Caras Amarth"),
+            ("Dol - Ruiny města", "Dol - Město"),
+            ("Dolany - Obnovený důl", "Dolany - Opuštěný důl"),
+            ("Doubravka - Staleté duby", "Doubravka"),
+            ("Jezerní písčina -Ohrožená JEZERKA", "Jezerní písčina - JEZERKA"),
+            ("Polom - Obrov", "Polom"),
+            ("Ruiny staré pevnosti - TROSKOV", "Ruiny staré pevnosti"),
+            ("Spálená vesnice - Spálov", "Spálená vesnice"),
+            ("Starý lom - Lomná", "Starý lom"),
+            ("Úrodné stráně - Skřetomlaty", "Úrodné stráně"),
+            ("Kobka starého krále - Quest", "Kobka starého krále"),
+            ("Vlčí shromaždiště - quest", "Vlčí shromaždiště"),
+            ("Jezerní písčina - Quest", "Jezerní písčina - JEZERKA"),
+            ("Dcera řeky - Quest pro hobity", "Dcera řeky"),
+            ("Kráter - Quest pro Hobity", "Kráter"),
+            ("Pavoučí palouček - QUEST pro Hobity", "Pavoučí palouček"),
+            ("Příbytky skřítků - quest jen pro hobity", "Příbytky skřítků"),
+            ("Vílí palouček - Quest pro Hobity", "Vílí palouček"),
+        };
+
+        var locations = await db.Locations.ToListAsync();
+        var byName = locations.ToDictionary(l => l.Name, l => l);
+
+        var restored = 0;
+        foreach (var (variant, parent) in variantLinks)
+        {
+            if (byName.TryGetValue(variant, out var variantLoc) && byName.TryGetValue(parent, out var parentLoc))
+            {
+                if (variantLoc.ParentLocationId != parentLoc.Id)
+                {
+                    variantLoc.ParentLocationId = parentLoc.Id;
+                    restored++;
+                }
+            }
+        }
+
+        await db.SaveChangesAsync();
+        return TypedResults.Ok(new SeedResult(restored, $"Obnoveno {restored} z {variantLinks.Length} propojení variant."));
     }
 
     private record LocationDescriptionData(string? Desc, string? Npc_info, string? Setup);

@@ -1,10 +1,10 @@
-@page "/lokace"
+@page "/locations"
 @attribute [Authorize]
 @inject ApiClient Api
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="mb-0">Lokace</h1>
-    <button class="btn btn-primary" data-testid="create-location" @onclick="() => OpenModal(null)">+ Nová lokace</button>
+    <button class="btn btn-primary" data-testid="create-location" @onclick="() => locationPopup.OpenNew()">+ Nová lokace</button>
 </div>
 
 @if (loading)
@@ -14,8 +14,18 @@
 else
 {
     <OvcinaGrid Data="@locations" KeyFieldName="Id" LayoutKey="grid-layout-locations"
-                RowClick="@(e => OpenModal((LocationListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+                RowClick="@(async e => await locationPopup.OpenAsync(((LocationListDto)e.Grid.GetDataItem(e.VisibleIndex)).Id))">
         <Columns>
+            <DxGridDataColumn FieldName="" Caption="" Width="40px" AllowSort="false" FixedPosition="GridColumnFixedPosition.Left">
+                <CellDisplayTemplate>
+                    @{
+                        var loc = (LocationListDto)context.DataItem;
+                    }
+                    <button class="btn btn-sm btn-link p-0 text-muted" @onclick="async e => await ShowContextMenu(e, loc)" @onclick:stopPropagation="true">
+                        <i class="bi bi-three-dots-vertical"></i>
+                    </button>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
             <DxGridDataColumn FieldName="Name" Caption="Název" />
             <DxGridDataColumn FieldName="LocationKind" Caption="Typ" Width="160px">
                 <CellDisplayTemplate>@(((LocationKind)context.Value).GetDisplayName())</CellDisplayTemplate>
@@ -46,80 +56,328 @@ else
     </OvcinaGrid>
 }
 
-@* Detail popup *@
-<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="650px">
+<LocationEditPopup @ref="locationPopup"
+    AllLocations="locations"
+    OnSaved="LoadDataAsync" />
+
+<DxContextMenu @ref="contextMenu" ItemClick="OnContextMenuItemClick">
+    <Items>
+        <DxContextMenuItem Text="Upravit" IconCssClass="bi bi-pencil-fill" Name="edit" />
+        <DxContextMenuItem Text="Zadat GPS (z odkazu)" IconCssClass="bi bi-crosshair" Name="gps" />
+        <DxContextMenuItem Text="Propojit jako variantu" IconCssClass="bi bi-link-45deg" Name="link" />
+        <DxContextMenuItem Text="Zobrazit na mapě" IconCssClass="bi bi-geo-alt-fill" Name="map" />
+        <DxContextMenuItem BeginGroup="true" Text="Smazat" IconCssClass="bi bi-trash-fill" CssClass="text-danger" Name="delete" />
+    </Items>
+</DxContextMenu>
+
+<DxPopup @bind-Visible="@isGpsVisible" HeaderText="@($"Zadat GPS: {gpsTarget?.Name}")" Width="550px">
     <BodyContentTemplate Context="popupContext">
-        <DxFormLayout>
-            <DxFormLayoutItem Caption="Název lokace" ColSpanMd="12">
-                <DxTextBox @bind-Text="@model.Name" data-testid="location-name" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Typ lokace" ColSpanMd="12">
-                <DxComboBox Data="@locationKindValues" @bind-Value="@model.LocationKind"
-                            TextFieldName="Display" ValueFieldName="Value" data-testid="location-kind" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Zeměpisná šířka" ColSpanMd="6">
-                <DxSpinEdit @bind-Value="@model.Latitude" Increment="0.00001m" data-testid="location-lat" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Zeměpisná délka" ColSpanMd="6">
-                <DxSpinEdit @bind-Value="@model.Longitude" Increment="0.00001m" data-testid="location-lon" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Popis (fantasy)" ColSpanMd="12">
-                <DxMemo @bind-Text="@model.Description" Rows="3" data-testid="location-description" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Info pro CP (NPC)" ColSpanMd="12">
-                <DxMemo @bind-Text="@model.NpcInfo" Rows="2" data-testid="location-npc" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Co nachystat na lokaci" ColSpanMd="12">
-                <DxMemo @bind-Text="@model.SetupNotes" Rows="2" data-testid="location-setup" />
-            </DxFormLayoutItem>
-        </DxFormLayout>
-
-        @if (error is not null)
-        {
-            <div class="alert alert-danger mt-2">@error</div>
-        }
-
-        <div class="d-flex gap-2 mt-3">
-            @if (editingId.HasValue)
+        <p class="text-muted small mb-2">
+            Vložte odkaz z Google Maps, Mapy.cz nebo souřadnice (49.4532, 18.0203)
+            @if (gpsTarget is not null)
             {
-                <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true" disabled="@isSaving" data-testid="delete-location">Smazat</button>
+                <br/><strong>Aktuální:</strong> <span>@($"{gpsTarget.Latitude:F7}, {gpsTarget.Longitude:F7}")</span>
             }
-            <div style="flex: 1"></div>
-            <button class="btn btn-secondary" @onclick="CloseModal" disabled="@isSaving">Zrušit</button>
-            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving" data-testid="save-location">
+        </p>
+        <DxTextBox Text="@gpsInput" TextChanged="@(v => { gpsInput = v; gpsParsed = TryParseGps(v); })"
+                   Placeholder="https://mapy.cz/... nebo 49.4532, 18.0203" CssClass="mb-2" />
+        @if (gpsParsed is not null)
+        {
+            <div class="alert alert-success py-2">
+                <i class="bi bi-check-circle me-1"></i> @gpsParsed.Value.lat.ToString("F7"), @gpsParsed.Value.lon.ToString("F7")
+                @if (gpsLinkedCount > 0)
+                {
+                    <span class="ms-2 text-muted">— uloží i pro @gpsLinkedCount propojených lokací</span>
+                }
+            </div>
+        }
+        else if (gpsInput is { Length: > 3 })
+        {
+            <div class="alert alert-warning py-2"><i class="bi bi-exclamation-triangle me-1"></i> Nepodařilo se rozpoznat souřadnice</div>
+        }
+        @if (gpsError is not null)
+        {
+            <div class="alert alert-danger py-2">@gpsError</div>
+        }
+        <div class="d-flex gap-2 justify-content-end mt-3">
+            <button class="btn btn-secondary" @onclick="() => isGpsVisible = false">Zrušit</button>
+            <button class="btn btn-primary" disabled="@(gpsParsed is null || isSaving)" @onclick="ApplyGpsAsync">
                 @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                Uložit
+                Uložit GPS
             </button>
         </div>
     </BodyContentTemplate>
 </DxPopup>
 
-<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
+<DxPopup @bind-Visible="@isLinkVisible" HeaderText="@($"Propojit: {linkTarget?.Name}")" Width="500px">
     <BodyContentTemplate Context="popupContext">
-        <p>Opravdu chcete smazat lokaci <strong>@model.Name</strong>?</p>
+        <p class="text-muted small mb-2">Vyberte rodičovskou lokaci (tato bude variantou):</p>
+        <DxComboBox Data="@linkCandidates" @bind-Value="@linkParentId"
+                    TextFieldName="Name" ValueFieldName="Id"
+                    NullText="(vyberte lokaci)" SearchMode="ListSearchMode.AutoSearch" CssClass="mb-3" />
+        @if (linkError is not null)
+        {
+            <div class="alert alert-danger py-2">@linkError</div>
+        }
         <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
-            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
+            @if (linkTarget?.ParentLocationId is not null)
+            {
+                <button class="btn btn-outline-warning" @onclick="UnlinkAsync" disabled="@isSaving">
+                    <i class="bi bi-link-45deg me-1"></i>Odpojit
+                </button>
+                <div style="flex: 1"></div>
+            }
+            <button class="btn btn-secondary" @onclick="() => isLinkVisible = false">Zrušit</button>
+            <button class="btn btn-primary" disabled="@(linkParentId is null || isSaving)" @onclick="ApplyLinkAsync">
+                @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Propojit
+            </button>
         </div>
     </BodyContentTemplate>
 </DxPopup>
 
 @code {
+    private LocationEditPopup locationPopup = null!;
+    private DxContextMenu? contextMenu;
+    private LocationListDto? contextMenuTarget;
     private List<LocationListDto> locations = [];
     private bool loading = true;
-    private bool isModalVisible;
-    private bool isDeleteVisible;
+    private bool isGpsVisible;
+    private bool isLinkVisible;
     private bool isSaving;
-    private string modalTitle = "";
-    private string? error;
-    private int? editingId;
-    private LocationFormModel model = new();
 
-    private static readonly List<LocationKindItem> locationKindValues = Enum.GetValues<LocationKind>()
-        .Select(k => new LocationKindItem(k, k.GetDisplayName()))
-        .ToList();
+    // GPS paste dialog state
+    private LocationListDto? gpsTarget;
+    private string? gpsInput;
+    private (decimal lat, decimal lon)? gpsParsed;
+    private string? gpsError;
+    private int gpsLinkedCount;
 
-    record LocationKindItem(LocationKind Value, string Display);
+    private void OpenGpsDialog(LocationListDto loc)
+    {
+        gpsTarget = loc;
+        gpsInput = null;
+        gpsParsed = null;
+        gpsError = null;
+        // Count linked locations (parent + variants share GPS)
+        var linked = GetLinkedLocationIds(loc);
+        gpsLinkedCount = linked.Count - 1; // minus self
+        isGpsVisible = true;
+    }
+
+    private List<int> GetLinkedLocationIds(LocationListDto loc)
+    {
+        var ids = new List<int> { loc.Id };
+        if (loc.ParentLocationId.HasValue)
+        {
+            // This is a variant — include parent and all siblings
+            ids.Add(loc.ParentLocationId.Value);
+            ids.AddRange(locations.Where(l => l.ParentLocationId == loc.ParentLocationId && l.Id != loc.Id).Select(l => l.Id));
+        }
+        else
+        {
+            // This is a parent — include all variants
+            ids.AddRange(locations.Where(l => l.ParentLocationId == loc.Id).Select(l => l.Id));
+        }
+        return ids;
+    }
+
+    private static (decimal lat, decimal lon)? TryParseGps(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return null;
+        input = input.Trim();
+
+        // Plain coordinates: "49.4532, 18.0203" or "49.4532 18.0203"
+        var plainMatch = System.Text.RegularExpressions.Regex.Match(input,
+            @"(-?\d{1,3}\.\d+)[,\s]+(-?\d{1,3}\.\d+)");
+        if (plainMatch.Success
+            && decimal.TryParse(plainMatch.Groups[1].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lat1)
+            && decimal.TryParse(plainMatch.Groups[2].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lon1)
+            && lat1 >= -90 && lat1 <= 90 && lon1 >= -180 && lon1 <= 180)
+        {
+            return (lat1, lon1);
+        }
+
+        // Google Maps URL: @49.4532,18.0203 or ?q=49.4532,18.0203 or /place/49.4532,18.0203
+        var googleMatch = System.Text.RegularExpressions.Regex.Match(input,
+            @"[@?/](-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)");
+        if (googleMatch.Success
+            && decimal.TryParse(googleMatch.Groups[1].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lat2)
+            && decimal.TryParse(googleMatch.Groups[2].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lon2)
+            && lat2 >= -90 && lat2 <= 90 && lon2 >= -180 && lon2 <= 180)
+        {
+            return (lat2, lon2);
+        }
+
+        // Mapy.cz URL: x=18.0203&y=49.4532 (x=lon, y=lat)
+        var mapyCzMatch = System.Text.RegularExpressions.Regex.Match(input,
+            @"[?&]x=(-?\d{1,3}\.\d+).*[?&]y=(-?\d{1,3}\.\d+)");
+        if (mapyCzMatch.Success
+            && decimal.TryParse(mapyCzMatch.Groups[1].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lonM)
+            && decimal.TryParse(mapyCzMatch.Groups[2].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var latM)
+            && latM >= -90 && latM <= 90 && lonM >= -180 && lonM <= 180)
+        {
+            return (latM, lonM);
+        }
+
+        // Mapy.cz new URL: /zakladni/49.4532,18.0203 (lat,lon in path)
+        var mapyCzNewMatch = System.Text.RegularExpressions.Regex.Match(input,
+            @"mapy\.cz/[^?]*?(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)");
+        if (mapyCzNewMatch.Success
+            && decimal.TryParse(mapyCzNewMatch.Groups[1].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lat3)
+            && decimal.TryParse(mapyCzNewMatch.Groups[2].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lon3)
+            && lat3 >= -90 && lat3 <= 90 && lon3 >= -180 && lon3 <= 180)
+        {
+            return (lat3, lon3);
+        }
+
+        // Decimal with NSEW: 49.4527033N, 18.0204492E
+        var decNsewMatch = System.Text.RegularExpressions.Regex.Match(input,
+            @"(\d{1,3}\.\d+)\s*([NSns])[,\s]+(\d{1,3}\.\d+)\s*([EWew])");
+        if (decNsewMatch.Success
+            && decimal.TryParse(decNsewMatch.Groups[1].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var latN)
+            && decimal.TryParse(decNsewMatch.Groups[3].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var lonN))
+        {
+            if (decNsewMatch.Groups[2].Value.ToUpperInvariant() == "S") latN = -latN;
+            if (decNsewMatch.Groups[4].Value.ToUpperInvariant() == "W") lonN = -lonN;
+            if (latN >= -90 && latN <= 90 && lonN >= -180 && lonN <= 180)
+                return (latN, lonN);
+        }
+
+        // DMS: 49°27'05.9"N 18°01'13.5"E
+        var dmsMatch = System.Text.RegularExpressions.Regex.Match(input,
+            @"(\d{1,3})°(\d{1,2})'([\d.]+)""?\s*([NSns])\s*(\d{1,3})°(\d{1,2})'([\d.]+)""?\s*([EWew])");
+        if (dmsMatch.Success)
+        {
+            static decimal DmsToDecimal(string d, string m, string s, string dir)
+            {
+                var dec = decimal.Parse(d, System.Globalization.CultureInfo.InvariantCulture)
+                    + decimal.Parse(m, System.Globalization.CultureInfo.InvariantCulture) / 60m
+                    + decimal.Parse(s, System.Globalization.CultureInfo.InvariantCulture) / 3600m;
+                return dir.ToUpperInvariant() is "S" or "W" ? -dec : dec;
+            }
+            var latD = DmsToDecimal(dmsMatch.Groups[1].Value, dmsMatch.Groups[2].Value, dmsMatch.Groups[3].Value, dmsMatch.Groups[4].Value);
+            var lonD = DmsToDecimal(dmsMatch.Groups[5].Value, dmsMatch.Groups[6].Value, dmsMatch.Groups[7].Value, dmsMatch.Groups[8].Value);
+            if (latD >= -90 && latD <= 90 && lonD >= -180 && lonD <= 180)
+                return (latD, lonD);
+        }
+
+        return null;
+    }
+
+    private async Task ApplyGpsAsync()
+    {
+        if (gpsParsed is null || gpsTarget is null) return;
+        gpsError = null;
+        isSaving = true;
+        try
+        {
+            var ids = GetLinkedLocationIds(gpsTarget);
+            foreach (var id in ids)
+            {
+                var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{id}");
+                if (detail is null) continue;
+                await Api.PutAsync($"/api/locations/{id}",
+                    new UpdateLocationDto(detail.Name, detail.LocationKind,
+                        gpsParsed.Value.lat, gpsParsed.Value.lon,
+                        detail.Description, detail.NpcInfo, detail.SetupNotes));
+            }
+            isGpsVisible = false;
+            await LoadDataAsync();
+        }
+        catch (Exception ex) { gpsError = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    // Link variant dialog state
+    private LocationListDto? linkTarget;
+    private int? linkParentId;
+    private List<LocationListDto> linkCandidates = [];
+    private string? linkError;
+
+    private void OpenLinkDialog(LocationListDto loc)
+    {
+        linkTarget = loc;
+        linkParentId = loc.ParentLocationId;
+        linkError = null;
+        // Candidates: all locations except self and its own variants
+        linkCandidates = locations
+            .Where(l => l.Id != loc.Id && l.ParentLocationId != loc.Id)
+            .OrderBy(l => l.Name)
+            .ToList();
+        isLinkVisible = true;
+    }
+
+    private async Task ApplyLinkAsync()
+    {
+        if (linkTarget is null || linkParentId is null) return;
+        linkError = null;
+        isSaving = true;
+        try
+        {
+            var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{linkTarget.Id}");
+            if (detail is null) return;
+            await Api.PutAsync($"/api/locations/{linkTarget.Id}",
+                new UpdateLocationDto(detail.Name, detail.LocationKind,
+                    detail.Latitude, detail.Longitude,
+                    detail.Description, detail.NpcInfo, detail.SetupNotes,
+                    linkParentId));
+            isLinkVisible = false;
+            await LoadDataAsync();
+        }
+        catch (Exception ex) { linkError = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task UnlinkAsync()
+    {
+        if (linkTarget is null) return;
+        linkError = null;
+        isSaving = true;
+        try
+        {
+            var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{linkTarget.Id}");
+            if (detail is null) return;
+            await Api.PutAsync($"/api/locations/{linkTarget.Id}",
+                new UpdateLocationDto(detail.Name, detail.LocationKind,
+                    detail.Latitude, detail.Longitude,
+                    detail.Description, detail.NpcInfo, detail.SetupNotes,
+                    null));
+            isLinkVisible = false;
+            await LoadDataAsync();
+        }
+        catch (Exception ex) { linkError = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task ShowContextMenu(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, LocationListDto loc)
+    {
+        contextMenuTarget = loc;
+        await contextMenu!.ShowAsync(e);
+    }
+
+    private async Task OnContextMenuItemClick(ContextMenuItemClickEventArgs e)
+    {
+        if (contextMenuTarget is null) return;
+        switch (e.ItemInfo.Name)
+        {
+            case "edit":
+                await locationPopup.OpenAsync(contextMenuTarget.Id);
+                break;
+            case "gps":
+                OpenGpsDialog(contextMenuTarget);
+                break;
+            case "link":
+                OpenLinkDialog(contextMenuTarget);
+                break;
+            case "map":
+                // TODO: navigate to map with location focus
+                break;
+            case "delete":
+                await locationPopup.OpenAsync(contextMenuTarget.Id);
+                break;
+        }
+    }
 
     protected override async Task OnInitializedAsync() => await LoadDataAsync();
 
@@ -130,75 +388,4 @@ else
         loading = false;
     }
 
-    private void OpenModal(LocationListDto? loc)
-    {
-        error = null;
-        if (loc is null)
-        {
-            editingId = null;
-            model = new LocationFormModel();
-            modalTitle = "Nová lokace";
-        }
-        else
-        {
-            editingId = loc.Id;
-            model = new LocationFormModel
-            {
-                Name = loc.Name,
-                LocationKind = loc.LocationKind,
-                Latitude = loc.Latitude,
-                Longitude = loc.Longitude
-            };
-            modalTitle = $"Upravit: {loc.Name}";
-            // Load full detail for description fields
-            _ = LoadDetailAsync(loc.Id);
-        }
-        isModalVisible = true;
-    }
-
-    private async Task LoadDetailAsync(int id)
-    {
-        var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{id}");
-        if (detail is not null)
-        {
-            model.Description = detail.Description;
-            model.NpcInfo = detail.NpcInfo;
-            model.SetupNotes = detail.SetupNotes;
-            StateHasChanged();
-        }
-    }
-
-    private void CloseModal() => isModalVisible = false;
-
-    private async Task SaveAsync()
-    {
-        error = null;
-        isSaving = true;
-        try
-        {
-            if (editingId.HasValue)
-                await Api.PutAsync($"/api/locations/{editingId}", model.ToUpdateDto());
-            else
-                await Api.PostAsync<CreateLocationDto, LocationDetailDto>("/api/locations", model.ToCreateDto());
-
-            isModalVisible = false;
-            await LoadDataAsync();
-        }
-        catch (Exception ex) { error = ex.Message; }
-        finally { isSaving = false; }
-    }
-
-    private async Task ConfirmDeleteAsync()
-    {
-        isSaving = true;
-        try
-        {
-            await Api.DeleteAsync($"/api/locations/{editingId}");
-            isDeleteVisible = false;
-            isModalVisible = false;
-            await LoadDataAsync();
-        }
-        catch (Exception ex) { error = ex.Message; }
-        finally { isSaving = false; }
-    }
 }

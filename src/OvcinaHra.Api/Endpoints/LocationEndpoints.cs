@@ -33,7 +33,9 @@ public static class LocationEndpoints
             .OrderBy(l => l.Name)
             .Select(l => new LocationListDto(
                 l.Id, l.Name, l.LocationKind,
-                l.Coordinates.Latitude, l.Coordinates.Longitude, l.ParentLocationId))
+                l.Coordinates != null ? l.Coordinates.Latitude : (decimal?)null,
+                l.Coordinates != null ? l.Coordinates.Longitude : (decimal?)null,
+                l.ParentLocationId))
             .ToListAsync();
 
         return TypedResults.Ok(locations);
@@ -50,7 +52,7 @@ public static class LocationEndpoints
         var variants = loc.Variants.Select(v => new LocationVariantDto(v.Id, v.Name, v.LocationKind)).ToList();
         return TypedResults.Ok(new LocationDetailDto(
             loc.Id, loc.Name, loc.Description, loc.LocationKind,
-            loc.Coordinates.Latitude, loc.Coordinates.Longitude,
+            loc.Coordinates?.Latitude, loc.Coordinates?.Longitude,
             loc.ImagePath, loc.PlacementPhotoPath, loc.NpcInfo, loc.SetupNotes,
             loc.ParentLocationId, variants));
     }
@@ -61,7 +63,8 @@ public static class LocationEndpoints
         {
             Name = dto.Name,
             LocationKind = dto.LocationKind,
-            Coordinates = new GpsCoordinates(dto.Latitude, dto.Longitude),
+            Coordinates = dto.Latitude.HasValue && dto.Longitude.HasValue
+                ? new GpsCoordinates(dto.Latitude.Value, dto.Longitude.Value) : null,
             Description = dto.Description,
             NpcInfo = dto.NpcInfo,
             SetupNotes = dto.SetupNotes,
@@ -73,7 +76,7 @@ public static class LocationEndpoints
 
         var result = new LocationDetailDto(
             loc.Id, loc.Name, loc.Description, loc.LocationKind,
-            loc.Coordinates.Latitude, loc.Coordinates.Longitude,
+            loc.Coordinates?.Latitude, loc.Coordinates?.Longitude,
             loc.ImagePath, loc.PlacementPhotoPath, loc.NpcInfo, loc.SetupNotes,
             loc.ParentLocationId, []);
 
@@ -88,7 +91,8 @@ public static class LocationEndpoints
 
         loc.Name = dto.Name;
         loc.LocationKind = dto.LocationKind;
-        loc.Coordinates = new GpsCoordinates(dto.Latitude, dto.Longitude);
+        loc.Coordinates = dto.Latitude.HasValue && dto.Longitude.HasValue
+            ? new GpsCoordinates(dto.Latitude.Value, dto.Longitude.Value) : null;
         loc.Description = dto.Description;
         loc.NpcInfo = dto.NpcInfo;
         loc.SetupNotes = dto.SetupNotes;
@@ -116,7 +120,9 @@ public static class LocationEndpoints
             .OrderBy(l => l.Name)
             .Select(l => new LocationListDto(
                 l.Id, l.Name, l.LocationKind,
-                l.Coordinates.Latitude, l.Coordinates.Longitude, l.ParentLocationId))
+                l.Coordinates != null ? l.Coordinates.Latitude : (decimal?)null,
+                l.Coordinates != null ? l.Coordinates.Longitude : (decimal?)null,
+                l.ParentLocationId))
             .ToListAsync();
 
         return TypedResults.Ok(locations);

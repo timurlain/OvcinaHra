@@ -11,7 +11,10 @@
         AutoExpandAllGroupRows="@AutoExpandAllGroupRows"
         CustomizeElement="@OnCustomizeElement"
         CssClass="@($"ovcina-grid {CssClass}")"
-        ContextMenus="GridContextMenus.Header | GridContextMenus.DataRow"
+        ContextMenus="GridContextMenus.Header"
+        ShowSearchBox="true"
+        SearchText="@SearchText"
+        SearchTextChanged="@SearchTextChanged"
         FilterMenuButtonDisplayMode="GridFilterMenuButtonDisplayMode.Always"
         LayoutAutoLoading="OnLayoutLoading"
         LayoutAutoSaving="OnLayoutSaving">
@@ -36,7 +39,8 @@
     [Parameter] public EventCallback<IReadOnlyList<object>> SelectedDataItemsChanged { get; set; }
     [Parameter] public EventCallback<GridRowClickEventArgs> RowClick { get; set; }
     [Parameter] public Action<GridCustomizeElementEventArgs>? CustomizeElement { get; set; }
-
+    [Parameter] public string? SearchText { get; set; }
+    [Parameter] public EventCallback<string> SearchTextChanged { get; set; }
     private void OnCustomizeElement(GridCustomizeElementEventArgs e)
     {
         if (e.ElementType == GridElementType.DataRow && e.VisibleIndex % 2 == 1)

@@ -1,6 +1,7 @@
-@page "/predmety"
+@page "/items"
 @attribute [Authorize]
 @inject ApiClient Api
+@inject GameContextService GameContext
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="mb-0">Předměty</h1>
@@ -33,7 +34,7 @@ else
     </OvcinaGrid>
 }
 
-<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="650px">
+<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="900px">
     <BodyContentTemplate Context="popupContext">
         <DxFormLayout>
             <DxFormLayoutItem Caption="Název" ColSpanMd="12">
@@ -81,6 +82,115 @@ else
             }
         </DxFormLayout>
 
+        @* Crafting recipe (if item is craftable) *@
+        @if (editingId.HasValue && isCraftable && GameContext.SelectedGameId.HasValue)
+        {
+            <div class="mt-3 p-3 border rounded" style="background: var(--oh-surface);">
+                <h6 class="mb-2"><i class="bi bi-hammer me-1"></i> Recept (aktuální hra)</h6>
+                @if (recipe is not null)
+                {
+                    <div class="mb-2">
+                        <strong class="small">Ingredience:</strong>
+                        @if (recipe.Ingredients.Count > 0)
+                        {
+                            <table class="table table-sm mb-1">
+                                <tbody>
+                                    @foreach (var ing in recipe.Ingredients)
+                                    {
+                                        <tr>
+                                            <td>@ing.ItemName</td>
+                                            <td style="width:60px">×@ing.Quantity</td>
+                                            <td style="width:40px"><button class="btn btn-sm btn-link text-danger p-0" @onclick="() => RemoveIngredientAsync(ing.ItemId)"><i class="bi bi-x-circle"></i></button></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                        else { <p class="text-muted small mb-1">Žádné ingredience.</p> }
+                        <div class="d-flex gap-2 align-items-end">
+                            <div style="flex:1">
+                                <DxComboBox Data="@allItems" @bind-Value="@newIngItemId"
+                                            TextFieldName="Name" ValueFieldName="Id"
+                                            NullText="(přidat ingredienci)" SearchMode="ListSearchMode.AutoSearch" />
+                            </div>
+                            <div style="width:70px">
+                                <DxSpinEdit @bind-Value="@newIngQuantity" MinValue="1" />
+                            </div>
+                            <button class="btn btn-sm btn-outline-primary" style="height:34px" disabled="@(newIngItemId is null)" @onclick="AddIngredientAsync"><i class="bi bi-plus"></i></button>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <strong class="small">Požadované budovy:</strong>
+                        @if (recipe.BuildingRequirements.Count > 0)
+                        {
+                            @foreach (var br in recipe.BuildingRequirements)
+                            {
+                                <span class="badge bg-secondary me-1">@br.BuildingName <button class="btn btn-sm btn-link text-white p-0 ms-1" @onclick="() => RemoveBuildingReqAsync(br.BuildingId)"><i class="bi bi-x"></i></button></span>
+                            }
+                        }
+                        else { <span class="text-muted small">Žádné.</span> }
+                        <div class="d-flex gap-2 align-items-end mt-1">
+                            <div style="flex:1">
+                                <DxComboBox Data="@allBuildings" @bind-Value="@newBuildingId"
+                                            TextFieldName="Name" ValueFieldName="Id"
+                                            NullText="(přidat budovu)" SearchMode="ListSearchMode.AutoSearch" />
+                            </div>
+                            <button class="btn btn-sm btn-outline-primary" style="height:34px" disabled="@(newBuildingId is null)" @onclick="AddBuildingReqAsync"><i class="bi bi-plus"></i></button>
+                        </div>
+                    </div>
+                    <button class="btn btn-sm btn-outline-danger" @onclick="DeleteRecipeAsync">Smazat recept</button>
+                }
+                else
+                {
+                    <p class="text-muted small mb-2">Žádný recept pro tuto hru.</p>
+                    <button class="btn btn-sm btn-outline-primary" @onclick="CreateRecipeAsync"><i class="bi bi-plus-circle me-1"></i>Vytvořit recept</button>
+                }
+            </div>
+        }
+
+        @* Per-game item configuration *@
+        @if (editingId.HasValue && GameContext.SelectedGameId.HasValue)
+        {
+            <div class="mt-3 p-3 border rounded" style="background: var(--oh-primary-surface);">
+                <h6 class="mb-2"><i class="bi bi-controller me-1"></i> Nastavení pro aktuální hru</h6>
+                @if (gameItemLoading)
+                {
+                    <p class="text-muted small">Načítám...</p>
+                }
+                else if (!gameItemExists)
+                {
+                    <p class="text-muted small mb-2">Předmět není přiřazen k této hře.</p>
+                    <button class="btn btn-outline-primary btn-sm" @onclick="ActivateGameItemAsync">
+                        <i class="bi bi-plus-circle me-1"></i>Přidat do hry
+                    </button>
+                }
+                else
+                {
+                    <DxFormLayout>
+                        <DxFormLayoutItem Caption="Cena" ColSpanMd="4">
+                            <DxSpinEdit @bind-Value="@giPrice" MinValue="0" NullText="(žádná)" />
+                        </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="Počet na skladě" ColSpanMd="4">
+                            <DxSpinEdit @bind-Value="@giStockCount" MinValue="0" NullText="(neomezeno)" />
+                        </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="" ColSpanMd="4">
+                            <div class="d-flex flex-column gap-1 pt-1">
+                                <DxCheckBox @bind-Checked="@giIsSold">Prodávaný</DxCheckBox>
+                                <DxCheckBox @bind-Checked="@giIsFindable">Nalezitelný</DxCheckBox>
+                            </div>
+                        </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="Podmínka prodeje" ColSpanMd="12">
+                            <DxTextBox @bind-Text="@giSaleCondition" NullText="(bez podmínky)" />
+                        </DxFormLayoutItem>
+                    </DxFormLayout>
+                    <div class="d-flex gap-2 mt-2">
+                        <button class="btn btn-sm btn-primary" @onclick="SaveGameItemAsync" disabled="@isSaving">Uložit nastavení</button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="RemoveGameItemAsync" disabled="@isSaving">Odebrat z hry</button>
+                    </div>
+                }
+            </div>
+        }
+
         @if (error is not null) { <div class="alert alert-danger mt-2">@error</div> }
 
         <div class="d-flex gap-2 mt-3">
@@ -123,7 +233,28 @@ else
 
     record EnumItem<T>(T Value, string Display);
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    // Crafting recipe state
+    private CraftingRecipeDetailDto? recipe;
+    private List<ItemListDto> allItems = [];
+    private List<BuildingListDto> allBuildings = [];
+    private int? newIngItemId;
+    private int newIngQuantity = 1;
+    private int? newBuildingId;
+
+    // GameItem per-game config state
+    private bool gameItemLoading, gameItemExists;
+    private int? giPrice, giStockCount;
+    private bool giIsSold, giIsFindable;
+    private string? giSaleCondition;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GameContext.InitializeAsync();
+        await LoadAsync();
+        allItems = await Api.GetListAsync<ItemListDto>("/api/items");
+        if (GameContext.SelectedGameId is int gid)
+            allBuildings = await Api.GetListAsync<BuildingListDto>($"/api/buildings/by-game/{gid}");
+    }
 
     private async Task LoadAsync()
     {
@@ -159,8 +290,161 @@ else
         {
             effect = d.Effect; physicalForm = d.PhysicalForm;
             reqWarrior = d.ReqWarrior; reqArcher = d.ReqArcher; reqMage = d.ReqMage; reqThief = d.ReqThief;
+        }
+        await LoadGameItemAsync(id);
+        await LoadRecipeAsync(id);
+        StateHasChanged();
+    }
+
+    private async Task LoadRecipeAsync(int itemId)
+    {
+        recipe = null;
+        newIngItemId = null; newIngQuantity = 1; newBuildingId = null;
+        var gameId = GameContext.SelectedGameId;
+        if (gameId is null || !isCraftable) return;
+
+        var recipes = await Api.GetListAsync<CraftingRecipeListDto>($"/api/crafting/by-game/{gameId}");
+        var match = recipes.FirstOrDefault(r => r.OutputItemId == itemId);
+        if (match is not null)
+            recipe = await Api.GetAsync<CraftingRecipeDetailDto>($"/api/crafting/{match.Id}");
+    }
+
+    private async Task CreateRecipeAsync()
+    {
+        if (editingId is null || GameContext.SelectedGameId is null) return;
+        try
+        {
+            await Api.PostAsync<CreateCraftingRecipeDto, CraftingRecipeDetailDto>("/api/crafting",
+                new CreateCraftingRecipeDto(GameContext.SelectedGameId.Value, editingId.Value));
+            await LoadRecipeAsync(editingId.Value);
             StateHasChanged();
         }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task DeleteRecipeAsync()
+    {
+        if (recipe is null) return;
+        try
+        {
+            await Api.DeleteAsync($"/api/crafting/{recipe.Id}");
+            recipe = null;
+            StateHasChanged();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task AddIngredientAsync()
+    {
+        if (recipe is null || newIngItemId is null) return;
+        try
+        {
+            await Api.PostAsync<AddCraftingIngredientDto, object>($"/api/crafting/{recipe.Id}/ingredients",
+                new AddCraftingIngredientDto(newIngItemId.Value, newIngQuantity));
+            await LoadRecipeAsync(editingId!.Value);
+            StateHasChanged();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task RemoveIngredientAsync(int itemId)
+    {
+        if (recipe is null) return;
+        try
+        {
+            await Api.DeleteAsync($"/api/crafting/{recipe.Id}/ingredients/{itemId}");
+            await LoadRecipeAsync(editingId!.Value);
+            StateHasChanged();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task AddBuildingReqAsync()
+    {
+        if (recipe is null || newBuildingId is null) return;
+        try
+        {
+            await Api.PostAsync<AddCraftingBuildingReqDto, object>($"/api/crafting/{recipe.Id}/buildings",
+                new AddCraftingBuildingReqDto(newBuildingId.Value));
+            await LoadRecipeAsync(editingId!.Value);
+            StateHasChanged();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task RemoveBuildingReqAsync(int buildingId)
+    {
+        if (recipe is null) return;
+        try
+        {
+            await Api.DeleteAsync($"/api/crafting/{recipe.Id}/buildings/{buildingId}");
+            await LoadRecipeAsync(editingId!.Value);
+            StateHasChanged();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task LoadGameItemAsync(int itemId)
+    {
+        gameItemExists = false;
+        gameItemLoading = true;
+        var gameId = GameContext.SelectedGameId;
+        if (gameId is null) { gameItemLoading = false; return; }
+
+        var gameItems = await Api.GetListAsync<GameItemDto>($"/api/items/by-game/{gameId}");
+        var gi = gameItems.FirstOrDefault(g => g.ItemId == itemId);
+        if (gi is not null)
+        {
+            gameItemExists = true;
+            giPrice = gi.Price; giStockCount = gi.StockCount;
+            giIsSold = gi.IsSold; giIsFindable = gi.IsFindable;
+            giSaleCondition = gi.SaleCondition;
+        }
+        else
+        {
+            giPrice = null; giStockCount = null; giIsSold = false; giIsFindable = false; giSaleCondition = null;
+        }
+        gameItemLoading = false;
+    }
+
+    private async Task ActivateGameItemAsync()
+    {
+        if (editingId is null || GameContext.SelectedGameId is null) return;
+        isSaving = true;
+        try
+        {
+            await Api.PostAsync<CreateGameItemDto, object>("/api/items/game-item",
+                new CreateGameItemDto(GameContext.SelectedGameId.Value, editingId.Value));
+            await LoadGameItemAsync(editingId.Value);
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; StateHasChanged(); }
+    }
+
+    private async Task SaveGameItemAsync()
+    {
+        if (editingId is null || GameContext.SelectedGameId is null) return;
+        isSaving = true;
+        try
+        {
+            await Api.PutAsync($"/api/items/game-item/{GameContext.SelectedGameId}/{editingId}",
+                new UpdateGameItemDto(giPrice, giStockCount, giIsSold, giSaleCondition, giIsFindable));
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task RemoveGameItemAsync()
+    {
+        if (editingId is null || GameContext.SelectedGameId is null) return;
+        isSaving = true;
+        try
+        {
+            await Api.DeleteAsync($"/api/items/game-item/{GameContext.SelectedGameId}/{editingId}");
+            gameItemExists = false;
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; StateHasChanged(); }
     }
 
     private async Task SaveAsync()

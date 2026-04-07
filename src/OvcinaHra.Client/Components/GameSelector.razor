@@ -1,46 +1,20 @@
-@inject ApiClient Api
 @inject GameContextService GameContext
-@implements IDisposable
 
 <div class="d-inline-flex align-items-center">
-    <span class="me-2 text-muted small">Hra:</span>
-    <DxComboBox Data="@games"
-                Value="@selectedGameId"
-                ValueChanged="@((int? v) => OnGameSelected(v))"
-                TextFieldName="Display"
-                ValueFieldName="Id"
-                NullText="(vyberte hru)"
-                ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
-                CssClass="game-selector" />
+    @if (GameContext.GameName is not null)
+    {
+        <i class="bi bi-shield-fill me-1 text-moss"></i>
+        <span class="fw-semibold" style="font-family: var(--oh-font-heading);">@GameContext.GameName</span>
+    }
+    else
+    {
+        <span class="text-muted small">Žádná aktivní hra</span>
+    }
 </div>
 
 @code {
-    private List<GamePickerItem> games = [];
-    private int? selectedGameId;
-
-    record GamePickerItem(int Id, string Display);
-
     protected override async Task OnInitializedAsync()
     {
         await GameContext.InitializeAsync();
-        selectedGameId = GameContext.SelectedGameId;
-
-        var gameList = await Api.GetListAsync<GameListDto>("/api/games");
-        games = gameList.Select(g => new GamePickerItem(g.Id, $"{g.Name} (#{g.Edition})")).ToList();
-
-        // Auto-select first game if none selected
-        if (selectedGameId is null && games.Count > 0)
-        {
-            selectedGameId = games[0].Id;
-            await GameContext.SetGameAsync(selectedGameId);
-        }
     }
-
-    private async Task OnGameSelected(int? gameId)
-    {
-        selectedGameId = gameId;
-        await GameContext.SetGameAsync(gameId);
-    }
-
-    public void Dispose() { }
 }
