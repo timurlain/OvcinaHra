@@ -9,6 +9,7 @@ namespace OvcinaHra.Api.Endpoints;
 
 /// <summary>
 /// Development-only seed endpoints for importing initial data.
+/// Workflow: seed locally → edit through the app → pg_dump/pg_restore to prod.
 /// </summary>
 public static class SeedEndpoints
 {
