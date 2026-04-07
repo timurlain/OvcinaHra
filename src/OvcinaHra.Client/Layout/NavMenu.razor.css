@@ -71,6 +71,14 @@
     color: white;
 }
 
+.nav-footer {
+    padding: 0.75rem 1rem;
+    font-size: 0.6875rem;
+    color: rgba(255, 255, 255, 0.35);
+    text-align: center;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 @media (min-width: 641px) {
     .navbar-toggler {
         display: none;
@@ -83,5 +91,11 @@
     .nav-scrollable {
         height: calc(100vh - 3.5rem);
         overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .nav-scrollable nav {
+        flex: 1;
     }
 }

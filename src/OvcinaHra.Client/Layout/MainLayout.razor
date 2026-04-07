@@ -1,4 +1,3 @@
-@using System.Reflection
 @inherits LayoutComponentBase
 
 <div class="page">
@@ -21,20 +20,11 @@
         <article class="content px-4">
             @Body
         </article>
-
-        <footer class="px-4 py-2 text-muted text-end" style="font-size: 0.75rem;">
-            © 2026 Ovčina v@(AppVersion)
-        </footer>
     </main>
 </div>
 
 @code {
     [Inject] private JwtAuthStateProvider AuthProvider { get; set; } = default!;
-
-    private static string AppVersion =>
-        typeof(MainLayout).Assembly
-            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
-            ?.InformationalVersion.Split('+')[0] ?? "dev";
 
     private async Task Logout()
     {
