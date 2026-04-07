@@ -6,6 +6,8 @@ on:
     paths:
       - 'src/OvcinaHra.Client/**'
       - 'src/OvcinaHra.Shared/**'
+      - 'nuget.config'
+      - '.github/workflows/client-ci.yml'
   pull_request:
     branches: [main]
 
@@ -17,6 +19,13 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: DevExpress License
+        if: env.DEVEXPRESS_LICENSE_CONTENT != ''
+        run: |
+          mkdir -p "$HOME/.config/DevExpress"
+          printf '%s' "$DEVEXPRESS_LICENSE_CONTENT" > "$HOME/.config/DevExpress/DevExpress_License.txt"
+        env:
+          DEVEXPRESS_LICENSE_CONTENT: ${{ secrets.DEVEXPRESS_LICENSE_CONTENT }}
       - name: Restore
         run: dotnet restore src/OvcinaHra.Client
       - name: Build
