@@ -392,30 +392,27 @@ code {
     width: 60px !important;
 }
 
-.sidebar-collapsed .navbar-brand {
-    font-size: 0;
-}
-
-.sidebar-collapsed .navbar-brand .bi {
-    font-size: 1.15rem;
-}
-
-.sidebar-collapsed .oh-nav-section-label {
+.sidebar-collapsed .navbar-brand span,
+.sidebar-collapsed .nav-label,
+.sidebar-collapsed .oh-nav-section-label,
+.sidebar-collapsed .nav-footer span,
+.sidebar-collapsed .navbar-toggler {
     display: none;
 }
 
-.sidebar-collapsed .nav-item a span,
 .sidebar-collapsed .nav-link {
-    font-size: 0;
-    gap: 0;
+    justify-content: center;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
 }
 
-.sidebar-collapsed .nav-link .bi {
-    font-size: 1.125rem;
+.sidebar-collapsed .nav-item {
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
 }
 
-.sidebar-collapsed .nav-footer span {
-    display: none;
+.sidebar-collapsed .top-row .container-fluid {
+    justify-content: center;
 }
 
 /* === Scrollbar styling (subtle, warm) === */
