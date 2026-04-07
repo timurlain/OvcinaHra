@@ -24,6 +24,7 @@ public static class SeedEndpoints
         group.MapPost("/items", SeedItems);
         group.MapPost("/monsters", SeedMonsters);
         group.MapPost("/buildings", SeedBuildings);
+        group.MapPost("/quests", SeedQuests);
 
         return group;
     }
@@ -400,6 +401,78 @@ public static class SeedEndpoints
         return TypedResults.Ok(new SeedResult(rawBuildings.Count,
             $"Importováno {rawBuildings.Count} budov do hry {activeGame.Name} (#{activeGame.Edition})."));
     }
+
+    private static async Task<Ok<SeedResult>> SeedQuests(WorldDbContext db, IWebHostEnvironment env)
+    {
+        if (await db.Quests.AnyAsync())
+            return TypedResults.Ok(new SeedResult(0, "Questy už existují. Smaž je nejdřív."));
+
+        var jsonPath = Path.Combine(env.ContentRootPath, "..", "..", "docs", "legacy-data", "quests.json");
+        if (!File.Exists(jsonPath))
+            return TypedResults.Ok(new SeedResult(0, $"Soubor nenalezen: {Path.GetFullPath(jsonPath)}"));
+
+        var json = await File.ReadAllTextAsync(jsonPath);
+        var rawQuests = JsonSerializer.Deserialize<List<SeedQuestData>>(json,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+
+        var activeGame = await db.Games.FirstOrDefaultAsync(g => g.Status == GameStatus.Active);
+        if (activeGame is null)
+            return TypedResults.Ok(new SeedResult(0, "Žádná aktivní hra."));
+
+        // First pass: create all quests
+        var questsByChain = new Dictionary<string, List<Quest>>();
+        foreach (var raw in rawQuests)
+        {
+            if (!Enum.TryParse<QuestType>(raw.QuestType, out var qType)) continue;
+
+            var quest = new Quest
+            {
+                Name = raw.Name,
+                QuestType = qType,
+                Description = raw.Description,
+                FullText = raw.FullText,
+                TimeSlot = raw.TimeSlot,
+                RewardXp = raw.RewardXp,
+                RewardMoney = raw.RewardMoney,
+                RewardNotes = raw.RewardNotes,
+                ChainOrder = raw.ChainOrder,
+                GameId = activeGame.Id
+            };
+            db.Quests.Add(quest);
+
+            // Track chains for parent linking
+            if (raw.ChainName is not null)
+            {
+                if (!questsByChain.ContainsKey(raw.ChainName))
+                    questsByChain[raw.ChainName] = [];
+                questsByChain[raw.ChainName].Add(quest);
+            }
+        }
+
+        await db.SaveChangesAsync();
+
+        // Second pass: link chain parents
+        var linked = 0;
+        foreach (var chain in questsByChain.Values)
+        {
+            var ordered = chain.OrderBy(q => q.ChainOrder ?? 0).ToList();
+            for (var i = 1; i < ordered.Count; i++)
+            {
+                ordered[i].ParentQuestId = ordered[0].Id;
+                linked++;
+            }
+        }
+        if (linked > 0) await db.SaveChangesAsync();
+
+        return TypedResults.Ok(new SeedResult(rawQuests.Count,
+            $"Importováno {rawQuests.Count} questů do hry {activeGame.Name} (#{activeGame.Edition}), {linked} propojeno v řetězcích."));
+    }
+
+    private record SeedQuestData(
+        string Name, string QuestType, string? TimeSlot,
+        string? Description, string? FullText,
+        int? RewardXp, int? RewardMoney, string? RewardNotes,
+        string? ChainName, int? ChainOrder);
 
     private record SeedBuildingData(string Name, string? Description);
 
