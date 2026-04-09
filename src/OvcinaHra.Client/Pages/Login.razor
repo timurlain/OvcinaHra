@@ -3,6 +3,7 @@
 @inject JwtAuthStateProvider AuthProvider
 @inject TokenRefreshService RefreshService
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <div class="container mt-5">
     <div class="row justify-content-center">
@@ -31,7 +32,7 @@
                     </div>
                     <div class="card-body d-flex flex-column align-items-center">
                         <p class="text-muted mb-3">Přihlásit se pomocí Ovčina účtu</p>
-                        <button class="btn btn-primary btn-lg w-100" style="max-width: 320px;" @onclick="LoginOidc" disabled="@loading">
+                        <button class="btn btn-primary btn-lg w-100" style="max-width: 320px;" @onclick="async () => await LoginOidc()" disabled="@loading">
                             @if (loading) { <span class="spinner-border spinner-border-sm me-2"></span> }
                             <i class="bi bi-shield-lock me-2"></i>Přihlásit přes registrace.ovcina.cz
                         </button>
@@ -39,32 +40,35 @@
                 </div>
             }
 
-            @* Development: dev-token login *@
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">Vývojářský přístup</h5>
-                </div>
-                <div class="card-body">
-                    @if (errorMessage is not null)
-                    {
-                        <div class="alert alert-danger">@errorMessage</div>
-                    }
-
-                    <div class="mb-3">
-                        <label class="form-label">Jméno</label>
-                        <input class="form-control" @bind="name" placeholder="Tvoje jméno" />
+            @* Development: dev-token login (hidden in production when OIDC is configured) *@
+            @if (string.IsNullOrEmpty(oidcAuthority))
+            {
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Vývojářský přístup</h5>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Email</label>
-                        <input class="form-control" type="email" @bind="email" placeholder="email@ovcina.cz" />
-                    </div>
+                    <div class="card-body">
+                        @if (errorMessage is not null)
+                        {
+                            <div class="alert alert-danger">@errorMessage</div>
+                        }
 
-                    <button class="btn btn-primary w-100" @onclick="LoginDev" disabled="@loading">
-                        @if (loading) { <span class="spinner-border spinner-border-sm me-2"></span> }
-                        Přihlásit (dev)
-                    </button>
+                        <div class="mb-3">
+                            <label class="form-label">Jméno</label>
+                            <input class="form-control" @bind="name" placeholder="Tvoje jméno" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Email</label>
+                            <input class="form-control" type="email" @bind="email" placeholder="email@ovcina.cz" />
+                        </div>
+
+                        <button class="btn btn-primary w-100" @onclick="LoginDev" disabled="@loading">
+                            @if (loading) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                            Přihlásit (dev)
+                        </button>
+                    </div>
                 </div>
-            </div>
+            }
         </div>
     </div>
 </div>
@@ -81,12 +85,13 @@
     private string? errorMessage;
     private bool loading;
 
-    private void LoginOidc()
+    private async Task LoginOidc()
     {
         // Redirect to registrace OIDC authorize endpoint
         // The API will handle the code exchange via /api/auth/oidc-callback
+        var state = Guid.NewGuid().ToString("N");
+        await JS.InvokeVoidAsync("localStorage.setItem", "oidc_state", state);
         var redirectUri = Uri.EscapeDataString($"{Nav.BaseUri}auth-callback");
-        var state = Convert.ToBase64String(Guid.NewGuid().ToByteArray());
         var url = $"{oidcAuthority}/connect/authorize" +
             $"?client_id={oidcClientId}" +
             $"&redirect_uri={redirectUri}" +

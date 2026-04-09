@@ -29,8 +29,7 @@ else
             <DxGridDataColumn FieldName="IsPrebuilt" Caption="Představěná" Width="120px">
                 <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="GameId" Caption="Hra ID" Width="80px" Visible="false" />
-            @if (Catalog)
+@if (Catalog)
             {
                 <DxGridDataColumn Caption="" Width="120px" TextAlignment="GridTextAlignment.Center">
                     <CellDisplayTemplate>

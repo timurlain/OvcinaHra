@@ -55,6 +55,10 @@ public static class AuthEndpoints
         {
             group.MapPost("/oidc-exchange", async (OidcExchangeRequest request, IHttpClientFactory httpFactory) =>
             {
+                var clientSecret = config["Oidc:ClientSecret"];
+                if (string.IsNullOrEmpty(clientSecret))
+                    return Results.Problem("Oidc:ClientSecret is not configured.", statusCode: 500);
+
                 var client = httpFactory.CreateClient();
                 var tokenResponse = await client.PostAsync($"{oidcAuthority}/connect/token",
                     new FormUrlEncodedContent(new Dictionary<string, string>
@@ -63,7 +67,33 @@ public static class AuthEndpoints
                         ["code"] = request.Code,
                         ["redirect_uri"] = request.RedirectUri,
                         ["client_id"] = config["Oidc:ClientId"] ?? "ovcinahra",
-                        ["client_secret"] = config["Oidc:ClientSecret"] ?? "",
+                        ["client_secret"] = clientSecret,
+                    }));
+
+                if (!tokenResponse.IsSuccessStatusCode)
+                    return Results.Unauthorized();
+
+                var tokenData = await tokenResponse.Content.ReadFromJsonAsync<OidcTokenResponse>();
+                if (tokenData?.AccessToken is null)
+                    return Results.Unauthorized();
+
+                return Results.Ok(new OidcExchangeResponse(tokenData.AccessToken, DateTime.UtcNow.AddSeconds(tokenData.ExpiresIn), tokenData.ExpiresIn, tokenData.RefreshToken));
+            }).AllowAnonymous();
+
+            group.MapPost("/oidc-refresh", async (OidcRefreshRequest request, IHttpClientFactory httpFactory) =>
+            {
+                var clientSecret = config["Oidc:ClientSecret"];
+                if (string.IsNullOrEmpty(clientSecret))
+                    return Results.Problem("Oidc:ClientSecret is not configured.", statusCode: 500);
+
+                var client = httpFactory.CreateClient();
+                var tokenResponse = await client.PostAsync($"{oidcAuthority}/connect/token",
+                    new FormUrlEncodedContent(new Dictionary<string, string>
+                    {
+                        ["grant_type"] = "refresh_token",
+                        ["refresh_token"] = request.RefreshToken,
+                        ["client_id"] = config["Oidc:ClientId"] ?? "ovcinahra",
+                        ["client_secret"] = clientSecret,
                     }));
 
                 if (!tokenResponse.IsSuccessStatusCode)
@@ -152,6 +182,8 @@ public record TokenResponse(string Token, DateTime ExpiresUtc, int ExpiresInSeco
 public record UserInfoDto(string UserId, string Email, string Name, List<string> Roles);
 
 public record OidcExchangeRequest(string Code, string RedirectUri);
+public record OidcRefreshRequest(string RefreshToken);
+public record OidcExchangeResponse(string Token, DateTime ExpiresUtc, int ExpiresInSeconds, string? RefreshToken);
 
 public record OidcTokenResponse(
     [property: System.Text.Json.Serialization.JsonPropertyName("access_token")] string? AccessToken,

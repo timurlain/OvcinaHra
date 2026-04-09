@@ -3,6 +3,7 @@
 @inject ApiClient Api
 @inject GameContextService GameContext
 @inject NavigationManager Nav
+@implements IDisposable
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="mb-0">@(Catalog ? "Katalog lokací" : "Lokace")</h1>
@@ -417,6 +418,16 @@ else
                 break;
         }
     }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GameContext.InitializeAsync();
+        GameContext.OnGameChanged += OnGameChanged;
+    }
+
+    private async void OnGameChanged() { await LoadDataAsync(); StateHasChanged(); }
+
+    public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
 
     protected override async Task OnParametersSetAsync() => await LoadDataAsync();
 

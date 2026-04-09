@@ -28,9 +28,16 @@
             return;
         }
 
-        // OIDC authorization code — exchange via API
+        // OIDC authorization code — validate state then exchange via API
         if (!string.IsNullOrEmpty(Code))
         {
+            var storedState = await JS.InvokeAsync<string>("localStorage.getItem", "oidc_state");
+            await JS.InvokeVoidAsync("localStorage.removeItem", "oidc_state");
+            if (string.IsNullOrEmpty(storedState) || storedState != State)
+            {
+                Nav.NavigateTo("/login?error=invalid_state");
+                return;
+            }
             await ExchangeCodeAsync();
             return;
         }
