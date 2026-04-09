@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using NpgsqlTypes;
@@ -12,9 +13,11 @@ using OvcinaHra.Api.Data;
 namespace OvcinaHra.Api.Migrations
 {
     [DbContext(typeof(WorldDbContext))]
-    partial class WorldDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260408131913_TreasureItemStandalone")]
+    partial class TreasureItemStandalone
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -68,6 +71,9 @@ namespace OvcinaHra.Api.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("text");
 
+                    b.Property<int>("GameId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("ImagePath")
                         .HasColumnType("text");
 
@@ -83,6 +89,8 @@ namespace OvcinaHra.Api.Migrations
                         .HasColumnType("character varying(200)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("GameId");
 
                     b.HasIndex("LocationId");
 
@@ -186,23 +194,6 @@ namespace OvcinaHra.Api.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Games");
-                });
-
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameBuilding", b =>
-                {
-                    b.Property<int>("GameId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("BuildingId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("GameId", "BuildingId");
-
-                    b.HasIndex("BuildingId");
-
-                    b.HasIndex("GameId");
-
-                    b.ToTable("GameBuildings");
                 });
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameItem", b =>
@@ -341,39 +332,6 @@ namespace OvcinaHra.Api.Migrations
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchVector"), "GIN");
 
                     b.ToTable("Items");
-                });
-
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.LocalUser", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("AvatarColor")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("LastSeenAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Preferences")
-                        .HasColumnType("text");
-
-                    b.Property<string>("RegistraceUserId")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RegistraceUserId")
-                        .IsUnique();
-
-                    b.ToTable("LocalUsers");
                 });
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.Location", b =>
@@ -803,9 +761,17 @@ namespace OvcinaHra.Api.Migrations
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.Building", b =>
                 {
+                    b.HasOne("OvcinaHra.Shared.Domain.Entities.Game", "Game")
+                        .WithMany("Buildings")
+                        .HasForeignKey("GameId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("OvcinaHra.Shared.Domain.Entities.Location", "Location")
                         .WithMany("Buildings")
                         .HasForeignKey("LocationId");
+
+                    b.Navigation("Game");
 
                     b.Navigation("Location");
                 });
@@ -871,25 +837,6 @@ namespace OvcinaHra.Api.Migrations
                     b.Navigation("Location");
 
                     b.Navigation("OutputItem");
-                });
-
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameBuilding", b =>
-                {
-                    b.HasOne("OvcinaHra.Shared.Domain.Entities.Building", "Building")
-                        .WithMany("GameBuildings")
-                        .HasForeignKey("BuildingId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("OvcinaHra.Shared.Domain.Entities.Game", "Game")
-                        .WithMany("GameBuildings")
-                        .HasForeignKey("GameId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Building");
-
-                    b.Navigation("Game");
                 });
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameItem", b =>
@@ -1262,8 +1209,6 @@ namespace OvcinaHra.Api.Migrations
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.Building", b =>
                 {
                     b.Navigation("CraftingRequirements");
-
-                    b.Navigation("GameBuildings");
                 });
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.CraftingRecipe", b =>
@@ -1277,9 +1222,9 @@ namespace OvcinaHra.Api.Migrations
                 {
                     b.Navigation("BattlefieldBonuses");
 
-                    b.Navigation("CraftingRecipes");
+                    b.Navigation("Buildings");
 
-                    b.Navigation("GameBuildings");
+                    b.Navigation("CraftingRecipes");
 
                     b.Navigation("GameItems");
 

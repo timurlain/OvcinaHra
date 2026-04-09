@@ -7,10 +7,9 @@ public class Building
     public string? Description { get; set; }
     public string? ImagePath { get; set; }
     public int? LocationId { get; set; }
-    public int GameId { get; set; }
     public bool IsPrebuilt { get; set; }
 
     public Location? Location { get; set; }
-    public Game Game { get; set; } = null!;
+    public ICollection<GameBuilding> GameBuildings { get; set; } = [];
     public ICollection<CraftingBuildingRequirement> CraftingRequirements { get; set; } = [];
 }

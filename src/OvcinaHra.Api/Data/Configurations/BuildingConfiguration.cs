@@ -11,6 +11,5 @@ public class BuildingConfiguration : IEntityTypeConfiguration<Building>
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Name).IsRequired().HasMaxLength(200);
         builder.HasOne(e => e.Location).WithMany(l => l.Buildings).HasForeignKey(e => e.LocationId);
-        builder.HasOne(e => e.Game).WithMany(g => g.Buildings).HasForeignKey(e => e.GameId);
     }
 }

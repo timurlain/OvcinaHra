@@ -38,7 +38,12 @@ public class ApiClient
     {
         var response = await _http.PostAsJsonAsync(url, data, JsonOptions);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<TResponse>(JsonOptions);
+        if (response.Content.Headers.ContentLength == 0 || response.StatusCode == System.Net.HttpStatusCode.NoContent)
+            return default;
+        var content = await response.Content.ReadAsStringAsync();
+        if (string.IsNullOrEmpty(content))
+            return default;
+        return JsonSerializer.Deserialize<TResponse>(content, JsonOptions);
     }
 
     public async Task PostAsync<TRequest>(string url, TRequest data)

@@ -76,33 +76,10 @@ public class AuthEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
     }
 
     [Fact]
-    public async Task Callback_WithoutExternalAuth_ReturnsRedirect()
+    public async Task Me_ReturnsRoles()
     {
-        // Direct GET to callback without external auth session should redirect
-        var client = Factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
-        {
-            AllowAutoRedirect = false
-        });
-        // Add auth header for the request
-        client.DefaultRequestHeaders.Authorization = Client.DefaultRequestHeaders.Authorization;
-
-        var response = await client.GetAsync("/api/auth/callback");
-
-        // Should redirect to login with error (no external auth result)
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Contains("error", response.Headers.Location?.ToString() ?? "");
-    }
-
-    [Fact]
-    public async Task DevToken_StillWorksAfterOAuthSetup()
-    {
-        // Verify the dev-token endpoint wasn't broken by OAuth changes
-        var response = await Client.PostAsJsonAsync("/api/auth/dev-token",
-            new DevTokenRequest("verify-user", "verify@test.cz", "Verify"));
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var token = await response.Content.ReadFromJsonAsync<TokenResponse>();
-        Assert.NotNull(token);
-        Assert.False(string.IsNullOrEmpty(token.Token));
+        var response = await Client.GetFromJsonAsync<UserInfoDto>("/api/auth/me");
+        Assert.NotNull(response);
+        Assert.Contains("Organizer", response.Roles);
     }
 }

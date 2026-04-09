@@ -98,6 +98,8 @@
     [Parameter] public EventCallback<int> OnVariantNavigate { get; set; }
     /// <summary>Provides all locations for resolving parent names.</summary>
     [Parameter] public List<LocationListDto> AllLocations { get; set; } = [];
+    /// <summary>When set (game mode), newly created locations are auto-assigned to this game.</summary>
+    [Parameter] public int? GameId { get; set; }
 
     private bool isVisible, isDeleteVisible, isSaving;
     private string modalTitle = "";
@@ -153,7 +155,11 @@
             if (editingId.HasValue)
                 await Api.PutAsync($"/api/locations/{editingId}", model.ToUpdateDto());
             else
-                await Api.PostAsync<CreateLocationDto, LocationDetailDto>("/api/locations", model.ToCreateDto());
+            {
+                var created = await Api.PostAsync<CreateLocationDto, LocationDetailDto>("/api/locations", model.ToCreateDto());
+                if (GameId is not null && created is not null)
+                    await Api.PostAsync<GameLocationDto, object>("/api/locations/by-game", new GameLocationDto(GameId.Value, created.Id));
+            }
 
             isVisible = false;
             await OnSaved.InvokeAsync();

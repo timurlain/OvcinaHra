@@ -21,7 +21,7 @@ public class Game
     public ICollection<GameLocation> GameLocations { get; set; } = [];
     public ICollection<GameItem> GameItems { get; set; } = [];
     public ICollection<SecretStash> SecretStashes { get; set; } = [];
-    public ICollection<Building> Buildings { get; set; } = [];
+    public ICollection<GameBuilding> GameBuildings { get; set; } = [];
     public ICollection<CraftingRecipe> CraftingRecipes { get; set; } = [];
     public ICollection<MonsterLoot> MonsterLoots { get; set; } = [];
     public ICollection<Quest> Quests { get; set; } = [];

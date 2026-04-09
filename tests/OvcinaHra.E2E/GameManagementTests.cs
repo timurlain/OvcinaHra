@@ -61,12 +61,13 @@ public class GameManagementTests
         Assert.Equal("Balinova pozvánka v2", updated!.Name);
         Assert.Equal(OvcinaHra.Shared.Domain.Enums.GameStatus.Active, updated.Status);
 
-        // 6. Delete
+        // 6. Delete is disabled — games are protected
         var deleteResponse = await client.DeleteAsync($"/api/games/{created.Id}");
-        deleteResponse.EnsureSuccessStatusCode();
+        Assert.Equal(System.Net.HttpStatusCode.MethodNotAllowed, deleteResponse.StatusCode);
 
+        // Game still exists
         games = await client.GetFromJsonAsync<List<GameListDto>>("/api/games");
-        Assert.Empty(games!);
+        Assert.Single(games!);
     }
 
     [Fact]

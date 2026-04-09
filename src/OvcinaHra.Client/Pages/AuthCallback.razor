@@ -1,5 +1,8 @@
 @page "/auth-callback"
 @inject IJSRuntime JS
+@inject HttpClient Http
+@inject JwtAuthStateProvider AuthProvider
+@inject TokenRefreshService RefreshService
 @inject NavigationManager Nav
 
 <div class="d-flex justify-content-center align-items-center" style="height: 50vh;">
@@ -10,23 +13,75 @@
 </div>
 
 @code {
+    [SupplyParameterFromQuery(Name = "code")] private string? Code { get; set; }
+    [SupplyParameterFromQuery(Name = "state")] private string? State { get; set; }
+    [SupplyParameterFromQuery(Name = "error")] private string? Error { get; set; }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
 
-        // Extract token from URL fragment via JS interop
+        // OIDC error from registrace
+        if (!string.IsNullOrEmpty(Error))
+        {
+            Nav.NavigateTo($"/login?error={Error}");
+            return;
+        }
+
+        // OIDC authorization code — validate state then exchange via API
+        if (!string.IsNullOrEmpty(Code))
+        {
+            var storedState = await JS.InvokeAsync<string>("localStorage.getItem", "oidc_state");
+            await JS.InvokeVoidAsync("localStorage.removeItem", "oidc_state");
+            if (string.IsNullOrEmpty(storedState) || storedState != State)
+            {
+                Nav.NavigateTo("/login?error=invalid_state");
+                return;
+            }
+            await ExchangeCodeAsync();
+            return;
+        }
+
+        // Legacy: token in URL fragment (from old OAuth flow)
         var token = await JS.InvokeAsync<string>("eval",
             "new URLSearchParams(window.location.hash.substring(1)).get('token')");
 
         if (!string.IsNullOrEmpty(token))
         {
-            // Store token — the JwtAuthStateProvider will pick it up
             await JS.InvokeVoidAsync("localStorage.setItem", "auth_token", token);
             Nav.NavigateTo("/", forceLoad: true);
         }
         else
         {
             Nav.NavigateTo("/login?error=no_token");
+        }
+    }
+
+    private async Task ExchangeCodeAsync()
+    {
+        try
+        {
+            var redirectUri = $"{Nav.BaseUri}auth-callback";
+            var response = await Http.PostAsJsonAsync("/api/auth/oidc-exchange",
+                new { Code, RedirectUri = redirectUri });
+
+            if (response.IsSuccessStatusCode)
+            {
+                var token = await response.Content.ReadFromJsonAsync<OvcinaHra.Client.Auth.TokenResponse>();
+                if (token is not null)
+                {
+                    await AuthProvider.SetTokenAsync(token.Token);
+                    RefreshService.ScheduleRefresh(token.ExpiresInSeconds);
+                    Nav.NavigateTo("/");
+                    return;
+                }
+            }
+
+            Nav.NavigateTo("/login?error=auth_failed");
+        }
+        catch
+        {
+            Nav.NavigateTo("/login?error=auth_failed");
         }
     }
 }

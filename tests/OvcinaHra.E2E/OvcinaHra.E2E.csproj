@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\OvcinaHra.Api\OvcinaHra.Api.csproj" />
+    <ProjectReference Include="..\..\src\OvcinaHra.Client\OvcinaHra.Client.csproj" />
     <ProjectReference Include="..\..\src\OvcinaHra.Shared\OvcinaHra.Shared.csproj" />
   </ItemGroup>
 

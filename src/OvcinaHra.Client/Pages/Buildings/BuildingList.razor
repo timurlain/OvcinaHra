@@ -2,11 +2,20 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject GameContextService GameContext
+@inject NavigationManager Nav
 @implements IDisposable
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="mb-0">Budovy</h1>
-    <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nová budova</button>
+    <h1 class="mb-0">@(Catalog ? "Katalog budov" : "Budovy")</h1>
+    <div class="d-flex gap-2">
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm @(Catalog ? "btn-outline-primary" : "btn-primary")"
+                    @onclick='() => Nav.NavigateTo("/buildings")'>Jen tato hra</button>
+            <button class="btn btn-sm @(Catalog ? "btn-primary" : "btn-outline-primary")"
+                    @onclick='() => Nav.NavigateTo("/buildings?catalog=true")'>Katalog</button>
+        </div>
+        <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nová budova</button>
+    </div>
 </div>
 
 @if (loading) { <p>Načítám...</p> }
@@ -20,7 +29,25 @@ else
             <DxGridDataColumn FieldName="IsPrebuilt" Caption="Představěná" Width="120px">
                 <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="GameId" Caption="Hra ID" Width="80px" Visible="false" />
+@if (Catalog)
+            {
+                <DxGridDataColumn Caption="" Width="120px" TextAlignment="GridTextAlignment.Center">
+                    <CellDisplayTemplate>
+                        @{
+                            var b = (BuildingListDto)context.DataItem;
+                            var isAssigned = assignedBuildingIds.Contains(b.Id);
+                        }
+                        @if (isAssigned)
+                        {
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => UnassignBuildingAsync(b.Id)" @onclick:stopPropagation="true">Odebrat</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-sm btn-outline-success" @onclick="() => AssignBuildingAsync(b.Id)" @onclick:stopPropagation="true">Přiřadit</button>
+                        }
+                    </CellDisplayTemplate>
+                </DxGridDataColumn>
+            }
         </Columns>
     </OvcinaGrid>
 }
@@ -34,8 +61,10 @@ else
             <DxFormLayoutItem Caption="Popis" ColSpanMd="12">
                 <DxMemo @bind-Text="@description" Rows="3" />
             </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Lokace ID" ColSpanMd="6">
-                <DxSpinEdit @bind-Value="@locationId" MinValue="0" />
+            <DxFormLayoutItem Caption="Lokace" ColSpanMd="12">
+                <DxComboBox Data="@gameLocations" @bind-Value="@locationId"
+                            TextFieldName="Name" ValueFieldName="Id"
+                            NullText="Bez lokace" ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
             </DxFormLayoutItem>
             <DxFormLayoutItem Caption="" ColSpanMd="12">
                 <DxCheckBox @bind-Checked="@isPrebuilt">Představěná organizátory</DxCheckBox>
@@ -62,9 +91,13 @@ else
 </DxPopup>
 
 @code {
+    [SupplyParameterFromQuery] public bool Catalog { get; set; }
+
     private List<BuildingListDto> buildings = []; private bool loading = true, isModalVisible, isDeleteVisible, isSaving, isPrebuilt;
     private string modalTitle = "", name = ""; private string? error, description; private int? editingId;
-    private int locationId;
+    private int? locationId;
+    private List<LocationListDto> gameLocations = [];
+    private HashSet<int> assignedBuildingIds = [];
     private int gameId => GameContext.SelectedGameId ?? 1;
 
     protected override async Task OnInitializedAsync()
@@ -73,16 +106,32 @@ else
         GameContext.OnGameChanged += OnGameChanged;
         await LoadAsync();
     }
-    private async Task LoadAsync() { loading = true; buildings = await Api.GetListAsync<BuildingListDto>($"/api/buildings/by-game/{gameId}"); loading = false; }
+    private async Task LoadAsync()
+    {
+        loading = true;
+        if (Catalog)
+        {
+            buildings = await Api.GetListAsync<BuildingListDto>("/api/buildings");
+            var assigned = await Api.GetListAsync<BuildingListDto>($"/api/buildings/by-game/{gameId}");
+            assignedBuildingIds = assigned.Select(b => b.Id).ToHashSet();
+        }
+        else
+        {
+            buildings = await Api.GetListAsync<BuildingListDto>($"/api/buildings/by-game/{gameId}");
+        }
+        loading = false;
+    }
     private async void OnGameChanged() { await LoadAsync(); StateHasChanged(); }
     public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
 
-    private void OpenModal(BuildingListDto? b)
+    private async void OpenModal(BuildingListDto? b)
     {
         error = null;
-        if (b is null) { editingId = null; name = ""; description = null; locationId = 0; isPrebuilt = false; modalTitle = "Nová budova"; }
-        else { editingId = b.Id; name = b.Name; locationId = b.LocationId ?? 0; isPrebuilt = b.IsPrebuilt; modalTitle = $"Upravit: {b.Name}"; _ = LoadDetailAsync(b.Id); }
+        gameLocations = await Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gameId}");
+        if (b is null) { editingId = null; name = ""; description = null; locationId = null; isPrebuilt = false; modalTitle = "Nová budova"; }
+        else { editingId = b.Id; name = b.Name; locationId = b.LocationId; isPrebuilt = b.IsPrebuilt; modalTitle = $"Upravit: {b.Name}"; _ = LoadDetailAsync(b.Id); }
         isModalVisible = true;
+        StateHasChanged();
     }
 
     private async Task LoadDetailAsync(int id)
@@ -96,9 +145,8 @@ else
         error = null; isSaving = true;
         try
         {
-            int? locId = locationId > 0 ? locationId : null;
-            if (editingId.HasValue) await Api.PutAsync($"/api/buildings/{editingId}", new UpdateBuildingDto(name, description, locId, isPrebuilt));
-            else await Api.PostAsync<CreateBuildingDto, BuildingDetailDto>("/api/buildings", new CreateBuildingDto(name, gameId, description, locId, isPrebuilt));
+            if (editingId.HasValue) await Api.PutAsync($"/api/buildings/{editingId}", new UpdateBuildingDto(name, description, locationId, isPrebuilt));
+            else await Api.PostAsync<CreateBuildingDto, BuildingDetailDto>($"/api/buildings?gameId={gameId}", new CreateBuildingDto(name, description, locationId, isPrebuilt));
             isModalVisible = false; await LoadAsync();
         }
         catch (Exception ex) { error = ex.Message; } finally { isSaving = false; }
@@ -108,5 +156,19 @@ else
     {
         try { await Api.DeleteAsync($"/api/buildings/{editingId}"); isDeleteVisible = false; isModalVisible = false; await LoadAsync(); }
         catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task AssignBuildingAsync(int buildingId)
+    {
+        await Api.PostAsync<GameBuildingDto, object>("/api/buildings/by-game", new GameBuildingDto(gameId, buildingId));
+        assignedBuildingIds.Add(buildingId);
+        StateHasChanged();
+    }
+
+    private async Task UnassignBuildingAsync(int buildingId)
+    {
+        await Api.DeleteAsync($"/api/buildings/by-game/{gameId}/{buildingId}");
+        assignedBuildingIds.Remove(buildingId);
+        StateHasChanged();
     }
 }

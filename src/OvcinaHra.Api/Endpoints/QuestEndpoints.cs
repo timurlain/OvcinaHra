@@ -12,11 +12,13 @@ public static class QuestEndpoints
     {
         var group = routes.MapGroup("/api/quests").WithTags("Quests");
 
+        group.MapGet("/all", GetAll);
         group.MapGet("/by-game/{gameId:int}", GetByGame);
         group.MapGet("/{id:int}", GetById);
         group.MapPost("/", Create);
         group.MapPut("/{id:int}", Update);
         group.MapDelete("/{id:int}", Delete);
+        group.MapPost("/{id:int}/copy-to-game/{gameId:int}", CopyToGame);
 
         // Tags
         group.MapPost("/{id:int}/tags/{tagId:int}", AddTag);
@@ -35,6 +37,70 @@ public static class QuestEndpoints
         group.MapDelete("/{id:int}/rewards/{itemId:int}", RemoveReward);
 
         return group;
+    }
+
+    private static async Task<Ok<List<QuestCatalogDto>>> GetAll(WorldDbContext db)
+    {
+        var quests = await db.Quests
+            .Include(q => q.Game)
+            .OrderBy(q => q.Game.Edition).ThenBy(q => q.Name)
+            .Select(q => new QuestCatalogDto(q.Id, q.Name, q.QuestType, q.GameId, q.Game.Name, q.Game.Edition))
+            .ToListAsync();
+        return TypedResults.Ok(quests);
+    }
+
+    private static async Task<Results<Created<QuestCopyResultDto>, NotFound>> CopyToGame(int id, int gameId, WorldDbContext db)
+    {
+        var source = await db.Quests
+            .Include(q => q.QuestTags).ThenInclude(qt => qt.Tag)
+            .Include(q => q.QuestLocations)
+            .Include(q => q.QuestEncounters)
+            .Include(q => q.QuestRewards).ThenInclude(qr => qr.Item)
+            .FirstOrDefaultAsync(q => q.Id == id);
+        if (source is null) return TypedResults.NotFound();
+
+        var warnings = new List<string>();
+
+        var copy = new Quest
+        {
+            Name = source.Name, QuestType = source.QuestType, Description = source.Description,
+            FullText = source.FullText, TimeSlot = source.TimeSlot,
+            RewardXp = source.RewardXp, RewardMoney = source.RewardMoney, RewardNotes = source.RewardNotes,
+            ChainOrder = null, ParentQuestId = null, GameId = gameId
+        };
+        db.Quests.Add(copy);
+        await db.SaveChangesAsync();
+
+        foreach (var tag in source.QuestTags)
+            db.QuestTagLinks.Add(new QuestTagLink { QuestId = copy.Id, TagId = tag.TagId });
+
+        foreach (var enc in source.QuestEncounters)
+            db.QuestEncounters.Add(new QuestEncounter { QuestId = copy.Id, MonsterId = enc.MonsterId, Quantity = enc.Quantity });
+
+        var targetLocationIds = (await db.GameLocations.Where(gl => gl.GameId == gameId).Select(gl => gl.LocationId).ToListAsync()).ToHashSet();
+        foreach (var loc in source.QuestLocations)
+        {
+            if (targetLocationIds.Contains(loc.LocationId))
+                db.QuestLocationLinks.Add(new QuestLocationLink { QuestId = copy.Id, LocationId = loc.LocationId });
+            else
+                warnings.Add($"Lokace #{loc.LocationId} není v cílové hře — přeskočena.");
+        }
+
+        var targetItemIds = (await db.GameItems.Where(gi => gi.GameId == gameId).Select(gi => gi.ItemId).ToListAsync()).ToHashSet();
+        foreach (var reward in source.QuestRewards)
+        {
+            if (targetItemIds.Contains(reward.ItemId))
+                db.QuestRewards.Add(new QuestReward { QuestId = copy.Id, ItemId = reward.ItemId, Quantity = reward.Quantity });
+            else
+                warnings.Add($"Předmět '{reward.Item.Name}' není v cílové hře — odměna přeskočena.");
+        }
+
+        await db.SaveChangesAsync();
+
+        return TypedResults.Created($"/api/quests/{copy.Id}",
+            new QuestCopyResultDto(
+                new QuestListDto(copy.Id, copy.Name, copy.QuestType, copy.ChainOrder, copy.ParentQuestId, copy.GameId),
+                warnings));
     }
 
     private static async Task<Ok<List<QuestListDto>>> GetByGame(int gameId, WorldDbContext db)
