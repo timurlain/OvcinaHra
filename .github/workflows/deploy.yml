@@ -6,29 +6,26 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: ghcr.io
-  API_IMAGE: ghcr.io/${{ github.repository_owner }}/ovcinahra-api
-  CLIENT_IMAGE: ghcr.io/${{ github.repository_owner }}/ovcinahra-web
-  RESOURCE_GROUP: ovcina-rg
+  REGISTRY: ovcinaacr.azurecr.io
+  API_IMAGE: ovcinaacr.azurecr.io/ovcinahra-api
+  CLIENT_IMAGE: ovcinaacr.azurecr.io/ovcinahra-web
+  RESOURCE_GROUP: ovcina
   API_CONTAINER_APP: ovcinahra-api
   CLIENT_CONTAINER_APP: ovcinahra-web
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Log in to GitHub Container Registry
+      - name: Log in to Azure Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
 
       - name: Build and push API image
         uses: docker/build-push-action@v6
