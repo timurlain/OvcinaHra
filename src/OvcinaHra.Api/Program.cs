@@ -98,10 +98,9 @@ try
 
     var app = builder.Build();
 
-    // Auto-apply pending migrations on startup (dev only — production uses explicit migration scripts)
-    if (app.Environment.IsDevelopment())
+    // Auto-apply pending migrations on startup
+    using (var scope = app.Services.CreateScope())
     {
-        using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
         await db.Database.MigrateAsync();
     }
