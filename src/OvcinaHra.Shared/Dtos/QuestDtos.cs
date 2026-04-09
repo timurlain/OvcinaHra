@@ -54,3 +54,6 @@ public record QuestRewardDto(int QuestId, int ItemId, string ItemName, int Quant
 public record AddQuestLocationDto(int LocationId);
 public record AddQuestEncounterDto(int MonsterId, int Quantity = 1);
 public record AddQuestRewardDto(int ItemId, int Quantity = 1);
+
+public record QuestCatalogDto(int Id, string Name, QuestType QuestType, int GameId, string GameName, int GameEdition);
+public record QuestCopyResultDto(QuestListDto Quest, List<string> Warnings);

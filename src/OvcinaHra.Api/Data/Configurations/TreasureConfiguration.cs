@@ -41,8 +41,10 @@ public class TreasureItemConfiguration : IEntityTypeConfiguration<TreasureItem>
 {
     public void Configure(EntityTypeBuilder<TreasureItem> builder)
     {
-        builder.HasKey(e => new { e.TreasureQuestId, e.ItemId });
-        builder.HasOne(e => e.TreasureQuest).WithMany(t => t.TreasureItems).HasForeignKey(e => e.TreasureQuestId);
+        builder.HasKey(e => e.Id);
+        builder.HasOne(e => e.TreasureQuest).WithMany(t => t.TreasureItems).HasForeignKey(e => e.TreasureQuestId).IsRequired(false);
         builder.HasOne(e => e.Item).WithMany(i => i.TreasureItems).HasForeignKey(e => e.ItemId);
+        builder.HasOne(e => e.Game).WithMany().HasForeignKey(e => e.GameId);
+        builder.HasIndex(e => new { e.GameId, e.TreasureQuestId });
     }
 }

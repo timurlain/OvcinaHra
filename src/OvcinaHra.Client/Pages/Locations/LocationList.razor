@@ -1,10 +1,23 @@
 @page "/locations"
 @attribute [Authorize]
 @inject ApiClient Api
+@inject GameContextService GameContext
+@inject NavigationManager Nav
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="mb-0">Lokace</h1>
-    <button class="btn btn-primary" data-testid="create-location" @onclick="() => locationPopup.OpenNew()">+ Nová lokace</button>
+    <h1 class="mb-0">@(Catalog ? "Katalog lokací" : "Lokace")</h1>
+    <div class="d-flex gap-2">
+        <div class="d-flex gap-2 me-2">
+            <button class="btn btn-sm @(Catalog ? "btn-outline-primary" : "btn-primary")"
+                    @onclick='() => Nav.NavigateTo("/locations")'>Jen tato hra</button>
+            <button class="btn btn-sm @(Catalog ? "btn-primary" : "btn-outline-primary")"
+                    @onclick='() => Nav.NavigateTo("/locations?catalog=true")'>Katalog</button>
+        </div>
+        @if (!Catalog)
+        {
+            <button class="btn btn-primary" data-testid="create-location" @onclick="() => locationPopup.OpenNew()">+ Nová lokace</button>
+        }
+    </div>
 </div>
 
 @if (loading)
@@ -52,12 +65,32 @@ else
             </DxGridDataColumn>
             <DxGridDataColumn FieldName="Latitude" Caption="Šířka" Width="120px" DisplayFormat="F5" Visible="false" />
             <DxGridDataColumn FieldName="Longitude" Caption="Délka" Width="120px" DisplayFormat="F5" Visible="false" />
+            @if (Catalog)
+            {
+                <DxGridDataColumn Caption="" Width="120px" TextAlignment="GridTextAlignment.Center">
+                    <CellDisplayTemplate>
+                        @{
+                            var loc = (LocationListDto)context.DataItem;
+                            var isAssigned = assignedLocationIds.Contains(loc.Id);
+                        }
+                        @if (isAssigned)
+                        {
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => UnassignLocationAsync(loc.Id)" @onclick:stopPropagation="true">Odebrat</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-sm btn-outline-success" @onclick="() => AssignLocationAsync(loc.Id)" @onclick:stopPropagation="true">Přiřadit</button>
+                        }
+                    </CellDisplayTemplate>
+                </DxGridDataColumn>
+            }
         </Columns>
     </OvcinaGrid>
 }
 
 <LocationEditPopup @ref="locationPopup"
     AllLocations="locations"
+    GameId="@(Catalog ? null : gameId)"
     OnSaved="LoadDataAsync" />
 
 <DxContextMenu @ref="contextMenu" ItemClick="OnContextMenuItemClick">
@@ -137,10 +170,16 @@ else
 </DxPopup>
 
 @code {
+    [SupplyParameterFromQuery]
+    public bool Catalog { get; set; }
+
+    private int gameId => GameContext.SelectedGameId ?? 1;
+
     private LocationEditPopup locationPopup = null!;
     private DxContextMenu? contextMenu;
     private LocationListDto? contextMenuTarget;
     private List<LocationListDto> locations = [];
+    private HashSet<int> assignedLocationIds = [];
     private bool loading = true;
     private bool isGpsVisible;
     private bool isLinkVisible;
@@ -379,13 +418,37 @@ else
         }
     }
 
-    protected override async Task OnInitializedAsync() => await LoadDataAsync();
+    protected override async Task OnParametersSetAsync() => await LoadDataAsync();
 
     private async Task LoadDataAsync()
     {
         loading = true;
-        locations = await Api.GetListAsync<LocationListDto>("/api/locations");
+        if (Catalog)
+        {
+            locations = await Api.GetListAsync<LocationListDto>("/api/locations");
+            var assigned = await Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gameId}");
+            assignedLocationIds = assigned.Select(l => l.Id).ToHashSet();
+        }
+        else
+        {
+            locations = await Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gameId}");
+            assignedLocationIds = [];
+        }
         loading = false;
+    }
+
+    private async Task AssignLocationAsync(int locationId)
+    {
+        await Api.PostAsync<GameLocationDto, object>("/api/locations/by-game", new GameLocationDto(gameId, locationId));
+        assignedLocationIds.Add(locationId);
+        StateHasChanged();
+    }
+
+    private async Task UnassignLocationAsync(int locationId)
+    {
+        await Api.DeleteAsync($"/api/locations/by-game/{gameId}/{locationId}");
+        assignedLocationIds.Remove(locationId);
+        StateHasChanged();
     }
 
 }

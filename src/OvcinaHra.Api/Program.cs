@@ -1,8 +1,6 @@
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
@@ -42,102 +40,50 @@ try
     builder.Services.AddHealthChecks()
         .AddDbContextCheck<WorldDbContext>();
 
-    // JWT Authentication + External OAuth
-    var authBuilder = builder.Services.AddAuthentication(options =>
-    {
-        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-    })
+    // Authentication: JWT Bearer with dual validation
+    // Production: tokens from registrace OIDC server (validated via discovery)
+    // Development: also accepts self-issued dev tokens
+    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        options.TokenValidationParameters = new TokenValidationParameters
+        var oidcAuthority = builder.Configuration["Oidc:Authority"];
+        if (!string.IsNullOrEmpty(oidcAuthority))
         {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
-            ClockSkew = TimeSpan.FromSeconds(30)
-        };
-    })
-    .AddCookie("ExternalLogin", options =>
-    {
-        options.Cookie.SameSite = SameSiteMode.Lax;
-        options.Cookie.HttpOnly = true;
-    });
-
-    // Conditionally add external OAuth providers
-    var googleId = builder.Configuration["ExternalAuth:Google:ClientId"];
-    var googleSecret = builder.Configuration["ExternalAuth:Google:ClientSecret"];
-    if (!string.IsNullOrEmpty(googleId) && !string.IsNullOrEmpty(googleSecret))
-    {
-        authBuilder.AddGoogle(options =>
-        {
-            options.SignInScheme = "ExternalLogin";
-            options.ClientId = googleId;
-            options.ClientSecret = googleSecret;
-        });
-    }
-
-    var msId = builder.Configuration["ExternalAuth:Microsoft:ClientId"];
-    var msSecret = builder.Configuration["ExternalAuth:Microsoft:ClientSecret"];
-    if (!string.IsNullOrEmpty(msId) && !string.IsNullOrEmpty(msSecret))
-    {
-        authBuilder.AddMicrosoftAccount(options =>
-        {
-            options.SignInScheme = "ExternalLogin";
-            options.ClientId = msId;
-            options.ClientSecret = msSecret;
-            options.AuthorizationEndpoint = "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize";
-            options.TokenEndpoint = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
-        });
-    }
-
-    // Seznam (custom OAuth2, not standard OIDC)
-    var seznamConfig = builder.Configuration.GetSection("ExternalAuth:Seznam");
-    if (!string.IsNullOrEmpty(seznamConfig["ClientId"]) && !string.IsNullOrEmpty(seznamConfig["ClientSecret"]))
-    {
-        authBuilder.AddOAuth("Seznam", "Seznam", options =>
-        {
-            options.SignInScheme = "ExternalLogin";
-            options.ClientId = seznamConfig["ClientId"]!;
-            options.ClientSecret = seznamConfig["ClientSecret"]!;
-            options.AuthorizationEndpoint = "https://login.szn.cz/api/v1/oauth/auth";
-            options.TokenEndpoint = "https://login.szn.cz/api/v1/oauth/token";
-            options.UserInformationEndpoint = "https://login.szn.cz/api/v1/user";
-            options.CallbackPath = "/signin-seznam";
-            options.Scope.Add("identity");
-            options.SaveTokens = false;
-            options.ClaimActions.MapJsonKey(System.Security.Claims.ClaimTypes.NameIdentifier, "oauth_user_id");
-            options.ClaimActions.MapJsonKey(System.Security.Claims.ClaimTypes.Email, "email");
-            options.ClaimActions.MapJsonKey(System.Security.Claims.ClaimTypes.Name, "firstname");
-            options.Events.OnCreatingTicket = async context =>
+            // Production: validate against registrace OIDC discovery endpoint
+            options.Authority = oidcAuthority;
+            options.Audience = builder.Configuration["Oidc:ClientId"] ?? "ovcinahra";
+            options.TokenValidationParameters = new TokenValidationParameters
             {
-                using var request = new HttpRequestMessage(HttpMethod.Get, context.Options.UserInformationEndpoint);
-                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", context.AccessToken);
-                using var response = await context.Backchannel.SendAsync(request);
-                response.EnsureSuccessStatusCode();
-                var user = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
-                context.RunClaimActions(user);
+                ValidateIssuer = true,
+                ValidateAudience = true,
+                ValidateLifetime = true,
+                NameClaimType = "name",
+                RoleClaimType = "role",
+                ClockSkew = TimeSpan.FromSeconds(30)
             };
-        });
-    }
+        }
+        else
+        {
+            // Development fallback: self-issued tokens (dev-token endpoint)
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidateAudience = true,
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+                ValidIssuer = builder.Configuration["Jwt:Issuer"],
+                ValidAudience = builder.Configuration["Jwt:Audience"],
+                IssuerSigningKey = new SymmetricSecurityKey(
+                    Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
+                ClockSkew = TimeSpan.FromSeconds(30)
+            };
+        }
+    });
 
     builder.Services.AddAuthorization();
     builder.Services.AddProblemDetails();
+    builder.Services.AddHttpClient();
     builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
-
-    builder.Services.AddHttpClient<RegistraceClient>(client =>
-    {
-        var baseUrl = builder.Configuration["Registrace:BaseUrl"];
-        if (!string.IsNullOrEmpty(baseUrl))
-            client.BaseAddress = new Uri(baseUrl);
-        client.DefaultRequestHeaders.Add("X-Api-Key",
-            builder.Configuration["Registrace:ApiKey"] ?? "");
-    });
 
     // CORS for Blazor WASM client
     builder.Services.AddCors(options =>
@@ -151,6 +97,13 @@ try
     });
 
     var app = builder.Build();
+
+    // Auto-apply pending migrations on startup
+    using (var scope = app.Services.CreateScope())
+    {
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        await db.Database.MigrateAsync();
+    }
 
     // Global exception handler — logs and returns ProblemDetails
     app.UseExceptionHandler(error =>
@@ -182,7 +135,9 @@ try
         options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
         {
             diagnosticContext.Set("UserId",
-                httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous");
+                httpContext.User.FindFirstValue("sub")
+                ?? httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? "anonymous");
         };
     });
 
@@ -226,6 +181,7 @@ try
     app.MapBuildingEndpoints().RequireAuthorization();
     app.MapCraftingEndpoints().RequireAuthorization();
     app.MapTreasureQuestEndpoints().RequireAuthorization();
+    app.MapTreasurePlanningEndpoints().RequireAuthorization();
     app.MapTimelineEndpoints().RequireAuthorization();
     app.MapSearchEndpoints().RequireAuthorization();
     app.MapImageEndpoints().RequireAuthorization();

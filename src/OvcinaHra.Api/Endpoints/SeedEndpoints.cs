@@ -389,12 +389,14 @@ public static class SeedEndpoints
 
         foreach (var raw in rawBuildings)
         {
-            db.Buildings.Add(new Building
+            var building = new Building
             {
                 Name = raw.Name,
                 Description = raw.Description,
-                GameId = activeGame.Id
-            });
+            };
+            db.Buildings.Add(building);
+            await db.SaveChangesAsync();
+            db.GameBuildings.Add(new GameBuilding { GameId = activeGame.Id, BuildingId = building.Id });
         }
 
         await db.SaveChangesAsync();

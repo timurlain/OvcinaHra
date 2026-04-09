@@ -12,6 +12,7 @@ public class WorldDbContext(DbContextOptions<WorldDbContext> options) : DbContex
     public DbSet<Item> Items => Set<Item>();
     public DbSet<GameItem> GameItems => Set<GameItem>();
     public DbSet<Building> Buildings => Set<Building>();
+    public DbSet<GameBuilding> GameBuildings => Set<GameBuilding>();
     public DbSet<CraftingRecipe> CraftingRecipes => Set<CraftingRecipe>();
     public DbSet<CraftingIngredient> CraftingIngredients => Set<CraftingIngredient>();
     public DbSet<CraftingBuildingRequirement> CraftingBuildingRequirements => Set<CraftingBuildingRequirement>();
@@ -28,6 +29,7 @@ public class WorldDbContext(DbContextOptions<WorldDbContext> options) : DbContex
     public DbSet<TreasureItem> TreasureItems => Set<TreasureItem>();
     public DbSet<GameTimeSlot> GameTimeSlots => Set<GameTimeSlot>();
     public DbSet<BattlefieldBonus> BattlefieldBonuses => Set<BattlefieldBonus>();
+    public DbSet<LocalUser> LocalUsers => Set<LocalUser>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
