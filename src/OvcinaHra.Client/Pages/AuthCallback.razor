@@ -89,10 +89,17 @@
 
             if (response.IsSuccessStatusCode)
             {
-                var token = await response.Content.ReadFromJsonAsync<OvcinaHra.Client.Auth.TokenResponse>();
-                if (token is not null)
+                var body = await response.Content.ReadAsStringAsync();
+                await LogToServer($"Exchange body: {body[..Math.Min(200, body.Length)]}");
+
+                var token = System.Text.Json.JsonSerializer.Deserialize<OvcinaHra.Client.Auth.TokenResponse>(body,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                await LogToServer($"Token parsed: token={token?.Token?[..Math.Min(20, token?.Token?.Length ?? 0)]}..., expires={token?.ExpiresInSeconds}");
+
+                if (token?.Token is not null)
                 {
                     await AuthProvider.SetTokenAsync(token.Token);
+                    await LogToServer("Token stored, navigating to /");
                     RefreshService.ScheduleRefresh(token.ExpiresInSeconds);
                     Nav.NavigateTo("/");
                     return;
