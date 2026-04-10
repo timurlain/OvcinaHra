@@ -9,7 +9,7 @@
 <div class="d-flex justify-content-center align-items-center" style="height: 50vh;">
     <div class="text-center">
         <div class="spinner-border text-primary mb-3" role="status"></div>
-        <p>Přihlašování...</p>
+        <p>@statusMessage</p>
     </div>
 </div>
 
@@ -18,45 +18,60 @@
     [SupplyParameterFromQuery(Name = "state")] private string? State { get; set; }
     [SupplyParameterFromQuery(Name = "error")] private string? Error { get; set; }
 
+    private string statusMessage = "Přihlašování...";
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
 
-        // OIDC error from registrace
-        if (!string.IsNullOrEmpty(Error))
+        try
         {
-            Nav.NavigateTo($"/login?error={Error}");
-            return;
-        }
+            await LogToServer($"AuthCallback started: code={!string.IsNullOrEmpty(Code)}, state={!string.IsNullOrEmpty(State)}, error={Error}");
 
-        // OIDC authorization code — validate state then exchange via API
-        if (!string.IsNullOrEmpty(Code))
-        {
-            var storedState = await JS.InvokeAsync<string>("localStorage.getItem", "oidc_state");
-            var codeVerifier = await JS.InvokeAsync<string>("localStorage.getItem", "oidc_verifier");
-            await JS.InvokeVoidAsync("localStorage.removeItem", "oidc_state");
-            await JS.InvokeVoidAsync("localStorage.removeItem", "oidc_verifier");
-            if (string.IsNullOrEmpty(storedState) || storedState != State)
+            if (!string.IsNullOrEmpty(Error))
             {
-                Nav.NavigateTo("/login?error=invalid_state");
+                Nav.NavigateTo($"/login?error={Error}");
                 return;
             }
-            await ExchangeCodeAsync(codeVerifier);
-            return;
-        }
 
-        // Legacy: token in URL fragment (from old OAuth flow)
-        var token = await JS.InvokeAsync<string>("eval",
-            "new URLSearchParams(window.location.hash.substring(1)).get('token')");
+            if (!string.IsNullOrEmpty(Code))
+            {
+                var storedState = await JS.InvokeAsync<string?>("localStorage.getItem", "oidc_state");
+                var codeVerifier = await JS.InvokeAsync<string?>("localStorage.getItem", "oidc_verifier");
+                await JS.InvokeVoidAsync("localStorage.removeItem", "oidc_state");
+                await JS.InvokeVoidAsync("localStorage.removeItem", "oidc_verifier");
 
-        if (!string.IsNullOrEmpty(token))
-        {
-            await JS.InvokeVoidAsync("localStorage.setItem", "auth_token", token);
-            Nav.NavigateTo("/", forceLoad: true);
+                await LogToServer($"State check: stored={storedState?[..Math.Min(8, storedState?.Length ?? 0)]}..., received={State?[..Math.Min(8, State?.Length ?? 0)]}..., match={storedState == State}");
+
+                if (string.IsNullOrEmpty(storedState) || storedState != State)
+                {
+                    Nav.NavigateTo("/login?error=invalid_state");
+                    return;
+                }
+
+                await ExchangeCodeAsync(codeVerifier);
+                return;
+            }
+
+            // Legacy: token in URL fragment
+            var token = await JS.InvokeAsync<string?>("eval",
+                "new URLSearchParams(window.location.hash.substring(1)).get('token')");
+
+            if (!string.IsNullOrEmpty(token))
+            {
+                await JS.InvokeVoidAsync("localStorage.setItem", "auth_token", token);
+                Nav.NavigateTo("/", forceLoad: true);
+            }
+            else
+            {
+                await LogToServer("No code, no error, no token fragment — redirecting to login");
+                Nav.NavigateTo("/login?error=no_token");
+            }
         }
-        else
+        catch (Exception ex)
         {
-            Nav.NavigateTo("/login?error=no_token");
+            await LogToServer($"AuthCallback exception: {ex.Message}");
+            Nav.NavigateTo($"/login?error=auth_failed");
         }
     }
 
@@ -65,8 +80,12 @@
         try
         {
             var redirectUri = $"{Nav.BaseUri}auth-callback";
+            await LogToServer($"Exchanging code: redirectUri={redirectUri}, hasVerifier={!string.IsNullOrEmpty(codeVerifier)}");
+
             var response = await Http.PostAsJsonAsync("/api/auth/oidc-exchange",
                 new { Code, RedirectUri = redirectUri, CodeVerifier = codeVerifier });
+
+            await LogToServer($"Exchange response: {response.StatusCode}");
 
             if (response.IsSuccessStatusCode)
             {
@@ -80,11 +99,25 @@
                 }
             }
 
+            var errorBody = await response.Content.ReadAsStringAsync();
+            await LogToServer($"Exchange failed: {response.StatusCode} body={errorBody}");
             Nav.NavigateTo("/login?error=auth_failed");
         }
-        catch
+        catch (Exception ex)
         {
+            await LogToServer($"Exchange exception: {ex.GetType().Name}: {ex.Message}");
             Nav.NavigateTo("/login?error=auth_failed");
         }
+    }
+
+    private async Task LogToServer(string message)
+    {
+        try
+        {
+            statusMessage = message;
+            StateHasChanged();
+            await Http.PostAsJsonAsync("/api/admin/logs/client", new { level = "info", message, stack = (string?)null });
+        }
+        catch { /* ignore logging failures */ }
     }
 }

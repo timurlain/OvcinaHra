@@ -35,6 +35,18 @@ public static class LogEndpoints
             return Results.Content(string.Join("\n", lines), "text/plain");
         });
 
+        group.MapPost("/client", (ClientLogEntry entry, LogRingBuffer buffer) =>
+        {
+            buffer.Add(new LogEntry(
+                DateTime.UtcNow,
+                entry.Level switch { "error" => LogLevel.Error, "warn" => LogLevel.Warning, _ => LogLevel.Information },
+                "CLIENT",
+                entry.Message,
+                entry.Stack,
+                0));
+            return Results.Ok();
+        });
+
         group.MapDelete("/", (LogRingBuffer buffer) =>
         {
             buffer.Clear();
@@ -44,3 +56,5 @@ public static class LogEndpoints
         return group;
     }
 }
+
+public record ClientLogEntry(string Level, string Message, string? Stack);
