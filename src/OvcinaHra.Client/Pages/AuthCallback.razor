@@ -32,13 +32,15 @@
         if (!string.IsNullOrEmpty(Code))
         {
             var storedState = await JS.InvokeAsync<string>("localStorage.getItem", "oidc_state");
+            var codeVerifier = await JS.InvokeAsync<string>("localStorage.getItem", "oidc_verifier");
             await JS.InvokeVoidAsync("localStorage.removeItem", "oidc_state");
+            await JS.InvokeVoidAsync("localStorage.removeItem", "oidc_verifier");
             if (string.IsNullOrEmpty(storedState) || storedState != State)
             {
                 Nav.NavigateTo("/login?error=invalid_state");
                 return;
             }
-            await ExchangeCodeAsync();
+            await ExchangeCodeAsync(codeVerifier);
             return;
         }
 
@@ -57,13 +59,13 @@
         }
     }
 
-    private async Task ExchangeCodeAsync()
+    private async Task ExchangeCodeAsync(string? codeVerifier)
     {
         try
         {
             var redirectUri = $"{Nav.BaseUri}auth-callback";
             var response = await Http.PostAsJsonAsync("/api/auth/oidc-exchange",
-                new { Code, RedirectUri = redirectUri });
+                new { Code, RedirectUri = redirectUri, CodeVerifier = codeVerifier });
 
             if (response.IsSuccessStatusCode)
             {

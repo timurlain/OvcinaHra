@@ -60,15 +60,19 @@ public static class AuthEndpoints
                     return Results.Problem("Oidc:ClientSecret is not configured.", statusCode: 500);
 
                 var client = httpFactory.CreateClient();
+                var form = new Dictionary<string, string>
+                {
+                    ["grant_type"] = "authorization_code",
+                    ["code"] = request.Code,
+                    ["redirect_uri"] = request.RedirectUri,
+                    ["client_id"] = config["Oidc:ClientId"] ?? "ovcinahra",
+                    ["client_secret"] = clientSecret,
+                };
+                if (!string.IsNullOrEmpty(request.CodeVerifier))
+                    form["code_verifier"] = request.CodeVerifier;
+
                 var tokenResponse = await client.PostAsync($"{oidcAuthority}/connect/token",
-                    new FormUrlEncodedContent(new Dictionary<string, string>
-                    {
-                        ["grant_type"] = "authorization_code",
-                        ["code"] = request.Code,
-                        ["redirect_uri"] = request.RedirectUri,
-                        ["client_id"] = config["Oidc:ClientId"] ?? "ovcinahra",
-                        ["client_secret"] = clientSecret,
-                    }));
+                    new FormUrlEncodedContent(form));
 
                 if (!tokenResponse.IsSuccessStatusCode)
                     return Results.Unauthorized();
@@ -181,7 +185,7 @@ public record DevTokenRequest(string? UserId = null, string? Email = null, strin
 public record TokenResponse(string Token, DateTime ExpiresUtc, int ExpiresInSeconds);
 public record UserInfoDto(string UserId, string Email, string Name, List<string> Roles);
 
-public record OidcExchangeRequest(string Code, string RedirectUri);
+public record OidcExchangeRequest(string Code, string RedirectUri, string? CodeVerifier = null);
 public record OidcRefreshRequest(string RefreshToken);
 public record OidcExchangeResponse(string Token, DateTime ExpiresUtc, int ExpiresInSeconds, string? RefreshToken);
 

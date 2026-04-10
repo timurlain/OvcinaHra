@@ -87,17 +87,32 @@
 
     private async Task LoginOidc()
     {
-        // Redirect to registrace OIDC authorize endpoint
-        // The API will handle the code exchange via /api/auth/oidc-callback
+        // Generate PKCE code_verifier and code_challenge
+        var verifierBytes = new byte[32];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(verifierBytes);
+        var codeVerifier = Convert.ToBase64String(verifierBytes)
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+        var challengeBytes = System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.ASCII.GetBytes(codeVerifier));
+        var codeChallenge = Convert.ToBase64String(challengeBytes)
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
         var state = Guid.NewGuid().ToString("N");
+
+        // Persist state + verifier for callback validation
         await JS.InvokeVoidAsync("localStorage.setItem", "oidc_state", state);
+        await JS.InvokeVoidAsync("localStorage.setItem", "oidc_verifier", codeVerifier);
+
         var redirectUri = Uri.EscapeDataString($"{Nav.BaseUri}auth-callback");
         var url = $"{oidcAuthority}/connect/authorize" +
             $"?client_id={oidcClientId}" +
             $"&redirect_uri={redirectUri}" +
             $"&response_type=code" +
             $"&scope=openid+profile+email+roles" +
-            $"&state={state}";
+            $"&state={state}" +
+            $"&code_challenge={codeChallenge}" +
+            $"&code_challenge_method=S256";
         Nav.NavigateTo(url, forceLoad: true);
     }
 
