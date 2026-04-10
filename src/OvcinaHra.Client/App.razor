@@ -1,11 +1,23 @@
 <CascadingAuthenticationState>
     <Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)">
         <Found Context="routeData">
-            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
-                <NotAuthorized>
-                    <OvcinaHra.Client.Pages.Login />
-                </NotAuthorized>
-            </AuthorizeRouteView>
+            @{
+                var pageType = routeData.PageType;
+                var allowAnon = pageType == typeof(Pages.Login)
+                    || pageType == typeof(Pages.AuthCallback);
+            }
+            @if (allowAnon)
+            {
+                <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+            }
+            else
+            {
+                <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+                    <NotAuthorized>
+                        <OvcinaHra.Client.Pages.Login />
+                    </NotAuthorized>
+                </AuthorizeRouteView>
+            }
             <FocusOnNavigate RouteData="@routeData" Selector="h1" />
         </Found>
     </Router>
