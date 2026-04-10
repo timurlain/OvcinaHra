@@ -9,7 +9,7 @@
 <div class="d-flex justify-content-center align-items-center" style="height: 50vh;">
     <div class="text-center">
         <div class="spinner-border text-primary mb-3" role="status"></div>
-        <p>@statusMessage</p>
+        <p>Přihlašování...</p>
     </div>
 </div>
 
@@ -17,8 +17,6 @@
     [SupplyParameterFromQuery(Name = "code")] private string? Code { get; set; }
     [SupplyParameterFromQuery(Name = "state")] private string? State { get; set; }
     [SupplyParameterFromQuery(Name = "error")] private string? Error { get; set; }
-
-    private string statusMessage = "Přihlašování...";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -79,9 +77,7 @@
 
             if (response.IsSuccessStatusCode)
             {
-                var body = await response.Content.ReadAsStringAsync();
-                var token = System.Text.Json.JsonSerializer.Deserialize<OvcinaHra.Client.Auth.TokenResponse>(body,
-                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                var token = await response.Content.ReadFromJsonAsync<OvcinaHra.Client.Auth.TokenResponse>();
 
                 if (token?.Token is not null)
                 {
