@@ -52,11 +52,11 @@ try
         {
             // Production: validate against registrace OIDC discovery endpoint
             options.Authority = oidcAuthority;
-            options.Audience = builder.Configuration["Oidc:ClientId"] ?? "ovcinahra";
             options.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuer = true,
-                ValidateAudience = true,
+                ValidIssuer = oidcAuthority.TrimEnd('/') + "/", // OpenIddict adds trailing slash
+                ValidateAudience = false, // OpenIddict doesn't set aud to client_id by default
                 ValidateLifetime = true,
                 NameClaimType = "name",
                 RoleClaimType = "role",
