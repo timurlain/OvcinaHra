@@ -26,8 +26,6 @@
 
         try
         {
-            await LogToServer($"AuthCallback started: code={!string.IsNullOrEmpty(Code)}, state={!string.IsNullOrEmpty(State)}, error={Error}");
-
             if (!string.IsNullOrEmpty(Error))
             {
                 Nav.NavigateTo($"/login?error={Error}");
@@ -40,8 +38,6 @@
                 var codeVerifier = await JS.InvokeAsync<string?>("localStorage.getItem", "oidc_verifier");
                 await JS.InvokeVoidAsync("localStorage.removeItem", "oidc_state");
                 await JS.InvokeVoidAsync("localStorage.removeItem", "oidc_verifier");
-
-                await LogToServer($"State check: stored={storedState?[..Math.Min(8, storedState?.Length ?? 0)]}..., received={State?[..Math.Min(8, State?.Length ?? 0)]}..., match={storedState == State}");
 
                 if (string.IsNullOrEmpty(storedState) || storedState != State)
                 {
@@ -64,14 +60,12 @@
             }
             else
             {
-                await LogToServer("No code, no error, no token fragment — redirecting to login");
                 Nav.NavigateTo("/login?error=no_token");
             }
         }
-        catch (Exception ex)
+        catch
         {
-            await LogToServer($"AuthCallback exception: {ex.Message}");
-            Nav.NavigateTo($"/login?error=auth_failed");
+            Nav.NavigateTo("/login?error=auth_failed");
         }
     }
 
@@ -80,51 +74,29 @@
         try
         {
             var redirectUri = $"{Nav.BaseUri}auth-callback";
-            await LogToServer($"Exchanging code: redirectUri={redirectUri}, hasVerifier={!string.IsNullOrEmpty(codeVerifier)}");
-
             var response = await Http.PostAsJsonAsync("/api/auth/oidc-exchange",
                 new { Code, RedirectUri = redirectUri, CodeVerifier = codeVerifier });
-
-            await LogToServer($"Exchange response: {response.StatusCode}");
 
             if (response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadAsStringAsync();
-                await LogToServer($"Exchange body: {body[..Math.Min(200, body.Length)]}");
-
                 var token = System.Text.Json.JsonSerializer.Deserialize<OvcinaHra.Client.Auth.TokenResponse>(body,
                     new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                await LogToServer($"Token parsed: token={token?.Token?[..Math.Min(20, token?.Token?.Length ?? 0)]}..., expires={token?.ExpiresInSeconds}");
 
                 if (token?.Token is not null)
                 {
                     await AuthProvider.SetTokenAsync(token.Token);
-                    await LogToServer("Token stored, navigating to /");
                     RefreshService.ScheduleRefresh(token.ExpiresInSeconds);
                     Nav.NavigateTo("/");
                     return;
                 }
             }
 
-            var errorBody = await response.Content.ReadAsStringAsync();
-            await LogToServer($"Exchange failed: {response.StatusCode} body={errorBody}");
             Nav.NavigateTo("/login?error=auth_failed");
         }
-        catch (Exception ex)
+        catch
         {
-            await LogToServer($"Exchange exception: {ex.GetType().Name}: {ex.Message}");
             Nav.NavigateTo("/login?error=auth_failed");
         }
-    }
-
-    private async Task LogToServer(string message)
-    {
-        try
-        {
-            statusMessage = message;
-            StateHasChanged();
-            await Http.PostAsJsonAsync("/api/admin/logs/client", new { level = "info", message, stack = (string?)null });
-        }
-        catch { /* ignore logging failures */ }
     }
 }
