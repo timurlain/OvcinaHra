@@ -1,4 +1,4 @@
-using System.IdentityModel.Tokens.Jwt;
+using System.Net.Http.Json;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.JSInterop;
@@ -26,18 +26,41 @@ public class JwtAuthStateProvider : AuthenticationStateProvider
             return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
         }
 
-        var identity = ParseToken(token);
-        if (identity is null)
-        {
-            _http.DefaultRequestHeaders.Authorization = null;
-            return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
-        }
-
-        // Restore the Bearer header on the HttpClient so API calls are authenticated
+        // Set the Bearer header so /auth/me works
         _http.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
-        return new AuthenticationState(new ClaimsPrincipal(identity));
+        // Validate by calling the API — works with both dev JWTs and OIDC encrypted tokens
+        try
+        {
+            var response = await _http.GetAsync("/api/auth/me");
+            if (response.IsSuccessStatusCode)
+            {
+                var me = await response.Content.ReadFromJsonAsync<MeResponse>();
+                if (me is not null)
+                {
+                    var claims = new List<Claim>
+                    {
+                        new(ClaimTypes.NameIdentifier, me.UserId),
+                        new(ClaimTypes.Name, me.Name),
+                        new(ClaimTypes.Email, me.Email),
+                    };
+                    foreach (var role in me.Roles)
+                        claims.Add(new(ClaimTypes.Role, role));
+
+                    return new AuthenticationState(
+                        new ClaimsPrincipal(new ClaimsIdentity(claims, "oidc")));
+                }
+            }
+        }
+        catch
+        {
+            // API unreachable — treat as unauthenticated
+        }
+
+        // Token invalid or API down
+        _http.DefaultRequestHeaders.Authorization = null;
+        return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
     }
 
     public async Task<string?> GetTokenAsync()
@@ -67,21 +90,5 @@ public class JwtAuthStateProvider : AuthenticationStateProvider
         NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
     }
 
-    private static ClaimsIdentity? ParseToken(string token)
-    {
-        try
-        {
-            var handler = new JwtSecurityTokenHandler();
-            var jwt = handler.ReadJwtToken(token);
-
-            if (jwt.ValidTo < DateTime.UtcNow)
-                return null;
-
-            return new ClaimsIdentity(jwt.Claims, "jwt");
-        }
-        catch
-        {
-            return null;
-        }
-    }
+    private record MeResponse(string UserId, string Email, string Name, List<string> Roles);
 }
