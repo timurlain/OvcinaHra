@@ -53,11 +53,17 @@ public static class AuthEndpoints
         var oidcAuthority = config["Oidc:Authority"];
         if (!string.IsNullOrEmpty(oidcAuthority))
         {
-            group.MapPost("/oidc-exchange", async (OidcExchangeRequest request, IHttpClientFactory httpFactory) =>
+            group.MapPost("/oidc-exchange", async (OidcExchangeRequest request, IHttpClientFactory httpFactory, ILogger<Program> logger) =>
             {
                 var clientSecret = config["Oidc:ClientSecret"];
                 if (string.IsNullOrEmpty(clientSecret))
+                {
+                    logger.LogError("OIDC exchange failed: Oidc:ClientSecret not configured");
                     return Results.Problem("Oidc:ClientSecret is not configured.", statusCode: 500);
+                }
+
+                logger.LogInformation("OIDC exchange: authority={Authority}, clientId={ClientId}, redirectUri={RedirectUri}, hasVerifier={HasVerifier}",
+                    oidcAuthority, config["Oidc:ClientId"], request.RedirectUri, !string.IsNullOrEmpty(request.CodeVerifier));
 
                 var client = httpFactory.CreateClient();
                 var form = new Dictionary<string, string>
@@ -75,12 +81,20 @@ public static class AuthEndpoints
                     new FormUrlEncodedContent(form));
 
                 if (!tokenResponse.IsSuccessStatusCode)
+                {
+                    var errorBody = await tokenResponse.Content.ReadAsStringAsync();
+                    logger.LogError("OIDC token exchange failed: {StatusCode} {Error}", tokenResponse.StatusCode, errorBody);
                     return Results.Unauthorized();
+                }
 
                 var tokenData = await tokenResponse.Content.ReadFromJsonAsync<OidcTokenResponse>();
                 if (tokenData?.AccessToken is null)
+                {
+                    logger.LogError("OIDC token exchange returned null access token");
                     return Results.Unauthorized();
+                }
 
+                logger.LogInformation("OIDC exchange successful, token expires in {ExpiresIn}s", tokenData.ExpiresIn);
                 return Results.Ok(new OidcExchangeResponse(tokenData.AccessToken, DateTime.UtcNow.AddSeconds(tokenData.ExpiresIn), tokenData.ExpiresIn, tokenData.RefreshToken));
             }).AllowAnonymous();
 

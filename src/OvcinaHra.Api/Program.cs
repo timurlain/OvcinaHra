@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Endpoints;
+using OvcinaHra.Api.Logging;
 using OvcinaHra.Api.Services;
 using Serilog;
 
@@ -84,6 +85,11 @@ try
     builder.Services.AddProblemDetails();
     builder.Services.AddHttpClient();
     builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
+
+    // In-memory log ring buffer for production debugging
+    var logBuffer = new LogRingBuffer();
+    builder.Services.AddSingleton(logBuffer);
+    builder.Logging.AddProvider(new RingBufferLoggerProvider(logBuffer));
 
     // CORS for Blazor WASM client
     builder.Services.AddCors(options =>
@@ -185,6 +191,7 @@ try
     app.MapTimelineEndpoints().RequireAuthorization();
     app.MapSearchEndpoints().RequireAuthorization();
     app.MapImageEndpoints().RequireAuthorization();
+    app.MapLogEndpoints(); // No auth — needed for debugging login issues
 
     app.Run();
 }
