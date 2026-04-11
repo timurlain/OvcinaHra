@@ -5,74 +5,78 @@
 
 <DxPopup AllowResize="true" @bind-Visible="@isVisible" HeaderText="@modalTitle" Width="900px" MinHeight="700px">
     <BodyContentTemplate Context="popupContext">
-        <DxTabs>
-            <DxTab Text="Základní">
-                    <DxFormLayout CssClass="mt-2">
-                        <DxFormLayoutItem Caption="Název" ColSpanMd="8">
-                            <DxTextBox @bind-Text="@model.Name" data-testid="location-name" />
-                        </DxFormLayoutItem>
-                        <DxFormLayoutItem Caption="Typ" ColSpanMd="4">
-                            <DxComboBox Data="@kindValues" @bind-Value="@model.LocationKind"
-                                        TextFieldName="Display" ValueFieldName="Value" data-testid="location-kind" />
-                        </DxFormLayoutItem>
-                        <DxFormLayoutItem Caption="Oblast" ColSpanMd="6">
-                            <DxTextBox @bind-Text="@model.Region" data-testid="location-region" />
-                        </DxFormLayoutItem>
-                        <DxFormLayoutItem Caption="GPS" ColSpanMd="6">
-                            @if (model.Latitude.HasValue && model.Longitude.HasValue)
-                            {
-                                <div class="text-muted small mt-1">@($"{model.Latitude.Value:F7}, {model.Longitude.Value:F7}") — upravit na mapě</div>
-                            }
-                            else
-                            {
-                                <div class="text-muted small mt-1"><span class="badge bg-warning text-dark">Nepřiřazeno</span> — nastavit na mapě nebo přes kontext. menu</div>
-                            }
-                        </DxFormLayoutItem>
-                        @if (editingId.HasValue)
-                        {
-                            <DxFormLayoutItem Caption="Obrázek" ColSpanMd="12">
-                                <ImagePicker EntityType="locations" EntityId="editingId.Value" Alt="Ilustrace lokace" />
-                            </DxFormLayoutItem>
-                            <DxFormLayoutItem Caption="Foto umístění" ColSpanMd="12">
-                                <ImagePicker EntityType="locations" EntityId="editingId.Value" Field="placement" Alt="Foto umístění" />
-                            </DxFormLayoutItem>
-                        }
-                        <DxFormLayoutItem Caption="Info pro CP (NPC)" ColSpanMd="12">
-                            <DxMemo @bind-Text="@model.NpcInfo" Rows="4" data-testid="location-npc" />
-                        </DxFormLayoutItem>
-                        <DxFormLayoutItem Caption="Co nachystat na lokaci" ColSpanMd="12">
-                            <DxMemo @bind-Text="@model.SetupNotes" Rows="3" data-testid="location-setup" />
-                        </DxFormLayoutItem>
-                        <DxFormLayoutItem Caption="Rodič" ColSpanMd="12">
-                            <DxComboBox Data="@parentCandidates" @bind-Value="@model.ParentLocationId"
-                                        TextFieldName="Name" ValueFieldName="Id"
-                                        NullText="(žádný — tato lokace je kořenová)"
-                                        ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
-                                        SearchMode="ListSearchMode.AutoSearch" />
-                        </DxFormLayoutItem>
-                    </DxFormLayout>
-            </DxTab>
-            <DxTab Text="Lore">
-                    <div class="mt-2 mb-3">
-                        <button class="btn btn-sm @(isLoreEditable ? "btn-warning" : "btn-outline-secondary")"
-                                @onclick="() => isLoreEditable = !isLoreEditable">
-                            <i class="bi @(isLoreEditable ? "bi-lock-fill" : "bi-pencil-fill") me-1"></i>
-                            @(isLoreEditable ? "Zamknout texty" : "Upravit texty")
-                        </button>
-                    </div>
-                    <DxFormLayout>
-                        <DxFormLayoutItem Caption="Popis (fantasy)" ColSpanMd="12">
-                            <DxMemo @bind-Text="@model.Description" Rows="6" ReadOnly="@(!isLoreEditable)" data-testid="location-description" />
-                        </DxFormLayoutItem>
-                        <DxFormLayoutItem Caption="Detaily" ColSpanMd="12">
-                            <DxMemo @bind-Text="@model.Details" Rows="8" ReadOnly="@(!isLoreEditable)" data-testid="location-details" />
-                        </DxFormLayoutItem>
-                        <DxFormLayoutItem Caption="Herní potenciál" ColSpanMd="12">
-                            <DxMemo @bind-Text="@model.GamePotential" Rows="4" data-testid="location-gamepotential" />
-                        </DxFormLayoutItem>
-                    </DxFormLayout>
-            </DxTab>
+        <DxTabs @bind-ActiveTabIndex="@activeTab">
+            <DxTab Text="Základní" />
+            <DxTab Text="Lore" />
         </DxTabs>
+
+        @if (activeTab == 0)
+        {
+            <DxFormLayout CssClass="mt-2">
+                <DxFormLayoutItem Caption="Název" ColSpanMd="8">
+                    <DxTextBox @bind-Text="@model.Name" data-testid="location-name" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Typ" ColSpanMd="4">
+                    <DxComboBox Data="@kindValues" @bind-Value="@model.LocationKind"
+                                TextFieldName="Display" ValueFieldName="Value" data-testid="location-kind" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Oblast" ColSpanMd="6">
+                    <DxTextBox @bind-Text="@model.Region" data-testid="location-region" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="GPS" ColSpanMd="6">
+                    @if (model.Latitude.HasValue && model.Longitude.HasValue)
+                    {
+                        <div class="text-muted small mt-1">@($"{model.Latitude.Value:F7}, {model.Longitude.Value:F7}") — upravit na mapě</div>
+                    }
+                    else
+                    {
+                        <div class="text-muted small mt-1"><span class="badge bg-warning text-dark">Nepřiřazeno</span> — nastavit na mapě nebo přes kontext. menu</div>
+                    }
+                </DxFormLayoutItem>
+                @if (editingId.HasValue)
+                {
+                    <DxFormLayoutItem Caption="Obrázek" ColSpanMd="12">
+                        <ImagePicker EntityType="locations" EntityId="editingId.Value" Alt="Ilustrace lokace" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Foto umístění" ColSpanMd="12">
+                        <ImagePicker EntityType="locations" EntityId="editingId.Value" Field="placement" Alt="Foto umístění" />
+                    </DxFormLayoutItem>
+                }
+                <DxFormLayoutItem Caption="Info pro CP (NPC)" ColSpanMd="12">
+                    <DxMemo @bind-Text="@model.NpcInfo" Rows="4" data-testid="location-npc" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Co nachystat na lokaci" ColSpanMd="12">
+                    <DxMemo @bind-Text="@model.SetupNotes" Rows="3" data-testid="location-setup" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Rodič" ColSpanMd="12">
+                    <DxComboBox Data="@parentCandidates" @bind-Value="@model.ParentLocationId"
+                                TextFieldName="Name" ValueFieldName="Id"
+                                NullText="(žádný — tato lokace je kořenová)"
+                                ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
+                                SearchMode="ListSearchMode.AutoSearch" />
+                </DxFormLayoutItem>
+            </DxFormLayout>
+        }
+        else
+        {
+            <div class="mt-2 mb-3">
+                <button class="btn btn-sm @(isLoreEditable ? "btn-warning" : "btn-outline-secondary")"
+                        @onclick="() => isLoreEditable = !isLoreEditable">
+                    @(isLoreEditable ? "Zamknout texty" : "Upravit texty")
+                </button>
+            </div>
+            <DxFormLayout>
+                <DxFormLayoutItem Caption="Popis (fantasy)" ColSpanMd="12">
+                    <DxMemo @bind-Text="@model.Description" Rows="6" ReadOnly="@(!isLoreEditable)" data-testid="location-description" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Detaily" ColSpanMd="12">
+                    <DxMemo @bind-Text="@model.Details" Rows="8" ReadOnly="@(!isLoreEditable)" data-testid="location-details" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Herní potenciál" ColSpanMd="12">
+                    <DxMemo @bind-Text="@model.GamePotential" Rows="4" data-testid="location-gamepotential" />
+                </DxFormLayoutItem>
+            </DxFormLayout>
+        }
 
         @* Variant links *@
         @if (parentName is not null)
@@ -134,6 +138,7 @@
 
     private bool isVisible, isDeleteVisible, isSaving;
     private bool isLoreEditable;
+    private int activeTab;
     private string modalTitle = "";
     private string? error;
     private int? editingId;
@@ -152,6 +157,7 @@
     {
         error = null;
         isLoreEditable = false;
+        activeTab = 0;
         var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{locationId}");
         if (detail is null) return;
 
@@ -175,6 +181,7 @@
     {
         error = null;
         isLoreEditable = false;
+        activeTab = 0;
         editingId = null;
         model = new LocationFormModel { Latitude = latitude, Longitude = longitude };
         modalTitle = "Nová lokace";
