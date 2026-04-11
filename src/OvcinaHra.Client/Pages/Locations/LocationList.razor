@@ -44,6 +44,7 @@ else
             <DxGridDataColumn FieldName="LocationKind" Caption="Typ" Width="160px">
                 <CellDisplayTemplate>@(((LocationKind)context.Value).GetDisplayName())</CellDisplayTemplate>
             </DxGridDataColumn>
+            <DxGridDataColumn FieldName="Region" Caption="Oblast" Width="140px" />
             <DxGridDataColumn FieldName="ParentLocationId" Caption="Rodič / Varianty" Width="200px">
                 <CellDisplayTemplate>
                     @{
@@ -320,7 +321,9 @@ else
                 await Api.PutAsync($"/api/locations/{id}",
                     new UpdateLocationDto(detail.Name, detail.LocationKind,
                         gpsParsed.Value.lat, gpsParsed.Value.lon,
-                        detail.Description, detail.NpcInfo, detail.SetupNotes));
+                        detail.Description,
+                        Details: detail.Details, GamePotential: detail.GamePotential, Region: detail.Region,
+                        NpcInfo: detail.NpcInfo, SetupNotes: detail.SetupNotes));
             }
             isGpsVisible = false;
             await LoadDataAsync();
