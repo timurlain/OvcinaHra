@@ -6,6 +6,7 @@ public record LocationListDto(
     int Id,
     string Name,
     LocationKind LocationKind,
+    string? Region,
     decimal? Latitude,
     decimal? Longitude,
     int? ParentLocationId);
@@ -14,6 +15,9 @@ public record LocationDetailDto(
     int Id,
     string Name,
     string? Description,
+    string? Details,
+    string? GamePotential,
+    string? Region,
     LocationKind LocationKind,
     decimal? Latitude,
     decimal? Longitude,
@@ -32,6 +36,9 @@ public record CreateLocationDto(
     decimal? Latitude = null,
     decimal? Longitude = null,
     string? Description = null,
+    string? Details = null,
+    string? GamePotential = null,
+    string? Region = null,
     string? NpcInfo = null,
     string? SetupNotes = null,
     int? ParentLocationId = null);
@@ -42,6 +49,9 @@ public record UpdateLocationDto(
     decimal? Latitude = null,
     decimal? Longitude = null,
     string? Description = null,
+    string? Details = null,
+    string? GamePotential = null,
+    string? Region = null,
     string? NpcInfo = null,
     string? SetupNotes = null,
     int? ParentLocationId = null);

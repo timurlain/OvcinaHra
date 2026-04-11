@@ -360,8 +360,10 @@ else
             await Api.PutAsync($"/api/locations/{linkTarget.Id}",
                 new UpdateLocationDto(detail.Name, detail.LocationKind,
                     detail.Latitude, detail.Longitude,
-                    detail.Description, detail.NpcInfo, detail.SetupNotes,
-                    linkParentId));
+                    detail.Description,
+                    Details: detail.Details, GamePotential: detail.GamePotential, Region: detail.Region,
+                    NpcInfo: detail.NpcInfo, SetupNotes: detail.SetupNotes,
+                    ParentLocationId: linkParentId));
             isLinkVisible = false;
             await LoadDataAsync();
         }
@@ -381,8 +383,10 @@ else
             await Api.PutAsync($"/api/locations/{linkTarget.Id}",
                 new UpdateLocationDto(detail.Name, detail.LocationKind,
                     detail.Latitude, detail.Longitude,
-                    detail.Description, detail.NpcInfo, detail.SetupNotes,
-                    null));
+                    detail.Description,
+                    Details: detail.Details, GamePotential: detail.GamePotential, Region: detail.Region,
+                    NpcInfo: detail.NpcInfo, SetupNotes: detail.SetupNotes,
+                    ParentLocationId: null));
             isLinkVisible = false;
             await LoadDataAsync();
         }

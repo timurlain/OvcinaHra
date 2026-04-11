@@ -33,6 +33,7 @@ public static class LocationEndpoints
             .OrderBy(l => l.Name)
             .Select(l => new LocationListDto(
                 l.Id, l.Name, l.LocationKind,
+                l.Region,
                 l.Coordinates != null ? l.Coordinates.Latitude : (decimal?)null,
                 l.Coordinates != null ? l.Coordinates.Longitude : (decimal?)null,
                 l.ParentLocationId))
@@ -51,7 +52,7 @@ public static class LocationEndpoints
 
         var variants = loc.Variants.Select(v => new LocationVariantDto(v.Id, v.Name, v.LocationKind)).ToList();
         return TypedResults.Ok(new LocationDetailDto(
-            loc.Id, loc.Name, loc.Description, loc.LocationKind,
+            loc.Id, loc.Name, loc.Description, loc.Details, loc.GamePotential, loc.Region, loc.LocationKind,
             loc.Coordinates?.Latitude, loc.Coordinates?.Longitude,
             loc.ImagePath, loc.PlacementPhotoPath, loc.NpcInfo, loc.SetupNotes,
             loc.ParentLocationId, variants));
@@ -66,6 +67,9 @@ public static class LocationEndpoints
             Coordinates = dto.Latitude.HasValue && dto.Longitude.HasValue
                 ? new GpsCoordinates(dto.Latitude.Value, dto.Longitude.Value) : null,
             Description = dto.Description,
+            Details = dto.Details,
+            GamePotential = dto.GamePotential,
+            Region = dto.Region,
             NpcInfo = dto.NpcInfo,
             SetupNotes = dto.SetupNotes,
             ParentLocationId = dto.ParentLocationId
@@ -75,7 +79,7 @@ public static class LocationEndpoints
         await db.SaveChangesAsync();
 
         var result = new LocationDetailDto(
-            loc.Id, loc.Name, loc.Description, loc.LocationKind,
+            loc.Id, loc.Name, loc.Description, loc.Details, loc.GamePotential, loc.Region, loc.LocationKind,
             loc.Coordinates?.Latitude, loc.Coordinates?.Longitude,
             loc.ImagePath, loc.PlacementPhotoPath, loc.NpcInfo, loc.SetupNotes,
             loc.ParentLocationId, []);
@@ -94,6 +98,9 @@ public static class LocationEndpoints
         loc.Coordinates = dto.Latitude.HasValue && dto.Longitude.HasValue
             ? new GpsCoordinates(dto.Latitude.Value, dto.Longitude.Value) : null;
         loc.Description = dto.Description;
+        loc.Details = dto.Details;
+        loc.GamePotential = dto.GamePotential;
+        loc.Region = dto.Region;
         loc.NpcInfo = dto.NpcInfo;
         loc.SetupNotes = dto.SetupNotes;
         loc.ParentLocationId = dto.ParentLocationId;
@@ -120,6 +127,7 @@ public static class LocationEndpoints
             .OrderBy(l => l.Name)
             .Select(l => new LocationListDto(
                 l.Id, l.Name, l.LocationKind,
+                l.Region,
                 l.Coordinates != null ? l.Coordinates.Latitude : (decimal?)null,
                 l.Coordinates != null ? l.Coordinates.Longitude : (decimal?)null,
                 l.ParentLocationId))

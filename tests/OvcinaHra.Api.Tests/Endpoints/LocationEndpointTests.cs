@@ -94,12 +94,61 @@ public class LocationEndpointTests(PostgresFixture postgres) : IntegrationTestBa
             new CreateLocationDto("Movable", LocationKind.PointOfInterest, 49.0m, 17.0m));
         var created = await createResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
 
-        var updateDto = new UpdateLocationDto("Movable", LocationKind.PointOfInterest, 50.0m, 18.0m, null, null, null);
+        var updateDto = new UpdateLocationDto("Movable", LocationKind.PointOfInterest, 50.0m, 18.0m);
         var response = await Client.PutAsJsonAsync($"/api/locations/{created!.Id}", updateDto);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
         var updated = await Client.GetFromJsonAsync<LocationDetailDto>($"/api/locations/{created.Id}");
         Assert.Equal(50.0m, updated!.Latitude);
         Assert.Equal(18.0m, updated.Longitude);
+    }
+
+    [Fact]
+    public async Task Create_WithLoreFields_ReturnsAllFields()
+    {
+        var dto = new CreateLocationDto("Aradhrynd", LocationKind.Town,
+            Description: "Elfí palác",
+            Details: "Podzemní řeky protékají komnatami",
+            GamePotential: "Diplomatické mise",
+            Region: "Severní Temný hvozd");
+
+        var response = await Client.PostAsJsonAsync("/api/locations", dto);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var created = await response.Content.ReadFromJsonAsync<LocationDetailDto>();
+        Assert.Equal("Elfí palác", created!.Description);
+        Assert.Equal("Podzemní řeky protékají komnatami", created.Details);
+        Assert.Equal("Diplomatické mise", created.GamePotential);
+        Assert.Equal("Severní Temný hvozd", created.Region);
+    }
+
+    [Fact]
+    public async Task Update_LoreFields_Persists()
+    {
+        var createResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Esgaroth", LocationKind.Town));
+        var created = await createResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+
+        var updateDto = new UpdateLocationDto("Esgaroth", LocationKind.Town,
+            Details: "Město na jezeře",
+            GamePotential: "Obchod a politika",
+            Region: "Dlouhé jezero");
+        await Client.PutAsJsonAsync($"/api/locations/{created!.Id}", updateDto);
+
+        var updated = await Client.GetFromJsonAsync<LocationDetailDto>($"/api/locations/{created.Id}");
+        Assert.Equal("Město na jezeře", updated!.Details);
+        Assert.Equal("Obchod a politika", updated.GamePotential);
+        Assert.Equal("Dlouhé jezero", updated.Region);
+    }
+
+    [Fact]
+    public async Task GetAll_IncludesRegion()
+    {
+        await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Dol", LocationKind.PointOfInterest, Region: "Úpatí Osamělé hory"));
+
+        var locations = await Client.GetFromJsonAsync<List<LocationListDto>>("/api/locations");
+        var dol = locations!.First(l => l.Name == "Dol");
+        Assert.Equal("Úpatí Osamělé hory", dol.Region);
     }
 }

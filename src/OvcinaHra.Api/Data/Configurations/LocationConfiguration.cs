@@ -27,7 +27,7 @@ public class LocationConfiguration : IEntityTypeConfiguration<Location>
         builder.Property<NpgsqlTypes.NpgsqlTsVector>("SearchVector")
             .HasColumnType("tsvector")
             .HasComputedColumnSql(
-                "to_tsvector('simple', coalesce(\"Name\", '') || ' ' || coalesce(\"Description\", '') || ' ' || coalesce(\"NpcInfo\", '') || ' ' || coalesce(\"SetupNotes\", ''))",
+                "to_tsvector('simple', coalesce(\"Name\", '') || ' ' || coalesce(\"Description\", '') || ' ' || coalesce(\"NpcInfo\", '') || ' ' || coalesce(\"SetupNotes\", '') || ' ' || coalesce(\"Details\", '') || ' ' || coalesce(\"Region\", ''))",
                 stored: true);
 
         builder.HasIndex("SearchVector").HasMethod("GIN");

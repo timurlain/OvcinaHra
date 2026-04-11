@@ -14,6 +14,9 @@ public class Location
     public string? PlacementPhotoPath { get; set; }
     public string? NpcInfo { get; set; }
     public string? SetupNotes { get; set; }
+    public string? Details { get; set; }
+    public string? GamePotential { get; set; }
+    public string? Region { get; set; }
 
     /// <summary>
     /// If set, this location is a variant of the parent (hobbit quest, state change, etc.).
