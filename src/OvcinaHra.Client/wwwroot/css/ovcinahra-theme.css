@@ -344,7 +344,7 @@
     background: linear-gradient(145deg, #f5f0e8 0%, #ebe4d4 40%, #e8dcc8 100%);
     border: 1px solid #d4c5a9;
     border-radius: 6px;
-    padding: 1.5rem;
+    padding: 1.5rem 1.5rem 1rem 1.5rem;
     margin-top: 0.5rem;
     min-height: 400px;
     overflow: hidden;
@@ -353,59 +353,62 @@
 .location-card::before {
     content: '';
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    top: 0; left: 0; right: 0; bottom: 0;
     background:
         radial-gradient(ellipse at 20% 50%, rgba(139, 119, 80, 0.05) 0%, transparent 70%),
         radial-gradient(ellipse at 80% 20%, rgba(139, 119, 80, 0.03) 0%, transparent 50%);
     pointer-events: none;
 }
 
+.location-card-title {
+    position: relative;
+    z-index: 1;
+    font-family: 'Georgia', 'Palatino Linotype', 'Book Antiqua', serif;
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: #3a2e1e;
+    text-align: right;
+    margin: 0 0 0.15rem 0;
+    line-height: 1.2;
+}
+
+.location-card-region {
+    position: relative;
+    z-index: 1;
+    font-family: 'Georgia', serif;
+    font-size: 0.85rem;
+    color: #8b7750;
+    font-style: italic;
+    text-align: right;
+    margin-bottom: 1rem;
+    letter-spacing: 0.02em;
+}
+
 .location-card-body {
     display: flex;
-    gap: 1.5rem;
+    gap: 1.25rem;
     position: relative;
     z-index: 1;
 }
 
 .location-card-text {
-    flex: 1;
+    flex: 0 1 42%;
     min-width: 0;
-}
-
-.location-card-title {
-    font-family: 'Georgia', 'Palatino Linotype', 'Book Antiqua', serif;
-    font-size: 1.8rem;
-    font-weight: 700;
-    color: #3a2e1e;
-    margin: 0 0 0.25rem 0;
-    line-height: 1.2;
-}
-
-.location-card-region {
-    font-family: 'Georgia', serif;
-    font-size: 0.85rem;
-    color: #8b7750;
-    font-style: italic;
-    margin-bottom: 1rem;
-    letter-spacing: 0.02em;
 }
 
 .location-card-description {
     font-family: 'Georgia', serif;
-    font-size: 0.95rem;
-    line-height: 1.7;
-    color: #4a3f2f;
+    font-size: 1.05rem;
+    line-height: 1.65;
+    color: #3a2e1e;
     text-align: justify;
     hyphens: auto;
     margin: 0;
 }
 
 .location-card-image {
-    flex: 0 0 280px;
-    max-width: 280px;
+    flex: 1 1 58%;
+    min-width: 0;
     align-self: flex-start;
 }
 
@@ -413,36 +416,50 @@
     width: 100%;
     border-radius: 4px;
     border: 2px solid #c4b494;
-    box-shadow: 2px 3px 10px rgba(58, 46, 30, 0.15);
+    box-shadow: 2px 3px 12px rgba(58, 46, 30, 0.2);
 }
 
 .location-card-details {
     position: relative;
     z-index: 1;
-    margin-top: 1.25rem;
-    padding-top: 1rem;
+    margin-top: 1rem;
+    padding-top: 0.75rem;
     border-top: 1px solid #c4b494;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+}
+
+.location-card-details-id {
+    font-family: 'Georgia', serif;
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #b0a48a;
+    line-height: 1;
+    flex-shrink: 0;
+    padding-top: 0.1rem;
 }
 
 .location-card-details p {
     font-family: 'Georgia', serif;
-    font-size: 0.85rem;
-    line-height: 1.65;
+    font-size: 0.78rem;
+    line-height: 1.55;
     color: #5a4f3f;
     text-align: justify;
     hyphens: auto;
     margin: 0;
+    flex: 1;
 }
 
 .location-card-potential {
     position: relative;
     z-index: 1;
-    margin-top: 1rem;
-    padding: 0.6rem 0.8rem;
+    margin-top: 0.75rem;
+    padding: 0.5rem 0.75rem;
     background: rgba(139, 119, 80, 0.08);
     border-left: 3px solid #8b7750;
     border-radius: 0 4px 4px 0;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     color: #5a4f3f;
 }
 
@@ -453,10 +470,11 @@
 .location-card-variants {
     position: relative;
     z-index: 1;
-    margin-top: 0.75rem;
-    padding: 0.5rem 0.75rem;
+    margin-top: 0.5rem;
+    padding: 0.4rem 0.75rem;
     background: rgba(139, 119, 80, 0.06);
     border-radius: 4px;
+    font-size: 0.85rem;
 }
 
 .location-card-variants a {
@@ -468,17 +486,7 @@
     text-decoration: underline;
 }
 
-.location-card-id {
-    position: absolute;
-    bottom: 0.75rem;
-    right: 1rem;
-    font-family: 'Georgia', serif;
-    font-size: 0.8rem;
-    color: #b0a48a;
-    z-index: 1;
-}
-
-/* When no image, text takes full width */
-.location-card-body:not(:has(.location-card-image)) .location-card-text {
-    max-width: 100%;
+/* When no image, description takes full width */
+.location-card-body .location-card-text:only-child {
+    flex: 1 1 100%;
 }

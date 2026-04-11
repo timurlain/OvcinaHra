@@ -16,18 +16,19 @@
         @if (activeTab == 0)
         {
             <div class="location-card">
+                <h2 class="location-card-title">@model.Name</h2>
+                @if (!string.IsNullOrWhiteSpace(model.Region))
+                {
+                    <div class="location-card-region">@model.Region — @model.LocationKind.GetDisplayName()</div>
+                }
+
                 <div class="location-card-body">
-                    <div class="location-card-text">
-                        <h2 class="location-card-title">@model.Name</h2>
-                        @if (!string.IsNullOrWhiteSpace(model.Region))
-                        {
-                            <div class="location-card-region">@model.Region — @model.LocationKind.GetDisplayName()</div>
-                        }
-                        @if (!string.IsNullOrWhiteSpace(model.Description))
-                        {
+                    @if (!string.IsNullOrWhiteSpace(model.Description))
+                    {
+                        <div class="location-card-text">
                             <p class="location-card-description">@model.Description</p>
-                        }
-                    </div>
+                        </div>
+                    }
                     @if (imageUrl is not null)
                     {
                         <div class="location-card-image">
@@ -35,9 +36,11 @@
                         </div>
                     }
                 </div>
+
                 @if (!string.IsNullOrWhiteSpace(model.Details))
                 {
                     <div class="location-card-details">
+                        <span class="location-card-details-id">@(editingId?.ToString("D2") ?? "?")</span>
                         <p>@model.Details</p>
                     </div>
                 }
@@ -70,8 +73,6 @@
                         }
                     </div>
                 }
-
-                <div class="location-card-id">@(editingId?.ToString("D2") ?? "?")</div>
             </div>
         }
 
