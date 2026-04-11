@@ -12,6 +12,7 @@
     [Parameter] public int Zoom { get; set; } = 16;
     [Parameter] public EventCallback<OvcinaMapClickEventArgs> OnMapClick { get; set; }
     [Parameter] public EventCallback<int> OnMarkerClick { get; set; }
+    [Parameter] public EventCallback<OvcinaMarkerDragEventArgs> OnMarkerDrag { get; set; }
     [Parameter] public EventCallback OnStyleLoaded { get; set; }
 
     private readonly string _elementId = $"map-{Guid.NewGuid():N}";
@@ -58,6 +59,10 @@
     [JSInvokable]
     public async Task OnMarkerClicked(int id)
         => await OnMarkerClick.InvokeAsync(id);
+
+    [JSInvokable]
+    public async Task OnMarkerDragged(int id, double lat, double lng, double origLat, double origLng)
+        => await OnMarkerDrag.InvokeAsync(new OvcinaMarkerDragEventArgs(id, lat, lng, origLat, origLng));
 
     [JSInvokable]
     public async Task OnStyleLoadedCallback()

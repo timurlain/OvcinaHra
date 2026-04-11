@@ -52,7 +52,7 @@ public static class LocationEndpoints
 
         var variants = loc.Variants.Select(v => new LocationVariantDto(v.Id, v.Name, v.LocationKind)).ToList();
         return TypedResults.Ok(new LocationDetailDto(
-            loc.Id, loc.Name, loc.Description, loc.Details, loc.GamePotential, loc.Region, loc.LocationKind,
+            loc.Id, loc.Name, loc.Description, loc.Details, loc.GamePotential, loc.Prompt, loc.Region, loc.LocationKind,
             loc.Coordinates?.Latitude, loc.Coordinates?.Longitude,
             loc.ImagePath, loc.PlacementPhotoPath, loc.NpcInfo, loc.SetupNotes,
             loc.ParentLocationId, variants));
@@ -69,6 +69,7 @@ public static class LocationEndpoints
             Description = dto.Description,
             Details = dto.Details,
             GamePotential = dto.GamePotential,
+            Prompt = dto.Prompt,
             Region = dto.Region,
             NpcInfo = dto.NpcInfo,
             SetupNotes = dto.SetupNotes,
@@ -79,7 +80,7 @@ public static class LocationEndpoints
         await db.SaveChangesAsync();
 
         var result = new LocationDetailDto(
-            loc.Id, loc.Name, loc.Description, loc.Details, loc.GamePotential, loc.Region, loc.LocationKind,
+            loc.Id, loc.Name, loc.Description, loc.Details, loc.GamePotential, loc.Prompt, loc.Region, loc.LocationKind,
             loc.Coordinates?.Latitude, loc.Coordinates?.Longitude,
             loc.ImagePath, loc.PlacementPhotoPath, loc.NpcInfo, loc.SetupNotes,
             loc.ParentLocationId, []);
@@ -100,6 +101,7 @@ public static class LocationEndpoints
         loc.Description = dto.Description;
         loc.Details = dto.Details;
         loc.GamePotential = dto.GamePotential;
+        loc.Prompt = dto.Prompt;
         loc.Region = dto.Region;
         loc.NpcInfo = dto.NpcInfo;
         loc.SetupNotes = dto.SetupNotes;

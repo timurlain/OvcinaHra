@@ -30,6 +30,7 @@
              CenterLat="49.4532461" CenterLon="18.0203242" Zoom="16"
              OnMapClick="HandleMapClick"
              OnMarkerClick="HandleMarkerClick"
+             OnMarkerDrag="HandleMarkerDrag"
              OnStyleLoaded="HandleStyleLoaded" />
 
     <div class="map-legend">
@@ -48,12 +49,27 @@
     OnSaved="LoadAndDisplayLocationsAsync"
     OnVariantNavigate="NavigateToLocation" />
 
+<DxPopup @bind-Visible="@isDragConfirmVisible" HeaderText="Přesunout lokaci?" Width="400px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Přesunout <strong>@dragLocationName</strong> na novou pozici?</p>
+        <p class="text-muted small mb-3">@($"{dragNewLat:F7}, {dragNewLng:F7}")</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="CancelDrag">Zrušit</button>
+            <button class="btn btn-primary" @onclick="ConfirmDrag">Přesunout</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
 @code {
     private MapView mapView = null!;
     private LocationEditPopup locationPopup = null!;
     private List<LocationListDto> locations = [];
     private bool placingMode;
     private string activeStyle = "tourist";
+    private bool isDragConfirmVisible;
+    private int dragLocationId;
+    private string dragLocationName = "";
+    private double dragNewLat, dragNewLng, dragOrigLat, dragOrigLng;
 
     private static readonly Dictionary<LocationKind, string> markerColors = new()
     {
@@ -93,12 +109,16 @@
         await LoadAndDisplayLocationsAsync();
     }
 
-    private async void OnGameChanged() { await LoadAndDisplayLocationsAsync(); StateHasChanged(); }
+    private async void OnGameChanged() { try { await LoadAndDisplayLocationsAsync(); StateHasChanged(); } catch { /* game context change best-effort */ } }
     public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
 
     private async Task LoadAndDisplayLocationsAsync()
     {
-        locations = await Api.GetListAsync<LocationListDto>("/api/locations");
+        var gameId = GameContext.SelectedGameId;
+        if (gameId.HasValue)
+            locations = await Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gameId.Value}");
+        else
+            locations = await Api.GetListAsync<LocationListDto>("/api/locations");
         await mapView.ClearMarkersAsync();
         // Only parent locations with GPS get map pins
         foreach (var loc in locations.Where(l => l.ParentLocationId is null && l.Latitude.HasValue && l.Longitude.HasValue))
@@ -123,6 +143,48 @@
     }
 
     private async Task HandleMarkerClick(int id) => await locationPopup.OpenAsync(id);
+
+    private async Task HandleMarkerDrag(OvcinaMarkerDragEventArgs e)
+    {
+        dragLocationId = e.Id;
+        dragLocationName = locations.FirstOrDefault(l => l.Id == e.Id)?.Name ?? $"Lokace #{e.Id}";
+        dragNewLat = e.Latitude;
+        dragNewLng = e.Longitude;
+        dragOrigLat = e.OrigLatitude;
+        dragOrigLng = e.OrigLongitude;
+        isDragConfirmVisible = true;
+        StateHasChanged();
+    }
+
+    private async Task ConfirmDrag()
+    {
+        try
+        {
+            var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{dragLocationId}");
+            if (detail is not null)
+            {
+                var dto = new UpdateLocationDto(detail.Name, detail.LocationKind,
+                    (decimal)dragNewLat, (decimal)dragNewLng,
+                    detail.Description, detail.Details, detail.GamePotential, detail.Prompt, detail.Region,
+                    detail.NpcInfo, detail.SetupNotes, detail.ParentLocationId);
+                await Api.PutAsync($"/api/locations/{dragLocationId}", dto);
+            }
+            isDragConfirmVisible = false;
+            await LoadAndDisplayLocationsAsync();
+        }
+        catch
+        {
+            isDragConfirmVisible = false;
+            await mapView.UpdateMarkerPositionAsync(dragLocationId, dragOrigLat, dragOrigLng);
+            await LoadAndDisplayLocationsAsync();
+        }
+    }
+
+    private async Task CancelDrag()
+    {
+        isDragConfirmVisible = false;
+        await mapView.UpdateMarkerPositionAsync(dragLocationId, dragOrigLat, dragOrigLng);
+    }
 
     private async Task NavigateToLocation(int id)
     {

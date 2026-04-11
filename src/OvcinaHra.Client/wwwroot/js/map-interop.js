@@ -139,7 +139,7 @@ window.ovcinaMap = {
         var popup = new maplibregl.Popup({ offset: 10 })
             .setHTML('<strong>' + this._escapeHtml(name) + '</strong><br><small>' + this._escapeHtml(kind) + '</small>');
 
-        var marker = new maplibregl.Marker({ element: wrapper, anchor: 'top' })
+        var marker = new maplibregl.Marker({ element: wrapper, anchor: 'top', draggable: true })
             .setLngLat([lon, lat])
             .setPopup(popup)
             .addTo(this._map);
@@ -148,6 +148,13 @@ window.ovcinaMap = {
             e.stopPropagation();
             if (this._dotnetRef) {
                 this._dotnetRef.invokeMethodAsync('OnMarkerClicked', id);
+            }
+        });
+
+        marker.on('dragend', () => {
+            var newPos = marker.getLngLat();
+            if (this._dotnetRef) {
+                this._dotnetRef.invokeMethodAsync('OnMarkerDragged', id, newPos.lat, newPos.lng, lat, lon);
             }
         });
 
