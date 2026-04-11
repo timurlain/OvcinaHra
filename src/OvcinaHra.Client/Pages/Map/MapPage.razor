@@ -109,7 +109,7 @@
         await LoadAndDisplayLocationsAsync();
     }
 
-    private async void OnGameChanged() { await LoadAndDisplayLocationsAsync(); StateHasChanged(); }
+    private async void OnGameChanged() { try { await LoadAndDisplayLocationsAsync(); StateHasChanged(); } catch { /* game context change best-effort */ } }
     public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
 
     private async Task LoadAndDisplayLocationsAsync()
@@ -158,17 +158,26 @@
 
     private async Task ConfirmDrag()
     {
-        var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{dragLocationId}");
-        if (detail is not null)
+        try
         {
-            var dto = new UpdateLocationDto(detail.Name, detail.LocationKind,
-                (decimal)dragNewLat, (decimal)dragNewLng,
-                detail.Description, detail.Details, detail.GamePotential, detail.Prompt, detail.Region,
-                detail.NpcInfo, detail.SetupNotes, detail.ParentLocationId);
-            await Api.PutAsync($"/api/locations/{dragLocationId}", dto);
+            var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{dragLocationId}");
+            if (detail is not null)
+            {
+                var dto = new UpdateLocationDto(detail.Name, detail.LocationKind,
+                    (decimal)dragNewLat, (decimal)dragNewLng,
+                    detail.Description, detail.Details, detail.GamePotential, detail.Prompt, detail.Region,
+                    detail.NpcInfo, detail.SetupNotes, detail.ParentLocationId);
+                await Api.PutAsync($"/api/locations/{dragLocationId}", dto);
+            }
+            isDragConfirmVisible = false;
+            await LoadAndDisplayLocationsAsync();
         }
-        isDragConfirmVisible = false;
-        await LoadAndDisplayLocationsAsync();
+        catch
+        {
+            isDragConfirmVisible = false;
+            await mapView.UpdateMarkerPositionAsync(dragLocationId, dragOrigLat, dragOrigLng);
+            await LoadAndDisplayLocationsAsync();
+        }
     }
 
     private async Task CancelDrag()
