@@ -16,9 +16,12 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-:: Wait for postgres to be ready
-echo Waiting for postgres...
+:: Wait for postgres + azurite to be ready
+echo Waiting for services...
 timeout /t 3 /nobreak >nul
+
+:: Ensure blob container exists
+az storage container create --name ovcinahra-images --connection-string "UseDevelopmentStorage=true" >nul 2>&1
 
 :: Build solution
 echo Building solution...
