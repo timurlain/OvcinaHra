@@ -12,16 +12,17 @@ public class LocationFormModel
     public string? Description { get; set; }
     public string? Details { get; set; }
     public string? GamePotential { get; set; }
+    public string? Prompt { get; set; }
     public string? Region { get; set; }
     public string? NpcInfo { get; set; }
     public string? SetupNotes { get; set; }
     public int? ParentLocationId { get; set; }
 
     public CreateLocationDto ToCreateDto() => new(Name, LocationKind, Latitude, Longitude, Description,
-        Details: Details, GamePotential: GamePotential, Region: Region,
+        Details: Details, GamePotential: GamePotential, Prompt: Prompt, Region: Region,
         NpcInfo: NpcInfo, SetupNotes: SetupNotes, ParentLocationId: ParentLocationId);
     public UpdateLocationDto ToUpdateDto() => new(Name, LocationKind, Latitude, Longitude, Description,
-        Details: Details, GamePotential: GamePotential, Region: Region,
+        Details: Details, GamePotential: GamePotential, Prompt: Prompt, Region: Region,
         NpcInfo: NpcInfo, SetupNotes: SetupNotes, ParentLocationId: ParentLocationId);
 
     public static LocationFormModel FromDetail(LocationDetailDto dto) => new()
@@ -33,6 +34,7 @@ public class LocationFormModel
         Description = dto.Description,
         Details = dto.Details,
         GamePotential = dto.GamePotential,
+        Prompt = dto.Prompt,
         Region = dto.Region,
         NpcInfo = dto.NpcInfo,
         SetupNotes = dto.SetupNotes,
