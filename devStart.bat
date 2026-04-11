@@ -21,7 +21,7 @@ echo Waiting for services...
 timeout /t 3 /nobreak >nul
 
 :: Ensure blob container exists
-az storage container create --name ovcinahra-images --connection-string "UseDevelopmentStorage=true" >nul 2>&1
+az storage container create --name ovcinahra-images --connection-string "UseDevelopmentStorage=true" >nul 2>&1 || echo [warn] az CLI not found - create blob container manually
 
 :: Build solution
 echo Building solution...

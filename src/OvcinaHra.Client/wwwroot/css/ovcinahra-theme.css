@@ -485,3 +485,8 @@
 .location-card-variants a:hover {
     text-decoration: underline;
 }
+
+/* When no image, description takes full width */
+.location-card-body .location-card-text:only-child {
+    flex: 1 1 100%;
+}
