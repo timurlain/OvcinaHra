@@ -46,6 +46,11 @@ public record UpdateMonsterDto(
     int? RewardMoney,
     string? RewardNotes);
 
+// Per-game monster assignment
+public record GameMonsterDto(int GameId, int MonsterId, string MonsterName);
+
+public record CreateGameMonsterDto(int GameId, int MonsterId);
+
 // Loot
 public record MonsterLootDto(int MonsterId, int ItemId, string ItemName, int GameId, int Quantity);
 

@@ -19,6 +19,7 @@ public class WorldDbContext(DbContextOptions<WorldDbContext> options) : DbContex
     public DbSet<Monster> Monsters => Set<Monster>();
     public DbSet<MonsterTagLink> MonsterTagLinks => Set<MonsterTagLink>();
     public DbSet<MonsterLoot> MonsterLoots => Set<MonsterLoot>();
+    public DbSet<GameMonster> GameMonsters => Set<GameMonster>();
     public DbSet<Quest> Quests => Set<Quest>();
     public DbSet<QuestTagLink> QuestTagLinks => Set<QuestTagLink>();
     public DbSet<QuestLocationLink> QuestLocationLinks => Set<QuestLocationLink>();

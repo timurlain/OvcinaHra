@@ -23,6 +23,7 @@ public class Game
     public ICollection<SecretStash> SecretStashes { get; set; } = [];
     public ICollection<GameBuilding> GameBuildings { get; set; } = [];
     public ICollection<CraftingRecipe> CraftingRecipes { get; set; } = [];
+    public ICollection<GameMonster> GameMonsters { get; set; } = [];
     public ICollection<MonsterLoot> MonsterLoots { get; set; } = [];
     public ICollection<Quest> Quests { get; set; } = [];
     public ICollection<TreasureQuest> TreasureQuests { get; set; } = [];

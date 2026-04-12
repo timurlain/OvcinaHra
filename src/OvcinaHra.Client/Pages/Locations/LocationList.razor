@@ -25,6 +25,14 @@
 {
     <p>Načítám...</p>
 }
+else if (!Catalog && locations.Count == 0)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-geo-alt fs-1 d-block mb-2"></i>
+        <p>Žádné lokace přiřazeny k této hře.</p>
+        <button class="btn btn-outline-primary" @onclick='() => Nav.NavigateTo("/locations?catalog=true")'>Otevřít katalog</button>
+    </div>
+}
 else
 {
     <OvcinaGrid Data="@locations" KeyFieldName="Id" LayoutKey="grid-layout-locations"
