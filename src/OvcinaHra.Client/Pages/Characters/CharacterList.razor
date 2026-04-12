@@ -1,0 +1,205 @@
+@page "/characters"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject GameContextService GameContext
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Postavy</h1>
+    <div class="d-flex gap-2">
+        <DxTextBox Text="@searchText" NullText="Hledat..." ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
+                   TextChanged="@(async (string s) => { searchText = s; await LoadAsync(); })" />
+        <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nová postava</button>
+    </div>
+</div>
+
+@if (loading)
+{
+    <p>Načítám...</p>
+}
+else if (characters.Count == 0)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-people fs-1 d-block mb-2"></i>
+        <p>Žádné postavy. Importujte z registrace nebo vytvořte novou.</p>
+        <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nová postava</button>
+    </div>
+}
+else
+{
+    <OvcinaGrid Data="@characters" KeyFieldName="Id" LayoutKey="grid-layout-characters"
+                RowClick="@(e => OpenModal((CharacterListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+        <Columns>
+            <DxGridDataColumn FieldName="Name" Caption="Název" />
+            <DxGridDataColumn FieldName="Race" Caption="Rasa" Width="120px" />
+            <DxGridDataColumn FieldName="Class" Caption="Povolání" Width="130px">
+                <CellDisplayTemplate>
+                    @(context.Value is PlayerClass pc ? pc.GetDisplayName() : "Začátečník")
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="Kingdom" Caption="Království" Width="140px" />
+            <DxGridDataColumn FieldName="IsPlayedCharacter" Caption="Hráč" Width="80px">
+                <CellDisplayTemplate>@((bool)context.Value ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+        </Columns>
+    </OvcinaGrid>
+}
+
+<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="700px">
+    <BodyContentTemplate Context="popupContext">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Název" ColSpanMd="8">
+                <DxTextBox @bind-Text="@name" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Rasa" ColSpanMd="4">
+                <DxTextBox @bind-Text="@race" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Povolání" ColSpanMd="6">
+                <DxComboBox Data="@playerClassValues" @bind-Value="@playerClass"
+                            TextFieldName="Display" ValueFieldName="Value"
+                            NullText="Začátečník" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Království" ColSpanMd="6">
+                <DxTextBox @bind-Text="@kingdom" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Rok narození" ColSpanMd="4">
+                <DxSpinEdit @bind-Value="@birthYear" MinValue="1" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Hráčská postava" ColSpanMd="4">
+                <DxCheckBox @bind-Checked="@isPlayedCharacter" />
+            </DxFormLayoutItem>
+            @if (isPlayedCharacter)
+            {
+                <DxFormLayoutItem Caption="ID v registraci" ColSpanMd="4">
+                    <DxSpinEdit @bind-Value="@externalPersonId" />
+                </DxFormLayoutItem>
+            }
+            <DxFormLayoutItem Caption="Rodič" ColSpanMd="12">
+                <DxComboBox Data="@allCharacters" @bind-Value="@parentCharacterId"
+                            TextFieldName="Name" ValueFieldName="Id"
+                            NullText="(žádný)" SearchMode="ListSearchMode.AutoSearch" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Poznámky" ColSpanMd="12">
+                <DxMemo @bind-Text="@notes" Rows="3" />
+            </DxFormLayoutItem>
+        </DxFormLayout>
+
+        @if (error is not null) { <div class="alert alert-danger mt-2">@error</div> }
+
+        <div class="d-flex gap-2 mt-3">
+            @if (editingId.HasValue) { <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true" disabled="@isSaving">Smazat</button> }
+            <div style="flex: 1"></div>
+            <button class="btn btn-secondary" @onclick="() => isModalVisible = false" disabled="@isSaving">Zrušit</button>
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving">Uložit</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Opravdu chcete smazat postavu <strong>@name</strong>?</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    private List<CharacterListDto> characters = [];
+    private List<CharacterListDto> allCharacters = [];
+    private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
+    private string modalTitle = "", name = "";
+    private string? error, race, kingdom, notes;
+    private int? editingId;
+    private PlayerClass? playerClass;
+    private int? birthYear;
+    private int? externalPersonId;
+    private int? parentCharacterId;
+    private bool isPlayedCharacter;
+    private string searchText = "";
+
+    private static readonly List<EnumItem<PlayerClass>> playerClassValues = Enum.GetValues<PlayerClass>()
+        .Select(v => new EnumItem<PlayerClass>(v, v.GetDisplayName())).ToList();
+    record EnumItem<T>(T Value, string Display);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GameContext.InitializeAsync();
+        await LoadAsync();
+        allCharacters = await Api.GetListAsync<CharacterListDto>("/api/characters");
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        var url = string.IsNullOrWhiteSpace(searchText)
+            ? "/api/characters"
+            : $"/api/characters?search={Uri.EscapeDataString(searchText)}";
+        characters = await Api.GetListAsync<CharacterListDto>(url);
+        loading = false;
+    }
+
+    private void OpenModal(CharacterListDto? c)
+    {
+        error = null;
+        if (c is null)
+        {
+            editingId = null; name = ""; race = null; playerClass = null; kingdom = null;
+            birthYear = null; isPlayedCharacter = false; externalPersonId = null;
+            parentCharacterId = null; notes = null;
+            modalTitle = "Nová postava";
+        }
+        else
+        {
+            editingId = c.Id; name = c.Name; race = c.Race; playerClass = c.Class;
+            kingdom = c.Kingdom; isPlayedCharacter = c.IsPlayedCharacter;
+            externalPersonId = c.ExternalPersonId;
+            modalTitle = $"Upravit: {c.Name}";
+            _ = LoadDetailAsync(c.Id);
+        }
+        isModalVisible = true;
+    }
+
+    private async Task LoadDetailAsync(int id)
+    {
+        var d = await Api.GetAsync<CharacterDetailDto>($"/api/characters/{id}");
+        if (d is not null)
+        {
+            birthYear = d.BirthYear;
+            notes = d.Notes;
+            parentCharacterId = d.ParentCharacterId;
+        }
+        StateHasChanged();
+    }
+
+    private async Task SaveAsync()
+    {
+        error = null; isSaving = true;
+        try
+        {
+            if (editingId.HasValue)
+                await Api.PutAsync($"/api/characters/{editingId}",
+                    new UpdateCharacterDto(name, race, playerClass, kingdom, birthYear, notes, isPlayedCharacter, externalPersonId, parentCharacterId));
+            else
+                await Api.PostAsync<CreateCharacterDto, CharacterDetailDto>("/api/characters",
+                    new CreateCharacterDto(name, race, playerClass, kingdom, birthYear, notes, isPlayedCharacter, externalPersonId, parentCharacterId));
+            isModalVisible = false;
+            await LoadAsync();
+            allCharacters = await Api.GetListAsync<CharacterListDto>("/api/characters");
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        try
+        {
+            await Api.DeleteAsync($"/api/characters/{editingId}");
+            isDeleteVisible = false; isModalVisible = false;
+            await LoadAsync();
+            allCharacters = await Api.GetListAsync<CharacterListDto>("/api/characters");
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+}
