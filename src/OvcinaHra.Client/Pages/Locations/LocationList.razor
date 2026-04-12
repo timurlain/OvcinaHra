@@ -46,21 +46,21 @@ else
                 <CellDisplayTemplate>@(((LocationKind)context.Value).GetDisplayName())</CellDisplayTemplate>
             </DxGridDataColumn>
             <DxGridDataColumn FieldName="Region" Caption="Oblast" Width="140px" />
-            <DxGridDataColumn FieldName="ParentLocationId" Caption="Rodič / Varianty" Width="200px">
+            <DxGridDataColumn FieldName="ParentLocationId" Caption="Rodič / Varianty" Width="250px">
                 <CellDisplayTemplate>
                     @{
                         var loc = (LocationListDto)context.DataItem;
                         if (loc.ParentLocationId.HasValue)
                         {
                             var parent = locations.FirstOrDefault(l => l.Id == loc.ParentLocationId.Value);
-                            <span class="text-muted">↳ @(parent?.Name ?? $"#{loc.ParentLocationId}")</span>
+                            <a href="#" class="text-muted" @onclick="async () => await locationPopup.OpenAsync(loc.ParentLocationId.Value)" @onclick:preventDefault @onclick:stopPropagation>↳ @(parent?.Name ?? $"#{loc.ParentLocationId}")</a>
                         }
                         else
                         {
-                            var variantCount = locations.Count(l => l.ParentLocationId == loc.Id);
-                            if (variantCount > 0)
+                            var variants = locations.Where(l => l.ParentLocationId == loc.Id).ToList();
+                            @foreach (var v in variants)
                             {
-                                <span class="badge bg-secondary">@variantCount variant@(variantCount > 1 ? "y" : "a")</span>
+                                <a href="#" class="badge bg-secondary text-decoration-none me-1" @onclick="async () => await locationPopup.OpenAsync(v.Id)" @onclick:preventDefault @onclick:stopPropagation>@v.Name</a>
                             }
                         }
                     }

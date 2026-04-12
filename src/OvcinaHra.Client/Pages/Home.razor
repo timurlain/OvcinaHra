@@ -1,5 +1,9 @@
 @page "/"
 @attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject GameContextService GameContext
+@using OvcinaHra.Shared.Dtos
 
 <div class="oh-page-header">
     <span class="oh-page-icon"><i class="bi bi-house-door-fill"></i></span>
@@ -15,6 +19,43 @@
                 Vyber si herní edici nahoře a potom prozkoumej svět z menu vlevo.
             </span>
         </div>
+
+        <div class="mb-4">
+            <div class="input-group" style="max-width: 500px;">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="text" class="form-control" placeholder="Hledat ve světě..."
+                       @bind="searchQuery" @bind:event="oninput" @onkeyup="OnSearchKeyUp" />
+                @if (!string.IsNullOrEmpty(searchQuery))
+                {
+                    <button class="btn btn-outline-secondary" @onclick="ClearSearch"><i class="bi bi-x"></i></button>
+                }
+            </div>
+        </div>
+
+        @if (searchResults is not null)
+        {
+            <div class="mb-4">
+                <small class="text-muted">@searchResults.TotalCount výsledků pro „@searchResults.Query"</small>
+                <div class="list-group mt-2">
+                    @foreach (var r in searchResults.Results)
+                    {
+                        <a href="#" class="list-group-item list-group-item-action d-flex align-items-center gap-2"
+                           @onclick="() => NavigateToResult(r)" @onclick:preventDefault>
+                            <span class="badge @GetBadgeClass(r.EntityType)">@GetEntityLabel(r.EntityType)</span>
+                            <strong>@r.Name</strong>
+                            @if (!string.IsNullOrWhiteSpace(r.Description))
+                            {
+                                <span class="text-muted small text-truncate" style="max-width: 400px;">— @r.Description</span>
+                            }
+                        </a>
+                    }
+                </div>
+                @if (searchResults.TotalCount == 0)
+                {
+                    <div class="text-muted mt-2">Nic nenalezeno. Zkus jiný výraz.</div>
+                }
+            </div>
+        }
 
         <div class="row g-3 mb-4">
             <div class="col-lg-3 col-md-6">
@@ -44,3 +85,79 @@
         </div>
     </Authorized>
 </AuthorizeView>
+
+@code {
+    private string searchQuery = "";
+    private SearchResponseDto? searchResults;
+    private System.Timers.Timer? debounceTimer;
+
+    private async Task OnSearchKeyUp(KeyboardEventArgs e)
+    {
+        debounceTimer?.Stop();
+        debounceTimer?.Dispose();
+
+        if (string.IsNullOrWhiteSpace(searchQuery) || searchQuery.Length < 2)
+        {
+            searchResults = null;
+            return;
+        }
+
+        debounceTimer = new System.Timers.Timer(300);
+        debounceTimer.Elapsed += async (_, _) =>
+        {
+            debounceTimer?.Stop();
+            await InvokeAsync(async () =>
+            {
+                try
+                {
+                    var gameId = GameContext.SelectedGameId;
+                    var url = $"/api/search?q={Uri.EscapeDataString(searchQuery)}&limit=20";
+                    if (gameId.HasValue)
+                        url += $"&gameId={gameId.Value}";
+                    searchResults = await Api.GetAsync<SearchResponseDto>(url);
+                }
+                catch { searchResults = null; }
+                StateHasChanged();
+            });
+        };
+        debounceTimer.AutoReset = false;
+        debounceTimer.Start();
+    }
+
+    private void ClearSearch()
+    {
+        searchQuery = "";
+        searchResults = null;
+    }
+
+    private void NavigateToResult(SearchResultDto result)
+    {
+        var path = result.EntityType switch
+        {
+            "Location" => "/locations",
+            "Item" => "/items",
+            "Monster" => "/monsters",
+            "Quest" => "/quests",
+            _ => "/"
+        };
+        Nav.NavigateTo(path);
+    }
+
+    private static string GetBadgeClass(string entityType) => entityType switch
+    {
+        "Location" => "bg-success",
+        "Item" => "bg-primary",
+        "Monster" => "bg-danger",
+        "Quest" => "bg-warning text-dark",
+        _ => "bg-secondary"
+    };
+
+    private static string GetEntityLabel(string entityType) => entityType switch
+    {
+        "Location" => "Lokace",
+        "Item" => "Předmět",
+        "Monster" => "Příšera",
+        "Quest" => "Quest",
+        _ => entityType
+    };
+}

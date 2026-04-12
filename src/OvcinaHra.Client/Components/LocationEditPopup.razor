@@ -116,7 +116,8 @@
                     <DxMemo @bind-Text="@model.SetupNotes" Rows="3" data-testid="location-setup" />
                 </DxFormLayoutItem>
                 <DxFormLayoutItem Caption="Rodič" ColSpanMd="12">
-                    <DxComboBox Data="@parentCandidates" @bind-Value="@model.ParentLocationId"
+                    <DxComboBox Data="@parentCandidates" Value="@model.ParentLocationId"
+                                ValueChanged="@((int? v) => OnParentChangeRequested(v))"
                                 TextFieldName="Name" ValueFieldName="Id"
                                 NullText="(žádný — tato lokace je kořenová)"
                                 ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
@@ -188,6 +189,16 @@
     </BodyContentTemplate>
 </DxPopup>
 
+<DxPopup @bind-Visible="@isParentChangeVisible" HeaderText="Změnit rodiče?" Width="400px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Změnit rodičovskou lokaci na <strong>@pendingParentName</strong>?</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="CancelParentChange">Zrušit</button>
+            <button class="btn btn-primary" @onclick="ConfirmParentChange">Změnit</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
 @code {
     [Parameter] public EventCallback OnSaved { get; set; }
     [Parameter] public EventCallback<int> OnVariantNavigate { get; set; }
@@ -198,6 +209,9 @@
 
     private bool isVisible, isDeleteVisible, isSaving;
     private bool isLoreEditable;
+    private bool isParentChangeVisible;
+    private int? pendingParentId;
+    private string pendingParentName = "";
     private int activeTab;
     private string modalTitle = "";
     private string? error;
@@ -262,6 +276,24 @@
     }
 
     public void Close() => isVisible = false;
+
+    private void OnParentChangeRequested(int? newParentId)
+    {
+        if (newParentId == model.ParentLocationId) return;
+        pendingParentId = newParentId;
+        pendingParentName = newParentId.HasValue
+            ? parentCandidates.FirstOrDefault(l => l.Id == newParentId.Value)?.Name ?? $"#{newParentId}"
+            : "(žádný — kořenová)";
+        isParentChangeVisible = true;
+    }
+
+    private void ConfirmParentChange()
+    {
+        model.ParentLocationId = pendingParentId;
+        isParentChangeVisible = false;
+    }
+
+    private void CancelParentChange() => isParentChangeVisible = false;
 
     private async Task SaveAsync()
     {
