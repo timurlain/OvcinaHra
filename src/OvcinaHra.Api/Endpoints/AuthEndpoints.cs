@@ -7,7 +7,7 @@ namespace OvcinaHra.Api.Endpoints;
 
 public static class AuthEndpoints
 {
-    private const int AccessTokenMinutes = 60;
+    private const int AccessTokenMinutes = 60 * 24; // 24 hours — internal organizer app
     private const int RefreshGraceDays = 7;
 
     public static RouteGroupBuilder MapAuthEndpoints(this IEndpointRouteBuilder routes, IConfiguration config, bool isDevelopment)
