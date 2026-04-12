@@ -19,6 +19,10 @@ public static class ItemEndpoints
         group.MapPut("/{id:int}", Update);
         group.MapDelete("/{id:int}", Delete);
 
+        // Class/level query — "can this class at this level use this item?"
+        group.MapGet("/usable", GetUsableItems);
+        group.MapGet("/{id:int}/can-use", CanUseItem);
+
         // Per-game item config
         group.MapGet("/by-game/{gameId:int}", GetByGame);
         group.MapPost("/game-item", CreateGameItem);
@@ -148,6 +152,94 @@ public static class ItemEndpoints
         db.GameItems.Remove(gi);
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
+    }
+
+    // Class: warrior, archer, mage, thief. Level: 1+.
+    // Returns all items usable by that class at that level.
+    // An item is usable if: its class requirement is 0 for ALL classes (unrestricted),
+    // OR the specified class requirement is > 0 and <= the given level.
+    private static async Task<Ok<List<ItemListDto>>> GetUsableItems(
+        string playerClass, int level, WorldDbContext db, int? gameId = null)
+    {
+        var query = db.Items.AsQueryable();
+        if (gameId.HasValue)
+            query = query.Where(i => i.GameItems.Any(gi => gi.GameId == gameId.Value));
+
+        var items = await query.ToListAsync();
+
+        var usable = items.Where(i =>
+        {
+            var cr = i.ClassRequirements;
+            var allZero = cr.Warrior == 0 && cr.Archer == 0 && cr.Mage == 0 && cr.Thief == 0;
+            if (allZero) return true; // unrestricted
+
+            var required = playerClass.ToLowerInvariant() switch
+            {
+                "warrior" => cr.Warrior,
+                "archer" => cr.Archer,
+                "mage" => cr.Mage,
+                "thief" => cr.Thief,
+                _ => 0
+            };
+            return required > 0 && level >= required;
+        })
+        .Select(i => new ItemListDto(i.Id, i.Name, i.ItemType, i.IsCraftable, i.IsUnique, i.IsLimited))
+        .OrderBy(i => i.Name)
+        .ToList();
+
+        return TypedResults.Ok(usable);
+    }
+
+    // Check if a specific item can be used by a given class at a given level.
+    private static async Task<Results<Ok<ItemUsabilityDto>, NotFound>> CanUseItem(
+        int id, string playerClass, int level, WorldDbContext db)
+    {
+        var item = await db.Items.FindAsync(id);
+        if (item is null) return TypedResults.NotFound();
+
+        var cr = item.ClassRequirements;
+        var allZero = cr.Warrior == 0 && cr.Archer == 0 && cr.Mage == 0 && cr.Thief == 0;
+
+        bool canUse;
+        int requiredLevel;
+        string reason;
+
+        if (allZero)
+        {
+            canUse = true;
+            requiredLevel = 0;
+            reason = "Bez omezení — může použít kdokoli";
+        }
+        else
+        {
+            requiredLevel = playerClass.ToLowerInvariant() switch
+            {
+                "warrior" => cr.Warrior,
+                "archer" => cr.Archer,
+                "mage" => cr.Mage,
+                "thief" => cr.Thief,
+                _ => 0
+            };
+
+            if (requiredLevel == 0)
+            {
+                canUse = false;
+                reason = $"Třída {playerClass} nemůže tento předmět použít";
+            }
+            else if (level >= requiredLevel)
+            {
+                canUse = true;
+                reason = $"Ano — vyžaduje {playerClass} úroveň {requiredLevel}+";
+            }
+            else
+            {
+                canUse = false;
+                reason = $"Ne — vyžaduje {playerClass} úroveň {requiredLevel}, máš {level}";
+            }
+        }
+
+        return TypedResults.Ok(new ItemUsabilityDto(item.Id, item.Name, canUse, requiredLevel, reason,
+            cr.Warrior, cr.Archer, cr.Mage, cr.Thief));
     }
 
     private static ItemDetailDto ToDetailDto(Item item) => new(

@@ -71,3 +71,14 @@ public record UpdateGameItemDto(
     bool IsSold,
     string? SaleCondition,
     bool IsFindable);
+
+public record ItemUsabilityDto(
+    int ItemId,
+    string ItemName,
+    bool CanUse,
+    int RequiredLevel,
+    string Reason,
+    int ReqWarrior,
+    int ReqArcher,
+    int ReqMage,
+    int ReqThief);
