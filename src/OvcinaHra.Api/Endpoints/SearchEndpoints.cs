@@ -14,42 +14,47 @@ public static class SearchEndpoints
         return group;
     }
 
-    private static async Task<Ok<SearchResponseDto>> Search(string q, WorldDbContext db, int limit = 20)
+    private static async Task<Ok<SearchResponseDto>> Search(string q, WorldDbContext db, int? gameId = null, int limit = 20)
     {
         if (string.IsNullOrWhiteSpace(q) || q.Length < 2)
             return TypedResults.Ok(new SearchResponseDto(q ?? "", 0, []));
 
-        // Sanitize: split into words, join with & for tsquery AND matching
         var terms = q.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var tsQuery = string.Join(" & ", terms.Select(t => t.Replace("'", "''") + ":*"));
 
         var results = new List<SearchResultDto>();
 
         // Search Locations
-        var locations = await db.Locations
+        var locQuery = db.Locations
             .FromSqlRaw(
                 """
                 SELECT * FROM "Locations"
                 WHERE "SearchVector" @@ to_tsquery('simple', {0})
                 LIMIT {1}
                 """, tsQuery, limit)
+            .AsQueryable();
+        if (gameId.HasValue)
+            locQuery = locQuery.Where(l => l.GameLocations.Any(gl => gl.GameId == gameId.Value));
+        results.AddRange(await locQuery
             .Select(l => new SearchResultDto("Location", l.Id, l.Name, l.Description))
-            .ToListAsync();
-        results.AddRange(locations);
+            .ToListAsync());
 
         // Search Items
-        var items = await db.Items
+        var itemQuery = db.Items
             .FromSqlRaw(
                 """
                 SELECT * FROM "Items"
                 WHERE "SearchVector" @@ to_tsquery('simple', {0})
                 LIMIT {1}
                 """, tsQuery, limit)
+            .AsQueryable();
+        if (gameId.HasValue)
+            itemQuery = itemQuery.Where(i => i.GameItems.Any(gi => gi.GameId == gameId.Value));
+        results.AddRange(await itemQuery
             .Select(i => new SearchResultDto("Item", i.Id, i.Name, i.Effect))
-            .ToListAsync();
-        results.AddRange(items);
+            .ToListAsync());
 
-        // Search Monsters
+        // Search Monsters (no game join table — include all)
         var monsters = await db.Monsters
             .FromSqlRaw(
                 """
@@ -61,7 +66,7 @@ public static class SearchEndpoints
             .ToListAsync();
         results.AddRange(monsters);
 
-        // Search Quests
+        // Search Quests (no game join table — include all)
         var quests = await db.Quests
             .FromSqlRaw(
                 """
