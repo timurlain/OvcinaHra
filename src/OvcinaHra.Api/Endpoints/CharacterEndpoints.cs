@@ -18,6 +18,7 @@ public static class CharacterEndpoints
         group.MapPut("/{id:int}", Update);
         group.MapDelete("/{id:int}", Delete);
         group.MapGet("/{id:int}/assignments", GetAssignments);
+        group.MapPost("/{id:int}/assignments", CreateAssignment);
 
         return group;
     }
@@ -114,6 +115,30 @@ public static class CharacterEndpoints
 
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
+    }
+
+    private static async Task<Results<Created<CharacterAssignmentDto>, NotFound>> CreateAssignment(
+        int id, CreateCharacterAssignmentDto dto, WorldDbContext db)
+    {
+        var character = await db.Characters.FindAsync(id);
+        if (character is null) return TypedResults.NotFound();
+
+        var assignment = new CharacterAssignment
+        {
+            CharacterId = id,
+            GameId = dto.GameId,
+            ExternalPersonId = dto.ExternalPersonId,
+            IsActive = true,
+            StartedAtUtc = DateTime.UtcNow
+        };
+        db.CharacterAssignments.Add(assignment);
+        await db.SaveChangesAsync();
+
+        return TypedResults.Created($"/api/characters/{id}/assignments",
+            new CharacterAssignmentDto(
+                assignment.Id, assignment.CharacterId, character.Name,
+                assignment.GameId, assignment.ExternalPersonId,
+                assignment.IsActive, assignment.StartedAtUtc, assignment.EndedAtUtc));
     }
 
     private static async Task<Ok<List<CharacterAssignmentDto>>> GetAssignments(int id, WorldDbContext db)

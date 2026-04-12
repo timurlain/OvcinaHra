@@ -52,4 +52,6 @@ public record ScanCharacterDto(
     string? Kingdom, int CurrentLevel, int TotalXp,
     List<string> Skills, List<CharacterEventDto> RecentEvents);
 
+public record CreateCharacterAssignmentDto(int GameId, int ExternalPersonId);
+
 public record ImportResultDto(int Created, int Updated, int Skipped);

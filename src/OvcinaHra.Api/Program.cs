@@ -195,6 +195,7 @@ try
     app.MapTimelineEndpoints().RequireAuthorization();
     app.MapSearchEndpoints().RequireAuthorization();
     app.MapImageEndpoints().RequireAuthorization();
+    app.MapScanEndpoints();
     app.MapLogEndpoints(); // No auth — needed for debugging login issues
 
     app.Run();
