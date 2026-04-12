@@ -8,6 +8,7 @@ namespace OvcinaHra.Api.Endpoints;
 public static class AuthEndpoints
 {
     private const int AccessTokenMinutes = 60 * 24; // 24 hours — internal organizer app
+    private const int ServiceTokenDays = 30;
     private const int RefreshGraceDays = 7;
 
     public static RouteGroupBuilder MapAuthEndpoints(this IEndpointRouteBuilder routes, IConfiguration config, bool isDevelopment)
@@ -48,6 +49,38 @@ public static class AuthEndpoints
                 return Results.Ok(token);
             }).AllowAnonymous();
         }
+
+        // Service tokens — long-lived tokens for AI skills (loremaster, rulemaster, economymaster)
+        group.MapPost("/service-token", (ServiceTokenRequest request) =>
+        {
+            var serviceKey = config["Jwt:ServiceKey"];
+            if (string.IsNullOrEmpty(serviceKey) || request.Secret != serviceKey)
+                return Results.Unauthorized();
+
+            var claims = new List<Claim>
+            {
+                new(ClaimTypes.NameIdentifier, $"service-{request.ServiceName}"),
+                new(ClaimTypes.Email, $"{request.ServiceName}@ovcina.cz"),
+                new(ClaimTypes.Name, request.ServiceName),
+                new(ClaimTypes.Role, "Service"),
+                new(ClaimTypes.Role, "Organizer")
+            };
+
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["Jwt:Key"]!));
+            var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+            var expires = DateTime.UtcNow.AddDays(ServiceTokenDays);
+            var token = new JwtSecurityToken(
+                issuer: config["Jwt:Issuer"],
+                audience: config["Jwt:Audience"],
+                claims: claims,
+                expires: expires,
+                signingCredentials: credentials);
+
+            return Results.Ok(new TokenResponse(
+                new JwtSecurityTokenHandler().WriteToken(token),
+                expires,
+                ServiceTokenDays * 24 * 60 * 60));
+        }).AllowAnonymous();
 
         // OIDC code exchange — WASM client sends the authorization code, API exchanges it for tokens
         var oidcAuthority = config["Oidc:Authority"];
@@ -196,6 +229,7 @@ public static class AuthEndpoints
 }
 
 public record DevTokenRequest(string? UserId = null, string? Email = null, string? Name = null);
+public record ServiceTokenRequest(string ServiceName, string Secret);
 public record TokenResponse(string Token, DateTime ExpiresUtc, int ExpiresInSeconds);
 public record UserInfoDto(string UserId, string Email, string Name, List<string> Roles);
 
