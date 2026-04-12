@@ -185,6 +185,7 @@ try
     app.MapLocationEndpoints().RequireAuthorization();
     app.MapItemEndpoints().RequireAuthorization();
     app.MapSecretStashEndpoints().RequireAuthorization();
+    app.MapCharacterEndpoints().RequireAuthorization();
     app.MapMonsterEndpoints().RequireAuthorization();
     app.MapQuestEndpoints().RequireAuthorization();
     app.MapBuildingEndpoints().RequireAuthorization();
