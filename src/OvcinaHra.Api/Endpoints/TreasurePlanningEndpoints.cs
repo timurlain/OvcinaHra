@@ -151,7 +151,8 @@ public static class TreasurePlanningEndpoints
 
         var locations = await db.Locations
             .Where(l => gameLocationIds.Contains(l.Id))
-            .Include(l => l.SecretStashes.Where(s => s.GameId == gameId))
+            .Include(l => l.GameSecretStashes.Where(gs => gs.GameId == gameId))
+            .ThenInclude(gs => gs.SecretStash)
             .OrderBy(l => l.Name)
             .ToListAsync();
 
@@ -164,17 +165,17 @@ public static class TreasurePlanningEndpoints
         var result = locations.Select(loc =>
         {
             var locationQuests = quests.Where(q => q.LocationId == loc.Id).ToList();
-            var stashIds = loc.SecretStashes.Select(s => s.Id).ToHashSet();
+            var stashIds = loc.GameSecretStashes.Select(gs => gs.SecretStashId).ToHashSet();
             var stashQuests = quests.Where(q => q.SecretStashId.HasValue && stashIds.Contains(q.SecretStashId.Value)).ToList();
             var allQuests = locationQuests.Concat(stashQuests).ToList();
 
             int CountByDifficulty(TreasureQuestDifficulty d) =>
                 allQuests.Where(q => q.Difficulty == d).SelectMany(q => q.TreasureItems).Sum(ti => ti.Count);
 
-            var stashSummaries = loc.SecretStashes.Select(s =>
+            var stashSummaries = loc.GameSecretStashes.Select(gs =>
             {
-                var sQuests = quests.Where(q => q.SecretStashId == s.Id).ToList();
-                return new StashSummaryDto(s.Id, s.Name, sQuests.SelectMany(q => q.TreasureItems).Sum(ti => ti.Count));
+                var sQuests = quests.Where(q => q.SecretStashId == gs.SecretStashId).ToList();
+                return new StashSummaryDto(gs.SecretStashId, gs.SecretStash.Name, sQuests.SelectMany(q => q.TreasureItems).Sum(ti => ti.Count));
             }).ToList();
 
             return new TreasurePlanningLocationDto(
@@ -184,7 +185,7 @@ public static class TreasurePlanningEndpoints
                 CountByDifficulty(TreasureQuestDifficulty.Midgame),
                 CountByDifficulty(TreasureQuestDifficulty.Lategame),
                 allQuests.SelectMany(q => q.TreasureItems).Sum(ti => ti.Count),
-                loc.SecretStashes.Count, 3,
+                loc.GameSecretStashes.Count, 3,
                 stashSummaries);
         }).ToList();
 

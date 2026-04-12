@@ -38,7 +38,7 @@ public static class ItemEndpoints
     {
         var items = await db.Items
             .OrderBy(i => i.Name)
-            .Select(i => new ItemListDto(i.Id, i.Name, i.ItemType, i.IsCraftable, i.IsUnique, i.IsLimited))
+            .Select(i => new ItemListDto(i.Id, i.Name, i.ItemType, i.Effect, i.IsCraftable, i.IsUnique, i.IsLimited))
             .ToListAsync();
         return TypedResults.Ok(items);
     }
@@ -176,7 +176,7 @@ public static class ItemEndpoints
             var required = cr.GetRequirement(playerClass);
             return required > 0 && level >= required;
         })
-        .Select(i => new ItemListDto(i.Id, i.Name, i.ItemType, i.IsCraftable, i.IsUnique, i.IsLimited))
+        .Select(i => new ItemListDto(i.Id, i.Name, i.ItemType, i.Effect, i.IsCraftable, i.IsUnique, i.IsLimited))
         .OrderBy(i => i.Name)
         .ToList();
 

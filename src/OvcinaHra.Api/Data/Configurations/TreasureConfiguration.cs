@@ -10,12 +10,19 @@ public class SecretStashConfiguration : IEntityTypeConfiguration<SecretStash>
     {
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Name).IsRequired().HasMaxLength(200);
-        builder.HasIndex(e => new { e.GameId, e.Name }).IsUnique();
-        builder.HasOne(e => e.Location).WithMany(l => l.SecretStashes).HasForeignKey(e => e.LocationId);
-        builder.HasOne(e => e.Game).WithMany(g => g.SecretStashes).HasForeignKey(e => e.GameId);
+        builder.HasIndex(e => e.Name).IsUnique();
+    }
+}
 
-        // Max 3 secret stashes per location per game — enforced at API level
-        // (CHECK constraints on count require triggers in PostgreSQL)
+public class GameSecretStashConfiguration : IEntityTypeConfiguration<GameSecretStash>
+{
+    public void Configure(EntityTypeBuilder<GameSecretStash> builder)
+    {
+        builder.HasKey(e => new { e.GameId, e.SecretStashId });
+        builder.HasOne(e => e.Game).WithMany(g => g.GameSecretStashes).HasForeignKey(e => e.GameId);
+        builder.HasOne(e => e.SecretStash).WithMany(s => s.GameSecretStashes).HasForeignKey(e => e.SecretStashId);
+        builder.HasOne(e => e.Location).WithMany(l => l.GameSecretStashes).HasForeignKey(e => e.LocationId);
+        builder.HasIndex(e => e.GameId);
     }
 }
 

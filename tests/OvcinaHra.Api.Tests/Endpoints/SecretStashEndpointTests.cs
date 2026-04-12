@@ -8,15 +8,12 @@ namespace OvcinaHra.Api.Tests.Endpoints;
 
 public class SecretStashEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
 {
+    // --- Catalog CRUD ---
+
     [Fact]
-    public async Task GetByGame_Empty_ReturnsEmptyList()
+    public async Task GetAll_Empty_ReturnsEmptyList()
     {
-        var gameResponse = await Client.PostAsJsonAsync("/api/games",
-            new CreateGameDto("Test Hra", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
-        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
-
-        var stashes = await Client.GetFromJsonAsync<List<SecretStashListDto>>($"/api/secret-stashes/by-game/{game!.Id}");
-
+        var stashes = await Client.GetFromJsonAsync<List<SecretStashListDto>>("/api/secret-stashes");
         Assert.NotNull(stashes);
         Assert.Empty(stashes);
     }
@@ -24,39 +21,21 @@ public class SecretStashEndpointTests(PostgresFixture postgres) : IntegrationTes
     [Fact]
     public async Task Create_ValidStash_ReturnsCreated()
     {
-        var gameResponse = await Client.PostAsJsonAsync("/api/games",
-            new CreateGameDto("Test Hra", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
-        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
-
-        var locationResponse = await Client.PostAsJsonAsync("/api/locations",
-            new CreateLocationDto("Hora", LocationKind.Wilderness, 49.5m, 17.1m));
-        var location = await locationResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
-
-        var dto = new CreateSecretStashDto("Tajná skrýš u dubu", location!.Id, game!.Id);
-
-        var response = await Client.PostAsJsonAsync("/api/secret-stashes", dto);
+        var response = await Client.PostAsJsonAsync("/api/secret-stashes",
+            new CreateSecretStashDto("Tajná skrýš u dubu", "Pod kořenem"));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var created = await response.Content.ReadFromJsonAsync<SecretStashDetailDto>();
         Assert.NotNull(created);
         Assert.Equal("Tajná skrýš u dubu", created.Name);
-        Assert.Equal(location.Id, created.LocationId);
-        Assert.Equal(game.Id, created.GameId);
+        Assert.Equal("Pod kořenem", created.Description);
     }
 
     [Fact]
     public async Task GetById_ExistingStash_ReturnsStash()
     {
-        var gameResponse = await Client.PostAsJsonAsync("/api/games",
-            new CreateGameDto("Test Hra", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
-        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
-
-        var locationResponse = await Client.PostAsJsonAsync("/api/locations",
-            new CreateLocationDto("Hora", LocationKind.Wilderness, 49.5m, 17.1m));
-        var location = await locationResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
-
         var createResponse = await Client.PostAsJsonAsync("/api/secret-stashes",
-            new CreateSecretStashDto("Tajná skrýš u dubu", location!.Id, game!.Id));
+            new CreateSecretStashDto("Tajná skrýš u dubu"));
         var created = await createResponse.Content.ReadFromJsonAsync<SecretStashDetailDto>();
 
         var response = await Client.GetAsync($"/api/secret-stashes/{created!.Id}");
@@ -72,28 +51,18 @@ public class SecretStashEndpointTests(PostgresFixture postgres) : IntegrationTes
     public async Task GetById_NonExistent_ReturnsNotFound()
     {
         var response = await Client.GetAsync("/api/secret-stashes/999999");
-
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
     public async Task Update_ExistingStash_ReturnsNoContent()
     {
-        var gameResponse = await Client.PostAsJsonAsync("/api/games",
-            new CreateGameDto("Test Hra", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
-        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
-
-        var locationResponse = await Client.PostAsJsonAsync("/api/locations",
-            new CreateLocationDto("Hora", LocationKind.Wilderness, 49.5m, 17.1m));
-        var location = await locationResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
-
         var createResponse = await Client.PostAsJsonAsync("/api/secret-stashes",
-            new CreateSecretStashDto("Tajná skrýš u dubu", location!.Id, game!.Id));
+            new CreateSecretStashDto("Tajná skrýš u dubu"));
         var created = await createResponse.Content.ReadFromJsonAsync<SecretStashDetailDto>();
 
-        var updateDto = new UpdateSecretStashDto("Přejmenovaná skrýš", "Nový popis");
-
-        var response = await Client.PutAsJsonAsync($"/api/secret-stashes/{created!.Id}", updateDto);
+        var response = await Client.PutAsJsonAsync($"/api/secret-stashes/{created!.Id}",
+            new UpdateSecretStashDto("Přejmenovaná skrýš", "Nový popis"));
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
@@ -101,16 +70,8 @@ public class SecretStashEndpointTests(PostgresFixture postgres) : IntegrationTes
     [Fact]
     public async Task Delete_ExistingStash_ReturnsNoContent()
     {
-        var gameResponse = await Client.PostAsJsonAsync("/api/games",
-            new CreateGameDto("Test Hra", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
-        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
-
-        var locationResponse = await Client.PostAsJsonAsync("/api/locations",
-            new CreateLocationDto("Hora", LocationKind.Wilderness, 49.5m, 17.1m));
-        var location = await locationResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
-
         var createResponse = await Client.PostAsJsonAsync("/api/secret-stashes",
-            new CreateSecretStashDto("Tajná skrýš u dubu", location!.Id, game!.Id));
+            new CreateSecretStashDto("Tajná skrýš u dubu"));
         var created = await createResponse.Content.ReadFromJsonAsync<SecretStashDetailDto>();
 
         var response = await Client.DeleteAsync($"/api/secret-stashes/{created!.Id}");
@@ -118,47 +79,126 @@ public class SecretStashEndpointTests(PostgresFixture postgres) : IntegrationTes
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
 
+    // --- Per-game assignment ---
+
     [Fact]
-    public async Task Create_ThreeStashesAtSameLocation_AllSucceed()
+    public async Task GetByGame_Empty_ReturnsEmptyList()
     {
         var gameResponse = await Client.PostAsJsonAsync("/api/games",
             new CreateGameDto("Test Hra", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
         var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
 
-        var locationResponse = await Client.PostAsJsonAsync("/api/locations",
-            new CreateLocationDto("Hora", LocationKind.Wilderness, 49.5m, 17.1m));
-        var location = await locationResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+        var stashes = await Client.GetFromJsonAsync<List<GameSecretStashDto>>($"/api/secret-stashes/by-game/{game!.Id}");
 
-        var r1 = await Client.PostAsJsonAsync("/api/secret-stashes",
-            new CreateSecretStashDto("Skrýš 1", location!.Id, game!.Id));
-        var r2 = await Client.PostAsJsonAsync("/api/secret-stashes",
-            new CreateSecretStashDto("Skrýš 2", location.Id, game.Id));
-        var r3 = await Client.PostAsJsonAsync("/api/secret-stashes",
-            new CreateSecretStashDto("Skrýš 3", location.Id, game.Id));
-
-        Assert.Equal(HttpStatusCode.Created, r1.StatusCode);
-        Assert.Equal(HttpStatusCode.Created, r2.StatusCode);
-        Assert.Equal(HttpStatusCode.Created, r3.StatusCode);
+        Assert.NotNull(stashes);
+        Assert.Empty(stashes);
     }
 
     [Fact]
-    public async Task Create_FourthAtSameLocation_Returns422()
+    public async Task AssignToGame_ValidStash_ReturnsCreated()
+    {
+        var (game, location, stash) = await CreateGameLocationStash();
+
+        var response = await Client.PostAsJsonAsync("/api/secret-stashes/game-stash",
+            new CreateGameSecretStashDto(game.Id, stash.Id, location.Id));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var assigned = await response.Content.ReadFromJsonAsync<GameSecretStashDto>();
+        Assert.NotNull(assigned);
+        Assert.Equal(stash.Id, assigned.SecretStashId);
+        Assert.Equal(location.Id, assigned.LocationId);
+    }
+
+    [Fact]
+    public async Task AssignToGame_Duplicate_ReturnsConflict()
+    {
+        var (game, location, stash) = await CreateGameLocationStash();
+
+        await Client.PostAsJsonAsync("/api/secret-stashes/game-stash",
+            new CreateGameSecretStashDto(game.Id, stash.Id, location.Id));
+        var response = await Client.PostAsJsonAsync("/api/secret-stashes/game-stash",
+            new CreateGameSecretStashDto(game.Id, stash.Id, location.Id));
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AssignThreeToSameLocation_AllSucceed()
     {
         var gameResponse = await Client.PostAsJsonAsync("/api/games",
             new CreateGameDto("Test Hra", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
-        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
+        var game = (await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>())!;
 
-        var locationResponse = await Client.PostAsJsonAsync("/api/locations",
+        var locResponse = await Client.PostAsJsonAsync("/api/locations",
             new CreateLocationDto("Hora", LocationKind.Wilderness, 49.5m, 17.1m));
-        var location = await locationResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+        var location = (await locResponse.Content.ReadFromJsonAsync<LocationDetailDto>())!;
 
-        await Client.PostAsJsonAsync("/api/secret-stashes", new CreateSecretStashDto("Skrýš 1", location!.Id, game!.Id));
-        await Client.PostAsJsonAsync("/api/secret-stashes", new CreateSecretStashDto("Skrýš 2", location.Id, game.Id));
-        await Client.PostAsJsonAsync("/api/secret-stashes", new CreateSecretStashDto("Skrýš 3", location.Id, game.Id));
+        for (int i = 1; i <= 3; i++)
+        {
+            var s = await Client.PostAsJsonAsync("/api/secret-stashes", new CreateSecretStashDto($"Skrýš {i}"));
+            var stash = (await s.Content.ReadFromJsonAsync<SecretStashDetailDto>())!;
+            var r = await Client.PostAsJsonAsync("/api/secret-stashes/game-stash",
+                new CreateGameSecretStashDto(game.Id, stash.Id, location.Id));
+            Assert.Equal(HttpStatusCode.Created, r.StatusCode);
+        }
+    }
 
-        var response = await Client.PostAsJsonAsync("/api/secret-stashes",
-            new CreateSecretStashDto("Skrýš 4", location.Id, game.Id));
+    [Fact]
+    public async Task AssignFourthToSameLocation_Returns422()
+    {
+        var gameResponse = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Test Hra", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var game = (await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>())!;
+
+        var locResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Hora", LocationKind.Wilderness, 49.5m, 17.1m));
+        var location = (await locResponse.Content.ReadFromJsonAsync<LocationDetailDto>())!;
+
+        for (int i = 1; i <= 3; i++)
+        {
+            var s = await Client.PostAsJsonAsync("/api/secret-stashes", new CreateSecretStashDto($"Skrýš {i}"));
+            var stash = (await s.Content.ReadFromJsonAsync<SecretStashDetailDto>())!;
+            await Client.PostAsJsonAsync("/api/secret-stashes/game-stash",
+                new CreateGameSecretStashDto(game.Id, stash.Id, location.Id));
+        }
+
+        var s4 = await Client.PostAsJsonAsync("/api/secret-stashes", new CreateSecretStashDto("Skrýš 4"));
+        var stash4 = (await s4.Content.ReadFromJsonAsync<SecretStashDetailDto>())!;
+        var response = await Client.PostAsJsonAsync("/api/secret-stashes/game-stash",
+            new CreateGameSecretStashDto(game.Id, stash4.Id, location.Id));
 
         Assert.False(response.IsSuccessStatusCode, "Fourth stash at same location should be rejected");
+    }
+
+    [Fact]
+    public async Task UnassignFromGame_ReturnsNoContent()
+    {
+        var (game, location, stash) = await CreateGameLocationStash();
+
+        await Client.PostAsJsonAsync("/api/secret-stashes/game-stash",
+            new CreateGameSecretStashDto(game.Id, stash.Id, location.Id));
+
+        var response = await Client.DeleteAsync($"/api/secret-stashes/game-stash/{game.Id}/{stash.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    // --- Helper ---
+
+    private async Task<(GameDetailDto Game, LocationDetailDto Location, SecretStashDetailDto Stash)> CreateGameLocationStash()
+    {
+        var gameResponse = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Test Hra", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var game = (await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>())!;
+
+        var locResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Hora", LocationKind.Wilderness, 49.5m, 17.1m));
+        var location = (await locResponse.Content.ReadFromJsonAsync<LocationDetailDto>())!;
+
+        var stashResponse = await Client.PostAsJsonAsync("/api/secret-stashes",
+            new CreateSecretStashDto("Tajná skrýš u dubu"));
+        var stash = (await stashResponse.Content.ReadFromJsonAsync<SecretStashDetailDto>())!;
+
+        return (game, location, stash);
     }
 }

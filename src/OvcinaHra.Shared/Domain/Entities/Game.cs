@@ -20,7 +20,7 @@ public class Game
 
     public ICollection<GameLocation> GameLocations { get; set; } = [];
     public ICollection<GameItem> GameItems { get; set; } = [];
-    public ICollection<SecretStash> SecretStashes { get; set; } = [];
+    public ICollection<GameSecretStash> GameSecretStashes { get; set; } = [];
     public ICollection<GameBuilding> GameBuildings { get; set; } = [];
     public ICollection<CraftingRecipe> CraftingRecipes { get; set; } = [];
     public ICollection<GameMonster> GameMonsters { get; set; } = [];

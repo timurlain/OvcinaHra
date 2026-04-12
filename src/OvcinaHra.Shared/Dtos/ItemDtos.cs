@@ -2,7 +2,7 @@ using OvcinaHra.Shared.Domain.Enums;
 
 namespace OvcinaHra.Shared.Dtos;
 
-public record ItemListDto(int Id, string Name, ItemType ItemType, bool IsCraftable, bool IsUnique, bool IsLimited);
+public record ItemListDto(int Id, string Name, ItemType ItemType, string? Effect, bool IsCraftable, bool IsUnique, bool IsLimited);
 
 public record ItemDetailDto(
     int Id,

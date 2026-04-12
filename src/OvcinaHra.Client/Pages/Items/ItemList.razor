@@ -35,6 +35,7 @@ else
                 RowClick="@(e => OpenModal((ItemListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             <DxGridDataColumn FieldName="Name" Caption="Název" />
+            <DxGridDataColumn FieldName="Effect" Caption="Efekt" />
             <DxGridDataColumn FieldName="ItemType" Caption="Typ" Width="150px">
                 <CellDisplayTemplate>@(((ItemType)context.Value).GetDisplayName())</CellDisplayTemplate>
             </DxGridDataColumn>
