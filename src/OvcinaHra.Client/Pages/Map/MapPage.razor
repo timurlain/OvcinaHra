@@ -36,7 +36,8 @@
     <div class="map-legend">
         @foreach (var (kind, color) in markerColors)
         {
-            <div class="map-legend-item">
+            <div class="map-legend-item" style="cursor: pointer; opacity: @(hiddenKinds.Contains(kind) ? "0.35" : "1")"
+                 @onclick="() => ToggleKind(kind)">
                 <span class="map-legend-dot" style="background-color: @color;"></span>
                 <span>@kind.GetDisplayName()</span>
             </div>
@@ -66,6 +67,7 @@
     private List<LocationListDto> locations = [];
     private bool placingMode;
     private string activeStyle = "tourist";
+    private HashSet<LocationKind> hiddenKinds = [];
     private bool isDragConfirmVisible;
     private int dragLocationId;
     private string dragLocationName = "";
@@ -119,14 +121,25 @@
             locations = await Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gameId.Value}");
         else
             locations = await Api.GetListAsync<LocationListDto>("/api/locations");
+        await DisplayMarkersAsync();
+    }
+
+    private async Task DisplayMarkersAsync()
+    {
         await mapView.ClearMarkersAsync();
-        // Only parent locations with GPS get map pins
-        foreach (var loc in locations.Where(l => l.ParentLocationId is null && l.Latitude.HasValue && l.Longitude.HasValue))
+        foreach (var loc in locations.Where(l => l.ParentLocationId is null && l.Latitude.HasValue && l.Longitude.HasValue && !hiddenKinds.Contains(l.LocationKind)))
         {
             var color = markerColors.GetValueOrDefault(loc.LocationKind, "#e74c3c");
             await mapView.AddMarkerAsync(loc.Id, (double)loc.Latitude!.Value, (double)loc.Longitude!.Value,
                 loc.Name, loc.LocationKind.GetDisplayName(), color);
         }
+    }
+
+    private async Task ToggleKind(LocationKind kind)
+    {
+        if (!hiddenKinds.Remove(kind))
+            hiddenKinds.Add(kind);
+        await DisplayMarkersAsync();
     }
 
     private void StartPlacing() => placingMode = true;

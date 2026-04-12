@@ -40,6 +40,7 @@ else
                     </button>
                 </CellDisplayTemplate>
             </DxGridDataColumn>
+            <DxGridDataColumn FieldName="Id" Caption="#" Width="50px" />
             <DxGridDataColumn FieldName="Name" Caption="Název" />
             <DxGridDataColumn FieldName="LocationKind" Caption="Typ" Width="160px">
                 <CellDisplayTemplate>@(((LocationKind)context.Value).GetDisplayName())</CellDisplayTemplate>

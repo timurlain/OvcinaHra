@@ -13,16 +13,14 @@ else
         @* LEFT: Time slots (wider) *@
         <div class="col-md-7">
             <div class="d-flex justify-content-between align-items-center mb-2">
-                <h5 class="mb-0">Časové bloky</h5>
-                <button class="btn btn-sm btn-primary" @onclick="() => OpenSlotModal(null)">+ Nový blok</button>
+                <h5 class="mb-0">Časová období</h5>
+                <button class="btn btn-sm btn-primary" @onclick="() => OpenSlotModal(null)">+ Nové období</button>
             </div>
             <OvcinaGrid Data="@slots" KeyFieldName="Id" LayoutKey="grid-layout-timeline-slots"
                         RowClick="@(e => OpenSlotModal((GameTimeSlotDto)e.Grid.GetDataItem(e.VisibleIndex)))">
                 <Columns>
                     <DxGridDataColumn FieldName="StartTime" Caption="Začátek" Width="160px" DisplayFormat="d.M.yyyy HH:mm" />
-                    <DxGridDataColumn FieldName="Duration" Caption="Délka" Width="100px">
-                        <CellDisplayTemplate>@(((TimeSpan)context.Value).ToString(@"h\:mm"))</CellDisplayTemplate>
-                    </DxGridDataColumn>
+                    <DxGridDataColumn FieldName="DurationHours" Caption="Délka (h)" Width="100px" />
                     <DxGridDataColumn FieldName="InGameYear" Caption="Herní rok" Width="100px" />
                     <DxGridDataColumn FieldName="Rules" Caption="Pravidla" />
                     <DxGridDataColumn FieldName="BattlefieldBonusId" Caption="Bonus" Width="100px" Visible="false" />
@@ -83,7 +81,7 @@ else
 
 <DxPopup @bind-Visible="@isSlotDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
     <BodyContentTemplate Context="popupContext">
-        <p>Smazat časový blok?</p>
+        <p>Smazat časové období?</p>
         <div class="d-flex gap-2 justify-content-end">
             <button class="btn btn-secondary" @onclick="() => isSlotDeleteVisible = false">Zrušit</button>
             <button class="btn btn-danger" @onclick="DeleteSlotAsync">Smazat</button>
@@ -180,15 +178,15 @@ else
         {
             editingSlotId = null; slotStartTime = new DateTime(2026, 5, 1, 10, 0, 0);
             slotDurationHours = 2m; slotInGameYear = null; slotRules = null; slotBonusId = null;
-            slotTitle = "Nový časový blok";
+            slotTitle = "Nové časové období";
         }
         else
         {
             editingSlotId = s.Id; slotStartTime = s.StartTime;
-            slotDurationHours = (decimal)s.Duration.TotalHours;
+            slotDurationHours = s.DurationHours;
             slotInGameYear = s.InGameYear; slotRules = s.Rules;
             slotBonusId = s.BattlefieldBonusId;
-            slotTitle = $"Upravit blok: {s.StartTime:d.M.yyyy HH:mm}";
+            slotTitle = $"Upravit období: {s.StartTime:d.M.yyyy HH:mm}";
         }
         isSlotVisible = true;
     }
@@ -198,13 +196,13 @@ else
         slotError = null; slotSaving = true;
         try
         {
-            var duration = TimeSpan.FromHours((double)slotDurationHours);
+            var durationHours = (int)slotDurationHours;
             if (editingSlotId.HasValue)
                 await Api.PutAsync($"/api/timeline/slots/{editingSlotId}",
-                    new UpdateGameTimeSlotDto(slotStartTime, duration, slotInGameYear, slotRules, slotBonusId));
+                    new UpdateGameTimeSlotDto(slotStartTime, durationHours, slotInGameYear, slotRules, slotBonusId));
             else
                 await Api.PostAsync<CreateGameTimeSlotDto, GameTimeSlotDto>("/api/timeline/slots",
-                    new CreateGameTimeSlotDto(gameId, slotStartTime, duration, slotInGameYear, slotRules, slotBonusId));
+                    new CreateGameTimeSlotDto(gameId, slotStartTime, durationHours, slotInGameYear, slotRules, slotBonusId));
             isSlotVisible = false; await LoadAsync(); StateHasChanged();
         }
         catch (Exception ex) { slotError = ex.Message; }

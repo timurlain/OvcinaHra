@@ -31,7 +31,7 @@ public class TimelineEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         var dto = new CreateGameTimeSlotDto(
             GameId: game!.Id,
             StartTime: new DateTime(2026, 5, 1, 10, 0, 0, DateTimeKind.Utc),
-            Duration: TimeSpan.FromHours(2),
+            DurationHours: 2,
             InGameYear: 1247);
 
         var response = await Client.PostAsJsonAsync("/api/timeline/slots", dto);
@@ -41,7 +41,7 @@ public class TimelineEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         Assert.NotNull(created);
         Assert.Equal(game.Id, created.GameId);
         Assert.Equal(new DateTime(2026, 5, 1, 10, 0, 0, DateTimeKind.Utc), created.StartTime);
-        Assert.Equal(TimeSpan.FromHours(2), created.Duration);
+        Assert.Equal(2, created.DurationHours);
         Assert.Equal(1247, created.InGameYear);
     }
 
@@ -53,12 +53,12 @@ public class TimelineEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
 
         var createResponse = await Client.PostAsJsonAsync("/api/timeline/slots",
-            new CreateGameTimeSlotDto(game!.Id, new DateTime(2026, 5, 1, 10, 0, 0, DateTimeKind.Utc), TimeSpan.FromHours(2)));
+            new CreateGameTimeSlotDto(game!.Id, new DateTime(2026, 5, 1, 10, 0, 0, DateTimeKind.Utc), 2));
         var slot = await createResponse.Content.ReadFromJsonAsync<GameTimeSlotDto>();
 
         var updateDto = new UpdateGameTimeSlotDto(
             StartTime: new DateTime(2026, 5, 1, 14, 0, 0, DateTimeKind.Utc),
-            Duration: TimeSpan.FromHours(3),
+            DurationHours: 3,
             InGameYear: 1248,
             Rules: "Updated rules",
             BattlefieldBonusId: null);
@@ -76,7 +76,7 @@ public class TimelineEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
 
         var createResponse = await Client.PostAsJsonAsync("/api/timeline/slots",
-            new CreateGameTimeSlotDto(game!.Id, new DateTime(2026, 5, 1, 10, 0, 0, DateTimeKind.Utc), TimeSpan.FromHours(2)));
+            new CreateGameTimeSlotDto(game!.Id, new DateTime(2026, 5, 1, 10, 0, 0, DateTimeKind.Utc), 2));
         var slot = await createResponse.Content.ReadFromJsonAsync<GameTimeSlotDto>();
 
         var response = await Client.DeleteAsync($"/api/timeline/slots/{slot!.Id}");
@@ -174,7 +174,7 @@ public class TimelineEndpointTests(PostgresFixture postgres) : IntegrationTestBa
             new CreateGameTimeSlotDto(
                 GameId: game.Id,
                 StartTime: new DateTime(2026, 5, 1, 10, 0, 0, DateTimeKind.Utc),
-                Duration: TimeSpan.FromHours(2),
+                DurationHours: 2,
                 InGameYear: 1247,
                 BattlefieldBonusId: bonus!.Id));
 

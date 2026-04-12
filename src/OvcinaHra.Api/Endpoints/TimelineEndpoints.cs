@@ -33,7 +33,7 @@ public static class TimelineEndpoints
         var slots = await db.GameTimeSlots
             .Where(s => s.GameId == gameId)
             .OrderBy(s => s.StartTime)
-            .Select(s => new GameTimeSlotDto(s.Id, s.InGameYear, s.StartTime, s.Duration, s.Rules, s.BattlefieldBonusId, s.GameId))
+            .Select(s => new GameTimeSlotDto(s.Id, s.InGameYear, s.StartTime, (int)s.Duration.TotalHours, s.Rules, s.BattlefieldBonusId, s.GameId))
             .ToListAsync();
         return TypedResults.Ok(slots);
     }
@@ -42,20 +42,20 @@ public static class TimelineEndpoints
     {
         var s = new GameTimeSlot
         {
-            GameId = dto.GameId, StartTime = dto.StartTime, Duration = dto.Duration,
+            GameId = dto.GameId, StartTime = dto.StartTime, Duration = TimeSpan.FromHours(dto.DurationHours),
             InGameYear = dto.InGameYear, Rules = dto.Rules, BattlefieldBonusId = dto.BattlefieldBonusId
         };
         db.GameTimeSlots.Add(s);
         await db.SaveChangesAsync();
         return TypedResults.Created($"/api/timeline/slots/{s.Id}",
-            new GameTimeSlotDto(s.Id, s.InGameYear, s.StartTime, s.Duration, s.Rules, s.BattlefieldBonusId, s.GameId));
+            new GameTimeSlotDto(s.Id, s.InGameYear, s.StartTime, (int)s.Duration.TotalHours, s.Rules, s.BattlefieldBonusId, s.GameId));
     }
 
     private static async Task<Results<NoContent, NotFound>> UpdateSlot(int id, UpdateGameTimeSlotDto dto, WorldDbContext db)
     {
         var s = await db.GameTimeSlots.FindAsync(id);
         if (s is null) return TypedResults.NotFound();
-        s.StartTime = dto.StartTime; s.Duration = dto.Duration; s.InGameYear = dto.InGameYear;
+        s.StartTime = dto.StartTime; s.Duration = TimeSpan.FromHours(dto.DurationHours); s.InGameYear = dto.InGameYear;
         s.Rules = dto.Rules; s.BattlefieldBonusId = dto.BattlefieldBonusId;
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
