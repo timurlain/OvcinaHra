@@ -2,15 +2,32 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject GameContextService GameContext
+@inject NavigationManager Nav
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="mb-0">Příšery</h1>
-    <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nová příšera</button>
+    <h1 class="mb-0">@(Catalog ? "Katalog příšer" : "Příšery")</h1>
+    <div class="d-flex gap-2">
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm @(Catalog ? "btn-outline-primary" : "btn-primary")"
+                    @onclick='() => Nav.NavigateTo("/monsters")'>Jen tato hra</button>
+            <button class="btn btn-sm @(Catalog ? "btn-primary" : "btn-outline-primary")"
+                    @onclick='() => Nav.NavigateTo("/monsters?catalog=true")'>Katalog</button>
+        </div>
+        <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nová příšera</button>
+    </div>
 </div>
 
 @if (loading)
 {
     <p>Načítám...</p>
+}
+else if (!Catalog && monsters.Count == 0)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-emoji-neutral fs-1 d-block mb-2"></i>
+        <p>Žádné příšery přiřazeny k této hře.</p>
+        <button class="btn btn-outline-primary" @onclick='() => Nav.NavigateTo("/monsters?catalog=true")'>Otevřít katalog</button>
+    </div>
 }
 else
 {
@@ -25,6 +42,26 @@ else
             <DxGridDataColumn FieldName="Attack" Caption="Útok" Width="80px" />
             <DxGridDataColumn FieldName="Defense" Caption="Obrana" Width="80px" />
             <DxGridDataColumn FieldName="Health" Caption="Životy" Width="80px" />
+            @if (Catalog)
+            {
+                <DxGridDataColumn FieldName="Id" Caption="Hra" Width="130px" AllowSort="false" AllowGroup="false">
+                    <CellDisplayTemplate>
+                        @{
+                            var monsterId = (int)context.Value;
+                            if (assignedMonsterIds.Contains(monsterId))
+                            {
+                                <button class="btn btn-sm btn-outline-danger" @onclick:stopPropagation="true"
+                                        @onclick="() => UnassignMonsterAsync(monsterId)">Odebrat</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm btn-outline-success" @onclick:stopPropagation="true"
+                                        @onclick="() => AssignMonsterAsync(monsterId)">Přidat</button>
+                            }
+                        }
+                    </CellDisplayTemplate>
+                </DxGridDataColumn>
+            }
         </Columns>
     </OvcinaGrid>
 }
@@ -143,6 +180,9 @@ else
 </DxPopup>
 
 @code {
+    [SupplyParameterFromQuery]
+    public bool Catalog { get; set; }
+
     private List<MonsterListDto> monsters = [];
     private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
     private string modalTitle = "", name = "";
@@ -162,13 +202,64 @@ else
     private int? newLootItemId;
     private int newLootQuantity = 1;
 
+    // Catalog assign state
+    private HashSet<int> assignedMonsterIds = [];
+
     protected override async Task OnInitializedAsync()
     {
         await GameContext.InitializeAsync();
         await LoadAsync();
         allItems = await Api.GetListAsync<ItemListDto>("/api/items");
     }
-    private async Task LoadAsync() { loading = true; monsters = await Api.GetListAsync<MonsterListDto>("/api/monsters"); loading = false; }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        var allMonsters = await Api.GetListAsync<MonsterListDto>("/api/monsters");
+
+        if (!Catalog && GameContext.SelectedGameId is int gid)
+        {
+            var gameMonsters = await Api.GetListAsync<GameMonsterDto>($"/api/monsters/by-game/{gid}");
+            assignedMonsterIds = gameMonsters.Select(gm => gm.MonsterId).ToHashSet();
+            monsters = allMonsters.Where(m => assignedMonsterIds.Contains(m.Id)).ToList();
+        }
+        else
+        {
+            monsters = allMonsters;
+            if (Catalog && GameContext.SelectedGameId is int catalogGid)
+            {
+                var gameMonsters = await Api.GetListAsync<GameMonsterDto>($"/api/monsters/by-game/{catalogGid}");
+                assignedMonsterIds = gameMonsters.Select(gm => gm.MonsterId).ToHashSet();
+            }
+        }
+
+        loading = false;
+    }
+
+    private async Task AssignMonsterAsync(int monsterId)
+    {
+        if (GameContext.SelectedGameId is null) return;
+        try
+        {
+            await Api.PostAsync<CreateGameMonsterDto, GameMonsterDto>("/api/monsters/game-monster",
+                new CreateGameMonsterDto(GameContext.SelectedGameId.Value, monsterId));
+            assignedMonsterIds.Add(monsterId);
+            StateHasChanged();
+        }
+        catch (Exception ex) { error = ex.Message; StateHasChanged(); }
+    }
+
+    private async Task UnassignMonsterAsync(int monsterId)
+    {
+        if (GameContext.SelectedGameId is null) return;
+        try
+        {
+            await Api.DeleteAsync($"/api/monsters/game-monster/{GameContext.SelectedGameId}/{monsterId}");
+            assignedMonsterIds.Remove(monsterId);
+            StateHasChanged();
+        }
+        catch (Exception ex) { error = ex.Message; StateHasChanged(); }
+    }
 
     private void OpenModal(MonsterListDto? m)
     {

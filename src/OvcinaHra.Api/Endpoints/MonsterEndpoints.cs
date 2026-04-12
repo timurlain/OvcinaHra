@@ -19,6 +19,11 @@ public static class MonsterEndpoints
         group.MapPut("/{id:int}", Update);
         group.MapDelete("/{id:int}", Delete);
 
+        // Per-game assignment
+        group.MapGet("/by-game/{gameId:int}", GetByGame);
+        group.MapPost("/game-monster", CreateGameMonster);
+        group.MapDelete("/game-monster/{gameId:int}/{monsterId:int}", DeleteGameMonster);
+
         // Tags
         group.MapPost("/{id:int}/tags/{tagId:int}", AddTag);
         group.MapDelete("/{id:int}/tags/{tagId:int}", RemoveTag);
@@ -103,6 +108,39 @@ public static class MonsterEndpoints
         var m = await db.Monsters.FindAsync(id);
         if (m is null) return TypedResults.NotFound();
         db.Monsters.Remove(m);
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
+    }
+
+    private static async Task<Ok<List<GameMonsterDto>>> GetByGame(int gameId, WorldDbContext db)
+    {
+        var monsters = await db.GameMonsters
+            .Where(gm => gm.GameId == gameId)
+            .Include(gm => gm.Monster)
+            .OrderBy(gm => gm.Monster.Name)
+            .Select(gm => new GameMonsterDto(gm.GameId, gm.MonsterId, gm.Monster.Name))
+            .ToListAsync();
+        return TypedResults.Ok(monsters);
+    }
+
+    private static async Task<Results<Created<GameMonsterDto>, Conflict>> CreateGameMonster(CreateGameMonsterDto dto, WorldDbContext db)
+    {
+        if (await db.GameMonsters.AnyAsync(gm => gm.GameId == dto.GameId && gm.MonsterId == dto.MonsterId))
+            return TypedResults.Conflict();
+
+        db.GameMonsters.Add(new GameMonster { GameId = dto.GameId, MonsterId = dto.MonsterId });
+        await db.SaveChangesAsync();
+
+        var name = (await db.Monsters.FindAsync(dto.MonsterId))?.Name ?? "";
+        return TypedResults.Created($"/api/monsters/game-monster/{dto.GameId}/{dto.MonsterId}",
+            new GameMonsterDto(dto.GameId, dto.MonsterId, name));
+    }
+
+    private static async Task<Results<NoContent, NotFound>> DeleteGameMonster(int gameId, int monsterId, WorldDbContext db)
+    {
+        var gm = await db.GameMonsters.FindAsync(gameId, monsterId);
+        if (gm is null) return TypedResults.NotFound();
+        db.GameMonsters.Remove(gm);
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
     }

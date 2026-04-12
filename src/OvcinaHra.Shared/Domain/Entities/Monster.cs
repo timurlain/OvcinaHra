@@ -19,5 +19,6 @@ public class Monster
 
     public ICollection<MonsterTagLink> MonsterTags { get; set; } = [];
     public ICollection<MonsterLoot> MonsterLoots { get; set; } = [];
+    public ICollection<GameMonster> GameMonsters { get; set; } = [];
     public ICollection<QuestEncounter> QuestEncounters { get; set; } = [];
 }
