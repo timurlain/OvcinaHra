@@ -32,6 +32,9 @@ public class WorldDbContext(DbContextOptions<WorldDbContext> options) : DbContex
     public DbSet<GameTimeSlot> GameTimeSlots => Set<GameTimeSlot>();
     public DbSet<BattlefieldBonus> BattlefieldBonuses => Set<BattlefieldBonus>();
     public DbSet<LocalUser> LocalUsers => Set<LocalUser>();
+    public DbSet<Character> Characters => Set<Character>();
+    public DbSet<CharacterAssignment> CharacterAssignments => Set<CharacterAssignment>();
+    public DbSet<CharacterEvent> CharacterEvents => Set<CharacterEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -1,0 +1,151 @@
+using System.Security.Claims;
+using System.Text.Json;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.EntityFrameworkCore;
+using OvcinaHra.Api.Data;
+using OvcinaHra.Shared.Domain.Entities;
+using OvcinaHra.Shared.Domain.Enums;
+using OvcinaHra.Shared.Dtos;
+
+namespace OvcinaHra.Api.Endpoints;
+
+public static class ScanEndpoints
+{
+    public static RouteGroupBuilder MapScanEndpoints(this IEndpointRouteBuilder routes)
+    {
+        var group = routes.MapGroup("/api/scan").WithTags("Scan").RequireAuthorization();
+
+        group.MapGet("/{personId:int}", GetCharacterProfile);
+        group.MapPost("/{personId:int}/events", PostEvent);
+        group.MapGet("/{personId:int}/events", GetRecentEvents);
+
+        return group;
+    }
+
+    private static async Task<Results<Ok<ScanCharacterDto>, NotFound>> GetCharacterProfile(
+        int personId, WorldDbContext db)
+    {
+        var assignment = await db.CharacterAssignments
+            .Include(a => a.Character)
+            .Include(a => a.Events)
+            .FirstOrDefaultAsync(a => a.ExternalPersonId == personId && a.IsActive);
+
+        if (assignment is null) return TypedResults.NotFound();
+
+        var character = assignment.Character;
+        var events = assignment.Events.ToList();
+
+        var currentLevel = events.Count(e => e.EventType == CharacterEventType.LevelUp);
+        var totalXp = currentLevel;
+
+        var skills = events
+            .Where(e => e.EventType == CharacterEventType.SkillGained)
+            .Select(e =>
+            {
+                try
+                {
+                    var doc = JsonDocument.Parse(e.Data);
+                    return doc.RootElement.TryGetProperty("skill", out var skill)
+                        ? skill.GetString() ?? string.Empty
+                        : string.Empty;
+                }
+                catch
+                {
+                    return string.Empty;
+                }
+            })
+            .Where(s => s.Length > 0)
+            .ToList();
+
+        var recentEvents = events
+            .OrderByDescending(e => e.Timestamp)
+            .Take(10)
+            .Select(e => new CharacterEventDto(e.Id, e.EventType, e.Data, e.Location, e.OrganizerName, e.Timestamp))
+            .ToList();
+
+        return TypedResults.Ok(new ScanCharacterDto(
+            character.Id, character.Name, character.Race, character.Class,
+            character.Kingdom, currentLevel, totalXp, skills, recentEvents));
+    }
+
+    private static async Task<Results<Created<CharacterEventDto>, NotFound, BadRequest<string>>> PostEvent(
+        int personId, CreateCharacterEventDto dto, WorldDbContext db, HttpContext httpContext)
+    {
+        var assignment = await db.CharacterAssignments
+            .Include(a => a.Character)
+            .Include(a => a.Events)
+            .FirstOrDefaultAsync(a => a.ExternalPersonId == personId && a.IsActive);
+
+        if (assignment is null) return TypedResults.NotFound();
+
+        var user = httpContext.User;
+        var organizerUserId = user.FindFirstValue("sub") ?? user.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
+        var organizerName = user.FindFirstValue("name") ?? user.FindFirstValue(ClaimTypes.Name) ?? "Unknown";
+
+        string eventData = dto.Data;
+
+        if (dto.EventType == CharacterEventType.LevelUp)
+        {
+            var existingLevels = assignment.Events.Count(e => e.EventType == CharacterEventType.LevelUp);
+            eventData = JsonSerializer.Serialize(new { level = existingLevels + 1 });
+        }
+        else if (dto.EventType == CharacterEventType.ClassChosen)
+        {
+            if (assignment.Character.Class is not null)
+                return TypedResults.BadRequest("Character already has a class assigned.");
+
+            try
+            {
+                var doc = JsonDocument.Parse(dto.Data);
+                if (!doc.RootElement.TryGetProperty("class", out var classProp))
+                    return TypedResults.BadRequest("Missing 'class' property in Data.");
+
+                var className = classProp.GetString();
+                if (!Enum.TryParse<PlayerClass>(className, ignoreCase: true, out var playerClass))
+                    return TypedResults.BadRequest($"Unknown class: '{className}'.");
+
+                assignment.Character.Class = playerClass;
+                assignment.Character.UpdatedAtUtc = DateTime.UtcNow;
+            }
+            catch (JsonException)
+            {
+                return TypedResults.BadRequest("Data must be valid JSON for ClassChosen event.");
+            }
+        }
+
+        var ev = new CharacterEvent
+        {
+            CharacterAssignmentId = assignment.Id,
+            Timestamp = DateTime.UtcNow,
+            OrganizerUserId = organizerUserId,
+            OrganizerName = organizerName,
+            EventType = dto.EventType,
+            Data = eventData,
+            Location = dto.Location
+        };
+
+        db.CharacterEvents.Add(ev);
+        await db.SaveChangesAsync();
+
+        var result = new CharacterEventDto(ev.Id, ev.EventType, ev.Data, ev.Location, ev.OrganizerName, ev.Timestamp);
+        return TypedResults.Created($"/api/scan/{personId}/events/{ev.Id}", result);
+    }
+
+    private static async Task<Results<Ok<List<CharacterEventDto>>, NotFound>> GetRecentEvents(
+        int personId, WorldDbContext db)
+    {
+        var assignment = await db.CharacterAssignments
+            .FirstOrDefaultAsync(a => a.ExternalPersonId == personId && a.IsActive);
+
+        if (assignment is null) return TypedResults.NotFound();
+
+        var events = await db.CharacterEvents
+            .Where(e => e.CharacterAssignmentId == assignment.Id)
+            .OrderByDescending(e => e.Timestamp)
+            .Take(20)
+            .Select(e => new CharacterEventDto(e.Id, e.EventType, e.Data, e.Location, e.OrganizerName, e.Timestamp))
+            .ToListAsync();
+
+        return TypedResults.Ok(events);
+    }
+}

@@ -1,0 +1,359 @@
+@page "/p/{PersonId:int}"
+@attribute [Authorize]
+@inject ApiClient Api
+
+@if (loading)
+{
+    <div class="text-center py-5">
+        <p class="text-muted">Načítám...</p>
+    </div>
+}
+else if (notFound)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-person-x fs-1 d-block mb-2"></i>
+        <h4>Postava nenalezena</h4>
+        <p>Tento hráč nemá aktivní postavu v aktuální hře.</p>
+    </div>
+}
+else if (character is not null)
+{
+    @if (error is not null)
+    {
+        <div class="alert alert-danger alert-dismissible">
+            @error
+            <button type="button" class="btn-close" @onclick="() => error = null"></button>
+        </div>
+    }
+
+    @* Header *@
+    <div class="card mb-3" style="background: var(--oh-primary-surface, #f0ebe3);">
+        <div class="card-body text-center">
+            <h2 class="mb-1">@character.Name</h2>
+            <div class="d-flex justify-content-center gap-2 flex-wrap">
+                @if (character.Kingdom is not null)
+                {
+                    <span class="badge bg-secondary fs-6">@character.Kingdom</span>
+                }
+                @if (character.Race is not null)
+                {
+                    <span class="badge bg-info text-dark fs-6">@character.Race</span>
+                }
+            </div>
+        </div>
+    </div>
+
+    @* Status bar *@
+    <div class="d-flex gap-2 mb-3 justify-content-center flex-wrap">
+        <div class="badge bg-primary fs-5 p-2">Úroveň @character.CurrentLevel</div>
+        <div class="badge fs-5 p-2 @(character.Class is null ? "bg-warning text-dark" : "bg-success")">
+            @(character.Class is not null ? character.Class.Value.GetDisplayName() : "Začátečník")
+        </div>
+        @if (character.TotalXp > 0)
+        {
+            <div class="badge bg-secondary fs-5 p-2">@character.TotalXp XP</div>
+        }
+    </div>
+
+    @* Class picker *@
+    @if (character.TotalXp >= 5 && character.Class is null)
+    {
+        <div class="card border-warning mb-3">
+            <div class="card-body">
+                <h5 class="card-title text-center"><i class="bi bi-star-fill text-warning me-1"></i> Zvolte povolání!</h5>
+                <div class="d-grid gap-2">
+                    @foreach (var pc in Enum.GetValues<PlayerClass>())
+                    {
+                        <button class="btn btn-lg btn-outline-primary" @onclick="() => ChooseClassAsync(pc)" disabled="@actionInProgress">
+                            @pc.GetDisplayName()
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    @* Optional location *@
+    <div class="mb-3">
+        <DxTextBox @bind-Text="@currentLocation" NullText="Stanoviště (volitelné)" />
+    </div>
+
+    @* Quick action buttons *@
+    <div class="d-grid gap-2 mb-3">
+        <button class="btn btn-success btn-lg" @onclick="LevelUpAsync" disabled="@actionInProgress">
+            <i class="bi bi-arrow-up-circle me-2"></i> Level Up
+        </button>
+        <button class="btn btn-primary btn-lg" @onclick="() => isPointsVisible = true" disabled="@actionInProgress">
+            <i class="bi bi-plus-circle me-2"></i> Přidat body
+        </button>
+        <button class="btn btn-outline-primary btn-lg" @onclick="() => isNoteVisible = true" disabled="@actionInProgress">
+            <i class="bi bi-journal-plus me-2"></i> Přidat poznámku
+        </button>
+        <button class="btn btn-outline-secondary btn-lg" @onclick="() => isSkillVisible = true" disabled="@actionInProgress">
+            <i class="bi bi-lightning me-2"></i> Přidat dovednost
+        </button>
+    </div>
+
+    @* Skills list *@
+    @if (character.Skills.Count > 0)
+    {
+        <div class="mb-3">
+            <h5>Dovednosti</h5>
+            <div class="d-flex flex-wrap gap-1">
+                @foreach (var skill in character.Skills)
+                {
+                    <span class="badge bg-light text-dark border">@skill</span>
+                }
+            </div>
+        </div>
+    }
+
+    @* Recent events *@
+    <h5>Poslední události</h5>
+    @if (character.RecentEvents.Count == 0)
+    {
+        <p class="text-muted">Žádné události.</p>
+    }
+    else
+    {
+        <div class="list-group list-group-flush">
+            @foreach (var evt in character.RecentEvents)
+            {
+                <div class="list-group-item px-0 py-2 d-flex justify-content-between align-items-start">
+                    <div>
+                        <span class="badge bg-secondary me-1">@evt.EventType.GetDisplayName()</span>
+                        <small class="text-muted">@FormatEventData(evt)</small>
+                    </div>
+                    <small class="text-muted text-nowrap">@evt.Timestamp.ToString("HH:mm")</small>
+                </div>
+            }
+        </div>
+    }
+}
+
+@* Points modal *@
+<DxPopup @bind-Visible="@isPointsVisible" HeaderText="Přidat body" Width="350px">
+    <BodyContentTemplate Context="popupContext">
+        <div class="mb-3">
+            <label class="form-label fw-semibold">Kategorie</label>
+            <div class="d-flex gap-2">
+                @foreach (var cat in new[] { "Dobré", "Špatné", "Neutrální" })
+                {
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="pointsCategory"
+                               id="cat_@cat" value="@cat" checked="@(pointsCategory == cat)"
+                               @onchange="() => pointsCategory = cat" />
+                        <label class="form-check-label" for="cat_@cat">@cat</label>
+                    </div>
+                }
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label fw-semibold">Počet bodů</label>
+            <DxSpinEdit @bind-Value="@pointsAmount" MinValue="1" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label fw-semibold">Poznámka (volitelná)</label>
+            <DxTextBox @bind-Text="@pointsNote" NullText="Poznámka..." />
+        </div>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isPointsVisible = false" disabled="@actionInProgress">Zrušit</button>
+            <button class="btn btn-primary" @onclick="AddPointsAsync" disabled="@actionInProgress">Přidat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@* Note modal *@
+<DxPopup @bind-Visible="@isNoteVisible" HeaderText="Přidat poznámku" Width="350px">
+    <BodyContentTemplate Context="popupContext">
+        <div class="mb-3">
+            <DxMemo @bind-Text="@noteText" Rows="3" NullText="Text poznámky..." />
+        </div>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isNoteVisible = false" disabled="@actionInProgress">Zrušit</button>
+            <button class="btn btn-primary" @onclick="AddNoteAsync" disabled="@actionInProgress">Přidat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@* Skill modal *@
+<DxPopup @bind-Visible="@isSkillVisible" HeaderText="Přidat dovednost" Width="350px">
+    <BodyContentTemplate Context="popupContext">
+        <div class="mb-3">
+            <DxTextBox @bind-Text="@skillName" NullText="Název dovednosti..." />
+        </div>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isSkillVisible = false" disabled="@actionInProgress">Zrušit</button>
+            <button class="btn btn-primary" @onclick="AddSkillAsync" disabled="@actionInProgress">Přidat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    [Parameter] public int PersonId { get; set; }
+
+    private ScanCharacterDto? character;
+    private bool loading = true, notFound, actionInProgress;
+    private string? currentLocation, error;
+
+    // Points modal
+    private bool isPointsVisible;
+    private string pointsCategory = "Dobré";
+    private int pointsAmount = 1;
+    private string? pointsNote;
+
+    // Note modal
+    private bool isNoteVisible;
+    private string noteText = "";
+
+    // Skill modal
+    private bool isSkillVisible;
+    private string skillName = "";
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        loading = true; notFound = false; error = null;
+        try
+        {
+            character = await Api.GetAsync<ScanCharacterDto>($"/api/scan/{PersonId}");
+            if (character is null) notFound = true;
+        }
+        catch { notFound = true; }
+        loading = false;
+    }
+
+    private async Task LevelUpAsync()
+    {
+        actionInProgress = true;
+        try
+        {
+            var data = System.Text.Json.JsonSerializer.Serialize(new { });
+            await Api.PostAsync<CreateCharacterEventDto, CharacterEventDto>(
+                $"/api/scan/{PersonId}/events",
+                new CreateCharacterEventDto(CharacterEventType.LevelUp, data, currentLocation));
+            await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { actionInProgress = false; }
+    }
+
+    private async Task ChooseClassAsync(PlayerClass pc)
+    {
+        actionInProgress = true;
+        try
+        {
+            var data = System.Text.Json.JsonSerializer.Serialize(new { @class = pc.ToString() });
+            await Api.PostAsync<CreateCharacterEventDto, CharacterEventDto>(
+                $"/api/scan/{PersonId}/events",
+                new CreateCharacterEventDto(CharacterEventType.ClassChosen, data, currentLocation));
+            await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { actionInProgress = false; }
+    }
+
+    private async Task AddPointsAsync()
+    {
+        actionInProgress = true;
+        try
+        {
+            var data = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                category = pointsCategory,
+                amount = pointsAmount,
+                note = string.IsNullOrEmpty(pointsNote) ? null : pointsNote
+            });
+            await Api.PostAsync<CreateCharacterEventDto, CharacterEventDto>(
+                $"/api/scan/{PersonId}/events",
+                new CreateCharacterEventDto(CharacterEventType.PointsChanged, data, currentLocation));
+            isPointsVisible = false; pointsAmount = 1; pointsNote = null;
+            await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { actionInProgress = false; }
+    }
+
+    private async Task AddNoteAsync()
+    {
+        actionInProgress = true;
+        try
+        {
+            var data = System.Text.Json.JsonSerializer.Serialize(new { text = noteText });
+            await Api.PostAsync<CreateCharacterEventDto, CharacterEventDto>(
+                $"/api/scan/{PersonId}/events",
+                new CreateCharacterEventDto(CharacterEventType.Note, data, currentLocation));
+            isNoteVisible = false; noteText = "";
+            await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { actionInProgress = false; }
+    }
+
+    private async Task AddSkillAsync()
+    {
+        actionInProgress = true;
+        try
+        {
+            var data = System.Text.Json.JsonSerializer.Serialize(new { skill = skillName });
+            await Api.PostAsync<CreateCharacterEventDto, CharacterEventDto>(
+                $"/api/scan/{PersonId}/events",
+                new CreateCharacterEventDto(CharacterEventType.SkillGained, data, currentLocation));
+            isSkillVisible = false; skillName = "";
+            await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { actionInProgress = false; }
+    }
+
+    private string FormatEventData(CharacterEventDto evt) => evt.EventType switch
+    {
+        CharacterEventType.LevelUp => $"→ Úroveň {ParseLevel(evt.Data)}",
+        CharacterEventType.ClassChosen => $"→ {ParseClass(evt.Data)}",
+        CharacterEventType.PointsChanged => ParsePoints(evt.Data),
+        CharacterEventType.SkillGained => ParseSkill(evt.Data),
+        CharacterEventType.Note => ParseNote(evt.Data),
+        _ => evt.Data
+    };
+
+    private static string ParseLevel(string json)
+    {
+        try { return System.Text.Json.JsonDocument.Parse(json).RootElement.GetProperty("level").GetInt32().ToString(); }
+        catch { return "?"; }
+    }
+
+    private static string ParseClass(string json)
+    {
+        try
+        {
+            var cls = System.Text.Json.JsonDocument.Parse(json).RootElement.GetProperty("class").GetString();
+            return Enum.TryParse<PlayerClass>(cls, out var pc) ? pc.GetDisplayName() : cls ?? "?";
+        }
+        catch { return "?"; }
+    }
+
+    private static string ParsePoints(string json)
+    {
+        try
+        {
+            var root = System.Text.Json.JsonDocument.Parse(json).RootElement;
+            var cat = root.GetProperty("category").GetString();
+            var amt = root.GetProperty("amount").GetInt32();
+            return $"{cat} +{amt}";
+        }
+        catch { return "body"; }
+    }
+
+    private static string ParseSkill(string json)
+    {
+        try { return System.Text.Json.JsonDocument.Parse(json).RootElement.GetProperty("skill").GetString() ?? "?"; }
+        catch { return "?"; }
+    }
+
+    private static string ParseNote(string json)
+    {
+        try { return System.Text.Json.JsonDocument.Parse(json).RootElement.GetProperty("text").GetString() ?? ""; }
+        catch { return json; }
+    }
+}

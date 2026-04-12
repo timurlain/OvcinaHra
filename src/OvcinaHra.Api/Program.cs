@@ -185,6 +185,7 @@ try
     app.MapLocationEndpoints().RequireAuthorization();
     app.MapItemEndpoints().RequireAuthorization();
     app.MapSecretStashEndpoints().RequireAuthorization();
+    app.MapCharacterEndpoints().RequireAuthorization();
     app.MapMonsterEndpoints().RequireAuthorization();
     app.MapQuestEndpoints().RequireAuthorization();
     app.MapBuildingEndpoints().RequireAuthorization();
@@ -194,6 +195,7 @@ try
     app.MapTimelineEndpoints().RequireAuthorization();
     app.MapSearchEndpoints().RequireAuthorization();
     app.MapImageEndpoints().RequireAuthorization();
+    app.MapScanEndpoints();
     app.MapLogEndpoints(); // No auth — needed for debugging login issues
 
     app.Run();
