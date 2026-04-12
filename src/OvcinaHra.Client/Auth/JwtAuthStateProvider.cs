@@ -58,8 +58,8 @@ public class JwtAuthStateProvider : AuthenticationStateProvider
             // API unreachable — treat as unauthenticated
         }
 
-        // Token invalid or API down
-        _http.DefaultRequestHeaders.Authorization = null;
+        // Token invalid or API down — clear stale token from localStorage
+        await ClearTokenAsync();
         return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
     }
 
