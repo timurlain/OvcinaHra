@@ -183,7 +183,7 @@ else
         else
         {
             editingSlotId = s.Id; slotStartTime = s.StartTime;
-            slotDurationHours = s.DurationHours;
+            slotDurationHours = (decimal)s.DurationHours;
             slotInGameYear = s.InGameYear; slotRules = s.Rules;
             slotBonusId = s.BattlefieldBonusId;
             slotTitle = $"Upravit období: {s.StartTime:d.M.yyyy HH:mm}";
@@ -196,7 +196,7 @@ else
         slotError = null; slotSaving = true;
         try
         {
-            var durationHours = (int)slotDurationHours;
+            var durationHours = (double)slotDurationHours;
             if (editingSlotId.HasValue)
                 await Api.PutAsync($"/api/timeline/slots/{editingSlotId}",
                     new UpdateGameTimeSlotDto(slotStartTime, durationHours, slotInGameYear, slotRules, slotBonusId));

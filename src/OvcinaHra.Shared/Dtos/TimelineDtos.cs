@@ -1,10 +1,10 @@
 namespace OvcinaHra.Shared.Dtos;
 
-public record GameTimeSlotDto(int Id, int? InGameYear, DateTime StartTime, int DurationHours, string? Rules, int? BattlefieldBonusId, int GameId);
+public record GameTimeSlotDto(int Id, int? InGameYear, DateTime StartTime, double DurationHours, string? Rules, int? BattlefieldBonusId, int GameId);
 
-public record CreateGameTimeSlotDto(int GameId, DateTime StartTime, int DurationHours, int? InGameYear = null, string? Rules = null, int? BattlefieldBonusId = null);
+public record CreateGameTimeSlotDto(int GameId, DateTime StartTime, double DurationHours, int? InGameYear = null, string? Rules = null, int? BattlefieldBonusId = null);
 
-public record UpdateGameTimeSlotDto(DateTime StartTime, int DurationHours, int? InGameYear, string? Rules, int? BattlefieldBonusId);
+public record UpdateGameTimeSlotDto(DateTime StartTime, double DurationHours, int? InGameYear, string? Rules, int? BattlefieldBonusId);
 
 public record BattlefieldBonusDto(int Id, string? Name, int AttackBonus, int DefenseBonus, string? Description, string? ImagePath, int GameId);
 
