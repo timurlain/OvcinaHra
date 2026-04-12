@@ -29,7 +29,7 @@ public class Location
     public ICollection<Location> Variants { get; set; } = [];
 
     public ICollection<GameLocation> GameLocations { get; set; } = [];
-    public ICollection<SecretStash> SecretStashes { get; set; } = [];
+    public ICollection<GameSecretStash> GameSecretStashes { get; set; } = [];
     public ICollection<Building> Buildings { get; set; } = [];
     public ICollection<QuestLocationLink> QuestLocations { get; set; } = [];
     public ICollection<TreasureQuest> TreasureQuests { get; set; } = [];

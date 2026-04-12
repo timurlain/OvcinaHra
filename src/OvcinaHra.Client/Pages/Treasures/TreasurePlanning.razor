@@ -267,7 +267,7 @@ else
             {
                 <DxFormLayoutItem Caption="Skrýš" ColSpanMd="12">
                     <DxComboBox Data="@editStashesFiltered" @bind-Value="@editStashId"
-                                TextFieldName="Name" ValueFieldName="Id"
+                                TextFieldName="StashName" ValueFieldName="SecretStashId"
                                 NullText="Vyberte skrýš..." ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
                 </DxFormLayoutItem>
             }
@@ -367,8 +367,8 @@ else
     private bool editToStash;
     private List<TreasureItemDto> editQuestItems = [];
     private List<LocationListDto> editLocations = [];
-    private List<SecretStashListDto> editStashes = [];
-    private List<SecretStashListDto> editStashesFiltered =>
+    private List<GameSecretStashDto> editStashes = [];
+    private List<GameSecretStashDto> editStashesFiltered =>
         editLocationId.HasValue
             ? editStashes.Where(s => s.LocationId == editLocationId.Value).ToList()
             : editStashes;
@@ -529,7 +529,7 @@ else
     private async Task LoadEditDetailAsync(int id)
     {
         editLocations = await Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gameId}");
-        editStashes = await Api.GetListAsync<SecretStashListDto>($"/api/secret-stashes/by-game/{gameId}");
+        editStashes = await Api.GetListAsync<GameSecretStashDto>($"/api/secret-stashes/by-game/{gameId}");
         var d = await Api.GetAsync<TreasureQuestDetailDto>($"/api/treasure-quests/{id}");
         if (d is not null)
         {

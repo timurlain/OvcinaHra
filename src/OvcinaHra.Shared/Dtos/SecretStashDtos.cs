@@ -1,21 +1,17 @@
 namespace OvcinaHra.Shared.Dtos;
 
-public record SecretStashListDto(int Id, string Name, int LocationId, string LocationName, int GameId);
+// Catalog (master list)
+public record SecretStashListDto(int Id, string Name, string? Description);
 
-public record SecretStashDetailDto(
-    int Id,
-    string Name,
-    string? Description,
-    string? ImagePath,
-    int LocationId,
-    int GameId);
+public record SecretStashDetailDto(int Id, string Name, string? Description, string? ImagePath);
 
-public record CreateSecretStashDto(
-    string Name,
-    int LocationId,
-    int GameId,
-    string? Description = null);
+public record CreateSecretStashDto(string Name, string? Description = null);
 
-public record UpdateSecretStashDto(
-    string Name,
-    string? Description);
+public record UpdateSecretStashDto(string Name, string? Description);
+
+// Per-game assignment
+public record GameSecretStashDto(int GameId, int SecretStashId, string StashName, int LocationId, string LocationName);
+
+public record CreateGameSecretStashDto(int GameId, int SecretStashId, int LocationId);
+
+public record UpdateGameSecretStashDto(int LocationId);

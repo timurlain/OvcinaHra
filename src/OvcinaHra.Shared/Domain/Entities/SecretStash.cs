@@ -6,10 +6,7 @@ public class SecretStash
     public required string Name { get; set; }
     public string? Description { get; set; }
     public string? ImagePath { get; set; }
-    public int LocationId { get; set; }
-    public int GameId { get; set; }
 
-    public Location Location { get; set; } = null!;
-    public Game Game { get; set; } = null!;
+    public ICollection<GameSecretStash> GameSecretStashes { get; set; } = [];
     public ICollection<TreasureQuest> TreasureQuests { get; set; } = [];
 }

@@ -114,17 +114,24 @@ public class LocationManagementTests
             new CreateLocationDto("Stash Loc", LocationKind.Dungeon, 49.5m, 17.1m));
         var loc = await locResp.Content.ReadFromJsonAsync<LocationDetailDto>();
 
-        // Create 3 — should succeed
+        // Create 3 catalog stashes and assign — should succeed
         for (int i = 1; i <= 3; i++)
         {
-            var resp = await client.PostAsJsonAsync("/api/secret-stashes",
-                new CreateSecretStashDto($"Skrýš {i}", loc!.Id, game!.Id));
-            resp.EnsureSuccessStatusCode();
+            var stashResp = await client.PostAsJsonAsync("/api/secret-stashes",
+                new CreateSecretStashDto($"Skrýš {i}"));
+            stashResp.EnsureSuccessStatusCode();
+            var stash = await stashResp.Content.ReadFromJsonAsync<SecretStashDetailDto>();
+            var assignResp = await client.PostAsJsonAsync("/api/secret-stashes/game-stash",
+                new CreateGameSecretStashDto(game!.Id, stash!.Id, loc!.Id));
+            assignResp.EnsureSuccessStatusCode();
         }
 
         // 4th — should fail with validation error
-        var fourthResp = await client.PostAsJsonAsync("/api/secret-stashes",
-            new CreateSecretStashDto("Skrýš 4", loc!.Id, game!.Id));
-        Assert.Equal(System.Net.HttpStatusCode.BadRequest, fourthResp.StatusCode);
+        var s4Resp = await client.PostAsJsonAsync("/api/secret-stashes",
+            new CreateSecretStashDto("Skrýš 4"));
+        var s4 = await s4Resp.Content.ReadFromJsonAsync<SecretStashDetailDto>();
+        var fourthResp = await client.PostAsJsonAsync("/api/secret-stashes/game-stash",
+            new CreateGameSecretStashDto(game!.Id, s4!.Id, loc!.Id));
+        Assert.False(fourthResp.IsSuccessStatusCode);
     }
 }
