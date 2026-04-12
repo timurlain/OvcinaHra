@@ -42,7 +42,8 @@ public static class TimelineEndpoints
     {
         var s = new GameTimeSlot
         {
-            GameId = dto.GameId, StartTime = dto.StartTime, Duration = TimeSpan.FromHours((double)dto.DurationHours),
+            GameId = dto.GameId, StartTime = DateTime.SpecifyKind(dto.StartTime, DateTimeKind.Utc),
+            Duration = TimeSpan.FromHours((double)dto.DurationHours),
             InGameYear = dto.InGameYear, Rules = dto.Rules, BattlefieldBonusId = dto.BattlefieldBonusId
         };
         db.GameTimeSlots.Add(s);
@@ -55,7 +56,7 @@ public static class TimelineEndpoints
     {
         var s = await db.GameTimeSlots.FindAsync(id);
         if (s is null) return TypedResults.NotFound();
-        s.StartTime = dto.StartTime; s.Duration = TimeSpan.FromHours((double)dto.DurationHours); s.InGameYear = dto.InGameYear;
+        s.StartTime = DateTime.SpecifyKind(dto.StartTime, DateTimeKind.Utc); s.Duration = TimeSpan.FromHours((double)dto.DurationHours); s.InGameYear = dto.InGameYear;
         s.Rules = dto.Rules; s.BattlefieldBonusId = dto.BattlefieldBonusId;
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
