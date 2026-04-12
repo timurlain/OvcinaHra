@@ -42,12 +42,13 @@ try
         .AddDbContextCheck<WorldDbContext>();
 
     // Authentication: JWT Bearer with dual validation
-    // Production: tokens from registrace OIDC server (validated via discovery)
-    // Development: also accepts self-issued dev tokens
+    // Accepts both OIDC tokens (from registrace) and self-issued tokens (dev + service)
+    var oidcAuthority = builder.Configuration["Oidc:Authority"];
+    var jwtKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!));
+
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        var oidcAuthority = builder.Configuration["Oidc:Authority"];
         if (!string.IsNullOrEmpty(oidcAuthority))
         {
             // Production: validate against registrace OIDC discovery endpoint
@@ -55,17 +56,20 @@ try
             options.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuer = true,
-                ValidIssuer = oidcAuthority.TrimEnd('/') + "/", // OpenIddict adds trailing slash
-                ValidateAudience = false, // OpenIddict doesn't set aud to client_id by default
+                ValidIssuer = oidcAuthority.TrimEnd('/') + "/",
+                ValidateAudience = false,
                 ValidateLifetime = true,
                 NameClaimType = "name",
                 RoleClaimType = "role",
-                ClockSkew = TimeSpan.FromSeconds(30)
+                ClockSkew = TimeSpan.FromSeconds(30),
+                // Also accept self-issued tokens (service tokens, dev tokens)
+                IssuerSigningKeys = [jwtKey],
+                ValidIssuers = [oidcAuthority.TrimEnd('/') + "/", builder.Configuration["Jwt:Issuer"]!]
             };
         }
         else
         {
-            // Development fallback: self-issued tokens (dev-token endpoint)
+            // Development: self-issued tokens only
             options.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuer = true,
@@ -74,8 +78,7 @@ try
                 ValidateIssuerSigningKey = true,
                 ValidIssuer = builder.Configuration["Jwt:Issuer"],
                 ValidAudience = builder.Configuration["Jwt:Audience"],
-                IssuerSigningKey = new SymmetricSecurityKey(
-                    Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
+                IssuerSigningKey = jwtKey,
                 ClockSkew = TimeSpan.FromSeconds(30)
             };
         }
