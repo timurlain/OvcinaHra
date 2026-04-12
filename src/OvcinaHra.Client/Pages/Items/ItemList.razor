@@ -81,16 +81,16 @@ else
                 <DxTextBox @bind-Text="@effect" NullText="(3/5), +2/+2, ..." />
             </DxFormLayoutItem>
             <DxFormLayoutGroup Caption="Požadavky na povolání" ColSpanMd="12">
-                <DxFormLayoutItem Caption="Válečník" ColSpanMd="3">
+                <DxFormLayoutItem Caption="@PlayerClass.Warrior.GetDisplayName()" ColSpanMd="3">
                     <DxSpinEdit @bind-Value="@reqWarrior" MinValue="0" />
                 </DxFormLayoutItem>
-                <DxFormLayoutItem Caption="Lučištník" ColSpanMd="3">
+                <DxFormLayoutItem Caption="@PlayerClass.Archer.GetDisplayName()" ColSpanMd="3">
                     <DxSpinEdit @bind-Value="@reqArcher" MinValue="0" />
                 </DxFormLayoutItem>
-                <DxFormLayoutItem Caption="Mág" ColSpanMd="3">
+                <DxFormLayoutItem Caption="@PlayerClass.Mage.GetDisplayName()" ColSpanMd="3">
                     <DxSpinEdit @bind-Value="@reqMage" MinValue="0" />
                 </DxFormLayoutItem>
-                <DxFormLayoutItem Caption="Zloděj" ColSpanMd="3">
+                <DxFormLayoutItem Caption="@PlayerClass.Thief.GetDisplayName()" ColSpanMd="3">
                     <DxSpinEdit @bind-Value="@reqThief" MinValue="0" />
                 </DxFormLayoutItem>
             </DxFormLayoutGroup>
