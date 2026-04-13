@@ -15,10 +15,10 @@ public class Quest
     public string? RewardNotes { get; set; }
     public int? ChainOrder { get; set; }
     public int? ParentQuestId { get; set; }
-    public int GameId { get; set; }
+    public int? GameId { get; set; }
 
     public Quest? ParentQuest { get; set; }
-    public Game Game { get; set; } = null!;
+    public Game? Game { get; set; }
     public ICollection<Quest> ChildQuests { get; set; } = [];
     public ICollection<QuestTagLink> QuestTags { get; set; } = [];
     public ICollection<QuestLocationLink> QuestLocations { get; set; } = [];

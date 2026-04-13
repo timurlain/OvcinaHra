@@ -12,10 +12,7 @@
             <button class="btn @(Catalog ? "btn-outline-secondary" : "btn-secondary")" @onclick="() => SetCatalog(false)">Aktuální hra</button>
             <button class="btn @(Catalog ? "btn-secondary" : "btn-outline-secondary")" @onclick="() => SetCatalog(true)">Katalog</button>
         </div>
-        @if (!Catalog)
-        {
-            <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nový quest</button>
-        }
+        <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nový quest</button>
     </div>
 </div>
 
@@ -23,14 +20,12 @@
 else if (Catalog)
 {
     <OvcinaGrid Data="@catalogQuests" KeyFieldName="Id" LayoutKey="grid-layout-quests-catalog"
-                RowClick="@(e => OpenCopyPopup((QuestCatalogDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+                RowClick="@(e => OpenModalFromCatalog((QuestCatalogDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             <DxGridDataColumn FieldName="Name" Caption="Název" />
             <DxGridDataColumn FieldName="QuestType" Caption="Typ" Width="140px">
                 <CellDisplayTemplate>@(((QuestType)context.Value).GetDisplayName())</CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="GameName" Caption="Hra" Width="180px" />
-            <DxGridDataColumn FieldName="GameEdition" Caption="Edice" Width="80px" />
         </Columns>
     </OvcinaGrid>
 }
@@ -272,7 +267,10 @@ else
         @if (copySource is not null)
         {
             <p>Quest: <strong>@copySource.Name</strong></p>
-            <p class="text-muted">Zdrojová hra: @copySource.GameName (edice @copySource.GameEdition)</p>
+            @if (copySource.GameName is not null)
+            {
+                <p class="text-muted">Zdrojová hra: @copySource.GameName (edice @copySource.GameEdition)</p>
+            }
             @if (copyWarnings.Count > 0)
             {
                 <div class="alert alert-warning">
@@ -370,6 +368,11 @@ else
     {
         copySource = q; copyWarnings = []; copyError = null; copyDone = false;
         isCopyVisible = true;
+    }
+
+    private void OpenModalFromCatalog(QuestCatalogDto q)
+    {
+        OpenModal(new QuestListDto(q.Id, q.Name, q.QuestType, null, null, q.GameId));
     }
 
     private async Task ConfirmCopyAsync()
@@ -508,7 +511,10 @@ else
             if (editingId.HasValue)
                 await Api.PutAsync($"/api/quests/{editingId}", new UpdateQuestDto(name, questType, description, fullText, timeSlot, xp, money, rewardNotes, chain, parent));
             else
-                await Api.PostAsync<CreateQuestDto, QuestListDto>("/api/quests", new CreateQuestDto(name, questType, gameId, description, fullText, timeSlot, xp, money, rewardNotes, chain, parent));
+            {
+                var gameIdForCreate = Catalog ? (int?)null : gameId;
+                await Api.PostAsync<CreateQuestDto, QuestListDto>("/api/quests", new CreateQuestDto(name, questType, gameIdForCreate, description, fullText, timeSlot, xp, money, rewardNotes, chain, parent));
+            }
             isModalVisible = false; await LoadAsync();
         }
         catch (Exception ex) { error = ex.Message; } finally { isSaving = false; }
