@@ -42,9 +42,9 @@ public static class QuestEndpoints
     private static async Task<Ok<List<QuestCatalogDto>>> GetAll(WorldDbContext db)
     {
         var quests = await db.Quests
-            .Include(q => q.Game)
-            .OrderBy(q => q.Game.Edition).ThenBy(q => q.Name)
-            .Select(q => new QuestCatalogDto(q.Id, q.Name, q.QuestType, q.GameId, q.Game.Name, q.Game.Edition))
+            .Where(q => q.GameId == null)
+            .OrderBy(q => q.Name)
+            .Select(q => new QuestCatalogDto(q.Id, q.Name, q.QuestType, null, null, null))
             .ToListAsync();
         return TypedResults.Ok(quests);
     }
