@@ -1,0 +1,41 @@
+.image-picker-card .image-card-label {
+    display: block;
+    cursor: pointer;
+    width: 100%;
+    position: relative;
+}
+
+.image-picker-card .image-card-img {
+    width: 100%;
+    height: auto;
+    max-height: 500px;
+    object-fit: contain;
+    border-radius: 8px;
+    display: block;
+}
+
+.image-picker-card .image-card-placeholder {
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    background: #f5f5f5;
+    border: 2px dashed #ccc;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #999;
+    gap: 0.5rem;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.image-picker-card .image-card-label:hover .image-card-placeholder {
+    border-color: #888;
+    background: #ececec;
+}
+
+.image-picker-card .image-card-delete {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+}
