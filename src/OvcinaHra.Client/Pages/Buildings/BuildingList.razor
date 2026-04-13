@@ -108,11 +108,23 @@ else
     private HashSet<int> assignedBuildingIds = [];
     private int gameId => GameContext.SelectedGameId ?? 1;
 
+    private bool _previousCatalog;
+
     protected override async Task OnInitializedAsync()
     {
         await GameContext.InitializeAsync();
         GameContext.OnGameChanged += OnGameChanged;
+        _previousCatalog = Catalog;
         await LoadAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Catalog != _previousCatalog)
+        {
+            _previousCatalog = Catalog;
+            await LoadAsync();
+        }
     }
     private async Task LoadAsync()
     {

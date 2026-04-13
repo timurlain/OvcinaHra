@@ -1,13 +1,39 @@
-<div class="image-picker">
-    @if (currentUrl is not null)
+<div class="image-picker @(CardMode ? "image-picker-card" : "")">
+    @if (CardMode)
     {
-        <div class="position-relative d-inline-block mb-2">
-            <img src="@currentUrl" alt="@Alt" style="max-width: 100%; max-height: 200px; border-radius: 4px;" />
-            <button class="btn btn-sm btn-danger position-absolute top-0 end-0 m-1"
-                    @onclick="DeleteImage" disabled="@isWorking">&#10005;</button>
-        </div>
+        <label class="image-card-label">
+            @if (currentUrl is not null)
+            {
+                <img src="@currentUrl" alt="@Alt" class="image-card-img" />
+                <button class="btn btn-sm btn-danger image-card-delete"
+                        @onclick="DeleteImage" @onclick:stopPropagation="true" disabled="@isWorking">
+                    &#10005;
+                </button>
+            }
+            else
+            {
+                <div class="image-card-placeholder">
+                    <i class="bi bi-image fs-1"></i>
+                    <div>Žádný obrázek</div>
+                    <small class="text-muted">Klikněte pro nahrání</small>
+                </div>
+            }
+            <InputFile OnChange="HandleFileSelected" accept=".jpg,.jpeg,.png,.webp"
+                       disabled="@isWorking" class="d-none" />
+        </label>
     }
-    <InputFile OnChange="HandleFileSelected" accept=".jpg,.jpeg,.png,.webp" disabled="@isWorking" />
+    else
+    {
+        @if (currentUrl is not null)
+        {
+            <div class="position-relative d-inline-block mb-2">
+                <img src="@currentUrl" alt="@Alt" style="max-width: 100%; max-height: 200px; border-radius: 4px;" />
+                <button class="btn btn-sm btn-danger position-absolute top-0 end-0 m-1"
+                        @onclick="DeleteImage" disabled="@isWorking">&#10005;</button>
+            </div>
+        }
+        <InputFile OnChange="HandleFileSelected" accept=".jpg,.jpeg,.png,.webp" disabled="@isWorking" />
+    }
     @if (errorMessage is not null)
     {
         <div class="text-danger small mt-1">@errorMessage</div>
@@ -21,6 +47,7 @@
     [Parameter, EditorRequired] public int EntityId { get; set; }
     [Parameter] public string? Field { get; set; }
     [Parameter] public string Alt { get; set; } = "Obrázek";
+    [Parameter] public bool CardMode { get; set; } = false;
 
     private string? currentUrl;
     private string? errorMessage;

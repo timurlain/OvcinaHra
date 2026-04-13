@@ -291,13 +291,25 @@ else
     // Catalog assign state
     private HashSet<int> assignedItemIds = [];
 
+    private bool _previousCatalog;
+
     protected override async Task OnInitializedAsync()
     {
         await GameContext.InitializeAsync();
+        _previousCatalog = Catalog;
         await LoadAsync();
         allItems = await Api.GetListAsync<ItemListDto>("/api/items");
         if (GameContext.SelectedGameId is int gid)
             allBuildings = await Api.GetListAsync<BuildingListDto>($"/api/buildings/by-game/{gid}");
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Catalog != _previousCatalog)
+        {
+            _previousCatalog = Catalog;
+            await LoadAsync();
+        }
     }
 
     private async Task LoadAsync()
