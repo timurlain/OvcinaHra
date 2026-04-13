@@ -30,6 +30,10 @@ else if (character is not null)
     <div class="card mb-3" style="background: var(--oh-primary-surface, #f0ebe3);">
         <div class="card-body text-center">
             <h2 class="mb-1">@character.Name</h2>
+            @if (character.PlayerFullName is not null)
+            {
+                <small class="text-muted d-block mb-1">@character.PlayerFullName</small>
+            }
             <div class="d-flex justify-content-center gap-2 flex-wrap">
                 @if (character.Kingdom is not null)
                 {
@@ -109,6 +113,12 @@ else if (character is not null)
     }
 
     @* Recent events *@
+    <div class="mb-2">
+        <a href="https://registrace.ovcina.cz/person/@PersonId" target="_blank" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-box-arrow-up-right me-1"></i> Otevřít v registraci
+        </a>
+    </div>
+
     <h5>Poslední události</h5>
     @if (character.RecentEvents.Count == 0)
     {

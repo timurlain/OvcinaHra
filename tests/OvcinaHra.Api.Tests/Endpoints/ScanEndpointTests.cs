@@ -9,17 +9,17 @@ namespace OvcinaHra.Api.Tests.Endpoints;
 public class ScanEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
 {
     private async Task<(CharacterDetailDto character, CharacterAssignmentDto assignment)> SeedCharacterWithAssignment(
-        int externalPersonId = 100, int gameId = 1)
+        int externalPersonId = 100, int gameId = 1,
+        string? race = "Dwarf", string? kingdom = "Erebor")
     {
         var createResponse = await Client.PostAsJsonAsync("/api/characters",
-            new CreateCharacterDto("Thorin", Race: "Dwarf", Class: null, Kingdom: "Erebor",
-                IsPlayedCharacter: true, ExternalPersonId: externalPersonId));
+            new CreateCharacterDto("Thorin", Race: race, IsPlayedCharacter: true, ExternalPersonId: externalPersonId));
         createResponse.EnsureSuccessStatusCode();
         var character = await createResponse.Content.ReadFromJsonAsync<CharacterDetailDto>();
 
         var assignResponse = await Client.PostAsJsonAsync(
             $"/api/characters/{character!.Id}/assignments",
-            new CreateCharacterAssignmentDto(gameId, externalPersonId));
+            new CreateCharacterAssignmentDto(gameId, externalPersonId, null, kingdom));
         assignResponse.EnsureSuccessStatusCode();
         var assignment = await assignResponse.Content.ReadFromJsonAsync<CharacterAssignmentDto>();
 
@@ -37,6 +37,7 @@ public class ScanEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
         var profile = await response.Content.ReadFromJsonAsync<ScanCharacterDto>();
         Assert.NotNull(profile);
         Assert.Equal("Thorin", profile.Name);
+        Assert.Null(profile.PlayerFullName); // no player name set in seed
         Assert.Equal("Dwarf", profile.Race);
         Assert.Equal("Erebor", profile.Kingdom);
         Assert.Equal(0, profile.CurrentLevel);
@@ -69,7 +70,7 @@ public class ScanEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
     }
 
     [Fact]
-    public async Task PostEvent_ClassChosen_SetsCharacterClass()
+    public async Task PostEvent_ClassChosen_SetsAssignmentClass()
     {
         await SeedCharacterWithAssignment(externalPersonId: 102);
 

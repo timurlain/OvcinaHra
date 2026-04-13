@@ -32,7 +32,6 @@ public static class ScanEndpoints
 
         if (assignment is null) return TypedResults.NotFound();
 
-        var character = assignment.Character;
         var events = assignment.Events.ToList();
 
         var currentLevel = events.Count(e => e.EventType == CharacterEventType.LevelUp);
@@ -63,9 +62,18 @@ public static class ScanEndpoints
             .Select(e => new CharacterEventDto(e.Id, e.EventType, e.Data, e.Location, e.OrganizerName, e.Timestamp))
             .ToList();
 
+        var ch = assignment.Character;
+        var playerFullName =
+            string.IsNullOrWhiteSpace(ch.PlayerFirstName) && string.IsNullOrWhiteSpace(ch.PlayerLastName)
+                ? null
+                : $"{ch.PlayerFirstName} {ch.PlayerLastName}".Trim();
+
         return TypedResults.Ok(new ScanCharacterDto(
-            character.Id, character.Name, character.Race, character.Class,
-            character.Kingdom, currentLevel, totalXp, skills, recentEvents));
+            ch.Id, assignment.Id, personId,
+            ch.Name, playerFullName,
+            ch.Race, assignment.Class,
+            assignment.Kingdom, ch.BirthYear,
+            currentLevel, totalXp, skills, recentEvents));
     }
 
     private static async Task<Results<Created<CharacterEventDto>, NotFound, BadRequest<string>>> PostEvent(
@@ -91,7 +99,7 @@ public static class ScanEndpoints
         }
         else if (dto.EventType == CharacterEventType.ClassChosen)
         {
-            if (assignment.Character.Class is not null)
+            if (assignment.Class is not null)
                 return TypedResults.BadRequest("Character already has a class assigned.");
 
             try
@@ -104,8 +112,7 @@ public static class ScanEndpoints
                 if (!Enum.TryParse<PlayerClass>(className, ignoreCase: true, out var playerClass))
                     return TypedResults.BadRequest($"Unknown class: '{className}'.");
 
-                assignment.Character.Class = playerClass;
-                assignment.Character.UpdatedAtUtc = DateTime.UtcNow;
+                assignment.Class = playerClass;
             }
             catch (JsonException)
             {

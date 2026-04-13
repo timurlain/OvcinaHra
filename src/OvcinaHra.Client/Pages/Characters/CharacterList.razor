@@ -8,9 +8,24 @@
     <div class="d-flex gap-2">
         <DxTextBox Text="@searchText" NullText="Hledat..." ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
                    TextChanged="@(async (string s) => { searchText = s; await LoadAsync(); })" />
+        <button class="btn btn-outline-secondary" @onclick="ImportAsync" disabled="@isImporting">
+            @(isImporting ? "Importuji..." : "Importovat z registrace")
+        </button>
         <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nová postava</button>
     </div>
 </div>
+
+@if (importResult is not null)
+{
+    <div class="alert alert-info alert-dismissible mb-3">
+        @importResult.Created nových, @importResult.Updated aktualizováno.
+        @if (importResult.Errors.Count > 0)
+        {
+            <span class="text-danger"> @importResult.Errors.Count chyb.</span>
+        }
+        <button type="button" class="btn-close" @onclick="() => importResult = null"></button>
+    </div>
+}
 
 @if (loading)
 {
@@ -30,42 +45,36 @@ else
                 RowClick="@(e => OpenModal((CharacterListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             <DxGridDataColumn FieldName="Name" Caption="Název" />
+            <DxGridDataColumn FieldName="PlayerFullName" Caption="Hráč" Width="180px" />
             <DxGridDataColumn FieldName="Race" Caption="Rasa" Width="120px" />
-            <DxGridDataColumn FieldName="Class" Caption="Povolání" Width="130px">
-                <CellDisplayTemplate>
-                    @(context.Value is PlayerClass pc ? pc.GetDisplayName() : "Začátečník")
-                </CellDisplayTemplate>
-            </DxGridDataColumn>
-            <DxGridDataColumn FieldName="Kingdom" Caption="Království" Width="140px" />
-            <DxGridDataColumn FieldName="IsPlayedCharacter" Caption="Hráč" Width="80px">
+            <DxGridDataColumn FieldName="IsPlayedCharacter" Caption="Hráčská" Width="80px">
                 <CellDisplayTemplate>@((bool)context.Value ? "Ano" : "Ne")</CellDisplayTemplate>
             </DxGridDataColumn>
+            <DxGridDataColumn FieldName="ExternalPersonId" Caption="ID v registraci" Width="140px" />
         </Columns>
     </OvcinaGrid>
 }
 
-<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="700px">
+<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="600px">
     <BodyContentTemplate Context="popupContext">
         <DxFormLayout>
-            <DxFormLayoutItem Caption="Název" ColSpanMd="8">
+            <DxFormLayoutItem Caption="Název postavy" ColSpanMd="8">
                 <DxTextBox @bind-Text="@name" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Rasa" ColSpanMd="4">
-                <DxTextBox @bind-Text="@race" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Povolání" ColSpanMd="6">
-                <DxComboBox Data="@playerClassValues" @bind-Value="@playerClass"
-                            TextFieldName="Display" ValueFieldName="Value"
-                            NullText="Začátečník" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Království" ColSpanMd="6">
-                <DxTextBox @bind-Text="@kingdom" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Rok narození" ColSpanMd="4">
-                <DxSpinEdit @bind-Value="@birthYear" MinValue="1" />
             </DxFormLayoutItem>
             <DxFormLayoutItem Caption="Hráčská postava" ColSpanMd="4">
                 <DxCheckBox @bind-Checked="@isPlayedCharacter" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Jméno hráče" ColSpanMd="6">
+                <DxTextBox @bind-Text="@playerFirstName" NullText="(nezadáno)" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Příjmení hráče" ColSpanMd="6">
+                <DxTextBox @bind-Text="@playerLastName" NullText="(nezadáno)" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Rasa" ColSpanMd="6">
+                <DxTextBox @bind-Text="@race" NullText="(nezadáno)" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Rok narození" ColSpanMd="6">
+                <DxSpinEdit @bind-Value="@birthYear" />
             </DxFormLayoutItem>
             @if (isPlayedCharacter)
             {
@@ -82,6 +91,15 @@ else
                 <DxMemo @bind-Text="@notes" Rows="3" />
             </DxFormLayoutItem>
         </DxFormLayout>
+
+        @if (editingId.HasValue && externalPersonId.HasValue)
+        {
+            <div class="mt-2">
+                <a href="https://registrace.ovcina.cz/person/@externalPersonId" target="_blank" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-box-arrow-up-right me-1"></i> Registrace
+                </a>
+            </div>
+        }
 
         @if (error is not null) { <div class="alert alert-danger mt-2">@error</div> }
 
@@ -107,20 +125,16 @@ else
 @code {
     private List<CharacterListDto> characters = [];
     private List<CharacterListDto> allCharacters = [];
-    private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
+    private bool loading = true, isModalVisible, isDeleteVisible, isSaving, isImporting;
     private string modalTitle = "", name = "";
-    private string? error, race, kingdom, notes;
+    private string? error, notes, race, playerFirstName, playerLastName;
     private int? editingId;
-    private PlayerClass? playerClass;
-    private int? birthYear;
     private int? externalPersonId;
     private int? parentCharacterId;
+    private int? birthYear;
     private bool isPlayedCharacter;
     private string searchText = "";
-
-    private static readonly List<EnumItem<PlayerClass>> playerClassValues = Enum.GetValues<PlayerClass>()
-        .Select(v => new EnumItem<PlayerClass>(v, v.GetDisplayName())).ToList();
-    record EnumItem<T>(T Value, string Display);
+    private ImportResultDto? importResult;
 
     protected override async Task OnInitializedAsync()
     {
@@ -144,15 +158,16 @@ else
         error = null;
         if (c is null)
         {
-            editingId = null; name = ""; race = null; playerClass = null; kingdom = null;
-            birthYear = null; isPlayedCharacter = false; externalPersonId = null;
-            parentCharacterId = null; notes = null;
+            editingId = null; name = ""; isPlayedCharacter = false; externalPersonId = null;
+            parentCharacterId = null; notes = null; race = null; birthYear = null;
+            playerFirstName = null; playerLastName = null;
             modalTitle = "Nová postava";
         }
         else
         {
-            editingId = c.Id; name = c.Name; race = c.Race; playerClass = c.Class;
-            kingdom = c.Kingdom; isPlayedCharacter = c.IsPlayedCharacter;
+            editingId = c.Id; name = c.Name;
+            race = c.Race;
+            isPlayedCharacter = c.IsPlayedCharacter;
             externalPersonId = c.ExternalPersonId;
             modalTitle = $"Upravit: {c.Name}";
             _ = LoadDetailAsync(c.Id);
@@ -165,9 +180,12 @@ else
         var d = await Api.GetAsync<CharacterDetailDto>($"/api/characters/{id}");
         if (d is not null)
         {
-            birthYear = d.BirthYear;
             notes = d.Notes;
+            race = d.Race;
+            birthYear = d.BirthYear;
             parentCharacterId = d.ParentCharacterId;
+            playerFirstName = d.PlayerFirstName;
+            playerLastName = d.PlayerLastName;
         }
         StateHasChanged();
     }
@@ -179,10 +197,10 @@ else
         {
             if (editingId.HasValue)
                 await Api.PutAsync($"/api/characters/{editingId}",
-                    new UpdateCharacterDto(name, race, playerClass, kingdom, birthYear, notes, isPlayedCharacter, externalPersonId, parentCharacterId));
+                    new UpdateCharacterDto(name, playerFirstName, playerLastName, race, birthYear, notes, isPlayedCharacter, externalPersonId, parentCharacterId));
             else
                 await Api.PostAsync<CreateCharacterDto, CharacterDetailDto>("/api/characters",
-                    new CreateCharacterDto(name, race, playerClass, kingdom, birthYear, notes, isPlayedCharacter, externalPersonId, parentCharacterId));
+                    new CreateCharacterDto(name, playerFirstName, playerLastName, race, birthYear, notes, isPlayedCharacter, externalPersonId, parentCharacterId));
             isModalVisible = false;
             await LoadAsync();
             allCharacters = await Api.GetListAsync<CharacterListDto>("/api/characters");
@@ -201,5 +219,20 @@ else
             allCharacters = await Api.GetListAsync<CharacterListDto>("/api/characters");
         }
         catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task ImportAsync()
+    {
+        if (!GameContext.SelectedGameId.HasValue) return;
+        isImporting = true; importResult = null;
+        try
+        {
+            importResult = await Api.PostAsync<object, ImportResultDto>(
+                $"/api/characters/import/{GameContext.SelectedGameId}", new { });
+            await LoadAsync();
+            allCharacters = await Api.GetListAsync<CharacterListDto>("/api/characters");
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isImporting = false; }
     }
 }
