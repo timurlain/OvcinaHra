@@ -69,6 +69,11 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
                     character.Race = record.Race;
                     character.BirthYear = record.PersonBirthYear;
                     character.UpdatedAtUtc = DateTime.UtcNow;
+
+                    // If the character was soft-deleted (e.g., from a previous import),
+                    // restore it — this person is registered for the current game.
+                    if (character.IsDeleted)
+                        character.IsDeleted = false;
                 }
 
                 // Look up assignment by GameId + ExternalPersonId
