@@ -1,0 +1,285 @@
+@page "/events"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject GameContextService GameContext
+@inject NavigationManager Nav
+@implements IDisposable
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Události</h1>
+    <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nová událost</button>
+</div>
+
+@if (loading) { <p>Načítám...</p> }
+else if (events.Count == 0)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-calendar-event fs-1 d-block mb-2"></i>
+        <p>Žádné události pro tuto hru.</p>
+        <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nová událost</button>
+    </div>
+}
+else
+{
+    <OvcinaGrid Data="@events" KeyFieldName="Id" LayoutKey="grid-layout-game-events"
+                RowClick="@(e => OpenModal((GameEventListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+        <Columns>
+            <DxGridDataColumn FieldName="Name" Caption="Název" />
+            <DxGridDataColumn FieldName="Description" Caption="Popis" />
+            <DxGridDataColumn FieldName="TimeSlotCount" Caption="Časů" Width="80px" />
+            <DxGridDataColumn FieldName="LocationCount" Caption="Lokací" Width="90px" />
+            <DxGridDataColumn FieldName="QuestCount" Caption="Questů" Width="90px" />
+            <DxGridDataColumn FieldName="NpcCount" Caption="NPC" Width="80px" />
+        </Columns>
+    </OvcinaGrid>
+}
+
+<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="1000px">
+    <BodyContentTemplate Context="popupContext">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Název" ColSpanMd="12">
+                <DxTextBox @bind-Text="@name" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Popis" ColSpanMd="12">
+                <DxMemo @bind-Text="@description" Rows="3" />
+            </DxFormLayoutItem>
+
+            @* Time slots — multi-select tagbox *@
+            <DxFormLayoutItem Caption="Časové sloty" ColSpanMd="12">
+                <DxTagBox Data="@availableTimeSlots" Values="@selectedTimeSlotIds"
+                          ValuesChanged="@((IEnumerable<int> vals) => selectedTimeSlotIds = vals.ToList())"
+                          TextFieldName="DisplayText" ValueFieldName="Id"
+                          NullText="Vyberte časové sloty (povinné)..." />
+                <div class="form-text">Povinné — událost musí mít alespoň jeden časový slot.</div>
+            </DxFormLayoutItem>
+
+            @* Locations *@
+            <DxFormLayoutItem Caption="Lokace" ColSpanMd="12">
+                <DxTagBox Data="@availableLocations" Values="@selectedLocationIds"
+                          ValuesChanged="@((IEnumerable<int> vals) => selectedLocationIds = vals.ToList())"
+                          TextFieldName="Name" ValueFieldName="Id"
+                          NullText="Vyberte lokace..." SearchMode="ListSearchMode.AutoSearch" />
+            </DxFormLayoutItem>
+
+            @* Quests *@
+            <DxFormLayoutItem Caption="Questy" ColSpanMd="12">
+                <DxTagBox Data="@availableQuests" Values="@selectedQuestIds"
+                          ValuesChanged="@((IEnumerable<int> vals) => selectedQuestIds = vals.ToList())"
+                          TextFieldName="Name" ValueFieldName="Id"
+                          NullText="Vyberte questy..." SearchMode="ListSearchMode.AutoSearch" />
+            </DxFormLayoutItem>
+
+            @* NPCs — need RoleInEvent per NPC, so use a simple add/remove list *@
+            <DxFormLayoutItem Caption="NPC ve hře" ColSpanMd="12">
+                <div>
+                    @if (selectedNpcs.Count > 0)
+                    {
+                        <table class="table table-sm">
+                            <thead><tr><th>NPC</th><th>Role v události</th><th style="width:60px"></th></tr></thead>
+                            <tbody>
+                                @foreach (var n in selectedNpcs)
+                                {
+                                    <tr>
+                                        <td>@GetNpcName(n.NpcId)</td>
+                                        <td><DxTextBox @bind-Text="@n.RoleInEvent" NullText="(volitelně)" /></td>
+                                        <td><button type="button" class="btn btn-sm btn-link text-danger p-0" @onclick="() => RemoveNpc(n.NpcId)"><i class="bi bi-x-circle"></i></button></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                    else { <p class="text-muted small mb-2">Žádné NPC.</p> }
+
+                    <div class="d-flex gap-2 align-items-end">
+                        <div style="flex:1">
+                            <DxComboBox Data="@availableNpcs" @bind-Value="@newNpcId"
+                                        TextFieldName="NpcName" ValueFieldName="NpcId"
+                                        NullText="(přidat NPC)" SearchMode="ListSearchMode.AutoSearch" />
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary" style="height:34px" disabled="@(newNpcId is null)" @onclick="AddNpc">
+                            <i class="bi bi-plus"></i>
+                        </button>
+                    </div>
+                </div>
+            </DxFormLayoutItem>
+        </DxFormLayout>
+
+        @if (error is not null) { <div class="alert alert-danger mt-2">@error</div> }
+        <div class="d-flex gap-2 mt-3">
+            @if (editingId.HasValue) { <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true" disabled="@isSaving">Smazat</button> }
+            <div style="flex: 1"></div>
+            <button class="btn btn-secondary" @onclick="() => isModalVisible = false" disabled="@isSaving">Zrušit</button>
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving">Uložit</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Opravdu chcete smazat událost <strong>@name</strong>?</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    private int gameId => GameContext.SelectedGameId ?? 1;
+
+    private List<GameEventListDto> events = [];
+    private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
+    private string modalTitle = "", name = "";
+    private string? error, description;
+    private int? editingId;
+
+    // Available options for pickers
+    private List<TimeSlotOption> availableTimeSlots = [];
+    private List<LocationListDto> availableLocations = [];
+    private List<QuestListDto> availableQuests = [];
+    private List<GameNpcDto> availableNpcs = [];
+
+    // Selected values
+    private List<int> selectedTimeSlotIds = [];
+    private List<int> selectedLocationIds = [];
+    private List<int> selectedQuestIds = [];
+    private List<EventNpcRow> selectedNpcs = [];
+    private int? newNpcId;
+
+    private record TimeSlotOption(int Id, string DisplayText);
+    private class EventNpcRow
+    {
+        public int NpcId { get; set; }
+        public string? RoleInEvent { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GameContext.InitializeAsync();
+        GameContext.OnGameChanged += OnGameChanged;
+        await LoadAllAsync();
+    }
+
+    private async Task LoadAllAsync()
+    {
+        loading = true;
+        if (GameContext.SelectedGameId is int gid)
+        {
+            events = await Api.GetListAsync<GameEventListDto>($"/api/games/{gid}/events");
+
+            var slots = await Api.GetListAsync<GameTimeSlotDto>($"/api/timeline/slots/by-game/{gid}");
+            availableTimeSlots = slots
+                .OrderBy(s => s.StartTime)
+                .Select(s => new TimeSlotOption(s.Id, $"{s.StartTime:d.M. HH:mm} ({s.DurationHours}h)"))
+                .ToList();
+
+            availableLocations = await Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gid}");
+
+            var gameQuests = await Api.GetListAsync<QuestListDto>($"/api/quests/by-game/{gid}");
+            availableQuests = gameQuests;
+
+            availableNpcs = await Api.GetListAsync<GameNpcDto>($"/api/npcs/by-game/{gid}");
+        }
+        else { events = []; }
+        loading = false;
+    }
+
+    private async void OnGameChanged() { await LoadAllAsync(); StateHasChanged(); }
+    public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
+
+    private async void OpenModal(GameEventListDto? e)
+    {
+        error = null;
+        selectedTimeSlotIds = [];
+        selectedLocationIds = [];
+        selectedQuestIds = [];
+        selectedNpcs = [];
+        newNpcId = null;
+
+        if (e is null)
+        {
+            editingId = null;
+            name = ""; description = null;
+            modalTitle = "Nová událost";
+        }
+        else
+        {
+            editingId = e.Id;
+            name = e.Name; description = e.Description;
+            modalTitle = $"Upravit: {e.Name}";
+            await LoadDetailAsync(e.Id);
+        }
+        isModalVisible = true;
+        StateHasChanged();
+    }
+
+    private async Task LoadDetailAsync(int id)
+    {
+        var detail = await Api.GetAsync<GameEventDetailDto>($"/api/events/{id}");
+        if (detail is not null)
+        {
+            selectedTimeSlotIds = detail.TimeSlots.Select(t => t.TimeSlotId).ToList();
+            selectedLocationIds = detail.Locations.Select(l => l.LocationId).ToList();
+            selectedQuestIds = detail.Quests.Select(q => q.QuestId).ToList();
+            selectedNpcs = detail.Npcs.Select(n => new EventNpcRow
+            {
+                NpcId = n.NpcId,
+                RoleInEvent = n.RoleInEvent
+            }).ToList();
+        }
+    }
+
+    private string GetNpcName(int npcId) => availableNpcs.FirstOrDefault(n => n.NpcId == npcId)?.NpcName ?? $"#{npcId}";
+
+    private void AddNpc()
+    {
+        if (newNpcId is null) return;
+        if (selectedNpcs.Any(n => n.NpcId == newNpcId.Value)) return;
+        selectedNpcs.Add(new EventNpcRow { NpcId = newNpcId.Value });
+        newNpcId = null;
+    }
+
+    private void RemoveNpc(int npcId)
+    {
+        selectedNpcs.RemoveAll(n => n.NpcId == npcId);
+    }
+
+    private async Task SaveAsync()
+    {
+        error = null;
+        if (selectedTimeSlotIds.Count == 0) { error = "Alespoň jeden časový slot je povinný."; return; }
+        isSaving = true;
+        try
+        {
+            var npcDtos = selectedNpcs.Select(n => new CreateGameEventNpcDto(n.NpcId, n.RoleInEvent)).ToList();
+
+            if (editingId.HasValue)
+            {
+                await Api.PutAsync($"/api/events/{editingId}",
+                    new UpdateGameEventDto(name, description,
+                        selectedTimeSlotIds, selectedLocationIds, selectedQuestIds, npcDtos));
+            }
+            else
+            {
+                await Api.PostAsync<CreateGameEventDto, GameEventDetailDto>($"/api/games/{gameId}/events",
+                    new CreateGameEventDto(name, description,
+                        selectedTimeSlotIds, selectedLocationIds, selectedQuestIds, npcDtos));
+            }
+            isModalVisible = false;
+            await LoadAllAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        try
+        {
+            await Api.DeleteAsync($"/api/events/{editingId}");
+            isDeleteVisible = false; isModalVisible = false;
+            await LoadAllAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+}
