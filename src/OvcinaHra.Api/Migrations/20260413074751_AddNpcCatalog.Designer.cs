@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using NpgsqlTypes;
@@ -12,9 +13,11 @@ using OvcinaHra.Api.Data;
 namespace OvcinaHra.Api.Migrations
 {
     [DbContext(typeof(WorldDbContext))]
-    partial class WorldDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260413074751_AddNpcCatalog")]
+    partial class AddNpcCatalog
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -353,105 +356,6 @@ namespace OvcinaHra.Api.Migrations
                     b.HasIndex("GameId");
 
                     b.ToTable("GameBuildings");
-                });
-
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameEvent", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Description")
-                        .HasColumnType("text");
-
-                    b.Property<int>("GameId")
-                        .HasColumnType("integer");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)");
-
-                    b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("GameId");
-
-                    b.ToTable("GameEvents");
-                });
-
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameEventLocation", b =>
-                {
-                    b.Property<int>("GameEventId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("LocationId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("GameEventId", "LocationId");
-
-                    b.HasIndex("LocationId");
-
-                    b.ToTable("GameEventLocations");
-                });
-
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameEventNpc", b =>
-                {
-                    b.Property<int>("GameEventId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("NpcId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("RoleInEvent")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.HasKey("GameEventId", "NpcId");
-
-                    b.HasIndex("NpcId");
-
-                    b.ToTable("GameEventNpcs");
-                });
-
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameEventQuest", b =>
-                {
-                    b.Property<int>("GameEventId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("QuestId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("GameEventId", "QuestId");
-
-                    b.HasIndex("QuestId");
-
-                    b.ToTable("GameEventQuests");
-                });
-
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameEventTimeSlot", b =>
-                {
-                    b.Property<int>("GameEventId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("GameTimeSlotId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("GameEventId", "GameTimeSlotId");
-
-                    b.HasIndex("GameTimeSlotId");
-
-                    b.ToTable("GameEventTimeSlots");
                 });
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameItem", b =>
@@ -1291,93 +1195,6 @@ namespace OvcinaHra.Api.Migrations
                     b.Navigation("Game");
                 });
 
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameEvent", b =>
-                {
-                    b.HasOne("OvcinaHra.Shared.Domain.Entities.Game", "Game")
-                        .WithMany("GameEvents")
-                        .HasForeignKey("GameId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Game");
-                });
-
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameEventLocation", b =>
-                {
-                    b.HasOne("OvcinaHra.Shared.Domain.Entities.GameEvent", "GameEvent")
-                        .WithMany("EventLocations")
-                        .HasForeignKey("GameEventId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("OvcinaHra.Shared.Domain.Entities.Location", "Location")
-                        .WithMany("EventLocations")
-                        .HasForeignKey("LocationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("GameEvent");
-
-                    b.Navigation("Location");
-                });
-
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameEventNpc", b =>
-                {
-                    b.HasOne("OvcinaHra.Shared.Domain.Entities.GameEvent", "GameEvent")
-                        .WithMany("EventNpcs")
-                        .HasForeignKey("GameEventId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("OvcinaHra.Shared.Domain.Entities.Npc", "Npc")
-                        .WithMany("EventNpcs")
-                        .HasForeignKey("NpcId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("GameEvent");
-
-                    b.Navigation("Npc");
-                });
-
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameEventQuest", b =>
-                {
-                    b.HasOne("OvcinaHra.Shared.Domain.Entities.GameEvent", "GameEvent")
-                        .WithMany("EventQuests")
-                        .HasForeignKey("GameEventId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("OvcinaHra.Shared.Domain.Entities.Quest", "Quest")
-                        .WithMany("EventQuests")
-                        .HasForeignKey("QuestId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("GameEvent");
-
-                    b.Navigation("Quest");
-                });
-
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameEventTimeSlot", b =>
-                {
-                    b.HasOne("OvcinaHra.Shared.Domain.Entities.GameEvent", "GameEvent")
-                        .WithMany("EventTimeSlots")
-                        .HasForeignKey("GameEventId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("OvcinaHra.Shared.Domain.Entities.GameTimeSlot", "TimeSlot")
-                        .WithMany("EventTimeSlots")
-                        .HasForeignKey("GameTimeSlotId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("GameEvent");
-
-                    b.Navigation("TimeSlot");
-                });
-
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameItem", b =>
                 {
                     b.HasOne("OvcinaHra.Shared.Domain.Entities.Game", "Game")
@@ -1823,8 +1640,6 @@ namespace OvcinaHra.Api.Migrations
 
                     b.Navigation("GameBuildings");
 
-                    b.Navigation("GameEvents");
-
                     b.Navigation("GameItems");
 
                     b.Navigation("GameLocations");
@@ -1844,22 +1659,6 @@ namespace OvcinaHra.Api.Migrations
                     b.Navigation("TreasureQuests");
                 });
 
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameEvent", b =>
-                {
-                    b.Navigation("EventLocations");
-
-                    b.Navigation("EventNpcs");
-
-                    b.Navigation("EventQuests");
-
-                    b.Navigation("EventTimeSlots");
-                });
-
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameTimeSlot", b =>
-                {
-                    b.Navigation("EventTimeSlots");
-                });
-
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.Item", b =>
                 {
                     b.Navigation("CraftingIngredients");
@@ -1876,8 +1675,6 @@ namespace OvcinaHra.Api.Migrations
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.Location", b =>
                 {
                     b.Navigation("Buildings");
-
-                    b.Navigation("EventLocations");
 
                     b.Navigation("GameLocations");
 
@@ -1903,16 +1700,12 @@ namespace OvcinaHra.Api.Migrations
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.Npc", b =>
                 {
-                    b.Navigation("EventNpcs");
-
                     b.Navigation("GameNpcs");
                 });
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.Quest", b =>
                 {
                     b.Navigation("ChildQuests");
-
-                    b.Navigation("EventQuests");
 
                     b.Navigation("QuestEncounters");
 

@@ -189,12 +189,14 @@ try
     app.MapSecretStashEndpoints().RequireAuthorization();
     app.MapCharacterEndpoints().RequireAuthorization();
     app.MapMonsterEndpoints().RequireAuthorization();
+    app.MapNpcEndpoints().RequireAuthorization();
     app.MapQuestEndpoints().RequireAuthorization();
     app.MapBuildingEndpoints().RequireAuthorization();
     app.MapCraftingEndpoints().RequireAuthorization();
     app.MapTreasureQuestEndpoints().RequireAuthorization();
     app.MapTreasurePlanningEndpoints().RequireAuthorization();
     app.MapTimelineEndpoints().RequireAuthorization();
+    app.MapGameEventEndpoints();
     app.MapSearchEndpoints().RequireAuthorization();
     app.MapImageEndpoints().RequireAuthorization();
     app.MapScanEndpoints();

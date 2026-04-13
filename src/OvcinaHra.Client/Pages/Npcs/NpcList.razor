@@ -1,0 +1,338 @@
+@page "/npcs"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject GameContextService GameContext
+@inject NavigationManager Nav
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">@(Catalog ? "Katalog NPC" : "NPC ve hře")</h1>
+    <div class="d-flex gap-2">
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm @(Catalog ? "btn-outline-primary" : "btn-primary")"
+                    @onclick='() => Nav.NavigateTo("/npcs")'>Jen tato hra</button>
+            <button class="btn btn-sm @(Catalog ? "btn-primary" : "btn-outline-primary")"
+                    @onclick='() => Nav.NavigateTo("/npcs?catalog=true")'>Katalog</button>
+        </div>
+        <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nová NPC</button>
+    </div>
+</div>
+
+@if (loading)
+{
+    <p>Načítám...</p>
+}
+else if (!Catalog && gameNpcs.Count == 0)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-person-badge fs-1 d-block mb-2"></i>
+        <p>Žádné NPC přiřazené k této hře. Otevřete katalog a přidejte NPC.</p>
+        <button class="btn btn-outline-primary" @onclick='() => Nav.NavigateTo("/npcs?catalog=true")'>Otevřít katalog</button>
+    </div>
+}
+else if (Catalog && npcs.Count == 0)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-person-badge fs-1 d-block mb-2"></i>
+        <p>Žádné NPC v katalogu. Vytvořte první NPC.</p>
+    </div>
+}
+else if (Catalog)
+{
+    <OvcinaGrid Data="@npcs" KeyFieldName="Id" LayoutKey="grid-layout-npcs-catalog"
+                RowClick="@(e => OpenModal((NpcListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+        <Columns>
+            <DxGridDataColumn FieldName="Name" Caption="Název" />
+            <DxGridDataColumn FieldName="Role" Caption="Role" Width="150px">
+                <CellDisplayTemplate>@(((NpcRole)context.Value).GetDisplayName())</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="Description" Caption="Popis" />
+            <DxGridDataColumn FieldName="Id" Caption="Hra" Width="130px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{
+                        var npcId = (int)context.Value;
+                        if (assignedNpcIds.Contains(npcId))
+                        {
+                            <button class="btn btn-sm btn-outline-danger" @onclick:stopPropagation="true"
+                                    @onclick="() => UnassignNpcAsync(npcId)">Odebrat</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-sm btn-outline-success" @onclick:stopPropagation="true"
+                                    @onclick="() => OpenAssignPopup(npcId)">Přidat</button>
+                        }
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+        </Columns>
+    </OvcinaGrid>
+}
+else
+{
+    <OvcinaGrid Data="@gameNpcs" KeyFieldName="NpcId" LayoutKey="grid-layout-npcs-game"
+                RowClick="@(e => { var gn = (GameNpcDto)e.Grid.GetDataItem(e.VisibleIndex); var n = npcs.FirstOrDefault(x => x.Id == gn.NpcId); if (n is not null) OpenModal(n); })">
+        <Columns>
+            <DxGridDataColumn FieldName="NpcName" Caption="Název" />
+            <DxGridDataColumn FieldName="Role" Caption="Role" Width="150px">
+                <CellDisplayTemplate>@(((NpcRole)context.Value).GetDisplayName())</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="PlayedByName" Caption="Hraje" Width="180px" />
+            <DxGridDataColumn FieldName="PlayedByEmail" Caption="Email" Width="200px" Visible="false" />
+        </Columns>
+    </OvcinaGrid>
+}
+
+<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="900px">
+    <BodyContentTemplate Context="popupContext">
+        <div class="row g-3">
+            @if (editingId.HasValue)
+            {
+                <div class="col-md-5">
+                    <ImagePicker EntityType="npcs" EntityId="editingId.Value" Alt="Obrázek NPC" CardMode="true" />
+                </div>
+                <div class="col-md-7">
+                    <DxFormLayout>
+                        <DxFormLayoutItem Caption="Název" ColSpanMd="12">
+                            <DxTextBox @bind-Text="@name" />
+                        </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="Role" ColSpanMd="12">
+                            <DxComboBox Data="@roleValues" @bind-Value="@role"
+                                        TextFieldName="Display" ValueFieldName="Value" />
+                        </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="Popis" ColSpanMd="12">
+                            <DxMemo @bind-Text="@description" Rows="3" />
+                        </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="Poznámky" ColSpanMd="12">
+                            <DxMemo @bind-Text="@notes" Rows="3" />
+                        </DxFormLayoutItem>
+                    </DxFormLayout>
+                </div>
+            }
+            else
+            {
+                <div class="col-12">
+                    <DxFormLayout>
+                        <DxFormLayoutItem Caption="Název" ColSpanMd="12">
+                            <DxTextBox @bind-Text="@name" />
+                        </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="Role" ColSpanMd="12">
+                            <DxComboBox Data="@roleValues" @bind-Value="@role"
+                                        TextFieldName="Display" ValueFieldName="Value" />
+                        </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="Popis" ColSpanMd="12">
+                            <DxMemo @bind-Text="@description" Rows="3" />
+                        </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="Poznámky" ColSpanMd="12">
+                            <DxMemo @bind-Text="@notes" Rows="3" />
+                        </DxFormLayoutItem>
+                    </DxFormLayout>
+                </div>
+            }
+        </div>
+
+        @if (error is not null) { <div class="alert alert-danger mt-2">@error</div> }
+
+        <div class="d-flex gap-2 mt-3">
+            @if (editingId.HasValue) { <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true" disabled="@isSaving">Smazat</button> }
+            <div style="flex: 1"></div>
+            <button class="btn btn-secondary" @onclick="() => isModalVisible = false" disabled="@isSaving">Zrušit</button>
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving">Uložit</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Opravdu chcete smazat NPC <strong>@name</strong>?</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+<DxPopup @bind-Visible="@isAssignVisible" HeaderText="Přiřadit NPC ke hře" Width="500px">
+    <BodyContentTemplate Context="popupContext">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Jméno hráče" ColSpanMd="12">
+                <DxTextBox @bind-Text="@assignPlayerName" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Email hráče" ColSpanMd="12">
+                <DxTextBox @bind-Text="@assignPlayerEmail" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="ID osoby" ColSpanMd="12">
+                <DxSpinEdit @bind-Value="@assignPersonId" MinValue="1" />
+                <small class="text-muted">Volitelné — z registrace</small>
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Poznámky" ColSpanMd="12">
+                <DxMemo @bind-Text="@assignNotes" Rows="2" />
+            </DxFormLayoutItem>
+        </DxFormLayout>
+
+        @if (assignError is not null) { <div class="alert alert-danger mt-2">@assignError</div> }
+
+        <div class="d-flex gap-2 mt-3 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isAssignVisible = false">Zrušit</button>
+            <button class="btn btn-primary" @onclick="ConfirmAssignAsync">Přiřadit</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    [SupplyParameterFromQuery]
+    public bool Catalog { get; set; }
+
+    private List<NpcListDto> npcs = [];
+    private List<GameNpcDto> gameNpcs = [];
+    private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
+    private string modalTitle = "", name = "";
+    private string? error, description, notes;
+    private int? editingId;
+    private NpcRole role = NpcRole.Other;
+
+    private static readonly List<EnumItem<NpcRole>> roleValues = Enum.GetValues<NpcRole>()
+        .Select(v => new EnumItem<NpcRole>(v, v.GetDisplayName())).ToList();
+    record EnumItem<T>(T Value, string Display);
+
+    // Catalog assign state
+    private HashSet<int> assignedNpcIds = [];
+
+    // Assign popup state
+    private bool isAssignVisible;
+    private int? assignNpcId;
+    private string? assignPlayerName, assignPlayerEmail, assignNotes;
+    private int? assignPersonId;
+    private string? assignError;
+
+    private bool _previousCatalog;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GameContext.InitializeAsync();
+        _previousCatalog = Catalog;
+        await LoadAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Catalog != _previousCatalog)
+        {
+            _previousCatalog = Catalog;
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+
+        if (Catalog)
+        {
+            npcs = await Api.GetListAsync<NpcListDto>("/api/npcs");
+            if (GameContext.SelectedGameId is int gid)
+            {
+                var gns = await Api.GetListAsync<GameNpcDto>($"/api/npcs/by-game/{gid}");
+                assignedNpcIds = gns.Select(g => g.NpcId).ToHashSet();
+            }
+        }
+        else
+        {
+            if (GameContext.SelectedGameId is int gid)
+                gameNpcs = await Api.GetListAsync<GameNpcDto>($"/api/npcs/by-game/{gid}");
+            else
+                gameNpcs = [];
+        }
+
+        loading = false;
+    }
+
+    private void OpenModal(NpcListDto? n)
+    {
+        error = null;
+        if (n is null)
+        {
+            editingId = null; name = ""; role = NpcRole.Other;
+            description = null; notes = null;
+            modalTitle = "Nová NPC";
+        }
+        else
+        {
+            editingId = n.Id; name = n.Name; role = n.Role;
+            description = n.Description;
+            modalTitle = $"Upravit: {n.Name}";
+            _ = LoadDetailAsync(n.Id);
+        }
+        isModalVisible = true;
+    }
+
+    private async Task LoadDetailAsync(int id)
+    {
+        var d = await Api.GetAsync<NpcDetailDto>($"/api/npcs/{id}");
+        if (d is not null) { notes = d.Notes; }
+        StateHasChanged();
+    }
+
+    private async Task SaveAsync()
+    {
+        error = null; isSaving = true;
+        try
+        {
+            if (editingId.HasValue)
+                await Api.PutAsync($"/api/npcs/{editingId}", new UpdateNpcDto(name, role, description, notes));
+            else
+                await Api.PostAsync<CreateNpcDto, NpcDetailDto>("/api/npcs", new CreateNpcDto(name, role, description, notes));
+            isModalVisible = false;
+            await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        try
+        {
+            await Api.DeleteAsync($"/api/npcs/{editingId}");
+            isDeleteVisible = false; isModalVisible = false;
+            await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    // --- Assign popup ---
+
+    private void OpenAssignPopup(int npcId)
+    {
+        assignNpcId = npcId;
+        assignPlayerName = null; assignPlayerEmail = null; assignNotes = null; assignPersonId = null;
+        assignError = null;
+        isAssignVisible = true;
+    }
+
+    private async Task ConfirmAssignAsync()
+    {
+        if (assignNpcId is null || GameContext.SelectedGameId is null) return;
+        assignError = null;
+        try
+        {
+            await Api.PostAsync<CreateGameNpcDto, GameNpcDto>("/api/npcs/game-npc",
+                new CreateGameNpcDto(GameContext.SelectedGameId.Value, assignNpcId.Value,
+                    assignPersonId, assignPlayerName, assignPlayerEmail, assignNotes));
+            assignedNpcIds.Add(assignNpcId.Value);
+            isAssignVisible = false;
+            StateHasChanged();
+        }
+        catch (Exception ex) { assignError = ex.Message; }
+    }
+
+    private async Task UnassignNpcAsync(int npcId)
+    {
+        if (GameContext.SelectedGameId is null) return;
+        try
+        {
+            await Api.DeleteAsync($"/api/npcs/game-npc/{GameContext.SelectedGameId}/{npcId}");
+            assignedNpcIds.Remove(npcId);
+            StateHasChanged();
+        }
+        catch (Exception ex) { error = ex.Message; StateHasChanged(); }
+    }
+}

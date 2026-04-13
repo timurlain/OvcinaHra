@@ -17,6 +17,8 @@ public class WorldDbContext(DbContextOptions<WorldDbContext> options) : DbContex
     public DbSet<CraftingIngredient> CraftingIngredients => Set<CraftingIngredient>();
     public DbSet<CraftingBuildingRequirement> CraftingBuildingRequirements => Set<CraftingBuildingRequirement>();
     public DbSet<Monster> Monsters => Set<Monster>();
+    public DbSet<Npc> Npcs => Set<Npc>();
+    public DbSet<GameNpc> GameNpcs => Set<GameNpc>();
     public DbSet<MonsterTagLink> MonsterTagLinks => Set<MonsterTagLink>();
     public DbSet<MonsterLoot> MonsterLoots => Set<MonsterLoot>();
     public DbSet<GameMonster> GameMonsters => Set<GameMonster>();
@@ -35,6 +37,11 @@ public class WorldDbContext(DbContextOptions<WorldDbContext> options) : DbContex
     public DbSet<Character> Characters => Set<Character>();
     public DbSet<CharacterAssignment> CharacterAssignments => Set<CharacterAssignment>();
     public DbSet<CharacterEvent> CharacterEvents => Set<CharacterEvent>();
+    public DbSet<GameEvent> GameEvents => Set<GameEvent>();
+    public DbSet<GameEventTimeSlot> GameEventTimeSlots => Set<GameEventTimeSlot>();
+    public DbSet<GameEventLocation> GameEventLocations => Set<GameEventLocation>();
+    public DbSet<GameEventQuest> GameEventQuests => Set<GameEventQuest>();
+    public DbSet<GameEventNpc> GameEventNpcs => Set<GameEventNpc>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

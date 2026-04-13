@@ -24,4 +24,5 @@ public class Quest
     public ICollection<QuestLocationLink> QuestLocations { get; set; } = [];
     public ICollection<QuestEncounter> QuestEncounters { get; set; } = [];
     public ICollection<QuestReward> QuestRewards { get; set; } = [];
+    public ICollection<GameEventQuest> EventQuests { get; set; } = [];
 }
