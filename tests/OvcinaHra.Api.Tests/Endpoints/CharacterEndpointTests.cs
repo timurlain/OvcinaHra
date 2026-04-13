@@ -19,14 +19,15 @@ public class CharacterEndpointTests(PostgresFixture postgres) : IntegrationTestB
     public async Task Create_ValidCharacter_ReturnsCreated()
     {
         var response = await Client.PostAsJsonAsync("/api/characters",
-            new CreateCharacterDto("Gandalf", Race: "Wizard", Class: null, Kingdom: "Gondor"));
+            new CreateCharacterDto("Gandalf", PlayerFirstName: "Ian", PlayerLastName: "McKellen",
+                Race: null, BirthYear: null, Notes: null, IsPlayedCharacter: false));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var created = await response.Content.ReadFromJsonAsync<CharacterDetailDto>();
         Assert.NotNull(created);
         Assert.Equal("Gandalf", created.Name);
-        Assert.Equal("Wizard", created.Race);
-        Assert.Equal("Gondor", created.Kingdom);
+        Assert.Equal("Ian", created.PlayerFirstName);
+        Assert.Equal("McKellen", created.PlayerLastName);
     }
 
     [Fact]
@@ -53,7 +54,7 @@ public class CharacterEndpointTests(PostgresFixture postgres) : IntegrationTestB
         var created = await createResponse.Content.ReadFromJsonAsync<CharacterDetailDto>();
 
         var response = await Client.PutAsJsonAsync($"/api/characters/{created!.Id}",
-            new UpdateCharacterDto("Frodo Baggins", null, null, "Shire", null, null, true, null, null));
+            new UpdateCharacterDto("Frodo Baggins", "Elijah", "Wood", null, null, null, true, null, null));
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
@@ -83,6 +84,8 @@ public class CharacterEndpointTests(PostgresFixture postgres) : IntegrationTestB
         Assert.NotNull(results);
         Assert.Single(results);
         Assert.Equal("Bilbo Baggins", results[0].Name);
+        // PlayerFullName is null when no player name set
+        Assert.Null(results[0].PlayerFullName);
     }
 
     [Fact]

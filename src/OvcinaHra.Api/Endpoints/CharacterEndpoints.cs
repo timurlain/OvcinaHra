@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
+using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Dtos;
 
@@ -19,9 +20,16 @@ public static class CharacterEndpoints
         group.MapDelete("/{id:int}", Delete);
         group.MapGet("/{id:int}/assignments", GetAssignments);
         group.MapPost("/{id:int}/assignments", CreateAssignment);
+        group.MapPut("/assignments/{id:int}", UpdateAssignment);
+        group.MapPost("/import/{gameId:int}", ImportFromRegistrace);
 
         return group;
     }
+
+    private static string? FullName(Character c) =>
+        string.IsNullOrWhiteSpace(c.PlayerFirstName) && string.IsNullOrWhiteSpace(c.PlayerLastName)
+            ? null
+            : $"{c.PlayerFirstName} {c.PlayerLastName}".Trim();
 
     private static async Task<Ok<List<CharacterListDto>>> GetAll(WorldDbContext db, string? search = null)
     {
@@ -32,12 +40,12 @@ public static class CharacterEndpoints
 
         var characters = await query
             .OrderBy(c => c.Name)
-            .Select(c => new CharacterListDto(
-                c.Id, c.Name, c.Race, c.Class,
-                c.Kingdom, c.IsPlayedCharacter, c.ExternalPersonId))
             .ToListAsync();
 
-        return TypedResults.Ok(characters);
+        return TypedResults.Ok(characters
+            .Select(c => new CharacterListDto(
+                c.Id, c.Name, FullName(c), c.Race, c.IsPlayedCharacter, c.ExternalPersonId))
+            .ToList());
     }
 
     private static async Task<Results<Ok<CharacterDetailDto>, NotFound>> GetById(int id, WorldDbContext db)
@@ -49,11 +57,11 @@ public static class CharacterEndpoints
         if (c is null) return TypedResults.NotFound();
 
         return TypedResults.Ok(new CharacterDetailDto(
-            c.Id, c.Name, c.Race, c.Class,
-            c.Kingdom, c.BirthYear, c.Notes,
+            c.Id, c.Name, c.PlayerFirstName, c.PlayerLastName,
+            c.Race, c.BirthYear, c.Notes,
             c.IsPlayedCharacter, c.ExternalPersonId,
             c.ParentCharacterId, c.ParentCharacter?.Name,
-            null, c.CreatedAtUtc, c.UpdatedAtUtc));
+            c.CreatedAtUtc, c.UpdatedAtUtc));
     }
 
     private static async Task<Created<CharacterDetailDto>> Create(CreateCharacterDto dto, WorldDbContext db)
@@ -62,9 +70,9 @@ public static class CharacterEndpoints
         var c = new Character
         {
             Name = dto.Name,
+            PlayerFirstName = dto.PlayerFirstName,
+            PlayerLastName = dto.PlayerLastName,
             Race = dto.Race,
-            Class = dto.Class,
-            Kingdom = dto.Kingdom,
             BirthYear = dto.BirthYear,
             Notes = dto.Notes,
             IsPlayedCharacter = dto.IsPlayedCharacter,
@@ -78,11 +86,11 @@ public static class CharacterEndpoints
 
         return TypedResults.Created($"/api/characters/{c.Id}",
             new CharacterDetailDto(
-                c.Id, c.Name, c.Race, c.Class,
-                c.Kingdom, c.BirthYear, c.Notes,
+                c.Id, c.Name, c.PlayerFirstName, c.PlayerLastName,
+                c.Race, c.BirthYear, c.Notes,
                 c.IsPlayedCharacter, c.ExternalPersonId,
                 c.ParentCharacterId, null,
-                null, c.CreatedAtUtc, c.UpdatedAtUtc));
+                c.CreatedAtUtc, c.UpdatedAtUtc));
     }
 
     private static async Task<Results<NoContent, NotFound>> Update(int id, UpdateCharacterDto dto, WorldDbContext db)
@@ -91,9 +99,9 @@ public static class CharacterEndpoints
         if (c is null) return TypedResults.NotFound();
 
         c.Name = dto.Name;
+        c.PlayerFirstName = dto.PlayerFirstName;
+        c.PlayerLastName = dto.PlayerLastName;
         c.Race = dto.Race;
-        c.Class = dto.Class;
-        c.Kingdom = dto.Kingdom;
         c.BirthYear = dto.BirthYear;
         c.Notes = dto.Notes;
         c.IsPlayedCharacter = dto.IsPlayedCharacter;
@@ -128,6 +136,9 @@ public static class CharacterEndpoints
             CharacterId = id,
             GameId = dto.GameId,
             ExternalPersonId = dto.ExternalPersonId,
+            RegistraceCharacterId = dto.RegistraceCharacterId,
+            Class = dto.Class,
+            Kingdom = dto.Kingdom,
             IsActive = true,
             StartedAtUtc = DateTime.UtcNow
         };
@@ -137,7 +148,8 @@ public static class CharacterEndpoints
         return TypedResults.Created($"/api/characters/{id}/assignments",
             new CharacterAssignmentDto(
                 assignment.Id, assignment.CharacterId, character.Name,
-                assignment.GameId, assignment.ExternalPersonId,
+                assignment.GameId, assignment.ExternalPersonId, assignment.RegistraceCharacterId,
+                assignment.Class, assignment.Kingdom,
                 assignment.IsActive, assignment.StartedAtUtc, assignment.EndedAtUtc));
     }
 
@@ -149,10 +161,34 @@ public static class CharacterEndpoints
             .OrderByDescending(a => a.StartedAtUtc)
             .Select(a => new CharacterAssignmentDto(
                 a.Id, a.CharacterId, a.Character.Name,
-                a.GameId, a.ExternalPersonId,
+                a.GameId, a.ExternalPersonId, a.RegistraceCharacterId,
+                a.Class, a.Kingdom,
                 a.IsActive, a.StartedAtUtc, a.EndedAtUtc))
             .ToListAsync();
 
         return TypedResults.Ok(assignments);
+    }
+
+    private static async Task<Results<NoContent, NotFound>> UpdateAssignment(
+        int id, UpdateCharacterAssignmentDto dto, WorldDbContext db)
+    {
+        var assignment = await db.CharacterAssignments.FindAsync(id);
+        if (assignment is null) return TypedResults.NotFound();
+
+        assignment.Class = dto.Class;
+        assignment.Kingdom = dto.Kingdom;
+        assignment.IsActive = dto.IsActive;
+        if (!dto.IsActive && assignment.EndedAtUtc is null)
+            assignment.EndedAtUtc = DateTime.UtcNow;
+
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
+    }
+
+    private static async Task<Ok<ImportResultDto>> ImportFromRegistrace(
+        int gameId, RegistraceImportService importService)
+    {
+        var result = await importService.ImportAsync(gameId);
+        return TypedResults.Ok(result);
     }
 }

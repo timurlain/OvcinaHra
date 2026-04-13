@@ -1,14 +1,12 @@
-using OvcinaHra.Shared.Domain.Enums;
-
 namespace OvcinaHra.Shared.Domain.Entities;
 
 public class Character
 {
     public int Id { get; set; }
     public required string Name { get; set; }
+    public string? PlayerFirstName { get; set; }
+    public string? PlayerLastName { get; set; }
     public string? Race { get; set; }
-    public PlayerClass? Class { get; set; }
-    public string? Kingdom { get; set; }
     public int? BirthYear { get; set; }
     public string? Notes { get; set; }
     public bool IsPlayedCharacter { get; set; }
