@@ -19,6 +19,8 @@ public static class QuestEndpoints
         group.MapPut("/{id:int}", Update);
         group.MapDelete("/{id:int}", Delete);
         group.MapPost("/{id:int}/copy-to-game/{gameId:int}", CopyToGame);
+        group.MapPut("/{id:int}/game", MoveToGame);
+        group.MapDelete("/{id:int}/game", UnassignFromGame);
 
         // Tags
         group.MapPost("/{id:int}/tags/{tagId:int}", AddTag);
@@ -166,6 +168,26 @@ public static class QuestEndpoints
         var q = await db.Quests.FindAsync(id);
         if (q is null) return TypedResults.NotFound();
         db.Quests.Remove(q);
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
+    }
+
+    // Move a quest to a specific game (assigns or re-assigns)
+    private static async Task<Results<NoContent, NotFound>> MoveToGame(int id, MoveQuestToGameDto dto, WorldDbContext db)
+    {
+        var q = await db.Quests.FindAsync(id);
+        if (q is null) return TypedResults.NotFound();
+        q.GameId = dto.GameId;
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
+    }
+
+    // Unassign a quest from its game (moves to catalog; GameId = null)
+    private static async Task<Results<NoContent, NotFound>> UnassignFromGame(int id, WorldDbContext db)
+    {
+        var q = await db.Quests.FindAsync(id);
+        if (q is null) return TypedResults.NotFound();
+        q.GameId = null;
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
     }
