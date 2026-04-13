@@ -17,6 +17,8 @@ public class WorldDbContext(DbContextOptions<WorldDbContext> options) : DbContex
     public DbSet<CraftingIngredient> CraftingIngredients => Set<CraftingIngredient>();
     public DbSet<CraftingBuildingRequirement> CraftingBuildingRequirements => Set<CraftingBuildingRequirement>();
     public DbSet<Monster> Monsters => Set<Monster>();
+    public DbSet<Npc> Npcs => Set<Npc>();
+    public DbSet<GameNpc> GameNpcs => Set<GameNpc>();
     public DbSet<MonsterTagLink> MonsterTagLinks => Set<MonsterTagLink>();
     public DbSet<MonsterLoot> MonsterLoots => Set<MonsterLoot>();
     public DbSet<GameMonster> GameMonsters => Set<GameMonster>();
