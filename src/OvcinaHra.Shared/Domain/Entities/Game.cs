@@ -30,4 +30,5 @@ public class Game
     public ICollection<GameTimeSlot> TimeSlots { get; set; } = [];
     public ICollection<BattlefieldBonus> BattlefieldBonuses { get; set; } = [];
     public ICollection<GameNpc> GameNpcs { get; set; } = [];
+    public ICollection<GameEvent> GameEvents { get; set; } = [];
 }

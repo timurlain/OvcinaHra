@@ -196,6 +196,7 @@ try
     app.MapTreasureQuestEndpoints().RequireAuthorization();
     app.MapTreasurePlanningEndpoints().RequireAuthorization();
     app.MapTimelineEndpoints().RequireAuthorization();
+    app.MapGameEventEndpoints();
     app.MapSearchEndpoints().RequireAuthorization();
     app.MapImageEndpoints().RequireAuthorization();
     app.MapScanEndpoints();

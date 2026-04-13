@@ -33,4 +33,5 @@ public class Location
     public ICollection<Building> Buildings { get; set; } = [];
     public ICollection<QuestLocationLink> QuestLocations { get; set; } = [];
     public ICollection<TreasureQuest> TreasureQuests { get; set; } = [];
+    public ICollection<GameEventLocation> EventLocations { get; set; } = [];
 }

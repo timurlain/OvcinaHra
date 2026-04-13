@@ -12,4 +12,5 @@ public class GameTimeSlot
 
     public BattlefieldBonus? BattlefieldBonus { get; set; }
     public Game Game { get; set; } = null!;
+    public ICollection<GameEventTimeSlot> EventTimeSlots { get; set; } = [];
 }
