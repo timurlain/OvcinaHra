@@ -8,7 +8,7 @@ namespace OvcinaHra.Api.Endpoints;
 
 public static class ImageEndpoints
 {
-    private static readonly HashSet<string> ValidEntityTypes = ["locations", "items", "monsters", "secretstashes"];
+    private static readonly HashSet<string> ValidEntityTypes = ["locations", "items", "monsters", "secretstashes", "npcs"];
     private static readonly HashSet<string> AllowedContentTypes = ["image/jpeg", "image/png", "image/webp"];
     private const long MaxFileSize = 5 * 1024 * 1024; // 5 MB
 
@@ -125,6 +125,10 @@ public static class ImageEndpoints
                 var stash = await db.SecretStashes.FindAsync(entityId);
                 if (stash is not null) stash.ImagePath = blobKey;
                 break;
+            case "npcs":
+                var npc = await db.Npcs.FindAsync(entityId);
+                if (npc is not null) npc.ImagePath = blobKey;
+                break;
         }
 
         await db.SaveChangesAsync();
@@ -147,6 +151,9 @@ public static class ImageEndpoints
             "secretstashes" => await db.SecretStashes.Where(s => s.Id == entityId)
                 .Select(s => new ValueTuple<string?, string?>(s.ImagePath, null))
                 .FirstOrDefaultAsync(),
+            "npcs" => await db.Npcs.Where(n => n.Id == entityId)
+                .Select(n => new ValueTuple<string?, string?>(n.ImagePath, null))
+                .FirstOrDefaultAsync(),
             _ => (null, null)
         };
     }
@@ -159,6 +166,7 @@ public static class ImageEndpoints
             "items" => await db.Items.AnyAsync(i => i.Id == entityId),
             "monsters" => await db.Monsters.AnyAsync(m => m.Id == entityId),
             "secretstashes" => await db.SecretStashes.AnyAsync(s => s.Id == entityId),
+            "npcs" => await db.Npcs.AnyAsync(n => n.Id == entityId),
             _ => false
         };
     }
