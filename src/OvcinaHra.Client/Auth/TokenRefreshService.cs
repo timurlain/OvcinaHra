@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Timers;
@@ -106,9 +107,16 @@ public class TokenRefreshService : IDisposable
                     }
                 }
 
-                // Refresh token rejected — clear it so we don't keep retrying.
-                await ClearStoredRefreshTokenAsync();
-                await _authProvider.ClearTokenAsync();
+                if (IsExplicitAuthFailure(response.StatusCode))
+                {
+                    // Refresh token definitively rejected — clear it so we don't keep retrying.
+                    await ClearStoredRefreshTokenAsync();
+                    await _authProvider.ClearTokenAsync();
+                    return;
+                }
+
+                // Transient (5xx, 408, 429, or null body on 2xx) — keep the tokens, retry shortly.
+                ScheduleRetryAfterError();
                 return;
             }
 
@@ -126,13 +134,23 @@ public class TokenRefreshService : IDisposable
         }
         catch
         {
-            // Network error — retry in 30 seconds.
-            _timer?.Dispose();
-            _timer = new Timer(30_000);
-            _timer.Elapsed += async (_, _) => await RefreshAsync();
-            _timer.AutoReset = false;
-            _timer.Start();
+            // Network error — retry shortly.
+            ScheduleRetryAfterError();
         }
+    }
+
+    private static bool IsExplicitAuthFailure(HttpStatusCode status) =>
+        status == HttpStatusCode.BadRequest
+        || status == HttpStatusCode.Unauthorized
+        || status == HttpStatusCode.Forbidden;
+
+    private void ScheduleRetryAfterError()
+    {
+        _timer?.Dispose();
+        _timer = new Timer(30_000);
+        _timer.Elapsed += async (_, _) => await RefreshAsync();
+        _timer.AutoReset = false;
+        _timer.Start();
     }
 
     public void Stop()
