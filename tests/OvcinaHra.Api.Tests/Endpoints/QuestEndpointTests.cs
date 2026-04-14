@@ -71,6 +71,55 @@ public class QuestEndpointTests(PostgresFixture postgres) : IntegrationTestBase(
     }
 
     [Fact]
+    public async Task GetAll_CatalogQuest_ReturnsRewardSummaryWithAllParts()
+    {
+        // Create two items — alphabetical order matters for the summary.
+        var lektvarResponse = await Client.PostAsJsonAsync("/api/items",
+            new CreateItemDto("Lektvar", ItemType.Potion));
+        var lektvar = (await lektvarResponse.Content.ReadFromJsonAsync<ItemDetailDto>())!;
+
+        var mecResponse = await Client.PostAsJsonAsync("/api/items",
+            new CreateItemDto("Meč", ItemType.Weapon));
+        var mec = (await mecResponse.Content.ReadFromJsonAsync<ItemDetailDto>())!;
+
+        // Catalog quest (GameId = null) with XP, money, notes, and two items.
+        var createResponse = await Client.PostAsJsonAsync("/api/quests",
+            new CreateQuestDto(
+                "Test Quest", QuestType.General, GameId: null,
+                Description: "Pro organizátora", FullText: "Pro hráče",
+                RewardXp: 50, RewardMoney: 20, RewardNotes: "tajemství"));
+        var created = (await createResponse.Content.ReadFromJsonAsync<QuestListDto>())!;
+
+        await Client.PostAsJsonAsync($"/api/quests/{created.Id}/rewards",
+            new AddQuestRewardDto(lektvar.Id, Quantity: 5));
+        await Client.PostAsJsonAsync($"/api/quests/{created.Id}/rewards",
+            new AddQuestRewardDto(mec.Id, Quantity: 1));
+
+        // Catalog endpoint should return a single combined string.
+        var catalog = await Client.GetFromJsonAsync<List<QuestCatalogDto>>("/api/quests/all");
+        Assert.NotNull(catalog);
+        var quest = catalog.Single(q => q.Id == created.Id);
+
+        Assert.Equal("Pro organizátora", quest.Description);
+        Assert.Equal("Pro hráče", quest.FullText);
+        Assert.Equal("50 XP · 20 gr · Lektvar × 5 · Meč · pozn.: tajemství", quest.RewardSummary);
+    }
+
+    [Fact]
+    public async Task GetAll_CatalogQuestWithNoRewards_ReturnsNullSummary()
+    {
+        var createResponse = await Client.PostAsJsonAsync("/api/quests",
+            new CreateQuestDto("Bez odměn", QuestType.General, GameId: null));
+        var created = (await createResponse.Content.ReadFromJsonAsync<QuestListDto>())!;
+
+        var catalog = await Client.GetFromJsonAsync<List<QuestCatalogDto>>("/api/quests/all");
+        Assert.NotNull(catalog);
+        var quest = catalog.Single(q => q.Id == created.Id);
+
+        Assert.Null(quest.RewardSummary);
+    }
+
+    [Fact]
     public async Task Update_ExistingQuest_ReturnsNoContent()
     {
         var gameResponse = await Client.PostAsJsonAsync("/api/games",

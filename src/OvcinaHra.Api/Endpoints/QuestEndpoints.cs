@@ -43,34 +43,52 @@ public static class QuestEndpoints
 
     private static async Task<Ok<List<QuestCatalogDto>>> GetAll(WorldDbContext db)
     {
-        var quests = await db.Quests
-            .Where(q => q.GameId == null)
-            .Include(q => q.QuestRewards).ThenInclude(qr => qr.Item)
-            .OrderBy(q => q.Name)
+        // Project to a lightweight shape in EF so we don't pull full Quest + Item entities.
+        var rows = await db.Quests
             .AsNoTracking()
+            .Where(q => q.GameId == null)
+            .OrderBy(q => q.Name)
+            .Select(q => new
+            {
+                q.Id,
+                q.Name,
+                q.QuestType,
+                q.Description,
+                q.FullText,
+                q.RewardXp,
+                q.RewardMoney,
+                q.RewardNotes,
+                Rewards = q.QuestRewards
+                    .OrderBy(r => r.Item.Name)
+                    .Select(r => new { ItemName = r.Item.Name, r.Quantity })
+                    .ToList()
+            })
             .ToListAsync();
 
-        var dtos = quests.Select(q => new QuestCatalogDto(
-            q.Id, q.Name, q.QuestType,
+        var dtos = rows.Select(r => new QuestCatalogDto(
+            r.Id, r.Name, r.QuestType,
             null, null, null,
-            q.Description, q.FullText,
-            BuildRewardSummary(q))).ToList();
+            r.Description, r.FullText,
+            BuildRewardSummary(r.RewardXp, r.RewardMoney, r.RewardNotes,
+                r.Rewards.Select(x => (x.ItemName, x.Quantity))))).ToList();
 
         return TypedResults.Ok(dtos);
     }
 
-    private static string? BuildRewardSummary(Quest q)
+    internal static string? BuildRewardSummary(
+        int? rewardXp, int? rewardMoney, string? rewardNotes,
+        IEnumerable<(string ItemName, int Quantity)> items)
     {
         var parts = new List<string>();
 
-        if (q.RewardXp is int xp && xp > 0) parts.Add($"{xp} XP");
-        if (q.RewardMoney is int money && money > 0) parts.Add($"{money} gr");
+        if (rewardXp is int xp && xp > 0) parts.Add($"{xp} XP");
+        if (rewardMoney is int money && money > 0) parts.Add($"{money} gr");
 
-        foreach (var r in q.QuestRewards.OrderBy(r => r.Item.Name))
-            parts.Add(r.Quantity > 1 ? $"{r.Item.Name} × {r.Quantity}" : r.Item.Name);
+        foreach (var (itemName, quantity) in items)
+            parts.Add(quantity > 1 ? $"{itemName} × {quantity}" : itemName);
 
-        if (!string.IsNullOrWhiteSpace(q.RewardNotes))
-            parts.Add($"pozn.: {q.RewardNotes}");
+        if (!string.IsNullOrWhiteSpace(rewardNotes))
+            parts.Add($"pozn.: {rewardNotes}");
 
         return parts.Count > 0 ? string.Join(" · ", parts) : null;
     }
