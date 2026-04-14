@@ -43,12 +43,54 @@ public static class QuestEndpoints
 
     private static async Task<Ok<List<QuestCatalogDto>>> GetAll(WorldDbContext db)
     {
-        var quests = await db.Quests
+        // Project to a lightweight shape in EF so we don't pull full Quest + Item entities.
+        var rows = await db.Quests
+            .AsNoTracking()
             .Where(q => q.GameId == null)
             .OrderBy(q => q.Name)
-            .Select(q => new QuestCatalogDto(q.Id, q.Name, q.QuestType, null, null, null))
+            .Select(q => new
+            {
+                q.Id,
+                q.Name,
+                q.QuestType,
+                q.Description,
+                q.FullText,
+                q.RewardXp,
+                q.RewardMoney,
+                q.RewardNotes,
+                Rewards = q.QuestRewards
+                    .OrderBy(r => r.Item.Name)
+                    .Select(r => new { ItemName = r.Item.Name, r.Quantity })
+                    .ToList()
+            })
             .ToListAsync();
-        return TypedResults.Ok(quests);
+
+        var dtos = rows.Select(r => new QuestCatalogDto(
+            r.Id, r.Name, r.QuestType,
+            null, null, null,
+            r.Description, r.FullText,
+            BuildRewardSummary(r.RewardXp, r.RewardMoney, r.RewardNotes,
+                r.Rewards.Select(x => (x.ItemName, x.Quantity))))).ToList();
+
+        return TypedResults.Ok(dtos);
+    }
+
+    internal static string? BuildRewardSummary(
+        int? rewardXp, int? rewardMoney, string? rewardNotes,
+        IEnumerable<(string ItemName, int Quantity)> items)
+    {
+        var parts = new List<string>();
+
+        if (rewardXp is int xp && xp > 0) parts.Add($"{xp} XP");
+        if (rewardMoney is int money && money > 0) parts.Add($"{money} gr");
+
+        foreach (var (itemName, quantity) in items)
+            parts.Add(quantity > 1 ? $"{itemName} × {quantity}" : itemName);
+
+        if (!string.IsNullOrWhiteSpace(rewardNotes))
+            parts.Add($"pozn.: {rewardNotes}");
+
+        return parts.Count > 0 ? string.Join(" · ", parts) : null;
     }
 
     private static async Task<Results<Created<QuestCopyResultDto>, NotFound>> CopyToGame(int id, int gameId, WorldDbContext db)
