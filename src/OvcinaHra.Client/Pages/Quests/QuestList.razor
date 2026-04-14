@@ -19,12 +19,24 @@
 @if (loading) { <p>Načítám...</p> }
 else if (Catalog)
 {
-    <OvcinaGrid Data="@catalogQuests" KeyFieldName="Id" LayoutKey="grid-layout-quests-catalog"
+    <OvcinaGrid Data="@catalogQuests" KeyFieldName="Id" LayoutKey="grid-layout-quests-catalog-v2"
                 RowClick="@(e => OpenModalFromCatalog((QuestCatalogDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
-            <DxGridDataColumn FieldName="Name" Caption="Název" />
-            <DxGridDataColumn FieldName="QuestType" Caption="Typ" Width="140px">
+            <DxGridDataColumn FieldName="Name" Caption="Název" Width="220px" />
+            <DxGridDataColumn FieldName="QuestType" Caption="Typ" Width="130px">
                 <CellDisplayTemplate>@(((QuestType)context.Value).GetDisplayName())</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="FullText" Caption="Herní text" />
+            <DxGridDataColumn FieldName="Description" Caption="Organizátor" />
+            <DxGridDataColumn FieldName="RewardSummary" Caption="Odměny" Width="220px" />
+            <DxGridDataColumn FieldName="Id" Caption="Hra" Width="110px" AllowSort="false" AllowGroup="false" AllowFilter="false">
+                <CellDisplayTemplate>
+                    @{
+                        var q = (QuestCatalogDto)context.DataItem;
+                    }
+                    <button class="btn btn-sm btn-outline-success" @onclick:stopPropagation="true"
+                            @onclick="() => OpenCopyPopup(q)">Přidat</button>
+                </CellDisplayTemplate>
             </DxGridDataColumn>
         </Columns>
     </OvcinaGrid>

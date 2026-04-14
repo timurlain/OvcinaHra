@@ -45,10 +45,34 @@ public static class QuestEndpoints
     {
         var quests = await db.Quests
             .Where(q => q.GameId == null)
+            .Include(q => q.QuestRewards).ThenInclude(qr => qr.Item)
             .OrderBy(q => q.Name)
-            .Select(q => new QuestCatalogDto(q.Id, q.Name, q.QuestType, null, null, null))
+            .AsNoTracking()
             .ToListAsync();
-        return TypedResults.Ok(quests);
+
+        var dtos = quests.Select(q => new QuestCatalogDto(
+            q.Id, q.Name, q.QuestType,
+            null, null, null,
+            q.Description, q.FullText,
+            BuildRewardSummary(q))).ToList();
+
+        return TypedResults.Ok(dtos);
+    }
+
+    private static string? BuildRewardSummary(Quest q)
+    {
+        var parts = new List<string>();
+
+        if (q.RewardXp is int xp && xp > 0) parts.Add($"{xp} XP");
+        if (q.RewardMoney is int money && money > 0) parts.Add($"{money} gr");
+
+        foreach (var r in q.QuestRewards.OrderBy(r => r.Item.Name))
+            parts.Add(r.Quantity > 1 ? $"{r.Item.Name} × {r.Quantity}" : r.Item.Name);
+
+        if (!string.IsNullOrWhiteSpace(q.RewardNotes))
+            parts.Add($"pozn.: {q.RewardNotes}");
+
+        return parts.Count > 0 ? string.Join(" · ", parts) : null;
     }
 
     private static async Task<Results<Created<QuestCopyResultDto>, NotFound>> CopyToGame(int id, int gameId, WorldDbContext db)
