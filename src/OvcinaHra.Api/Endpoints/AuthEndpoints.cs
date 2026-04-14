@@ -154,7 +154,11 @@ public static class AuthEndpoints
                 if (tokenData?.AccessToken is null)
                     return Results.Unauthorized();
 
-                return Results.Ok(new TokenResponse(tokenData.AccessToken, DateTime.UtcNow.AddSeconds(tokenData.ExpiresIn), tokenData.ExpiresIn));
+                return Results.Ok(new OidcExchangeResponse(
+                    tokenData.AccessToken,
+                    DateTime.UtcNow.AddSeconds(tokenData.ExpiresIn),
+                    tokenData.ExpiresIn,
+                    tokenData.RefreshToken));
             }).AllowAnonymous();
         }
 
