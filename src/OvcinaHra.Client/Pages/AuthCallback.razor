@@ -77,10 +77,14 @@
 
             if (response.IsSuccessStatusCode)
             {
-                var token = await response.Content.ReadFromJsonAsync<OvcinaHra.Client.Auth.TokenResponse>();
+                var token = await response.Content.ReadFromJsonAsync<OvcinaHra.Client.Auth.OidcExchangeResponse>();
 
                 if (token?.Token is not null)
                 {
+                    if (!string.IsNullOrEmpty(token.RefreshToken))
+                        await JS.InvokeVoidAsync("localStorage.setItem",
+                            OvcinaHra.Client.Auth.TokenRefreshService.RefreshTokenKey, token.RefreshToken);
+
                     await AuthProvider.SetTokenAsync(token.Token);
                     RefreshService.ScheduleRefresh(token.ExpiresInSeconds);
                     Nav.NavigateTo("/");
