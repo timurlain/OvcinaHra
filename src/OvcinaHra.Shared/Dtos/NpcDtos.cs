@@ -3,15 +3,24 @@ using OvcinaHra.Shared.Domain.Enums;
 namespace OvcinaHra.Shared.Dtos;
 
 // Catalog
-public record NpcListDto(int Id, string Name, NpcRole Role, string? Description);
+public record NpcListDto(
+    int Id, string Name, NpcRole Role, string? Description,
+    int? BirthYear, int? DeathYear);
 
 public record NpcDetailDto(
     int Id, string Name, NpcRole Role,
-    string? Description, string? Notes, string? ImagePath);
+    string? Description, string? Notes, string? ImagePath,
+    int? BirthYear, int? DeathYear);
 
-public record CreateNpcDto(string Name, NpcRole Role, string? Description = null, string? Notes = null);
+public record CreateNpcDto(
+    string Name, NpcRole Role,
+    string? Description = null, string? Notes = null,
+    int? BirthYear = null, int? DeathYear = null);
 
-public record UpdateNpcDto(string Name, NpcRole Role, string? Description, string? Notes);
+public record UpdateNpcDto(
+    string Name, NpcRole Role,
+    string? Description, string? Notes,
+    int? BirthYear = null, int? DeathYear = null);
 
 // Per-game assignment
 public record GameNpcDto(
@@ -26,3 +35,13 @@ public record CreateGameNpcDto(
 
 public record UpdateGameNpcDto(
     int? PlayedByPersonId, string? PlayedByName, string? PlayedByEmail, string? Notes);
+
+// Adults from registrace — eligible to play NPCs.
+// Roles is nullable because the upstream service may omit or null it.
+public record RegistraceAdultDto(
+    int PersonId,
+    string FirstName,
+    string LastName,
+    int? BirthYear,
+    string? Email,
+    List<string>? Roles);

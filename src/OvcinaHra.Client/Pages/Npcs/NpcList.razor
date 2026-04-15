@@ -38,7 +38,13 @@ else if (Catalog && npcs.Count == 0)
 }
 else if (Catalog)
 {
-    <OvcinaGrid Data="@npcs" KeyFieldName="Id" LayoutKey="grid-layout-npcs-catalog"
+    <div class="mb-2" style="max-width: 260px;">
+        <DxComboBox Data="@roleFilterValues" @bind-Value="@roleFilter"
+                    TextFieldName="Display" ValueFieldName="Value"
+                    NullText="Všechny role"
+                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+    </div>
+    <OvcinaGrid Data="@filteredCatalog" KeyFieldName="Id" LayoutKey="grid-layout-npcs-catalog"
                 RowClick="@(e => OpenModal((NpcListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             <DxGridDataColumn FieldName="Name" Caption="Název" />
@@ -46,6 +52,21 @@ else if (Catalog)
                 <CellDisplayTemplate>@(((NpcRole)context.Value).GetDisplayName())</CellDisplayTemplate>
             </DxGridDataColumn>
             <DxGridDataColumn FieldName="Description" Caption="Popis" />
+            <DxGridDataColumn FieldName="BirthYear" Caption="Narozen" Width="100px" Visible="false" />
+            <DxGridDataColumn FieldName="DeathYear" Caption="Stav" Width="130px">
+                <CellDisplayTemplate>
+                    @{
+                        if (context.Value is int y)
+                        {
+                            <span class="text-danger">† @y</span>
+                        }
+                        else
+                        {
+                            <span class="text-success">aktivní</span>
+                        }
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
             <DxGridDataColumn FieldName="Id" Caption="Hra" Width="130px" AllowSort="false" AllowGroup="false">
                 <CellDisplayTemplate>
                     @{
@@ -98,6 +119,12 @@ else
                             <DxComboBox Data="@roleValues" @bind-Value="@role"
                                         TextFieldName="Display" ValueFieldName="Value" />
                         </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="Rok narození" ColSpanMd="6">
+                            <DxSpinEdit @bind-Value="@birthYear" NullText="—" ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                        </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="Rok úmrtí" ColSpanMd="6">
+                            <DxSpinEdit @bind-Value="@deathYear" NullText="(žije)" ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                        </DxFormLayoutItem>
                         <DxFormLayoutItem Caption="Popis" ColSpanMd="12">
                             <DxMemo @bind-Text="@description" Rows="3" />
                         </DxFormLayoutItem>
@@ -117,6 +144,12 @@ else
                         <DxFormLayoutItem Caption="Role" ColSpanMd="12">
                             <DxComboBox Data="@roleValues" @bind-Value="@role"
                                         TextFieldName="Display" ValueFieldName="Value" />
+                        </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="Rok narození" ColSpanMd="6">
+                            <DxSpinEdit @bind-Value="@birthYear" NullText="—" ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                        </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="Rok úmrtí" ColSpanMd="6">
+                            <DxSpinEdit @bind-Value="@deathYear" NullText="(žije)" ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
                         </DxFormLayoutItem>
                         <DxFormLayoutItem Caption="Popis" ColSpanMd="12">
                             <DxMemo @bind-Text="@description" Rows="3" />
@@ -150,29 +183,40 @@ else
     </BodyContentTemplate>
 </DxPopup>
 
-<DxPopup @bind-Visible="@isAssignVisible" HeaderText="Přiřadit NPC ke hře" Width="500px">
+<DxPopup @bind-Visible="@isAssignVisible" HeaderText="Přiřadit NPC ke hře" Width="550px">
     <BodyContentTemplate Context="popupContext">
-        <DxFormLayout>
-            <DxFormLayoutItem Caption="Jméno hráče" ColSpanMd="12">
-                <DxTextBox @bind-Text="@assignPlayerName" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Email hráče" ColSpanMd="12">
-                <DxTextBox @bind-Text="@assignPlayerEmail" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="ID osoby" ColSpanMd="12">
-                <DxSpinEdit @bind-Value="@assignPersonId" MinValue="1" />
-                <small class="text-muted">Volitelné — z registrace</small>
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Poznámky" ColSpanMd="12">
-                <DxMemo @bind-Text="@assignNotes" Rows="2" />
-            </DxFormLayoutItem>
-        </DxFormLayout>
+        @if (isLoadingAdults)
+        {
+            <p class="text-muted">Načítám hráče z registrace…</p>
+        }
+        else if (availableAdults.Count == 0 && adultsLoadError is null)
+        {
+            <div class="alert alert-warning">
+                Pro tuto hru nejsou v registraci žádní dospělí hráči.
+            </div>
+        }
+        else
+        {
+            <DxFormLayout>
+                <DxFormLayoutItem Caption="Hráč" ColSpanMd="12">
+                    <DxComboBox Data="@availableAdults" @bind-Value="@selectedAdultPersonId"
+                                TextFieldName="Display" ValueFieldName="PersonId"
+                                NullText="(vyberte dospělého hráče)"
+                                SearchMode="ListSearchMode.AutoSearch" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Poznámky" ColSpanMd="12">
+                    <DxMemo @bind-Text="@assignNotes" Rows="2" />
+                </DxFormLayoutItem>
+            </DxFormLayout>
+        }
 
+        @if (adultsLoadError is not null) { <div class="alert alert-danger mt-2">@adultsLoadError</div> }
         @if (assignError is not null) { <div class="alert alert-danger mt-2">@assignError</div> }
 
         <div class="d-flex gap-2 mt-3 justify-content-end">
             <button class="btn btn-secondary" @onclick="() => isAssignVisible = false">Zrušit</button>
-            <button class="btn btn-primary" @onclick="ConfirmAssignAsync">Přiřadit</button>
+            <button class="btn btn-primary" @onclick="ConfirmAssignAsync"
+                    disabled="@(selectedAdultPersonId is null || isLoadingAdults)">Přiřadit</button>
         </div>
     </BodyContentTemplate>
 </DxPopup>
@@ -187,10 +231,20 @@ else
     private string modalTitle = "", name = "";
     private string? error, description, notes;
     private int? editingId;
+    private int? birthYear, deathYear;
     private NpcRole role = NpcRole.Other;
 
     private static readonly List<EnumItem<NpcRole>> roleValues = Enum.GetValues<NpcRole>()
         .Select(v => new EnumItem<NpcRole>(v, v.GetDisplayName())).ToList();
+
+    // Role filter for the catalog grid — nullable so "Všechny role" is selectable.
+    private static readonly List<EnumItem<NpcRole?>> roleFilterValues = Enum.GetValues<NpcRole>()
+        .Select(v => new EnumItem<NpcRole?>(v, v.GetDisplayName())).ToList();
+    private NpcRole? roleFilter;
+    private List<NpcListDto> filteredCatalog => roleFilter is null
+        ? npcs
+        : npcs.Where(n => n.Role == roleFilter).ToList();
+
     record EnumItem<T>(T Value, string Display);
 
     // Catalog assign state
@@ -199,9 +253,16 @@ else
     // Assign popup state
     private bool isAssignVisible;
     private int? assignNpcId;
-    private string? assignPlayerName, assignPlayerEmail, assignNotes;
-    private int? assignPersonId;
+    private string? assignNotes;
     private string? assignError;
+
+    // Adult picker state — loaded from /api/npcs/available-players/{gameId}.
+    private bool isLoadingAdults;
+    private string? adultsLoadError;
+    private List<AdultPickerItem> availableAdults = [];
+    private int? selectedAdultPersonId;
+
+    private record AdultPickerItem(int PersonId, string FirstName, string LastName, string? Email, string Display);
 
     private bool _previousCatalog;
 
@@ -252,12 +313,14 @@ else
         {
             editingId = null; name = ""; role = NpcRole.Other;
             description = null; notes = null;
+            birthYear = null; deathYear = null;
             modalTitle = "Nová NPC";
         }
         else
         {
             editingId = n.Id; name = n.Name; role = n.Role;
             description = n.Description;
+            birthYear = n.BirthYear; deathYear = n.DeathYear;
             modalTitle = $"Upravit: {n.Name}";
             _ = LoadDetailAsync(n.Id);
         }
@@ -277,9 +340,9 @@ else
         try
         {
             if (editingId.HasValue)
-                await Api.PutAsync($"/api/npcs/{editingId}", new UpdateNpcDto(name, role, description, notes));
+                await Api.PutAsync($"/api/npcs/{editingId}", new UpdateNpcDto(name, role, description, notes, birthYear, deathYear));
             else
-                await Api.PostAsync<CreateNpcDto, NpcDetailDto>("/api/npcs", new CreateNpcDto(name, role, description, notes));
+                await Api.PostAsync<CreateNpcDto, NpcDetailDto>("/api/npcs", new CreateNpcDto(name, role, description, notes, birthYear, deathYear));
             isModalVisible = false;
             await LoadAsync();
         }
@@ -303,21 +366,76 @@ else
     private void OpenAssignPopup(int npcId)
     {
         assignNpcId = npcId;
-        assignPlayerName = null; assignPlayerEmail = null; assignNotes = null; assignPersonId = null;
+        assignNotes = null;
+        selectedAdultPersonId = null;
         assignError = null;
+        adultsLoadError = null;
         isAssignVisible = true;
+        _ = LoadAvailableAdultsAsync();
+    }
+
+    private async Task LoadAvailableAdultsAsync()
+    {
+        if (GameContext.SelectedGameId is not int gid)
+        {
+            availableAdults = [];
+            adultsLoadError = "Není vybrána žádná hra. Vyberte hru v horní liště.";
+            StateHasChanged();
+            return;
+        }
+
+        isLoadingAdults = true;
+        adultsLoadError = null;
+        StateHasChanged();
+
+        try
+        {
+            var adults = await Api.GetListAsync<RegistraceAdultDto>($"/api/npcs/available-players/{gid}");
+            availableAdults = adults
+                .OrderBy(a => a.LastName).ThenBy(a => a.FirstName)
+                .Select(a => new AdultPickerItem(
+                    a.PersonId, a.FirstName, a.LastName, a.Email,
+                    BuildAdultDisplay(a)))
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            availableAdults = [];
+            adultsLoadError = $"Nepodařilo se načíst hráče z registrace: {ex.Message}";
+        }
+        finally
+        {
+            isLoadingAdults = false;
+            StateHasChanged();
+        }
+    }
+
+    private static string BuildAdultDisplay(RegistraceAdultDto a)
+    {
+        var name = $"{a.FirstName} {a.LastName}".Trim();
+        return a.Roles is { Count: > 0 } ? $"{name} — {string.Join(", ", a.Roles)}" : name;
     }
 
     private async Task ConfirmAssignAsync()
     {
-        if (assignNpcId is null || GameContext.SelectedGameId is null) return;
+        if (assignNpcId is null || GameContext.SelectedGameId is null || selectedAdultPersonId is null) return;
         assignError = null;
+
+        var adult = availableAdults.FirstOrDefault(a => a.PersonId == selectedAdultPersonId.Value);
+        if (adult is null)
+        {
+            assignError = "Vybraný hráč nebyl nalezen.";
+            return;
+        }
+
         try
         {
+            var playerName = $"{adult.FirstName} {adult.LastName}".Trim();
             await Api.PostAsync<CreateGameNpcDto, GameNpcDto>("/api/npcs/game-npc",
                 new CreateGameNpcDto(GameContext.SelectedGameId.Value, assignNpcId.Value,
-                    assignPersonId, assignPlayerName, assignPlayerEmail, assignNotes));
+                    adult.PersonId, playerName, adult.Email, assignNotes));
             assignedNpcIds.Add(assignNpcId.Value);
+            await LoadAsync();
             isAssignVisible = false;
             StateHasChanged();
         }
