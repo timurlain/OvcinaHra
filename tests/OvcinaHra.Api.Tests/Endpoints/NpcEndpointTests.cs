@@ -69,6 +69,44 @@ public class NpcEndpointTests(PostgresFixture postgres) : IntegrationTestBase(po
     }
 
     [Fact]
+    public async Task Create_WithBirthAndDeathYears_PersistsYears()
+    {
+        var response = await Client.PostAsJsonAsync("/api/npcs",
+            new CreateNpcDto("Boromir", NpcRole.Story, "Syn Denethora",
+                BirthYear: 2978, DeathYear: 3019));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<NpcDetailDto>();
+        Assert.NotNull(created);
+        Assert.Equal(2978, created.BirthYear);
+        Assert.Equal(3019, created.DeathYear);
+
+        var fetched = await Client.GetFromJsonAsync<NpcDetailDto>($"/api/npcs/{created.Id}");
+        Assert.NotNull(fetched);
+        Assert.Equal(2978, fetched.BirthYear);
+        Assert.Equal(3019, fetched.DeathYear);
+    }
+
+    [Fact]
+    public async Task Update_ChangesDeathYear_PersistsChange()
+    {
+        var createResponse = await Client.PostAsJsonAsync("/api/npcs",
+            new CreateNpcDto("Théoden", NpcRole.King, "Král Rohanu", BirthYear: 2948));
+        var created = (await createResponse.Content.ReadFromJsonAsync<NpcDetailDto>())!;
+        Assert.Null(created.DeathYear);
+
+        var updateResponse = await Client.PutAsJsonAsync($"/api/npcs/{created.Id}",
+            new UpdateNpcDto("Théoden", NpcRole.King, "Král Rohanu", null,
+                BirthYear: 2948, DeathYear: 3019));
+        Assert.Equal(HttpStatusCode.NoContent, updateResponse.StatusCode);
+
+        var fetched = await Client.GetFromJsonAsync<NpcDetailDto>($"/api/npcs/{created.Id}");
+        Assert.NotNull(fetched);
+        Assert.Equal(2948, fetched.BirthYear);
+        Assert.Equal(3019, fetched.DeathYear);
+    }
+
+    [Fact]
     public async Task Delete_SoftDeletes_ReturnsNoContent()
     {
         var createResponse = await Client.PostAsJsonAsync("/api/npcs",

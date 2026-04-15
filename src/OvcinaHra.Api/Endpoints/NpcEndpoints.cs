@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
+using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Dtos;
 
@@ -24,7 +25,26 @@ public static class NpcEndpoints
         group.MapPut("/game-npc/{gameId:int}/{npcId:int}", UpdateGameNpc);
         group.MapDelete("/game-npc/{gameId:int}/{npcId:int}", DeleteGameNpc);
 
+        // Eligible players (adults from registrace) for the NPC picker.
+        group.MapGet("/available-players/{gameId:int}", GetAvailablePlayers);
+
         return group;
+    }
+
+    private static async Task<Results<Ok<List<RegistraceAdultDto>>, ProblemHttpResult>> GetAvailablePlayers(
+        int gameId, RegistraceImportService registrace)
+    {
+        try
+        {
+            var adults = await registrace.FetchAdultsAsync(gameId);
+            return TypedResults.Ok(adults);
+        }
+        catch (HttpRequestException ex)
+        {
+            return TypedResults.Problem(
+                detail: $"Registrace unreachable: {ex.Message}",
+                statusCode: StatusCodes.Status502BadGateway);
+        }
     }
 
     private static async Task<Ok<List<NpcListDto>>> GetAll(WorldDbContext db)
@@ -32,7 +52,7 @@ public static class NpcEndpoints
         var npcs = await db.Npcs
             .Where(n => !n.IsDeleted)
             .OrderBy(n => n.Name)
-            .Select(n => new NpcListDto(n.Id, n.Name, n.Role, n.Description))
+            .Select(n => new NpcListDto(n.Id, n.Name, n.Role, n.Description, n.BirthYear, n.DeathYear))
             .ToListAsync();
         return TypedResults.Ok(npcs);
     }
@@ -43,7 +63,7 @@ public static class NpcEndpoints
         if (n is null) return TypedResults.NotFound();
 
         return TypedResults.Ok(new NpcDetailDto(
-            n.Id, n.Name, n.Role, n.Description, n.Notes, n.ImagePath));
+            n.Id, n.Name, n.Role, n.Description, n.Notes, n.ImagePath, n.BirthYear, n.DeathYear));
     }
 
     private static async Task<Created<NpcDetailDto>> Create(CreateNpcDto dto, WorldDbContext db)
@@ -53,13 +73,15 @@ public static class NpcEndpoints
             Name = dto.Name,
             Role = dto.Role,
             Description = dto.Description,
-            Notes = dto.Notes
+            Notes = dto.Notes,
+            BirthYear = dto.BirthYear,
+            DeathYear = dto.DeathYear
         };
         db.Npcs.Add(n);
         await db.SaveChangesAsync();
 
         return TypedResults.Created($"/api/npcs/{n.Id}",
-            new NpcDetailDto(n.Id, n.Name, n.Role, n.Description, n.Notes, n.ImagePath));
+            new NpcDetailDto(n.Id, n.Name, n.Role, n.Description, n.Notes, n.ImagePath, n.BirthYear, n.DeathYear));
     }
 
     private static async Task<Results<NoContent, NotFound>> Update(int id, UpdateNpcDto dto, WorldDbContext db)
@@ -71,6 +93,8 @@ public static class NpcEndpoints
         n.Role = dto.Role;
         n.Description = dto.Description;
         n.Notes = dto.Notes;
+        n.BirthYear = dto.BirthYear;
+        n.DeathYear = dto.DeathYear;
         n.UpdatedAtUtc = DateTime.UtcNow;
 
         await db.SaveChangesAsync();

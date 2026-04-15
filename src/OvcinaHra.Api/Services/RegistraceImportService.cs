@@ -137,6 +137,22 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
     }
 
+    public async Task<List<RegistraceAdultDto>> FetchAdultsAsync(int gameId)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get,
+            $"{_baseUrl.TrimEnd('/')}/api/v1/games/{gameId}/adults");
+
+        if (!string.IsNullOrWhiteSpace(_apiKey))
+            request.Headers.Add("X-Api-Key", _apiKey);
+
+        var response = await httpClient.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<List<RegistraceAdultDto>>(json,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+    }
+
     private sealed record RegistraceCharacterRecord(
         [property: JsonPropertyName("characterId")] int CharacterId,
         [property: JsonPropertyName("personId")] int PersonId,

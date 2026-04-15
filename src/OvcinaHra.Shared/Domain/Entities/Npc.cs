@@ -10,6 +10,8 @@ public class Npc
     public string? Description { get; set; }
     public string? Notes { get; set; }
     public string? ImagePath { get; set; }
+    public int? BirthYear { get; set; }
+    public int? DeathYear { get; set; }
     public bool IsDeleted { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
