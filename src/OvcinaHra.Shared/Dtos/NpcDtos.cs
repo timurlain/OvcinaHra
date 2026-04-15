@@ -37,10 +37,11 @@ public record UpdateGameNpcDto(
     int? PlayedByPersonId, string? PlayedByName, string? PlayedByEmail, string? Notes);
 
 // Adults from registrace — eligible to play NPCs.
+// Roles is nullable because the upstream service may omit or null it.
 public record RegistraceAdultDto(
     int PersonId,
     string FirstName,
     string LastName,
     int? BirthYear,
     string? Email,
-    List<string> Roles);
+    List<string>? Roles);

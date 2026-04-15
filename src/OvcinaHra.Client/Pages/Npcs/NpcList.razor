@@ -56,8 +56,7 @@ else if (Catalog)
             <DxGridDataColumn FieldName="DeathYear" Caption="Stav" Width="130px">
                 <CellDisplayTemplate>
                     @{
-                        var deathYear = context.Value as int?;
-                        if (deathYear is int y)
+                        if (context.Value is int y)
                         {
                             <span class="text-danger">† @y</span>
                         }
@@ -380,6 +379,8 @@ else
         if (GameContext.SelectedGameId is not int gid)
         {
             availableAdults = [];
+            adultsLoadError = "Není vybrána žádná hra. Vyberte hru v horní liště.";
+            StateHasChanged();
             return;
         }
 
@@ -412,7 +413,7 @@ else
     private static string BuildAdultDisplay(RegistraceAdultDto a)
     {
         var name = $"{a.FirstName} {a.LastName}".Trim();
-        return a.Roles.Count > 0 ? $"{name} — {string.Join(", ", a.Roles)}" : name;
+        return a.Roles is { Count: > 0 } ? $"{name} — {string.Join(", ", a.Roles)}" : name;
     }
 
     private async Task ConfirmAssignAsync()
