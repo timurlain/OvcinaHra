@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Shared.Domain.Entities;
@@ -18,6 +19,10 @@ public static class GameEndpoints
         group.MapPut("/{id:int}", Update);
         group.MapPost("/{id:int}/link", LinkToRegistrace);
         group.MapDelete("/{id:int}/link", UnlinkFromRegistrace);
+
+        group.MapGet("/{gameId:int}/skills", GetGameSkills);
+        group.MapPut("/{gameId:int}/skills/{skillId:int}", UpsertGameSkill);
+        group.MapDelete("/{gameId:int}/skills/{skillId:int}", DeleteGameSkill);
 
         return group;
     }
@@ -96,6 +101,109 @@ public static class GameEndpoints
             return TypedResults.NotFound();
 
         game.ExternalGameId = null;
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
+    }
+
+    private static async Task<Results<Ok<IReadOnlyList<GameSkillDto>>, NotFound>> GetGameSkills(
+        int gameId, WorldDbContext db)
+    {
+        var gameExists = await db.Games.AnyAsync(g => g.Id == gameId);
+        if (!gameExists) return TypedResults.NotFound();
+
+        var dtos = await db.GameSkills
+            .Where(gs => gs.GameId == gameId)
+            .OrderBy(gs => gs.Skill.Name)
+            .Select(gs => new GameSkillDto(
+                gs.GameId,
+                gs.SkillId,
+                gs.Skill.Name,
+                gs.Skill.ClassRestriction,
+                gs.XpCost,
+                gs.LevelRequirement))
+            .ToListAsync();
+
+        return TypedResults.Ok((IReadOnlyList<GameSkillDto>)dtos);
+    }
+
+    private static async Task<Results<Created<GameSkillDto>, NoContent, NotFound, BadRequest<ProblemDetails>>> UpsertGameSkill(
+        int gameId, int skillId, UpsertGameSkillRequest dto, WorldDbContext db)
+    {
+        if (dto.XpCost < 0)
+        {
+            return TypedResults.BadRequest(new ProblemDetails
+            {
+                Title = "Cena v XP nemůže být záporná.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
+        if (dto.LevelRequirement is < 0)
+        {
+            return TypedResults.BadRequest(new ProblemDetails
+            {
+                Title = "Požadavek na úroveň nemůže být záporný.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
+        var gameExists = await db.Games.AnyAsync(g => g.Id == gameId);
+        if (!gameExists) return TypedResults.NotFound();
+
+        var skill = await db.Skills.SingleOrDefaultAsync(s => s.Id == skillId);
+        if (skill is null) return TypedResults.NotFound();
+
+        var existing = await db.GameSkills
+            .SingleOrDefaultAsync(gs => gs.GameId == gameId && gs.SkillId == skillId);
+
+        if (existing is not null)
+        {
+            existing.XpCost = dto.XpCost;
+            existing.LevelRequirement = dto.LevelRequirement;
+            await db.SaveChangesAsync();
+            return TypedResults.NoContent();
+        }
+
+        var gameSkill = new GameSkill
+        {
+            GameId = gameId,
+            SkillId = skillId,
+            XpCost = dto.XpCost,
+            LevelRequirement = dto.LevelRequirement
+        };
+        db.GameSkills.Add(gameSkill);
+        await db.SaveChangesAsync();
+
+        var result = new GameSkillDto(
+            gameId,
+            skillId,
+            skill.Name,
+            skill.ClassRestriction,
+            gameSkill.XpCost,
+            gameSkill.LevelRequirement);
+
+        return TypedResults.Created($"/api/games/{gameId}/skills/{skillId}", result);
+    }
+
+    private static async Task<Results<NoContent, NotFound, Conflict<ProblemDetails>>> DeleteGameSkill(
+        int gameId, int skillId, WorldDbContext db)
+    {
+        var gameSkill = await db.GameSkills
+            .SingleOrDefaultAsync(gs => gs.GameId == gameId && gs.SkillId == skillId);
+        if (gameSkill is null) return TypedResults.NotFound();
+
+        var usedInRecipe = await db.CraftingSkillRequirements
+            .AnyAsync(csr => csr.SkillId == skillId && csr.CraftingRecipe.GameId == gameId);
+        if (usedInRecipe)
+        {
+            return TypedResults.Conflict(new ProblemDetails
+            {
+                Title = "Nelze odebrat dovednost — je vyžadována alespoň jedním receptem v této hře.",
+                Status = StatusCodes.Status409Conflict
+            });
+        }
+
+        db.GameSkills.Remove(gameSkill);
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
     }
