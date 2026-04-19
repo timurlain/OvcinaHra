@@ -112,7 +112,7 @@ public static class ItemEndpoints
             .Where(r => r.GameId == gameId)
             .Include(r => r.Ingredients).ThenInclude(i => i.Item)
             .Include(r => r.BuildingRequirements).ThenInclude(b => b.Building)
-            .Include(r => r.SkillRequirements).ThenInclude(s => s.Skill)
+            .Include(r => r.SkillRequirements).ThenInclude(s => s.GameSkill)
             .ToListAsync();
 
         // GroupBy is defensive — schema doesn't prevent multiple recipes for the same OutputItemId
@@ -151,7 +151,7 @@ public static class ItemEndpoints
         if (r.SkillRequirements.Count > 0)
         {
             parts.Add(string.Join(", ",
-                r.SkillRequirements.OrderBy(s => s.Skill.Name).Select(s => s.Skill.Name)));
+                r.SkillRequirements.OrderBy(s => s.GameSkill.Name).Select(s => s.GameSkill.Name)));
         }
         return parts.Count > 0 ? string.Join(" │ ", parts) : null;
     }
