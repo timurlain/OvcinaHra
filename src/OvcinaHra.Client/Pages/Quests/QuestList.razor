@@ -23,9 +23,7 @@ else if (Catalog)
                 RowClick="@(e => OpenModalFromCatalog((QuestCatalogDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             <DxGridDataColumn FieldName="Name" Caption="Název" Width="220px" />
-            <DxGridDataColumn FieldName="QuestType" Caption="Typ" Width="130px">
-                <CellDisplayTemplate>@(((QuestType)context.Value).GetDisplayName())</CellDisplayTemplate>
-            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="QuestTypeDisplay" Caption="Typ" Width="130px" />
             <DxGridDataColumn FieldName="FullText" Caption="Herní text" />
             <DxGridDataColumn FieldName="Description" Caption="Organizátor" />
             <DxGridDataColumn FieldName="RewardSummary" Caption="Odměny" Width="220px" />
@@ -57,9 +55,7 @@ else
                 RowClick="@(e => OpenModal((QuestListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             <DxGridDataColumn FieldName="Name" Caption="Název" />
-            <DxGridDataColumn FieldName="QuestType" Caption="Typ" Width="140px">
-                <CellDisplayTemplate>@(((QuestType)context.Value).GetDisplayName())</CellDisplayTemplate>
-            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="QuestTypeDisplay" Caption="Typ" Width="140px" />
             <DxGridDataColumn FieldName="ChainOrder" Caption="Pořadí v řetězu" Width="140px" Visible="false" />
             <DxGridDataColumn FieldName="ParentQuestId" Caption="Nadřazený quest" Width="140px" Visible="false" />
             <DxGridDataColumn FieldName="GameId" Caption="Hra ID" Width="80px" />

@@ -47,9 +47,7 @@ else
                         ShowGroupPanel="true">
                 <Columns>
                     <DxGridDataColumn FieldName="ItemName" Caption="Předmět" />
-                    <DxGridDataColumn FieldName="ItemType" Caption="Typ" Width="120px">
-                        <CellDisplayTemplate>@(((ItemType)context.Value).GetDisplayName())</CellDisplayTemplate>
-                    </DxGridDataColumn>
+                    <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="Typ" Width="120px" />
                     <DxGridDataColumn FieldName="Count" Caption="Počet" Width="70px" />
                 </Columns>
             </OvcinaGrid>
@@ -104,9 +102,7 @@ else
                         ShowGroupPanel="true">
                 <Columns>
                     <DxGridDataColumn FieldName="Title" Caption="Název" />
-                    <DxGridDataColumn FieldName="Difficulty" Caption="Obtížnost" Width="130px">
-                        <CellDisplayTemplate>@(((TreasureQuestDifficulty)context.Value).GetDisplayName())</CellDisplayTemplate>
-                    </DxGridDataColumn>
+                    <DxGridDataColumn FieldName="DifficultyDisplay" Caption="Obtížnost" Width="130px" />
                     <DxGridDataColumn FieldName="LocationId" Caption="Lokace" Width="150px">
                         <CellDisplayTemplate>@GetLocationName((int?)context.Value)</CellDisplayTemplate>
                     </DxGridDataColumn>
