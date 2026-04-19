@@ -1,4 +1,6 @@
+using System.Text.Json.Serialization;
 using OvcinaHra.Shared.Domain.Enums;
+using OvcinaHra.Shared.Extensions;
 
 namespace OvcinaHra.Shared.Dtos;
 
@@ -9,7 +11,11 @@ public record LocationListDto(
     string? Region,
     decimal? Latitude,
     decimal? Longitude,
-    int? ParentLocationId);
+    int? ParentLocationId)
+{
+    [JsonIgnore]
+    public string LocationKindDisplay => LocationKind.GetDisplayName();
+}
 
 public record LocationDetailDto(
     int Id,
