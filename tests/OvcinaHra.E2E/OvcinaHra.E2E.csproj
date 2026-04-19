@@ -5,6 +5,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <!-- NU1903: transitive System.Security.Cryptography.Xml via Client reference. See
+         Client project csproj for context. Same downgrade applied here so the solution
+         build (devStart.bat) does not fail on audit warnings. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1903</WarningsNotAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
