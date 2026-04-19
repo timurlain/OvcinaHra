@@ -18,6 +18,12 @@ public static class PersonalQuestEndpoints
         group.MapPut("/{id:int}", Update);
         group.MapDelete("/{id:int}", Delete);
 
+        // Per-game link endpoints
+        group.MapGet("/by-game/{gameId:int}", GetByGame);
+        group.MapPost("/game-link", CreateGameLink);
+        group.MapPut("/game-link/{gameId:int}/{pqId:int}", UpdateGameLink);
+        group.MapDelete("/game-link/{gameId:int}/{pqId:int}", DeleteGameLink);
+
         return group;
     }
 
@@ -111,4 +117,93 @@ public static class PersonalQuestEndpoints
         q.QuestCardText, q.RewardCardText, q.RewardNote, q.Notes, q.ImagePath,
         q.SkillRewards.Select(sr => sr.SkillId).ToList(),
         q.ItemRewards.Select(ir => new PersonalQuestItemRewardSummary(ir.ItemId, ir.Item.Name, ir.Quantity)).ToList());
+
+    // ---------- Per-game link endpoints ----------
+
+    private static async Task<Ok<List<GamePersonalQuestListDto>>> GetByGame(int gameId, WorldDbContext db)
+    {
+        var gpqs = await db.GamePersonalQuests
+            .AsNoTracking()
+            .Where(g => g.GameId == gameId)
+            .Include(g => g.PersonalQuest).ThenInclude(q => q.SkillRewards).ThenInclude(sr => sr.Skill)
+            .Include(g => g.PersonalQuest).ThenInclude(q => q.ItemRewards).ThenInclude(ir => ir.Item)
+            .OrderBy(g => g.PersonalQuest.Name)
+            .ToListAsync();
+
+        return TypedResults.Ok(gpqs.Select(ToGameListDto).ToList());
+    }
+
+    private static async Task<Results<Created<GamePersonalQuestDto>, Conflict>> CreateGameLink(
+        CreateGamePersonalQuestDto dto, WorldDbContext db)
+    {
+        var exists = await db.GamePersonalQuests
+            .AnyAsync(g => g.GameId == dto.GameId && g.PersonalQuestId == dto.PersonalQuestId);
+        if (exists) return TypedResults.Conflict();
+
+        var gpq = new GamePersonalQuest
+        {
+            GameId = dto.GameId,
+            PersonalQuestId = dto.PersonalQuestId,
+            XpCost = dto.XpCost,
+            PerKingdomLimit = dto.PerKingdomLimit
+        };
+        db.GamePersonalQuests.Add(gpq);
+        await db.SaveChangesAsync();
+
+        return TypedResults.Created(
+            $"/api/personal-quests/game-link/{gpq.GameId}/{gpq.PersonalQuestId}",
+            new GamePersonalQuestDto(gpq.GameId, gpq.PersonalQuestId, gpq.XpCost, gpq.PerKingdomLimit));
+    }
+
+    private static async Task<Results<NoContent, NotFound>> UpdateGameLink(
+        int gameId, int pqId, UpdateGamePersonalQuestDto dto, WorldDbContext db)
+    {
+        var gpq = await db.GamePersonalQuests.FindAsync(gameId, pqId);
+        if (gpq is null) return TypedResults.NotFound();
+
+        gpq.XpCost = dto.XpCost;
+        gpq.PerKingdomLimit = dto.PerKingdomLimit;
+        await db.SaveChangesAsync();
+
+        return TypedResults.NoContent();
+    }
+
+    private static async Task<Results<NoContent, NotFound>> DeleteGameLink(
+        int gameId, int pqId, WorldDbContext db)
+    {
+        var gpq = await db.GamePersonalQuests.FindAsync(gameId, pqId);
+        if (gpq is null) return TypedResults.NotFound();
+
+        db.GamePersonalQuests.Remove(gpq);
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
+    }
+
+    private static GamePersonalQuestListDto ToGameListDto(GamePersonalQuest g)
+    {
+        var q = g.PersonalQuest;
+        return new GamePersonalQuestListDto(
+            q.Id, q.Name, q.Description, q.Difficulty,
+            q.AllowWarrior, q.AllowArcher, q.AllowMage, q.AllowThief,
+            q.QuestCardText, q.RewardCardText, q.RewardNote, q.Notes, q.ImagePath,
+            g.GameId, g.XpCost, g.PerKingdomLimit,
+            BuildRewardSummary(q));
+    }
+
+    private static string? BuildRewardSummary(PersonalQuest q)
+    {
+        var parts = new List<string>();
+        if (q.SkillRewards.Count > 0)
+        {
+            parts.Add(string.Join(", ",
+                q.SkillRewards.OrderBy(s => s.Skill.Name).Select(s => s.Skill.Name)));
+        }
+        if (q.ItemRewards.Count > 0)
+        {
+            parts.Add(string.Join(", ",
+                q.ItemRewards.OrderBy(i => i.Item.Name).Select(i => $"{i.Item.Name} ×{i.Quantity}")));
+        }
+        return parts.Count > 0 ? string.Join(" │ ", parts) : null;
+    }
+
 }

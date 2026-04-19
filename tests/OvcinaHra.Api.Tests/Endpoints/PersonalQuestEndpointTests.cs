@@ -248,4 +248,212 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
             Assert.NotNull(await db.Items.FindAsync(itemId));
         }
     }
+
+    // ======================================================================
+    // Batch D — Per-game link endpoints
+    // ======================================================================
+
+    [Fact]
+    public async Task GetByGame_Empty_ReturnsEmptyList()
+    {
+        var gameResponse = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Test Hra", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
+
+        var result = await Client.GetFromJsonAsync<List<GamePersonalQuestListDto>>(
+            $"/api/personal-quests/by-game/{game!.Id}");
+        Assert.NotNull(result);
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task GetByGame_WithRewards_BuildsSummary()
+    {
+        // Arrange — seed a game, a PQ with 1 skill + 1 item reward (qty 2), and the GPQ link
+        int gameId;
+        int questId;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+
+            var skill = new Skill { Name = "Druid" };
+            var item = new Item
+            {
+                Name = "Léčivá dlaň",
+                ItemType = ItemType.Potion,
+                ClassRequirements = new ClassRequirements(0, 0, 0, 0)
+            };
+            db.Skills.Add(skill);
+            db.Items.Add(item);
+
+            var game = new Game
+            {
+                Name = "Hra s odměnami",
+                Edition = 1,
+                StartDate = new DateOnly(2026, 6, 1),
+                EndDate = new DateOnly(2026, 6, 3)
+            };
+            db.Games.Add(game);
+
+            var quest = new PersonalQuest
+            {
+                Name = "Úkol druida",
+                Difficulty = TreasureQuestDifficulty.Early,
+                AllowMage = true,
+                SkillRewards = [new PersonalQuestSkillReward { Skill = skill }],
+                ItemRewards = [new PersonalQuestItemReward { Item = item, Quantity = 2 }]
+            };
+            db.PersonalQuests.Add(quest);
+            await db.SaveChangesAsync();
+
+            db.GamePersonalQuests.Add(new GamePersonalQuest
+            {
+                GameId = game.Id,
+                PersonalQuestId = quest.Id,
+                XpCost = 15,
+                PerKingdomLimit = 1
+            });
+            await db.SaveChangesAsync();
+
+            gameId = game.Id;
+            questId = quest.Id;
+        }
+
+        // Act
+        var result = await Client.GetFromJsonAsync<List<GamePersonalQuestListDto>>(
+            $"/api/personal-quests/by-game/{gameId}");
+
+        // Assert
+        Assert.NotNull(result);
+        var row = Assert.Single(result);
+        Assert.Equal(questId, row.Id);
+        Assert.Equal("Úkol druida", row.Name);
+        Assert.Equal(gameId, row.GameId);
+        Assert.Equal(15, row.XpCost);
+        Assert.Equal(1, row.PerKingdomLimit);
+        Assert.Equal("Druid │ Léčivá dlaň ×2", row.RewardSummary);
+    }
+
+    [Fact]
+    public async Task CreateGameLink_Persists_Returns201()
+    {
+        // Arrange — game + quest
+        var gameResponse = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Hra link", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
+
+        var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
+            new CreatePersonalQuestDto(Name: "Linkovaný úkol", Difficulty: TreasureQuestDifficulty.Early));
+        var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
+
+        // Act
+        var response = await Client.PostAsJsonAsync("/api/personal-quests/game-link",
+            new CreateGamePersonalQuestDto(game!.Id, quest!.Id, XpCost: 20, PerKingdomLimit: 2));
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<GamePersonalQuestDto>();
+        Assert.NotNull(created);
+        Assert.Equal(game.Id, created.GameId);
+        Assert.Equal(quest.Id, created.PersonalQuestId);
+        Assert.Equal(20, created.XpCost);
+        Assert.Equal(2, created.PerKingdomLimit);
+
+        // Verify it shows up in by-game
+        var list = await Client.GetFromJsonAsync<List<GamePersonalQuestListDto>>(
+            $"/api/personal-quests/by-game/{game.Id}");
+        Assert.NotNull(list);
+        Assert.Single(list);
+    }
+
+    [Fact]
+    public async Task CreateGameLink_DuplicatePair_ReturnsConflict()
+    {
+        var gameResponse = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Hra dup", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
+
+        var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
+            new CreatePersonalQuestDto(Name: "Duplikát", Difficulty: TreasureQuestDifficulty.Early));
+        var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
+
+        var dto = new CreateGamePersonalQuestDto(game!.Id, quest!.Id, XpCost: 5, PerKingdomLimit: null);
+
+        var first = await Client.PostAsJsonAsync("/api/personal-quests/game-link", dto);
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+
+        var second = await Client.PostAsJsonAsync("/api/personal-quests/game-link", dto);
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateGameLink_TunesXpCost()
+    {
+        // Arrange — game + quest + link (XpCost=10)
+        var gameResponse = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Hra update", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
+
+        var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
+            new CreatePersonalQuestDto(Name: "Ladit", Difficulty: TreasureQuestDifficulty.Early));
+        var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
+
+        await Client.PostAsJsonAsync("/api/personal-quests/game-link",
+            new CreateGamePersonalQuestDto(game!.Id, quest!.Id, XpCost: 10, PerKingdomLimit: null));
+
+        // Act — update XpCost to 25
+        var response = await Client.PutAsJsonAsync(
+            $"/api/personal-quests/game-link/{game.Id}/{quest.Id}",
+            new UpdateGamePersonalQuestDto(XpCost: 25, PerKingdomLimit: 3));
+
+        // Assert
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        var list = await Client.GetFromJsonAsync<List<GamePersonalQuestListDto>>(
+            $"/api/personal-quests/by-game/{game.Id}");
+        var row = Assert.Single(list!);
+        Assert.Equal(25, row.XpCost);
+        Assert.Equal(3, row.PerKingdomLimit);
+    }
+
+    [Fact]
+    public async Task UpdateGameLink_NotFound_Returns404()
+    {
+        var response = await Client.PutAsJsonAsync(
+            "/api/personal-quests/game-link/99999/99999",
+            new UpdateGamePersonalQuestDto(XpCost: 1, PerKingdomLimit: null));
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteGameLink_RemovesConfig_KeepsCatalogEntry()
+    {
+        // Arrange
+        var gameResponse = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Hra unlink", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
+
+        var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
+            new CreatePersonalQuestDto(Name: "Ponechat v katalogu", Difficulty: TreasureQuestDifficulty.Early));
+        var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
+
+        await Client.PostAsJsonAsync("/api/personal-quests/game-link",
+            new CreateGamePersonalQuestDto(game!.Id, quest!.Id));
+
+        // Act
+        var response = await Client.DeleteAsync(
+            $"/api/personal-quests/game-link/{game.Id}/{quest.Id}");
+
+        // Assert — link gone
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var list = await Client.GetFromJsonAsync<List<GamePersonalQuestListDto>>(
+            $"/api/personal-quests/by-game/{game.Id}");
+        Assert.NotNull(list);
+        Assert.Empty(list);
+
+        // Assert — catalog entry still exists
+        var catalogGet = await Client.GetAsync($"/api/personal-quests/{quest.Id}");
+        Assert.Equal(HttpStatusCode.OK, catalogGet.StatusCode);
+    }
+
 }

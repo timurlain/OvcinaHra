@@ -134,6 +134,12 @@ public record GamePersonalQuestListDto(
     public bool HasImage => !string.IsNullOrEmpty(ImagePath);
 }
 
+public record GamePersonalQuestDto(
+    int GameId,
+    int PersonalQuestId,
+    int XpCost,
+    int? PerKingdomLimit);
+
 public record CreateGamePersonalQuestDto(int GameId, int PersonalQuestId,
     int XpCost = 0, int? PerKingdomLimit = null);
 
