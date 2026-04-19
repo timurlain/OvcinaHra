@@ -1,39 +1,36 @@
-<div class="image-picker @(CardMode ? "image-picker-card" : "")">
-    @if (CardMode)
-    {
-        <label class="image-card-label">
-            @if (currentUrl is not null)
-            {
-                <img src="@currentUrl" alt="@Alt" class="image-card-img" />
-                <button class="btn btn-sm btn-danger image-card-delete"
-                        @onclick="DeleteImage" @onclick:stopPropagation="true" disabled="@isWorking">
-                    &#10005;
-                </button>
-            }
-            else
-            {
-                <div class="image-card-placeholder">
-                    <i class="bi bi-image fs-1"></i>
-                    <div>Žádný obrázek</div>
-                    <small class="text-muted">Klikněte pro nahrání</small>
-                </div>
-            }
-            <InputFile OnChange="HandleFileSelected" accept=".jpg,.jpeg,.png,.webp"
-                       disabled="@isWorking" class="d-none" />
-        </label>
-    }
-    else
-    {
+@using Microsoft.AspNetCore.Components.Forms
+
+<div class="image-picker-wrap">
+    <label class="image-picker-box @(currentUrl is null ? "is-empty" : "is-filled") @(isWorking ? "is-working" : "")"
+           style="width: @Width; aspect-ratio: @parsedAspect;">
         @if (currentUrl is not null)
         {
-            <div class="position-relative d-inline-block mb-2">
-                <img src="@currentUrl" alt="@Alt" style="max-width: 100%; max-height: 200px; border-radius: 4px;" />
-                <button class="btn btn-sm btn-danger position-absolute top-0 end-0 m-1"
-                        @onclick="DeleteImage" disabled="@isWorking">&#10005;</button>
+            <img src="@currentUrl" alt="@Alt" class="image-picker-img" />
+            <button type="button" class="image-picker-delete"
+                    @onclick="DeleteImage" @onclick:stopPropagation="true"
+                    disabled="@isWorking" title="Odebrat obrázek">&#10005;</button>
+        }
+        else
+        {
+            <div class="image-picker-empty">
+                <span class="image-picker-cross">&#10005;</span>
+                <span class="image-picker-caption">Nahrát obrázek</span>
             </div>
         }
-        <InputFile OnChange="HandleFileSelected" accept=".jpg,.jpeg,.png,.webp" disabled="@isWorking" />
-    }
+
+        @if (isWorking)
+        {
+            <div class="image-picker-spinner">
+                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            </div>
+        }
+
+        <InputFile OnChange="HandleFileSelected"
+                   accept=".jpg,.jpeg,.png,.webp"
+                   disabled="@isWorking"
+                   class="image-picker-input" />
+    </label>
+
     @if (errorMessage is not null)
     {
         <div class="text-danger small mt-1">@errorMessage</div>
@@ -47,16 +44,55 @@
     [Parameter, EditorRequired] public int EntityId { get; set; }
     [Parameter] public string? Field { get; set; }
     [Parameter] public string Alt { get; set; } = "Obrázek";
-    [Parameter] public bool CardMode { get; set; } = false;
+
+    [Parameter] public string AspectRatio { get; set; } = "1:1";
+    [Parameter] public string Width { get; set; } = "200px";
 
     private string? currentUrl;
     private string? errorMessage;
     private bool isWorking;
 
+    private string parsedAspect = "1 / 1";
+
+    private string? _lastEntityType;
+    private int _lastEntityId;
+    private string? _lastField;
+
+    protected override void OnParametersSet()
+    {
+        parsedAspect = ParseAspectRatio(AspectRatio);
+    }
+
     protected override async Task OnParametersSetAsync()
     {
-        if (EntityId > 0)
-            await LoadImageUrl();
+        if (EntityId <= 0)
+            return;
+
+        if (EntityType == _lastEntityType
+            && EntityId == _lastEntityId
+            && Field == _lastField)
+        {
+            return;
+        }
+
+        _lastEntityType = EntityType;
+        _lastEntityId = EntityId;
+        _lastField = Field;
+
+        await LoadImageUrl();
+    }
+
+    private static string ParseAspectRatio(string ratio)
+    {
+        var parts = ratio?.Split(':', 2) ?? [];
+        if (parts.Length == 2
+            && int.TryParse(parts[0], out var w) && w > 0
+            && int.TryParse(parts[1], out var h) && h > 0)
+        {
+            return $"{w} / {h}";
+        }
+        Console.WriteLine($"[ImagePicker] invalid AspectRatio '{ratio}', falling back to 1:1.");
+        return "1 / 1";
     }
 
     private async Task LoadImageUrl()
@@ -107,6 +143,7 @@
 
     private async Task DeleteImage()
     {
+        errorMessage = null;
         isWorking = true;
         try
         {

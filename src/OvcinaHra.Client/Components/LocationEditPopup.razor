@@ -103,10 +103,10 @@
                 @if (editingId.HasValue)
                 {
                     <DxFormLayoutItem Caption="Obrázek" ColSpanMd="12">
-                        <ImagePicker EntityType="locations" EntityId="editingId.Value" Alt="Ilustrace lokace" />
+                        <ImagePicker EntityType="locations" EntityId="editingId.Value" Alt="Ilustrace lokace" AspectRatio="3:2" />
                     </DxFormLayoutItem>
                     <DxFormLayoutItem Caption="Foto umístění" ColSpanMd="12">
-                        <ImagePicker EntityType="locations" EntityId="editingId.Value" Field="placement" Alt="Foto umístění" />
+                        <ImagePicker EntityType="locations" EntityId="editingId.Value" Field="placement" Alt="Foto umístění" AspectRatio="3:2" />
                     </DxFormLayoutItem>
                 }
                 <DxFormLayoutItem Caption="Info pro CP (NPC)" ColSpanMd="12">

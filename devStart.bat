@@ -20,8 +20,9 @@ if errorlevel 1 (
 echo Waiting for services...
 timeout /t 3 /nobreak >nul
 
-:: Ensure blob container exists
-az storage container create --name ovcinahra-images --connection-string "UseDevelopmentStorage=true" >nul 2>&1 || echo [warn] az CLI not found - create blob container manually
+:: Ensure blob container exists — MUST use `call` because az is az.cmd (batch file);
+:: without `call`, control transfers to az.cmd and never returns to this script.
+call az storage container create --name ovcinahra-images --connection-string "UseDevelopmentStorage=true" >nul 2>&1 || echo [warn] az CLI not found - create blob container manually
 
 :: Build solution
 echo Building solution...
