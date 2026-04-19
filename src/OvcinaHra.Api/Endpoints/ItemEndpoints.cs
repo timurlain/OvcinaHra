@@ -102,19 +102,54 @@ public static class ItemEndpoints
 
     private static async Task<Ok<List<GameItemListDto>>> GetByGame(int gameId, WorldDbContext db)
     {
-        var items = await db.GameItems
+        var gameItems = await db.GameItems
             .Where(gi => gi.GameId == gameId)
             .Include(gi => gi.Item)
             .OrderBy(gi => gi.Item.Name)
+            .ToListAsync();
+
+        var recipes = await db.CraftingRecipes
+            .Where(r => r.GameId == gameId)
+            .Include(r => r.Ingredients).ThenInclude(i => i.Item)
+            .Include(r => r.BuildingRequirements).ThenInclude(b => b.Building)
+            .Include(r => r.SkillRequirements).ThenInclude(s => s.Skill)
+            .ToListAsync();
+
+        var summaryByItemId = recipes.ToDictionary(r => r.OutputItemId, BuildRecipeSummary);
+
+        var result = gameItems
             .Select(gi => new GameItemListDto(
                 gi.Item.Id, gi.Item.Name, gi.Item.ItemType, gi.Item.Effect, gi.Item.PhysicalForm,
                 gi.Item.IsCraftable,
                 gi.Item.ClassRequirements.Warrior, gi.Item.ClassRequirements.Archer,
                 gi.Item.ClassRequirements.Mage, gi.Item.ClassRequirements.Thief,
                 gi.Item.IsUnique, gi.Item.IsLimited, gi.Item.ImagePath,
-                gi.GameId, gi.Price, gi.StockCount, gi.IsSold, gi.SaleCondition, gi.IsFindable))
-            .ToListAsync();
-        return TypedResults.Ok(items);
+                gi.GameId, gi.Price, gi.StockCount, gi.IsSold, gi.SaleCondition, gi.IsFindable,
+                summaryByItemId.GetValueOrDefault(gi.ItemId)))
+            .ToList();
+
+        return TypedResults.Ok(result);
+    }
+
+    private static string? BuildRecipeSummary(CraftingRecipe r)
+    {
+        var parts = new List<string>();
+        if (r.Ingredients.Count > 0)
+        {
+            parts.Add(string.Join(", ",
+                r.Ingredients.OrderBy(i => i.Item.Name).Select(i => $"{i.Quantity}× {i.Item.Name}")));
+        }
+        if (r.BuildingRequirements.Count > 0)
+        {
+            parts.Add(string.Join(", ",
+                r.BuildingRequirements.OrderBy(b => b.Building.Name).Select(b => b.Building.Name)));
+        }
+        if (r.SkillRequirements.Count > 0)
+        {
+            parts.Add(string.Join(", ",
+                r.SkillRequirements.OrderBy(s => s.Skill.Name).Select(s => s.Skill.Name)));
+        }
+        return parts.Count > 0 ? string.Join(" │ ", parts) : null;
     }
 
     private static async Task<Results<Created<GameItemDto>, Conflict>> CreateGameItem(CreateGameItemDto dto, WorldDbContext db)

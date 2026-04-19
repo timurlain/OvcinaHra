@@ -52,7 +52,8 @@ public record GameItemListDto(
     int? StockCount,
     bool IsSold,
     string? SaleCondition,
-    bool IsFindable)
+    bool IsFindable,
+    string? RecipeSummary)
 {
     [JsonIgnore]
     public string ItemTypeDisplay => ItemType.GetDisplayName();
