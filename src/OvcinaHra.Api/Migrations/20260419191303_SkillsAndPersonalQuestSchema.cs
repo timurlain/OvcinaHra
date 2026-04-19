@@ -7,7 +7,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace OvcinaHra.Api.Migrations
 {
     /// <inheritdoc />
-    public partial class AddPersonalQuestDomain : Migration
+    public partial class SkillsAndPersonalQuestSchema : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -34,6 +34,24 @@ namespace OvcinaHra.Api.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_PersonalQuests", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Skills",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    Name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    Category = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    ClassRestriction = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: true),
+                    Effect = table.Column<string>(type: "character varying(4000)", maxLength: 4000, nullable: true),
+                    RequirementNotes = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
+                    ImagePath = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Skills", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -117,6 +135,42 @@ namespace OvcinaHra.Api.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "GameSkills",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    GameId = table.Column<int>(type: "integer", nullable: false),
+                    TemplateSkillId = table.Column<int>(type: "integer", nullable: true),
+                    Name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    Category = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    ClassRestriction = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: true),
+                    Effect = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
+                    RequirementNotes = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
+                    ImagePath = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
+                    XpCost = table.Column<int>(type: "integer", nullable: false),
+                    LevelRequirement = table.Column<int>(type: "integer", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_GameSkills", x => x.Id);
+                    table.CheckConstraint("CK_GameSkill_LevelRequirement_NonNegative", "\"LevelRequirement\" IS NULL OR \"LevelRequirement\" >= 0");
+                    table.CheckConstraint("CK_GameSkill_XpCost_NonNegative", "\"XpCost\" >= 0");
+                    table.ForeignKey(
+                        name: "FK_GameSkills_Games_GameId",
+                        column: x => x.GameId,
+                        principalTable: "Games",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_GameSkills_Skills_TemplateSkillId",
+                        column: x => x.TemplateSkillId,
+                        principalTable: "Skills",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.SetNull);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "PersonalQuestSkillRewards",
                 columns: table => new
                 {
@@ -140,6 +194,83 @@ namespace OvcinaHra.Api.Migrations
                         onDelete: ReferentialAction.Restrict);
                 });
 
+            migrationBuilder.CreateTable(
+                name: "SkillBuildingRequirements",
+                columns: table => new
+                {
+                    SkillId = table.Column<int>(type: "integer", nullable: false),
+                    BuildingId = table.Column<int>(type: "integer", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_SkillBuildingRequirements", x => new { x.SkillId, x.BuildingId });
+                    table.ForeignKey(
+                        name: "FK_SkillBuildingRequirements_Buildings_BuildingId",
+                        column: x => x.BuildingId,
+                        principalTable: "Buildings",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_SkillBuildingRequirements_Skills_SkillId",
+                        column: x => x.SkillId,
+                        principalTable: "Skills",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "CraftingSkillRequirements",
+                columns: table => new
+                {
+                    CraftingRecipeId = table.Column<int>(type: "integer", nullable: false),
+                    GameSkillId = table.Column<int>(type: "integer", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_CraftingSkillRequirements", x => new { x.CraftingRecipeId, x.GameSkillId });
+                    table.ForeignKey(
+                        name: "FK_CraftingSkillRequirements_CraftingRecipes_CraftingRecipeId",
+                        column: x => x.CraftingRecipeId,
+                        principalTable: "CraftingRecipes",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_CraftingSkillRequirements_GameSkills_GameSkillId",
+                        column: x => x.GameSkillId,
+                        principalTable: "GameSkills",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "GameSkillBuildingRequirements",
+                columns: table => new
+                {
+                    GameSkillId = table.Column<int>(type: "integer", nullable: false),
+                    BuildingId = table.Column<int>(type: "integer", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_GameSkillBuildingRequirements", x => new { x.GameSkillId, x.BuildingId });
+                    table.ForeignKey(
+                        name: "FK_GameSkillBuildingRequirements_Buildings_BuildingId",
+                        column: x => x.BuildingId,
+                        principalTable: "Buildings",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_GameSkillBuildingRequirements_GameSkills_GameSkillId",
+                        column: x => x.GameSkillId,
+                        principalTable: "GameSkills",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_CraftingSkillRequirements_GameSkillId",
+                table: "CraftingSkillRequirements",
+                column: "GameSkillId");
+
             migrationBuilder.CreateIndex(
                 name: "IX_GamePersonalQuests_GameId",
                 table: "GamePersonalQuests",
@@ -149,6 +280,29 @@ namespace OvcinaHra.Api.Migrations
                 name: "IX_GamePersonalQuests_PersonalQuestId",
                 table: "GamePersonalQuests",
                 column: "PersonalQuestId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_GameSkillBuildingRequirements_BuildingId",
+                table: "GameSkillBuildingRequirements",
+                column: "BuildingId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_GameSkills_GameId_Name",
+                table: "GameSkills",
+                columns: new[] { "GameId", "Name" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_GameSkills_GameId_TemplateSkillId",
+                table: "GameSkills",
+                columns: new[] { "GameId", "TemplateSkillId" },
+                unique: true,
+                filter: "\"TemplateSkillId\" IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_GameSkills_TemplateSkillId",
+                table: "GameSkills",
+                column: "TemplateSkillId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_CharacterPersonalQuests_PersonalQuestId",
@@ -170,13 +324,30 @@ namespace OvcinaHra.Api.Migrations
                 name: "IX_PersonalQuestSkillRewards_SkillId",
                 table: "PersonalQuestSkillRewards",
                 column: "SkillId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SkillBuildingRequirements_BuildingId",
+                table: "SkillBuildingRequirements",
+                column: "BuildingId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Skills_Name",
+                table: "Skills",
+                column: "Name",
+                unique: true);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
+                name: "CraftingSkillRequirements");
+
+            migrationBuilder.DropTable(
                 name: "GamePersonalQuests");
+
+            migrationBuilder.DropTable(
+                name: "GameSkillBuildingRequirements");
 
             migrationBuilder.DropTable(
                 name: "CharacterPersonalQuests");
@@ -188,7 +359,16 @@ namespace OvcinaHra.Api.Migrations
                 name: "PersonalQuestSkillRewards");
 
             migrationBuilder.DropTable(
+                name: "SkillBuildingRequirements");
+
+            migrationBuilder.DropTable(
+                name: "GameSkills");
+
+            migrationBuilder.DropTable(
                 name: "PersonalQuests");
+
+            migrationBuilder.DropTable(
+                name: "Skills");
         }
     }
 }
