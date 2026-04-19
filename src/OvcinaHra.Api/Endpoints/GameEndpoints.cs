@@ -179,6 +179,17 @@ public static class GameEndpoints
                     Status = StatusCodes.Status400BadRequest
                 });
             }
+
+            var templateConflict = await db.GameSkills.AnyAsync(gs => gs.GameId == gameId && gs.TemplateSkillId == tid);
+            if (templateConflict)
+            {
+                return TypedResults.Conflict(new ProblemDetails
+                {
+                    Title = "Dovednost pro tuto šablonu již v této hře existuje.",
+                    Detail = $"Hra s ID {gameId} již obsahuje dovednost vytvořenou ze šablony s ID {tid}.",
+                    Status = StatusCodes.Status409Conflict
+                });
+            }
         }
 
         var buildingIds = dto.BuildingRequirementIds?.Distinct().ToList() ?? [];

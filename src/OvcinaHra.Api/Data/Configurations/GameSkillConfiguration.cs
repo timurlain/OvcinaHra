@@ -13,7 +13,7 @@ public class GameSkillConfiguration : IEntityTypeConfiguration<GameSkill>
         builder.Property(e => e.Name).IsRequired().HasMaxLength(100);
         builder.Property(e => e.Category).HasConversion<string>().HasMaxLength(20);
         builder.Property(e => e.ClassRestriction).HasConversion<string>().HasMaxLength(20);
-        builder.Property(e => e.Effect).HasMaxLength(1000);
+        builder.Property(e => e.Effect).HasMaxLength(4000);
         builder.Property(e => e.RequirementNotes).HasMaxLength(1000);
         builder.Property(e => e.ImagePath).HasMaxLength(500);
 

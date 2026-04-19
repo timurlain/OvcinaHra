@@ -182,6 +182,26 @@ public class GameSkillEndpointsTests(PostgresFixture postgres) : IntegrationTest
     }
 
     [Fact]
+    public async Task Post_DuplicateTemplateSkillIdInGame_Returns409()
+    {
+        var game = await CreateGameAsync("DupTmplGame");
+        var templateId = await CreateTemplateSkillAsync("Tichý úder", SkillCategory.Class);
+
+        // First copy from this template — should succeed
+        var first = await Client.PostAsJsonAsync(
+            $"/api/games/{game.Id}/skills",
+            MakeCreate(name: "First", templateSkillId: templateId));
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+
+        // Second copy from the same template in the same game — must be blocked
+        // BEFORE hitting the unique constraint (which would be a 500).
+        var second = await Client.PostAsJsonAsync(
+            $"/api/games/{game.Id}/skills",
+            MakeCreate(name: "Second", templateSkillId: templateId));
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+    }
+
+    [Fact]
     public async Task Put_UpdatesAllFields_PreservesId()
     {
         var game = await CreateGameAsync("PutGame");
