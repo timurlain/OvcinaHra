@@ -40,11 +40,36 @@ public record UpdateGameDto(
 public record LinkGameDto(int ExternalGameId);
 
 public record GameSkillDto(
+    int Id,
     int GameId,
-    int SkillId,
-    string SkillName,
+    int? TemplateSkillId,
+    string Name,
+    SkillCategory Category,
     PlayerClass? ClassRestriction,
+    string? Effect,
+    string? RequirementNotes,
+    string? ImagePath,
+    int XpCost,
+    int? LevelRequirement,
+    IReadOnlyList<int> BuildingRequirementIds);
+
+public record CreateGameSkillRequest(
+    int? TemplateSkillId,
+    string Name,
+    SkillCategory Category,
+    PlayerClass? ClassRestriction,
+    string? Effect,
+    string? RequirementNotes,
+    IReadOnlyList<int> BuildingRequirementIds,
     int XpCost,
     int? LevelRequirement);
 
-public record UpsertGameSkillRequest(int XpCost, int? LevelRequirement);
+public record UpdateGameSkillRequest(
+    string Name,
+    SkillCategory Category,
+    PlayerClass? ClassRestriction,
+    string? Effect,
+    string? RequirementNotes,
+    IReadOnlyList<int> BuildingRequirementIds,
+    int XpCost,
+    int? LevelRequirement);
