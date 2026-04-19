@@ -34,6 +34,7 @@ builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredServ
 builder.Services.AddScoped<TokenRefreshService>();
 builder.Services.AddScoped<GameContextService>();
 builder.Services.AddScoped<SkillService>();
+builder.Services.AddScoped<PersonalQuestService>();
 builder.Services.AddAuthorizationCore();
 builder.Services.AddLocalization();
 builder.Services.AddSingleton(typeof(IDxLocalizationService), typeof(LocalizationService));
