@@ -11,6 +11,8 @@ namespace OvcinaHra.Client.Auth;
 /// </summary>
 public class UnauthorizedRedirectHandler : DelegatingHandler
 {
+    private const long MaxBufferedBodyBytes = 50L * 1024 * 1024;
+
     private readonly NavigationManager _nav;
     private readonly IServiceProvider _services;
 
@@ -29,8 +31,20 @@ public class UnauthorizedRedirectHandler : DelegatingHandler
                            || path.EndsWith("/dev-token", StringComparison.OrdinalIgnoreCase)
                            || path.EndsWith("/service-token", StringComparison.OrdinalIgnoreCase);
 
+        byte[]? bufferedBody = null;
+        List<KeyValuePair<string, IEnumerable<string>>>? bufferedHeaders = null;
+
         if (request.Content is not null && !isTokenEndpoint)
-            await request.Content.LoadIntoBufferAsync();
+        {
+            var contentLength = request.Content.Headers.ContentLength;
+            if (!contentLength.HasValue || contentLength.Value <= MaxBufferedBodyBytes)
+            {
+                bufferedBody = await request.Content.ReadAsByteArrayAsync(cancellationToken);
+                bufferedHeaders = request.Content.Headers
+                    .Select(h => new KeyValuePair<string, IEnumerable<string>>(h.Key, h.Value))
+                    .ToList();
+            }
+        }
 
         var response = await base.SendAsync(request, cancellationToken);
 
@@ -40,7 +54,7 @@ public class UnauthorizedRedirectHandler : DelegatingHandler
         response.Dispose();
 
         var refresh = _services.GetRequiredService<TokenRefreshService>();
-        await refresh.RefreshAsync();
+        await refresh.RefreshAsync(cancellationToken);
 
         var auth = _services.GetRequiredService<JwtAuthStateProvider>();
         var newToken = await auth.GetTokenAsync();
@@ -51,7 +65,7 @@ public class UnauthorizedRedirectHandler : DelegatingHandler
             return new HttpResponseMessage(HttpStatusCode.Unauthorized);
         }
 
-        var retry = await CloneRequestAsync(request);
+        using var retry = CloneRequest(request, bufferedBody, bufferedHeaders);
         retry.Headers.Authorization = new AuthenticationHeaderValue("Bearer", newToken);
 
         var retryResponse = await base.SendAsync(retry, cancellationToken);
@@ -61,21 +75,25 @@ public class UnauthorizedRedirectHandler : DelegatingHandler
         return retryResponse;
     }
 
-    private static async Task<HttpRequestMessage> CloneRequestAsync(HttpRequestMessage original)
+    private static HttpRequestMessage CloneRequest(
+        HttpRequestMessage original,
+        byte[]? bufferedBody,
+        List<KeyValuePair<string, IEnumerable<string>>>? bufferedHeaders)
     {
         var clone = new HttpRequestMessage(original.Method, original.RequestUri)
         {
             Version = original.Version
         };
 
-        if (original.Content is not null)
+        if (bufferedBody is not null)
         {
-            var ms = new MemoryStream();
-            await original.Content.CopyToAsync(ms);
-            ms.Position = 0;
-            clone.Content = new StreamContent(ms);
-            foreach (var h in original.Content.Headers)
-                clone.Content.Headers.TryAddWithoutValidation(h.Key, h.Value);
+            var content = new ByteArrayContent(bufferedBody);
+            if (bufferedHeaders is not null)
+            {
+                foreach (var h in bufferedHeaders)
+                    content.Headers.TryAddWithoutValidation(h.Key, h.Value);
+            }
+            clone.Content = content;
         }
 
         foreach (var h in original.Headers)
