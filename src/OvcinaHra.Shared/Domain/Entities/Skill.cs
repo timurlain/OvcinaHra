@@ -14,5 +14,4 @@ public class Skill
 
     public ICollection<SkillBuildingRequirement> BuildingRequirements { get; set; } = [];
     public ICollection<GameSkill> GameSkills { get; set; } = [];
-    public ICollection<CraftingSkillRequirement> CraftingRequirements { get; set; } = [];
 }
