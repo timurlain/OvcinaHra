@@ -12,6 +12,8 @@ using OvcinaHra.Client.Services;
 var culture = new CultureInfo("cs-CZ");
 CultureInfo.DefaultThreadCurrentCulture = culture;
 CultureInfo.DefaultThreadCurrentUICulture = culture;
+CultureInfo.CurrentCulture = culture;
+CultureInfo.CurrentUICulture = culture;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
