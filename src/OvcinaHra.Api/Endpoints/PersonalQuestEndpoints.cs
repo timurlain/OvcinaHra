@@ -16,6 +16,7 @@ public static class PersonalQuestEndpoints
         group.MapGet("/{id:int}", GetById);
         group.MapPost("/", Create);
         group.MapPut("/{id:int}", Update);
+        group.MapDelete("/{id:int}", Delete);
 
         return group;
     }
@@ -83,6 +84,16 @@ public static class PersonalQuestEndpoints
         q.RewardNote = dto.RewardNote;
         q.Notes = dto.Notes;
 
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
+    }
+
+    private static async Task<Results<NoContent, NotFound>> Delete(int id, WorldDbContext db)
+    {
+        var q = await db.PersonalQuests.FindAsync(id);
+        if (q is null) return TypedResults.NotFound();
+
+        db.PersonalQuests.Remove(q);
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
     }

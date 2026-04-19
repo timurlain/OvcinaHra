@@ -164,4 +164,88 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         var response = await Client.PutAsJsonAsync("/api/personal-quests/99999", updateDto);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
+
+    [Fact]
+    public async Task Delete_ExistingId_Removes()
+    {
+        var createDto = new CreatePersonalQuestDto(
+            Name: "K smazání",
+            Difficulty: TreasureQuestDifficulty.Early);
+        var createResponse = await Client.PostAsJsonAsync("/api/personal-quests", createDto);
+        var created = await createResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
+
+        var response = await Client.DeleteAsync($"/api/personal-quests/{created!.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        var getResponse = await Client.GetAsync($"/api/personal-quests/{created.Id}");
+        Assert.Equal(HttpStatusCode.NotFound, getResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Delete_NotFound_Returns404()
+    {
+        var response = await Client.DeleteAsync("/api/personal-quests/99999");
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Delete_Cascades_RemovesRewards()
+    {
+        // Arrange — quest with 1 skill reward + 1 item reward
+        int questId;
+        int skillId;
+        int itemId;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var skill = new Skill { Name = "Stopovačství" };
+            var item = new Item
+            {
+                Name = "Luk strážce",
+                ItemType = ItemType.Weapon,
+                ClassRequirements = new ClassRequirements(0, 0, 0, 0)
+            };
+            db.Skills.Add(skill);
+            db.Items.Add(item);
+            await db.SaveChangesAsync();
+
+            var quest = new PersonalQuest
+            {
+                Name = "Kaskáda testu",
+                Difficulty = TreasureQuestDifficulty.Midgame,
+                SkillRewards = [new PersonalQuestSkillReward { SkillId = skill.Id }],
+                ItemRewards = [new PersonalQuestItemReward { ItemId = item.Id, Quantity = 1 }]
+            };
+            db.PersonalQuests.Add(quest);
+            await db.SaveChangesAsync();
+            questId = quest.Id;
+            skillId = skill.Id;
+            itemId = item.Id;
+        }
+
+        // Act — delete via API
+        var response = await Client.DeleteAsync($"/api/personal-quests/{questId}");
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        // Assert — quest gone, rewards gone, but Skill + Item themselves remain
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+
+            Assert.Null(await db.PersonalQuests.FindAsync(questId));
+
+            var skillRewards = await db.PersonalQuestSkillRewards
+                .Where(sr => sr.PersonalQuestId == questId)
+                .ToListAsync();
+            Assert.Empty(skillRewards);
+
+            var itemRewards = await db.PersonalQuestItemRewards
+                .Where(ir => ir.PersonalQuestId == questId)
+                .ToListAsync();
+            Assert.Empty(itemRewards);
+
+            Assert.NotNull(await db.Skills.FindAsync(skillId));
+            Assert.NotNull(await db.Items.FindAsync(itemId));
+        }
+    }
 }
