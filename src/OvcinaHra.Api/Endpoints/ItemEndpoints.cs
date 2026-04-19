@@ -38,7 +38,11 @@ public static class ItemEndpoints
     {
         var items = await db.Items
             .OrderBy(i => i.Name)
-            .Select(i => new ItemListDto(i.Id, i.Name, i.ItemType, i.Effect, i.IsCraftable, i.IsUnique, i.IsLimited))
+            .Select(i => new ItemListDto(
+                i.Id, i.Name, i.ItemType, i.Effect, i.PhysicalForm, i.IsCraftable,
+                i.ClassRequirements.Warrior, i.ClassRequirements.Archer,
+                i.ClassRequirements.Mage, i.ClassRequirements.Thief,
+                i.IsUnique, i.IsLimited, i.ImagePath))
             .ToListAsync();
         return TypedResults.Ok(items);
     }
@@ -96,17 +100,60 @@ public static class ItemEndpoints
         return TypedResults.NoContent();
     }
 
-    private static async Task<Ok<List<GameItemDto>>> GetByGame(int gameId, WorldDbContext db)
+    private static async Task<Ok<List<GameItemListDto>>> GetByGame(int gameId, WorldDbContext db)
     {
-        var items = await db.GameItems
+        var gameItems = await db.GameItems
             .Where(gi => gi.GameId == gameId)
             .Include(gi => gi.Item)
             .OrderBy(gi => gi.Item.Name)
-            .Select(gi => new GameItemDto(
-                gi.GameId, gi.ItemId, gi.Item.Name,
-                gi.Price, gi.StockCount, gi.IsSold, gi.SaleCondition, gi.IsFindable))
             .ToListAsync();
-        return TypedResults.Ok(items);
+
+        var recipes = await db.CraftingRecipes
+            .Where(r => r.GameId == gameId)
+            .Include(r => r.Ingredients).ThenInclude(i => i.Item)
+            .Include(r => r.BuildingRequirements).ThenInclude(b => b.Building)
+            .Include(r => r.SkillRequirements).ThenInclude(s => s.Skill)
+            .ToListAsync();
+
+        // GroupBy is defensive — schema doesn't prevent multiple recipes for the same OutputItemId
+        // in a single game, and ToDictionary would throw on duplicates.
+        var summaryByItemId = recipes
+            .GroupBy(r => r.OutputItemId)
+            .ToDictionary(g => g.Key, g => BuildRecipeSummary(g.First()));
+
+        var result = gameItems
+            .Select(gi => new GameItemListDto(
+                gi.Item.Id, gi.Item.Name, gi.Item.ItemType, gi.Item.Effect, gi.Item.PhysicalForm,
+                gi.Item.IsCraftable,
+                gi.Item.ClassRequirements.Warrior, gi.Item.ClassRequirements.Archer,
+                gi.Item.ClassRequirements.Mage, gi.Item.ClassRequirements.Thief,
+                gi.Item.IsUnique, gi.Item.IsLimited, gi.Item.ImagePath,
+                gi.GameId, gi.Price, gi.StockCount, gi.IsSold, gi.SaleCondition, gi.IsFindable,
+                summaryByItemId.GetValueOrDefault(gi.ItemId)))
+            .ToList();
+
+        return TypedResults.Ok(result);
+    }
+
+    private static string? BuildRecipeSummary(CraftingRecipe r)
+    {
+        var parts = new List<string>();
+        if (r.Ingredients.Count > 0)
+        {
+            parts.Add(string.Join(", ",
+                r.Ingredients.OrderBy(i => i.Item.Name).Select(i => $"{i.Quantity}× {i.Item.Name}")));
+        }
+        if (r.BuildingRequirements.Count > 0)
+        {
+            parts.Add(string.Join(", ",
+                r.BuildingRequirements.OrderBy(b => b.Building.Name).Select(b => b.Building.Name)));
+        }
+        if (r.SkillRequirements.Count > 0)
+        {
+            parts.Add(string.Join(", ",
+                r.SkillRequirements.OrderBy(s => s.Skill.Name).Select(s => s.Skill.Name)));
+        }
+        return parts.Count > 0 ? string.Join(" │ ", parts) : null;
     }
 
     private static async Task<Results<Created<GameItemDto>, Conflict>> CreateGameItem(CreateGameItemDto dto, WorldDbContext db)
@@ -176,7 +223,11 @@ public static class ItemEndpoints
             var required = cr.GetRequirement(playerClass);
             return required > 0 && level >= required;
         })
-        .Select(i => new ItemListDto(i.Id, i.Name, i.ItemType, i.Effect, i.IsCraftable, i.IsUnique, i.IsLimited))
+        .Select(i => new ItemListDto(
+            i.Id, i.Name, i.ItemType, i.Effect, i.PhysicalForm, i.IsCraftable,
+            i.ClassRequirements.Warrior, i.ClassRequirements.Archer,
+            i.ClassRequirements.Mage, i.ClassRequirements.Thief,
+            i.IsUnique, i.IsLimited, i.ImagePath))
         .OrderBy(i => i.Name)
         .ToList();
 

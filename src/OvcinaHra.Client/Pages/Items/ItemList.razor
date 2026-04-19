@@ -14,7 +14,7 @@
             <button class="btn btn-sm @(Catalog ? "btn-primary" : "btn-outline-primary")"
                     @onclick='() => Nav.NavigateTo("/items?catalog=true")'>Katalog</button>
         </div>
-        <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nový předmět</button>
+        <button class="btn btn-primary" @onclick="() => OpenModal((ItemListDto?)null)">+ Nový předmět</button>
     </div>
 </div>
 
@@ -22,7 +22,15 @@
 {
     <p>Načítám...</p>
 }
-else if (!Catalog && items.Count == 0)
+else if (!Catalog && GameContext.SelectedGameId is null)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-controller fs-1 d-block mb-2"></i>
+        <p>Vyber nejprve hru z přepínače nahoře, nebo otevři katalog všech předmětů.</p>
+        <button class="btn btn-outline-primary" @onclick='() => Nav.NavigateTo("/items?catalog=true")'>Otevřít katalog</button>
+    </div>
+}
+else if (!Catalog && gameItems.Count == 0)
 {
     <div class="text-center text-muted py-5">
         <i class="bi bi-box-seam fs-1 d-block mb-2"></i>
@@ -30,15 +38,20 @@ else if (!Catalog && items.Count == 0)
         <button class="btn btn-outline-primary" @onclick='() => Nav.NavigateTo("/items?catalog=true")'>Otevřít katalog</button>
     </div>
 }
-else
+else if (Catalog)
 {
-    <OvcinaGrid Data="@items" KeyFieldName="Id" LayoutKey="grid-layout-items"
+    <OvcinaGrid Data="@catalogItems" KeyFieldName="Id" LayoutKey="grid-layout-items-catalog"
                 RowClick="@(e => OpenModal((ItemListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
+            <DxGridDataColumn FieldName="Id" Caption="#" Width="60px" Visible="false" />
             <DxGridDataColumn FieldName="Name" Caption="Název" />
-            <DxGridDataColumn FieldName="Effect" Caption="Efekt" />
             <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="Typ" Width="150px" />
-
+            <DxGridDataColumn FieldName="Effect" Caption="Efekt" />
+            <DxGridDataColumn FieldName="PhysicalFormDisplay" Caption="Fyzická forma" Width="150px" Visible="false" />
+            <DxGridDataColumn FieldName="ReqWarrior" Caption="Váleč." Width="80px" Visible="false" />
+            <DxGridDataColumn FieldName="ReqArcher" Caption="Střelec" Width="80px" Visible="false" />
+            <DxGridDataColumn FieldName="ReqMage" Caption="Mág" Width="80px" Visible="false" />
+            <DxGridDataColumn FieldName="ReqThief" Caption="Zloděj" Width="80px" Visible="false" />
             <DxGridDataColumn FieldName="IsCraftable" Caption="Vyrobitelný" Width="120px">
                 <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
             </DxGridDataColumn>
@@ -48,28 +61,86 @@ else
             <DxGridDataColumn FieldName="IsLimited" Caption="Limitovaný" Width="110px" Visible="false">
                 <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
             </DxGridDataColumn>
-            @if (Catalog)
-            {
-                <DxGridDataColumn FieldName="Id" Caption="Hra" Width="130px" AllowSort="false" AllowGroup="false">
-                    <CellDisplayTemplate>
-                        @{
-                            var itemId = (int)context.Value;
-                            if (assignedItemIds.Contains(itemId))
-                            {
-                                <button class="btn btn-sm btn-outline-danger" @onclick:stopPropagation="true"
-                                        @onclick="() => UnassignItemAsync(itemId)">Odebrat</button>
-                            }
-                            else
-                            {
-                                <button class="btn btn-sm btn-outline-success" @onclick:stopPropagation="true"
-                                        @onclick="() => AssignItemAsync(itemId)">Přidat</button>
-                            }
+            <DxGridDataColumn FieldName="HasImage" Caption="Obrázek" Width="100px" Visible="false">
+                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="Id" Caption="Hra" Width="130px" AllowSort="false" AllowGroup="false" AllowFilter="false">
+                <CellDisplayTemplate>
+                    @{
+                        var itemId = (int)context.Value;
+                        if (assignedItemIds.Contains(itemId))
+                        {
+                            <button class="btn btn-sm btn-outline-danger" @onclick:stopPropagation="true"
+                                    @onclick="() => UnassignItemAsync(itemId)">Odebrat</button>
                         }
-                    </CellDisplayTemplate>
-                </DxGridDataColumn>
-            }
+                        else
+                        {
+                            <button class="btn btn-sm btn-outline-success" @onclick:stopPropagation="true"
+                                    @onclick="() => AssignItemAsync(itemId)">Přidat</button>
+                        }
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
         </Columns>
     </OvcinaGrid>
+}
+else
+{
+    <OvcinaGrid Data="@gameItems" KeyFieldName="Id" LayoutKey="grid-layout-items-game"
+                RowClick="@(e => OpenModal((GameItemListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+        <Columns>
+            <DxGridDataColumn FieldName="" Caption="" Width="40px" AllowSort="false" AllowGroup="false" AllowFilter="false" FixedPosition="GridColumnFixedPosition.Left">
+                <CellDisplayTemplate>
+                    @{
+                        var gi = (GameItemListDto)context.DataItem;
+                    }
+                    <button class="btn btn-sm btn-link p-0 text-muted" @onclick="async e => await ShowContextMenu(e, gi)" @onclick:stopPropagation="true">
+                        <i class="bi bi-three-dots-vertical"></i>
+                    </button>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="Id" Caption="#" Width="60px" Visible="false" />
+            <DxGridDataColumn FieldName="Name" Caption="Název" />
+            <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="Typ" Width="150px" />
+            <DxGridDataColumn FieldName="Effect" Caption="Efekt" />
+            <DxGridDataColumn FieldName="RecipeSummary" Caption="Recept" Width="340px" />
+            <DxGridDataColumn FieldName="Price" Caption="Cena" Width="90px" />
+            <DxGridDataColumn FieldName="StockCount" Caption="Skladem" Width="110px" />
+            <DxGridDataColumn FieldName="IsSold" Caption="Prodávaný" Width="110px">
+                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="IsFindable" Caption="Nalezitelný" Width="110px">
+                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="SaleCondition" Caption="Podmínka prodeje" Width="240px" Visible="false" />
+            <DxGridDataColumn FieldName="PhysicalFormDisplay" Caption="Fyzická forma" Width="150px" Visible="false" />
+            <DxGridDataColumn FieldName="ReqWarrior" Caption="Váleč." Width="80px" Visible="false" />
+            <DxGridDataColumn FieldName="ReqArcher" Caption="Střelec" Width="80px" Visible="false" />
+            <DxGridDataColumn FieldName="ReqMage" Caption="Mág" Width="80px" Visible="false" />
+            <DxGridDataColumn FieldName="ReqThief" Caption="Zloděj" Width="80px" Visible="false" />
+            <DxGridDataColumn FieldName="IsCraftable" Caption="Vyrobitelný" Width="120px" Visible="false">
+                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="IsUnique" Caption="Unikátní" Width="100px" Visible="false">
+                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="IsLimited" Caption="Limitovaný" Width="110px" Visible="false">
+                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="HasImage" Caption="Obrázek" Width="100px" Visible="false">
+                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+        </Columns>
+    </OvcinaGrid>
+
+    <DxContextMenu @ref="contextMenu" ItemClick="OnContextMenuItemClick">
+        <Items>
+            <DxContextMenuItem Text="Upravit" IconCssClass="bi bi-pencil-fill" Name="edit" />
+            <DxContextMenuItem Text="Otevřít recept" IconCssClass="bi bi-hammer" Name="recipe" Enabled="@contextMenuTargetIsCraftable" />
+            <DxContextMenuItem BeginGroup="true" Text="Odebrat z hry" IconCssClass="bi bi-x-circle" Name="unassign" />
+            <DxContextMenuItem Text="Smazat" IconCssClass="bi bi-trash-fill" CssClass="text-danger" Name="delete" />
+        </Items>
+    </DxContextMenu>
 }
 
 <DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="900px">
@@ -286,8 +357,15 @@ else
     [SupplyParameterFromQuery]
     public bool Catalog { get; set; }
 
-    private List<ItemListDto> items = [];
+    private List<ItemListDto> catalogItems = [];
+    private List<GameItemListDto> gameItems = [];
     private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
+
+    // Context menu state (in-game view only)
+    private DxContextMenu? contextMenu;
+    private int? contextMenuTargetId;
+    private string contextMenuTargetName = "";
+    private bool contextMenuTargetIsCraftable;
     private string modalTitle = "", name = "";
     private string? error, effect;
     private int? editingId;
@@ -351,23 +429,23 @@ else
     private async Task LoadAsync()
     {
         loading = true;
-        var allItemsList = await Api.GetListAsync<ItemListDto>("/api/items");
 
         if (!Catalog && GameContext.SelectedGameId is int gid)
         {
-            // Game mode: only show items assigned to the current game
-            var gameItems = await Api.GetListAsync<GameItemDto>($"/api/items/by-game/{gid}");
-            assignedItemIds = gameItems.Select(gi => gi.ItemId).ToHashSet();
-            items = allItemsList.Where(i => assignedItemIds.Contains(i.Id)).ToList();
+            // Game mode: grid is populated by the merged per-game shape directly.
+            gameItems = await Api.GetListAsync<GameItemListDto>($"/api/items/by-game/{gid}");
+            assignedItemIds = gameItems.Select(gi => gi.Id).ToHashSet();
+            catalogItems = [];
         }
         else
         {
-            items = allItemsList;
+            catalogItems = await Api.GetListAsync<ItemListDto>("/api/items");
+            gameItems = [];
             if (Catalog && GameContext.SelectedGameId is int catalogGid)
             {
-                // Catalog mode: load assigned IDs for assign/unassign column
-                var gameItems = await Api.GetListAsync<GameItemDto>($"/api/items/by-game/{catalogGid}");
-                assignedItemIds = gameItems.Select(gi => gi.ItemId).ToHashSet();
+                // Catalog mode: load assigned IDs for the Přidat/Odebrat column
+                var linked = await Api.GetListAsync<GameItemListDto>($"/api/items/by-game/{catalogGid}");
+                assignedItemIds = linked.Select(gi => gi.Id).ToHashSet();
             }
         }
 
@@ -386,12 +464,57 @@ else
         }
         else
         {
-            editingId = item.Id; name = item.Name; itemType = item.ItemType;
-            isCraftable = item.IsCraftable; isUnique = item.IsUnique; isLimited = item.IsLimited;
-            modalTitle = $"Upravit: {item.Name}";
-            _ = LoadDetailAsync(item.Id);
+            OpenExistingModal(item.Id, item.Name, item.ItemType, item.IsCraftable, item.IsUnique, item.IsLimited);
+            return;
         }
         isModalVisible = true;
+    }
+
+    private void OpenModal(GameItemListDto item)
+    {
+        error = null;
+        OpenExistingModal(item.Id, item.Name, item.ItemType, item.IsCraftable, item.IsUnique, item.IsLimited);
+    }
+
+    private void OpenExistingModal(int id, string itemName, ItemType type, bool craftable, bool unique, bool limited)
+    {
+        editingId = id; name = itemName; itemType = type;
+        isCraftable = craftable; isUnique = unique; isLimited = limited;
+        modalTitle = $"Upravit: {itemName}";
+        _ = LoadDetailAsync(id);
+        isModalVisible = true;
+    }
+
+    private async Task ShowContextMenu(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, GameItemListDto gi)
+    {
+        contextMenuTargetId = gi.Id;
+        contextMenuTargetName = gi.Name;
+        contextMenuTargetIsCraftable = gi.IsCraftable;
+        await contextMenu!.ShowAsync(e);
+    }
+
+    private async Task OnContextMenuItemClick(ContextMenuItemClickEventArgs e)
+    {
+        if (contextMenuTargetId is null) return;
+        var id = contextMenuTargetId.Value;
+
+        switch (e.ItemInfo?.Name)
+        {
+            case "edit":
+            case "recipe":
+                var target = gameItems.FirstOrDefault(x => x.Id == id);
+                if (target is not null) OpenModal(target);
+                break;
+            case "unassign":
+                await UnassignItemAsync(id);
+                break;
+            case "delete":
+                // Delegate to the existing delete flow — the popup needs editingId + name set.
+                editingId = id;
+                name = contextMenuTargetName;
+                isDeleteVisible = true;
+                break;
+        }
     }
 
     private async Task LoadDetailAsync(int id)
@@ -534,8 +657,8 @@ else
         var gameId = GameContext.SelectedGameId;
         if (gameId is null) { gameItemLoading = false; return; }
 
-        var gameItems = await Api.GetListAsync<GameItemDto>($"/api/items/by-game/{gameId}");
-        var gi = gameItems.FirstOrDefault(g => g.ItemId == itemId);
+        var itemsInGame = await Api.GetListAsync<GameItemListDto>($"/api/items/by-game/{gameId}");
+        var gi = itemsInGame.FirstOrDefault(g => g.Id == itemId);
         if (gi is not null)
         {
             gameItemExists = true;

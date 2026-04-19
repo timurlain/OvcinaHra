@@ -4,10 +4,65 @@ using OvcinaHra.Shared.Extensions;
 
 namespace OvcinaHra.Shared.Dtos;
 
-public record ItemListDto(int Id, string Name, ItemType ItemType, string? Effect, bool IsCraftable, bool IsUnique, bool IsLimited)
+public record ItemListDto(
+    int Id,
+    string Name,
+    ItemType ItemType,
+    string? Effect,
+    PhysicalForm? PhysicalForm,
+    bool IsCraftable,
+    int ReqWarrior,
+    int ReqArcher,
+    int ReqMage,
+    int ReqThief,
+    bool IsUnique,
+    bool IsLimited,
+    string? ImagePath)
 {
     [JsonIgnore]
     public string ItemTypeDisplay => ItemType.GetDisplayName();
+
+    [JsonIgnore]
+    public string PhysicalFormDisplay => PhysicalForm.HasValue ? PhysicalForm.Value.GetDisplayName() : "";
+
+    [JsonIgnore]
+    public bool HasImage => !string.IsNullOrEmpty(ImagePath);
+}
+
+/// <summary>
+/// Flat merged shape used by the "Jen tato hra" items grid — combines all catalog
+/// item fields with this game's GameItem configuration (price, stock, sale flags).
+/// </summary>
+public record GameItemListDto(
+    int Id,
+    string Name,
+    ItemType ItemType,
+    string? Effect,
+    PhysicalForm? PhysicalForm,
+    bool IsCraftable,
+    int ReqWarrior,
+    int ReqArcher,
+    int ReqMage,
+    int ReqThief,
+    bool IsUnique,
+    bool IsLimited,
+    string? ImagePath,
+    int GameId,
+    int? Price,
+    int? StockCount,
+    bool IsSold,
+    string? SaleCondition,
+    bool IsFindable,
+    string? RecipeSummary)
+{
+    [JsonIgnore]
+    public string ItemTypeDisplay => ItemType.GetDisplayName();
+
+    [JsonIgnore]
+    public string PhysicalFormDisplay => PhysicalForm.HasValue ? PhysicalForm.Value.GetDisplayName() : "";
+
+    [JsonIgnore]
+    public bool HasImage => !string.IsNullOrEmpty(ImagePath);
 }
 
 public record ItemDetailDto(
