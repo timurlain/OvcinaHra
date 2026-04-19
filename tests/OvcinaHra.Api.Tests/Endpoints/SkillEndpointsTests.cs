@@ -111,4 +111,65 @@ public class SkillEndpointsTests(PostgresFixture postgres) : IntegrationTestBase
         var second = await Client.PostAsJsonAsync("/api/skills", dto);
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
     }
+
+    [Fact]
+    public async Task Get_ReturnsAllSkills()
+    {
+        var s1 = new CreateSkillRequest("Stopování", PlayerClass.Archer, null, null, []);
+        var s2 = new CreateSkillRequest("Léčitelství", null, "Léčí 1 zranění", null, []);
+        var s3 = new CreateSkillRequest("Runy ochrany", PlayerClass.Mage, null, "Ve svatyni", []);
+
+        foreach (var s in new[] { s1, s2, s3 })
+        {
+            var r = await Client.PostAsJsonAsync("/api/skills", s);
+            Assert.Equal(HttpStatusCode.Created, r.StatusCode);
+        }
+
+        var response = await Client.GetAsync("/api/skills");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var list = await response.Content.ReadFromJsonAsync<List<SkillDto>>();
+        Assert.NotNull(list);
+        Assert.Equal(3, list.Count);
+        Assert.Contains(list, s => s.Name == "Stopování" && s.ClassRestriction == PlayerClass.Archer);
+        Assert.Contains(list, s => s.Name == "Léčitelství" && s.ClassRestriction == null && s.Effect == "Léčí 1 zranění");
+        Assert.Contains(list, s => s.Name == "Runy ochrany" && s.RequirementNotes == "Ve svatyni");
+    }
+
+    [Fact]
+    public async Task GetById_ReturnsSkillWithBuildingIds()
+    {
+        var kovarna = await CreateBuildingAsync("Kovárna G");
+        var alchymie = await CreateBuildingAsync("Dílna G");
+
+        var createDto = new CreateSkillRequest(
+            Name: "Dvojitý úder",
+            ClassRestriction: PlayerClass.Warrior,
+            Effect: "Dvakrát za kolo",
+            RequirementNotes: null,
+            RequiredBuildingIds: [kovarna.Id, alchymie.Id]);
+
+        var createResp = await Client.PostAsJsonAsync("/api/skills", createDto);
+        Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
+        var created = await createResp.Content.ReadFromJsonAsync<SkillDto>();
+        Assert.NotNull(created);
+
+        var response = await Client.GetAsync($"/api/skills/{created.Id}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var fetched = await response.Content.ReadFromJsonAsync<SkillDto>();
+        Assert.NotNull(fetched);
+        Assert.Equal(created.Id, fetched.Id);
+        Assert.Equal("Dvojitý úder", fetched.Name);
+        Assert.Equal(2, fetched.RequiredBuildingIds.Count);
+        Assert.Contains(kovarna.Id, fetched.RequiredBuildingIds);
+        Assert.Contains(alchymie.Id, fetched.RequiredBuildingIds);
+    }
+
+    [Fact]
+    public async Task GetById_NotFound_Returns404()
+    {
+        var response = await Client.GetAsync("/api/skills/999999");
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
 }

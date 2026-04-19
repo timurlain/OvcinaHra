@@ -13,9 +13,32 @@ public static class SkillEndpoints
     {
         var group = routes.MapGroup("/api/skills").WithTags("Skills");
 
+        group.MapGet("/", GetAll);
+        group.MapGet("/{id:int}", GetById);
         group.MapPost("/", Create);
 
         return group;
+    }
+
+    private static async Task<Ok<IReadOnlyList<SkillDto>>> GetAll(WorldDbContext db)
+    {
+        var skills = await db.Skills
+            .Include(s => s.BuildingRequirements)
+            .OrderBy(s => s.Name)
+            .ToListAsync();
+
+        IReadOnlyList<SkillDto> dtos = skills.Select(ToDto).ToList();
+        return TypedResults.Ok(dtos);
+    }
+
+    private static async Task<Results<Ok<SkillDto>, NotFound>> GetById(int id, WorldDbContext db)
+    {
+        var skill = await db.Skills
+            .Include(s => s.BuildingRequirements)
+            .SingleOrDefaultAsync(s => s.Id == id);
+        if (skill is null) return TypedResults.NotFound();
+
+        return TypedResults.Ok(ToDto(skill));
     }
 
     private static async Task<Results<Created<SkillDto>, BadRequest<ProblemDetails>, Conflict<ProblemDetails>>> Create(
