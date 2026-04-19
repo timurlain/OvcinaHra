@@ -457,12 +457,11 @@ For each page listed below, go through the empty → upload → replace → dele
 
 ### Pages to exercise
 
-1. **Items** — `/items` → open an item → see the 1:1 square box.
+1. **Items** — `/items` → open an item → see the 2:3 portrait box.
 2. **Monsters** — `/monsters` → edit a monster → 1:1 square.
 3. **NPCs** — `/npcs` → edit an NPC → 2:3 portrait.
 4. **Locations** — `/locations` or the location edit popup → edit a location → **two** image pickers (illustration 3:2 and placement 3:2).
-5. **Secret Stashes** — open a stash → 3:2.
-6. **Skills** — `/skills` → create/edit a skill → 1:1 (if Task 3 wired the upload).
+5. **Secret Stashes** — open a stash → 2:3 portrait.
 
 If any page looks broken (wrong aspect, overflow, misaligned delete button), fix the CSS in Task 1's `.razor.css` and commit that fix separately:
 

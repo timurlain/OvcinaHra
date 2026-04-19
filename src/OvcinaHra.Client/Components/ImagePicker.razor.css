@@ -98,3 +98,8 @@
     opacity: 0;
     cursor: pointer;
 }
+
+.image-picker-box.is-working .image-picker-input {
+    cursor: wait;
+    pointer-events: none;
+}

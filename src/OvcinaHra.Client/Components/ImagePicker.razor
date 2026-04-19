@@ -54,6 +54,10 @@
 
     private string parsedAspect = "1 / 1";
 
+    private string? _lastEntityType;
+    private int _lastEntityId;
+    private string? _lastField;
+
     protected override void OnParametersSet()
     {
         parsedAspect = ParseAspectRatio(AspectRatio);
@@ -61,8 +65,21 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        if (EntityId > 0)
-            await LoadImageUrl();
+        if (EntityId <= 0)
+            return;
+
+        if (EntityType == _lastEntityType
+            && EntityId == _lastEntityId
+            && Field == _lastField)
+        {
+            return;
+        }
+
+        _lastEntityType = EntityType;
+        _lastEntityId = EntityId;
+        _lastField = Field;
+
+        await LoadImageUrl();
     }
 
     private static string ParseAspectRatio(string ratio)
@@ -126,6 +143,7 @@
 
     private async Task DeleteImage()
     {
+        errorMessage = null;
         isWorking = true;
         try
         {
