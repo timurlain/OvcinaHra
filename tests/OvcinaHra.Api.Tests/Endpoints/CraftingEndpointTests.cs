@@ -201,30 +201,32 @@ public class CraftingEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
 
-    #region Skill requirements (Task 4.2 — failing until handler wires RequiredSkillIds)
+    #region Skill requirements (recipe references GameSkill.Id, not template Skill.Id)
 
-    private async Task<int> SeedSkillAsync(string name)
+    /// <summary>
+    /// Seeds a GameSkill row directly via DbContext. Returns <see cref="GameSkill.Id"/>
+    /// (surrogate) — the value that belongs in <c>CreateCraftingRecipeDto.RequiredSkillIds</c>.
+    /// </summary>
+    private async Task<int> SeedGameSkillAsync(
+        int gameId,
+        string name,
+        SkillCategory category = SkillCategory.Class,
+        int xpCost = 5)
     {
         using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
-        var skill = new Skill { Name = name };
-        db.Skills.Add(skill);
-        await db.SaveChangesAsync();
-        return skill.Id;
-    }
-
-    private async Task AddGameSkillAsync(int gameId, int skillId, int xpCost = 5)
-    {
-        using var scope = Factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
-        db.GameSkills.Add(new GameSkill
+        var gs = new GameSkill
         {
             GameId = gameId,
-            SkillId = skillId,
+            TemplateSkillId = null,
+            Name = name,
+            Category = category,
             XpCost = xpCost,
             LevelRequirement = null
-        });
+        };
+        db.GameSkills.Add(gs);
         await db.SaveChangesAsync();
+        return gs.Id;
     }
 
     [Fact]
@@ -238,13 +240,11 @@ public class CraftingEndpointTests(PostgresFixture postgres) : IntegrationTestBa
             new CreateItemDto("Meč kováře", ItemType.Weapon));
         var item = await itemResponse.Content.ReadFromJsonAsync<ItemDetailDto>();
 
-        var s1 = await SeedSkillAsync("Kovářství");
-        var s2 = await SeedSkillAsync("Tavba rudy");
-        await AddGameSkillAsync(game!.Id, s1);
-        await AddGameSkillAsync(game.Id, s2);
+        var gs1 = await SeedGameSkillAsync(game!.Id, "Kovářství");
+        var gs2 = await SeedGameSkillAsync(game.Id, "Tavba rudy");
 
         var dto = new CreateCraftingRecipeDto(game.Id, item!.Id, LocationId: null,
-            RequiredSkillIds: new[] { s1, s2 });
+            RequiredSkillIds: new[] { gs1, gs2 });
         var response = await Client.PostAsJsonAsync("/api/crafting", dto);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -253,14 +253,14 @@ public class CraftingEndpointTests(PostgresFixture postgres) : IntegrationTestBa
 
         using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
-        var linkedSkillIds = await db.CraftingSkillRequirements
+        var linkedGameSkillIds = await db.CraftingSkillRequirements
             .Where(r => r.CraftingRecipeId == created!.Id)
-            .Select(r => r.SkillId)
+            .Select(r => r.GameSkillId)
             .ToListAsync();
 
-        Assert.Equal(2, linkedSkillIds.Count);
-        Assert.Contains(s1, linkedSkillIds);
-        Assert.Contains(s2, linkedSkillIds);
+        Assert.Equal(2, linkedGameSkillIds.Count);
+        Assert.Contains(gs1, linkedGameSkillIds);
+        Assert.Contains(gs2, linkedGameSkillIds);
     }
 
     [Fact]
@@ -274,21 +274,18 @@ public class CraftingEndpointTests(PostgresFixture postgres) : IntegrationTestBa
             new CreateItemDto("Amulet", ItemType.Armor));
         var item = await itemResponse.Content.ReadFromJsonAsync<ItemDetailDto>();
 
-        var s1 = await SeedSkillAsync("Dov1");
-        var s2 = await SeedSkillAsync("Dov2");
-        var s3 = await SeedSkillAsync("Dov3");
-        await AddGameSkillAsync(game!.Id, s1);
-        await AddGameSkillAsync(game.Id, s2);
-        await AddGameSkillAsync(game.Id, s3);
+        var gs1 = await SeedGameSkillAsync(game!.Id, "Dov1");
+        var gs2 = await SeedGameSkillAsync(game.Id, "Dov2");
+        var gs3 = await SeedGameSkillAsync(game.Id, "Dov3");
 
         var createResp = await Client.PostAsJsonAsync("/api/crafting",
             new CreateCraftingRecipeDto(game.Id, item!.Id, LocationId: null,
-                RequiredSkillIds: new[] { s1, s2 }));
+                RequiredSkillIds: new[] { gs1, gs2 }));
         Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
         var created = await createResp.Content.ReadFromJsonAsync<CraftingRecipeListDto>();
 
         var updateDto = new UpdateCraftingRecipeDto(item.Id, LocationId: null,
-            RequiredSkillIds: new[] { s2, s3 });
+            RequiredSkillIds: new[] { gs2, gs3 });
         var putResp = await Client.PutAsJsonAsync($"/api/crafting/{created!.Id}", updateDto);
 
         Assert.True(
@@ -300,31 +297,35 @@ public class CraftingEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
         var finalIds = await db.CraftingSkillRequirements
             .Where(r => r.CraftingRecipeId == created.Id)
-            .Select(r => r.SkillId)
+            .Select(r => r.GameSkillId)
             .ToListAsync();
 
         Assert.Equal(2, finalIds.Count);
-        Assert.Contains(s2, finalIds);
-        Assert.Contains(s3, finalIds);
-        Assert.DoesNotContain(s1, finalIds);
+        Assert.Contains(gs2, finalIds);
+        Assert.Contains(gs3, finalIds);
+        Assert.DoesNotContain(gs1, finalIds);
     }
 
     [Fact]
     public async Task CreateRecipe_SkillNotInGame_Returns400()
     {
-        var gameResponse = await Client.PostAsJsonAsync("/api/games",
-            new CreateGameDto("Test Hra", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
-        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
+        // Game A — has the GameSkill
+        var gameAResp = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Hra A", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var gameA = await gameAResp.Content.ReadFromJsonAsync<GameDetailDto>();
+        var gsInA = await SeedGameSkillAsync(gameA!.Id, "Skill v A");
+
+        // Game B — recipe attempts to reference the game-A GameSkill
+        var gameBResp = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Hra B", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var gameB = await gameBResp.Content.ReadFromJsonAsync<GameDetailDto>();
 
         var itemResponse = await Client.PostAsJsonAsync("/api/items",
             new CreateItemDto("Štít", ItemType.Armor));
         var item = await itemResponse.Content.ReadFromJsonAsync<ItemDetailDto>();
 
-        // Skill exists in catalog but is NOT added to this game.
-        var orphanSkillId = await SeedSkillAsync("Neregistrovaná dovednost");
-
-        var dto = new CreateCraftingRecipeDto(game!.Id, item!.Id, LocationId: null,
-            RequiredSkillIds: new[] { orphanSkillId });
+        var dto = new CreateCraftingRecipeDto(gameB!.Id, item!.Id, LocationId: null,
+            RequiredSkillIds: new[] { gsInA });
         var response = await Client.PostAsJsonAsync("/api/crafting", dto);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
