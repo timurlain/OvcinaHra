@@ -16,6 +16,7 @@ public static class SkillEndpoints
         group.MapGet("/", GetAll);
         group.MapGet("/{id:int}", GetById);
         group.MapPost("/", Create);
+        group.MapPut("/{id:int}", Update);
 
         return group;
     }
@@ -64,19 +65,8 @@ public static class SkillEndpoints
         }
 
         var requiredBuildingIds = dto.RequiredBuildingIds?.Distinct().ToList() ?? [];
-        if (requiredBuildingIds.Count > 0)
-        {
-            var knownBuildingCount = await db.Buildings
-                .CountAsync(b => requiredBuildingIds.Contains(b.Id));
-            if (knownBuildingCount != requiredBuildingIds.Count)
-            {
-                return TypedResults.BadRequest(new ProblemDetails
-                {
-                    Title = "Některé z požadovaných budov neexistují.",
-                    Status = StatusCodes.Status400BadRequest
-                });
-            }
-        }
+        var buildingError = await ValidateBuildingIdsAsync(requiredBuildingIds, db);
+        if (buildingError is not null) return TypedResults.BadRequest(buildingError);
 
         var skill = new Skill
         {
@@ -93,6 +83,77 @@ public static class SkillEndpoints
         await db.SaveChangesAsync();
 
         return TypedResults.Created($"/api/skills/{skill.Id}", ToDto(skill));
+    }
+
+    private static async Task<Results<NoContent, NotFound, BadRequest<ProblemDetails>, Conflict<ProblemDetails>>> Update(
+        int id, UpdateSkillRequest dto, WorldDbContext db)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Name))
+        {
+            return TypedResults.BadRequest(new ProblemDetails
+            {
+                Title = "Název dovednosti je povinný.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
+        var skill = await db.Skills
+            .Include(s => s.BuildingRequirements)
+            .SingleOrDefaultAsync(s => s.Id == id);
+        if (skill is null) return TypedResults.NotFound();
+
+        var nameConflict = await db.Skills.AnyAsync(s => s.Id != id && s.Name == dto.Name);
+        if (nameConflict)
+        {
+            return TypedResults.Conflict(new ProblemDetails
+            {
+                Title = "Dovednost s tímto názvem již existuje.",
+                Status = StatusCodes.Status409Conflict
+            });
+        }
+
+        var requiredBuildingIds = dto.RequiredBuildingIds?.Distinct().ToList() ?? [];
+        var buildingError = await ValidateBuildingIdsAsync(requiredBuildingIds, db);
+        if (buildingError is not null) return TypedResults.BadRequest(buildingError);
+
+        skill.Name = dto.Name;
+        skill.ClassRestriction = dto.ClassRestriction;
+        skill.Effect = dto.Effect;
+        skill.RequirementNotes = dto.RequirementNotes;
+
+        // Replace BuildingRequirements as a set
+        var currentIds = skill.BuildingRequirements.Select(r => r.BuildingId).ToHashSet();
+        var desiredIds = requiredBuildingIds.ToHashSet();
+
+        foreach (var req in skill.BuildingRequirements.Where(r => !desiredIds.Contains(r.BuildingId)).ToList())
+        {
+            skill.BuildingRequirements.Remove(req);
+        }
+        foreach (var bid in desiredIds.Where(b => !currentIds.Contains(b)))
+        {
+            skill.BuildingRequirements.Add(new SkillBuildingRequirement { SkillId = id, BuildingId = bid });
+        }
+
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
+    }
+
+    private static async Task<ProblemDetails?> ValidateBuildingIdsAsync(
+        IReadOnlyCollection<int> requiredBuildingIds, WorldDbContext db)
+    {
+        if (requiredBuildingIds.Count == 0) return null;
+
+        var knownBuildingCount = await db.Buildings
+            .CountAsync(b => requiredBuildingIds.Contains(b.Id));
+        if (knownBuildingCount != requiredBuildingIds.Count)
+        {
+            return new ProblemDetails
+            {
+                Title = "Některé z požadovaných budov neexistují.",
+                Status = StatusCodes.Status400BadRequest
+            };
+        }
+        return null;
     }
 
     private static SkillDto ToDto(Skill skill) => new(

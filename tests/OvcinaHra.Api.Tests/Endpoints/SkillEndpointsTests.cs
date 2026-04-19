@@ -172,4 +172,116 @@ public class SkillEndpointsTests(PostgresFixture postgres) : IntegrationTestBase
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    [Fact]
+    public async Task Put_UpdatesScalarFields()
+    {
+        var created = await CreateSkillAsync("Původní název", PlayerClass.Thief, "Pův. efekt", "Pův. poznámka", []);
+
+        var update = new UpdateSkillRequest(
+            Name: "Nový název",
+            ClassRestriction: PlayerClass.Mage,
+            Effect: "Nový efekt",
+            RequirementNotes: "Nová poznámka",
+            RequiredBuildingIds: []);
+
+        var putResp = await Client.PutAsJsonAsync($"/api/skills/{created.Id}", update);
+        Assert.Equal(HttpStatusCode.NoContent, putResp.StatusCode);
+
+        var getResp = await Client.GetAsync($"/api/skills/{created.Id}");
+        Assert.Equal(HttpStatusCode.OK, getResp.StatusCode);
+        var fetched = await getResp.Content.ReadFromJsonAsync<SkillDto>();
+        Assert.NotNull(fetched);
+        Assert.Equal("Nový název", fetched.Name);
+        Assert.Equal(PlayerClass.Mage, fetched.ClassRestriction);
+        Assert.Equal("Nový efekt", fetched.Effect);
+        Assert.Equal("Nová poznámka", fetched.RequirementNotes);
+    }
+
+    [Fact]
+    public async Task Put_ReplacesBuildingRequirementsAsSet()
+    {
+        var bA = await CreateBuildingAsync("Budova A");
+        var bB = await CreateBuildingAsync("Budova B");
+        var bC = await CreateBuildingAsync("Budova C");
+
+        var created = await CreateSkillAsync("Sada budov", PlayerClass.Warrior, null, null, [bA.Id, bB.Id]);
+
+        var update = new UpdateSkillRequest(
+            Name: "Sada budov",
+            ClassRestriction: PlayerClass.Warrior,
+            Effect: null,
+            RequirementNotes: null,
+            RequiredBuildingIds: [bB.Id, bC.Id]);
+
+        var putResp = await Client.PutAsJsonAsync($"/api/skills/{created.Id}", update);
+        Assert.Equal(HttpStatusCode.NoContent, putResp.StatusCode);
+
+        var getResp = await Client.GetAsync($"/api/skills/{created.Id}");
+        var fetched = await getResp.Content.ReadFromJsonAsync<SkillDto>();
+        Assert.NotNull(fetched);
+        Assert.Equal(2, fetched.RequiredBuildingIds.Count);
+        Assert.Contains(bB.Id, fetched.RequiredBuildingIds);
+        Assert.Contains(bC.Id, fetched.RequiredBuildingIds);
+        Assert.DoesNotContain(bA.Id, fetched.RequiredBuildingIds);
+    }
+
+    [Fact]
+    public async Task Put_NonExistentId_Returns404()
+    {
+        var update = new UpdateSkillRequest(
+            Name: "Cokoli",
+            ClassRestriction: null,
+            Effect: null,
+            RequirementNotes: null,
+            RequiredBuildingIds: []);
+
+        var response = await Client.PutAsJsonAsync("/api/skills/999999", update);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Put_DuplicateName_Returns409()
+    {
+        var first = await CreateSkillAsync("První dovednost", null, null, null, []);
+        var second = await CreateSkillAsync("Druhá dovednost", null, null, null, []);
+
+        var update = new UpdateSkillRequest(
+            Name: "Druhá dovednost",
+            ClassRestriction: null,
+            Effect: null,
+            RequirementNotes: null,
+            RequiredBuildingIds: []);
+
+        var response = await Client.PutAsJsonAsync($"/api/skills/{first.Id}", update);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Put_SameName_Succeeds()
+    {
+        var created = await CreateSkillAsync("Stejné jméno", PlayerClass.Archer, null, null, []);
+
+        var update = new UpdateSkillRequest(
+            Name: "Stejné jméno",
+            ClassRestriction: PlayerClass.Archer,
+            Effect: "Přidaný efekt",
+            RequirementNotes: null,
+            RequiredBuildingIds: []);
+
+        var response = await Client.PutAsJsonAsync($"/api/skills/{created.Id}", update);
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    private async Task<SkillDto> CreateSkillAsync(
+        string name,
+        PlayerClass? classRestriction,
+        string? effect,
+        string? requirementNotes,
+        IReadOnlyList<int> requiredBuildingIds)
+    {
+        var dto = new CreateSkillRequest(name, classRestriction, effect, requirementNotes, requiredBuildingIds);
+        var response = await Client.PostAsJsonAsync("/api/skills", dto);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<SkillDto>())!;
+    }
 }
