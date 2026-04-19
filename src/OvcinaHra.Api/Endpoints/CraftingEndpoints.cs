@@ -69,7 +69,7 @@ public static class CraftingEndpoints
             OutputItemId = dto.OutputItemId,
             LocationId = dto.LocationId,
             SkillRequirements = skillIds
-                .Select(sid => new CraftingSkillRequirement { SkillId = sid })
+                .Select(sid => new CraftingSkillRequirement { GameSkillId = sid })
                 .ToList()
         };
         db.CraftingRecipes.Add(r);
@@ -128,16 +128,16 @@ public static class CraftingEndpoints
         recipe.LocationId = dto.LocationId;
 
         // Replace SkillRequirements as a set.
-        var currentIds = recipe.SkillRequirements.Select(r => r.SkillId).ToHashSet();
+        var currentIds = recipe.SkillRequirements.Select(r => r.GameSkillId).ToHashSet();
         var desiredIds = skillIds.ToHashSet();
 
-        foreach (var req in recipe.SkillRequirements.Where(r => !desiredIds.Contains(r.SkillId)).ToList())
+        foreach (var req in recipe.SkillRequirements.Where(r => !desiredIds.Contains(r.GameSkillId)).ToList())
         {
             recipe.SkillRequirements.Remove(req);
         }
         foreach (var sid in desiredIds.Where(s => !currentIds.Contains(s)))
         {
-            recipe.SkillRequirements.Add(new CraftingSkillRequirement { CraftingRecipeId = id, SkillId = sid });
+            recipe.SkillRequirements.Add(new CraftingSkillRequirement { CraftingRecipeId = id, GameSkillId = sid });
         }
 
         await db.SaveChangesAsync(ct);
@@ -190,36 +190,21 @@ public static class CraftingEndpoints
     }
 
     private static async Task<ProblemDetails?> ValidateRequiredSkillsAsync(
-        WorldDbContext db, int gameId, IReadOnlyList<int> skillIds, CancellationToken ct)
+        WorldDbContext db, int gameId, IReadOnlyList<int> gameSkillIds, CancellationToken ct)
     {
-        if (skillIds.Count == 0) return null;
+        if (gameSkillIds.Count == 0) return null;
 
-        var existing = await db.Skills
-            .Where(s => skillIds.Contains(s.Id))
-            .Select(s => s.Id)
+        var existing = await db.GameSkills
+            .Where(gs => gs.GameId == gameId && gameSkillIds.Contains(gs.Id))
+            .Select(gs => gs.Id)
             .ToArrayAsync(ct);
-        var missing = skillIds.Except(existing).ToArray();
+        var missing = gameSkillIds.Except(existing).ToArray();
         if (missing.Length > 0)
         {
             return new ProblemDetails
             {
-                Title = "Některé dovednosti neexistují.",
-                Detail = $"Dovednosti s ID [{string.Join(", ", missing)}] nenalezeny.",
-                Status = StatusCodes.Status400BadRequest
-            };
-        }
-
-        var active = await db.GameSkills
-            .Where(gs => gs.GameId == gameId && skillIds.Contains(gs.SkillId))
-            .Select(gs => gs.SkillId)
-            .ToArrayAsync(ct);
-        var notInGame = skillIds.Except(active).ToArray();
-        if (notInGame.Length > 0)
-        {
-            return new ProblemDetails
-            {
                 Title = "Dovednosti nejsou ve hře dostupné.",
-                Detail = $"Dovednosti s ID [{string.Join(", ", notInGame)}] nejsou v této hře aktivní.",
+                Detail = $"Dovednosti s ID [{string.Join(", ", missing)}] nejsou v této hře dostupné.",
                 Status = StatusCodes.Status400BadRequest
             };
         }
@@ -233,6 +218,6 @@ public static class CraftingEndpoints
         r.Ingredients.Select(i => new CraftingIngredientDto(i.ItemId, i.Item.Name, i.Quantity)).ToList(),
         r.BuildingRequirements.Select(br => new CraftingBuildingReqDto(br.BuildingId, br.Building.Name)).ToList())
     {
-        RequiredSkillIds = r.SkillRequirements.Select(sr => sr.SkillId).ToList()
+        RequiredSkillIds = r.SkillRequirements.Select(sr => sr.GameSkillId).ToList()
     };
 }
