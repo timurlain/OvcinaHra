@@ -232,7 +232,10 @@ else
                 {
                     <DxFormLayout>
                         <DxFormLayoutItem Caption="Cena" ColSpanMd="4">
-                            <DxSpinEdit @bind-Value="@giPrice" MinValue="0" NullText="(žádná)" />
+                            <DxSpinEdit Value="@giPrice"
+                                        ValueExpression="@(() => giPrice)"
+                                        ValueChanged="@((int? v) => { giPrice = v; giIsSold = v.HasValue; })"
+                                        MinValue="0" NullText="(žádná)" />
                         </DxFormLayoutItem>
                         <DxFormLayoutItem Caption="Počet na skladě" ColSpanMd="4">
                             <DxSpinEdit @bind-Value="@giStockCount" MinValue="0" NullText="(neomezeno)" />
