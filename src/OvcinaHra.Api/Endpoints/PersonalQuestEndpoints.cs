@@ -13,6 +13,7 @@ public static class PersonalQuestEndpoints
         var group = routes.MapGroup("/api/personal-quests").WithTags("PersonalQuests");
 
         group.MapGet("/", GetAll);
+        group.MapGet("/{id:int}", GetById);
         group.MapPost("/", Create);
 
         return group;
@@ -28,6 +29,18 @@ public static class PersonalQuestEndpoints
             .ToListAsync();
 
         return TypedResults.Ok(quests.Select(ToListDto).ToList());
+    }
+
+    private static async Task<Results<Ok<PersonalQuestDetailDto>, NotFound>> GetById(int id, WorldDbContext db)
+    {
+        var q = await db.PersonalQuests
+            .AsNoTracking()
+            .Include(pq => pq.SkillRewards).ThenInclude(sr => sr.Skill)
+            .Include(pq => pq.ItemRewards).ThenInclude(ir => ir.Item)
+            .FirstOrDefaultAsync(pq => pq.Id == id);
+        if (q is null) return TypedResults.NotFound();
+
+        return TypedResults.Ok(ToDetailDto(q));
     }
 
     private static async Task<Created<PersonalQuestDetailDto>> Create(CreatePersonalQuestDto dto, WorldDbContext db)

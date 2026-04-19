@@ -6,6 +6,7 @@ using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Tests.Fixtures;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
+using OvcinaHra.Shared.Domain.ValueObjects;
 using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Tests.Endpoints;
@@ -50,5 +51,58 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         Assert.Equal("Vděčnost starosty", created.RewardNote);
         Assert.Empty(created.SkillRewards);
         Assert.Empty(created.ItemRewards);
+    }
+
+    [Fact]
+    public async Task GetById_Found_ReturnsWithRewards()
+    {
+        // Arrange — create a skill + item + quest with both reward types via direct DB insert
+        int questId;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var skill = new Skill { Name = "Léčivá dlaň" };
+            var item = new Item
+            {
+                Name = "Lektvar léčení",
+                ItemType = ItemType.Potion,
+                ClassRequirements = new ClassRequirements(0, 0, 0, 0)
+            };
+            db.Skills.Add(skill);
+            db.Items.Add(item);
+            await db.SaveChangesAsync();
+
+            var quest = new PersonalQuest
+            {
+                Name = "Hrdinský čin",
+                Difficulty = TreasureQuestDifficulty.Early,
+                AllowWarrior = true,
+                SkillRewards = [new PersonalQuestSkillReward { SkillId = skill.Id }],
+                ItemRewards = [new PersonalQuestItemReward { ItemId = item.Id, Quantity = 2 }]
+            };
+            db.PersonalQuests.Add(quest);
+            await db.SaveChangesAsync();
+            questId = quest.Id;
+        }
+
+        // Act
+        var result = await Client.GetFromJsonAsync<PersonalQuestDetailDto>($"/api/personal-quests/{questId}");
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(questId, result.Id);
+        Assert.Equal("Hrdinský čin", result.Name);
+        var skillReward = Assert.Single(result.SkillRewards);
+        Assert.Equal("Léčivá dlaň", skillReward.SkillName);
+        var itemReward = Assert.Single(result.ItemRewards);
+        Assert.Equal("Lektvar léčení", itemReward.ItemName);
+        Assert.Equal(2, itemReward.Quantity);
+    }
+
+    [Fact]
+    public async Task GetById_NotFound_Returns404()
+    {
+        var response = await Client.GetAsync("/api/personal-quests/99999");
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 }
