@@ -144,24 +144,7 @@ else
                             TextFieldName="Display" ValueFieldName="Value" />
             </DxFormLayoutItem>
 
-            <DxFormLayoutItem Caption="Typ omezení" ColSpanMd="12">
-                <div class="d-flex gap-3 align-items-center">
-                    <label class="form-check-label">
-                        <input type="radio" class="form-check-input me-1" name="editKind"
-                               checked="@(editKind == EditKind.ClassSpecific)"
-                               @onchange="() => SetEditKind(EditKind.ClassSpecific)" />
-                        Povolání
-                    </label>
-                    <label class="form-check-label">
-                        <input type="radio" class="form-check-input me-1" name="editKind"
-                               checked="@(editKind == EditKind.Unrestricted)"
-                               @onchange="() => SetEditKind(EditKind.Unrestricted)" />
-                        Bez omezení
-                    </label>
-                </div>
-            </DxFormLayoutItem>
-
-            @if (editKind == EditKind.ClassSpecific)
+            @if (editCategory == SkillCategory.Class)
             {
                 <DxFormLayoutItem Caption="Povolání" ColSpanMd="12">
                     <DxComboBox Data="@playerClassValues" @bind-Value="@editClassRestriction"
@@ -276,7 +259,6 @@ else
 @code {
     [Parameter] public int GameId { get; set; }
 
-    private enum EditKind { ClassSpecific, Unrestricted }
 
     private bool loading = true;
     private List<GameSkillDto> gameSkills = [];
@@ -301,7 +283,6 @@ else
     private string templateInfoLine = "";
     private string editName = "";
     private SkillCategory editCategory = SkillCategory.Class;
-    private EditKind editKind = EditKind.ClassSpecific;
     private PlayerClass editClassRestriction = PlayerClass.Warrior;
     private string? editEffect;
     private string? editRequirementNotes;
@@ -408,15 +389,7 @@ else
 
         editName = tpl.Name;
         editCategory = tpl.Category;
-        if (tpl.ClassRestriction.HasValue)
-        {
-            editKind = EditKind.ClassSpecific;
-            editClassRestriction = tpl.ClassRestriction.Value;
-        }
-        else
-        {
-            editKind = EditKind.Unrestricted;
-        }
+        editClassRestriction = tpl.ClassRestriction ?? PlayerClass.Warrior;
         editEffect = tpl.Effect;
         editRequirementNotes = tpl.RequirementNotes;
         editBuildingIds = tpl.RequiredBuildingIds.ToList();
@@ -448,15 +421,7 @@ else
 
         editName = gs.Name;
         editCategory = gs.Category;
-        if (gs.ClassRestriction.HasValue)
-        {
-            editKind = EditKind.ClassSpecific;
-            editClassRestriction = gs.ClassRestriction.Value;
-        }
-        else
-        {
-            editKind = EditKind.Unrestricted;
-        }
+        editClassRestriction = gs.ClassRestriction ?? PlayerClass.Warrior;
         editEffect = gs.Effect;
         editRequirementNotes = gs.RequirementNotes;
         editBuildingIds = gs.BuildingRequirementIds.ToList();
@@ -472,7 +437,6 @@ else
         editError = null;
         editName = "";
         editCategory = SkillCategory.Class;
-        editKind = EditKind.ClassSpecific;
         editClassRestriction = PlayerClass.Warrior;
         editEffect = null;
         editRequirementNotes = null;
@@ -480,11 +444,6 @@ else
         newBuildingId = null;
         xpCost = 0;
         levelRequirement = null;
-    }
-
-    private void SetEditKind(EditKind kind)
-    {
-        editKind = kind;
     }
 
     private void AddBuilding()
@@ -535,7 +494,7 @@ else
             return;
         }
 
-        PlayerClass? cr = editKind == EditKind.ClassSpecific ? editClassRestriction : null;
+        PlayerClass? cr = editCategory == SkillCategory.Class ? editClassRestriction : null;
 
         isSaving = true;
         try
