@@ -46,6 +46,11 @@ public class WorldDbContext(DbContextOptions<WorldDbContext> options) : DbContex
     public DbSet<GameEventLocation> GameEventLocations => Set<GameEventLocation>();
     public DbSet<GameEventQuest> GameEventQuests => Set<GameEventQuest>();
     public DbSet<GameEventNpc> GameEventNpcs => Set<GameEventNpc>();
+    public DbSet<PersonalQuest> PersonalQuests => Set<PersonalQuest>();
+    public DbSet<PersonalQuestSkillReward> PersonalQuestSkillRewards => Set<PersonalQuestSkillReward>();
+    public DbSet<PersonalQuestItemReward> PersonalQuestItemRewards => Set<PersonalQuestItemReward>();
+    public DbSet<GamePersonalQuest> GamePersonalQuests => Set<GamePersonalQuest>();
+    public DbSet<CharacterPersonalQuest> CharacterPersonalQuests => Set<CharacterPersonalQuest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
