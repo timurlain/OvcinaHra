@@ -105,4 +105,63 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         var response = await Client.GetAsync("/api/personal-quests/99999");
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
+
+    [Fact]
+    public async Task Update_ChangesFields_Persists()
+    {
+        // Arrange — create via POST
+        var createDto = new CreatePersonalQuestDto(
+            Name: "Původní název",
+            Difficulty: TreasureQuestDifficulty.Start,
+            Description: "Původní popis",
+            AllowWarrior: true);
+        var createResponse = await Client.PostAsJsonAsync("/api/personal-quests", createDto);
+        var created = await createResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
+
+        // Act — PUT with changed fields
+        var updateDto = new UpdatePersonalQuestDto(
+            Name: "Nový název",
+            Difficulty: TreasureQuestDifficulty.Lategame,
+            Description: "Nový popis",
+            AllowWarrior: false,
+            AllowArcher: true,
+            AllowMage: true,
+            AllowThief: false,
+            QuestCardText: "Karta úkolu",
+            RewardCardText: "Karta odměny",
+            RewardNote: "Poznámka k odměně",
+            Notes: "Interní poznámky");
+        var response = await Client.PutAsJsonAsync($"/api/personal-quests/{created!.Id}", updateDto);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        var reloaded = await Client.GetFromJsonAsync<PersonalQuestDetailDto>($"/api/personal-quests/{created.Id}");
+        Assert.NotNull(reloaded);
+        Assert.Equal("Nový název", reloaded.Name);
+        Assert.Equal(TreasureQuestDifficulty.Lategame, reloaded.Difficulty);
+        Assert.Equal("Nový popis", reloaded.Description);
+        Assert.False(reloaded.AllowWarrior);
+        Assert.True(reloaded.AllowArcher);
+        Assert.True(reloaded.AllowMage);
+        Assert.False(reloaded.AllowThief);
+        Assert.Equal("Karta úkolu", reloaded.QuestCardText);
+        Assert.Equal("Karta odměny", reloaded.RewardCardText);
+        Assert.Equal("Poznámka k odměně", reloaded.RewardNote);
+        Assert.Equal("Interní poznámky", reloaded.Notes);
+    }
+
+    [Fact]
+    public async Task Update_NotFound_Returns404()
+    {
+        var updateDto = new UpdatePersonalQuestDto(
+            Name: "Neexistující",
+            Difficulty: TreasureQuestDifficulty.Early,
+            Description: null,
+            AllowWarrior: false, AllowArcher: false, AllowMage: false, AllowThief: false,
+            QuestCardText: null, RewardCardText: null, RewardNote: null, Notes: null);
+
+        var response = await Client.PutAsJsonAsync("/api/personal-quests/99999", updateDto);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
 }

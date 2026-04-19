@@ -15,6 +15,7 @@ public static class PersonalQuestEndpoints
         group.MapGet("/", GetAll);
         group.MapGet("/{id:int}", GetById);
         group.MapPost("/", Create);
+        group.MapPut("/{id:int}", Update);
 
         return group;
     }
@@ -63,6 +64,27 @@ public static class PersonalQuestEndpoints
         await db.SaveChangesAsync();
 
         return TypedResults.Created($"/api/personal-quests/{q.Id}", ToDetailDto(q));
+    }
+
+    private static async Task<Results<NoContent, NotFound>> Update(int id, UpdatePersonalQuestDto dto, WorldDbContext db)
+    {
+        var q = await db.PersonalQuests.FindAsync(id);
+        if (q is null) return TypedResults.NotFound();
+
+        q.Name = dto.Name;
+        q.Difficulty = dto.Difficulty;
+        q.Description = dto.Description;
+        q.AllowWarrior = dto.AllowWarrior;
+        q.AllowArcher = dto.AllowArcher;
+        q.AllowMage = dto.AllowMage;
+        q.AllowThief = dto.AllowThief;
+        q.QuestCardText = dto.QuestCardText;
+        q.RewardCardText = dto.RewardCardText;
+        q.RewardNote = dto.RewardNote;
+        q.Notes = dto.Notes;
+
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
     }
 
     private static PersonalQuestDetailDto ToDetailDto(PersonalQuest q) => new(
