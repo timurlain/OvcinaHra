@@ -456,4 +456,187 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         Assert.Equal(HttpStatusCode.OK, catalogGet.StatusCode);
     }
 
+    // ======================================================================
+    // Batch D — Reward link endpoints
+    // ======================================================================
+
+    [Fact]
+    public async Task AddSkillReward_Persists_Returns201()
+    {
+        // Arrange — skill + quest
+        int skillId;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var skill = new Skill { Name = "Mrštnost" };
+            db.Skills.Add(skill);
+            await db.SaveChangesAsync();
+            skillId = skill.Id;
+        }
+
+        var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
+            new CreatePersonalQuestDto(Name: "Skillová odměna", Difficulty: TreasureQuestDifficulty.Early));
+        var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
+
+        // Act
+        var response = await Client.PostAsJsonAsync(
+            $"/api/personal-quests/{quest!.Id}/skill-rewards",
+            new AddSkillRewardDto(skillId));
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var reloaded = await Client.GetFromJsonAsync<PersonalQuestDetailDto>(
+            $"/api/personal-quests/{quest.Id}");
+        var reward = Assert.Single(reloaded!.SkillRewards);
+        Assert.Equal(skillId, reward.SkillId);
+        Assert.Equal("Mrštnost", reward.SkillName);
+    }
+
+    [Fact]
+    public async Task AddSkillReward_Duplicate_ReturnsConflict()
+    {
+        int skillId;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var skill = new Skill { Name = "Síla" };
+            db.Skills.Add(skill);
+            await db.SaveChangesAsync();
+            skillId = skill.Id;
+        }
+
+        var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
+            new CreatePersonalQuestDto(Name: "Duplikátní skill", Difficulty: TreasureQuestDifficulty.Early));
+        var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
+
+        var first = await Client.PostAsJsonAsync(
+            $"/api/personal-quests/{quest!.Id}/skill-rewards",
+            new AddSkillRewardDto(skillId));
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+
+        var second = await Client.PostAsJsonAsync(
+            $"/api/personal-quests/{quest.Id}/skill-rewards",
+            new AddSkillRewardDto(skillId));
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task RemoveSkillReward_Existing_Removes()
+    {
+        int skillId;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var skill = new Skill { Name = "Odstranit" };
+            db.Skills.Add(skill);
+            await db.SaveChangesAsync();
+            skillId = skill.Id;
+        }
+
+        var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
+            new CreatePersonalQuestDto(Name: "K odebrání skillu", Difficulty: TreasureQuestDifficulty.Early));
+        var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
+
+        await Client.PostAsJsonAsync(
+            $"/api/personal-quests/{quest!.Id}/skill-rewards",
+            new AddSkillRewardDto(skillId));
+
+        // Act
+        var response = await Client.DeleteAsync(
+            $"/api/personal-quests/{quest.Id}/skill-rewards/{skillId}");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var reloaded = await Client.GetFromJsonAsync<PersonalQuestDetailDto>(
+            $"/api/personal-quests/{quest.Id}");
+        Assert.Empty(reloaded!.SkillRewards);
+    }
+
+    [Fact]
+    public async Task RemoveSkillReward_NotLinked_ReturnsNoContent()
+    {
+        var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
+            new CreatePersonalQuestDto(Name: "Idempotent", Difficulty: TreasureQuestDifficulty.Early));
+        var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
+
+        var response = await Client.DeleteAsync(
+            $"/api/personal-quests/{quest!.Id}/skill-rewards/99999");
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AddItemReward_StoresQuantity()
+    {
+        int itemId;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var item = new Item
+            {
+                Name = "Lektvar síly",
+                ItemType = ItemType.Potion,
+                ClassRequirements = new ClassRequirements(0, 0, 0, 0)
+            };
+            db.Items.Add(item);
+            await db.SaveChangesAsync();
+            itemId = item.Id;
+        }
+
+        var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
+            new CreatePersonalQuestDto(Name: "Item odměna", Difficulty: TreasureQuestDifficulty.Early));
+        var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
+
+        // Act — add with qty 3
+        var response = await Client.PostAsJsonAsync(
+            $"/api/personal-quests/{quest!.Id}/item-rewards",
+            new AddItemRewardDto(itemId, Quantity: 3));
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var reloaded = await Client.GetFromJsonAsync<PersonalQuestDetailDto>(
+            $"/api/personal-quests/{quest.Id}");
+        var reward = Assert.Single(reloaded!.ItemRewards);
+        Assert.Equal(itemId, reward.ItemId);
+        Assert.Equal("Lektvar síly", reward.ItemName);
+        Assert.Equal(3, reward.Quantity);
+    }
+
+    [Fact]
+    public async Task RemoveItemReward_Existing_Removes()
+    {
+        int itemId;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var item = new Item
+            {
+                Name = "K odebrání",
+                ItemType = ItemType.Potion,
+                ClassRequirements = new ClassRequirements(0, 0, 0, 0)
+            };
+            db.Items.Add(item);
+            await db.SaveChangesAsync();
+            itemId = item.Id;
+        }
+
+        var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
+            new CreatePersonalQuestDto(Name: "K odebrání itemu", Difficulty: TreasureQuestDifficulty.Early));
+        var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
+
+        await Client.PostAsJsonAsync(
+            $"/api/personal-quests/{quest!.Id}/item-rewards",
+            new AddItemRewardDto(itemId, Quantity: 1));
+
+        // Act
+        var response = await Client.DeleteAsync(
+            $"/api/personal-quests/{quest.Id}/item-rewards/{itemId}");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var reloaded = await Client.GetFromJsonAsync<PersonalQuestDetailDto>(
+            $"/api/personal-quests/{quest.Id}");
+        Assert.Empty(reloaded!.ItemRewards);
+    }
 }
