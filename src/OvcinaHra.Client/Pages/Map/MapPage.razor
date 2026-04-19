@@ -182,7 +182,20 @@
         await LoadAndDisplayLocationsAsync();
     }
 
-    private async void OnGameChanged() { try { await LoadAndDisplayLocationsAsync(); StateHasChanged(); } catch { /* best-effort */ } }
+    private async void OnGameChanged()
+    {
+        try
+        {
+            placingMode = false;
+            placingLocation = null;
+            isPickerVisible = false;
+            isPlaceConfirmVisible = false;
+            isPlaceSaving = false;
+            await LoadAndDisplayLocationsAsync();
+            StateHasChanged();
+        }
+        catch { /* best-effort */ }
+    }
     public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
 
     private async Task LoadAndDisplayLocationsAsync()
@@ -230,6 +243,8 @@
     {
         placingMode = false;
         placingLocation = null;
+        isPlaceConfirmVisible = false;
+        isPlaceSaving = false;
     }
 
     private Task HandleMapClick(OvcinaMapClickEventArgs e)
@@ -263,6 +278,12 @@
             placingMode = false;
             placingLocation = null;
             await LoadAndDisplayLocationsAsync();
+        }
+        catch
+        {
+            // Network or server error — close the popup but keep placing mode so
+            // the user can retry with another click.
+            isPlaceConfirmVisible = false;
         }
         finally
         {
