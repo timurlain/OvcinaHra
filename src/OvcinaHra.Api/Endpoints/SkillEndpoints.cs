@@ -72,6 +72,7 @@ public static class SkillEndpoints
         var skill = new Skill
         {
             Name = dto.Name,
+            Category = dto.Category,
             ClassRestriction = dto.ClassRestriction,
             Effect = dto.Effect,
             RequirementNotes = dto.RequirementNotes,
@@ -118,6 +119,7 @@ public static class SkillEndpoints
         if (buildingError is not null) return TypedResults.BadRequest(buildingError);
 
         skill.Name = dto.Name;
+        skill.Category = dto.Category;
         skill.ClassRestriction = dto.ClassRestriction;
         skill.Effect = dto.Effect;
         skill.RequirementNotes = dto.RequirementNotes;
@@ -191,6 +193,7 @@ public static class SkillEndpoints
     private static SkillDto ToDto(Skill skill) => new(
         skill.Id,
         skill.Name,
+        skill.Category,
         skill.ClassRestriction,
         skill.Effect,
         skill.RequirementNotes,
