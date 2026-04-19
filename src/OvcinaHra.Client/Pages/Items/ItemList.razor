@@ -3,6 +3,7 @@
 @inject ApiClient Api
 @inject GameContextService GameContext
 @inject NavigationManager Nav
+@inject SkillService SkillSvc
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="mb-0">@(Catalog ? "Katalog předmětů" : "Předměty")</h1>
@@ -175,6 +176,32 @@ else
                             <button class="btn btn-sm btn-outline-primary" style="height:34px" disabled="@(newBuildingId is null)" @onclick="AddBuildingReqAsync"><i class="bi bi-plus"></i></button>
                         </div>
                     </div>
+                    <div class="mb-2">
+                        <strong class="small">Požadované dovednosti:</strong>
+                        @if (recipe.RequiredSkillIds.Count > 0)
+                        {
+                            @foreach (var skillId in recipe.RequiredSkillIds)
+                            {
+                                var gs = gameSkills.FirstOrDefault(g => g.SkillId == skillId);
+                                <span class="badge bg-secondary me-1">
+                                    @(gs?.SkillName ?? $"[Neznámá dovednost #{skillId}]")
+                                    <button class="btn btn-sm btn-link text-white p-0 ms-1" @onclick="() => RemoveSkillReqAsync(skillId)"><i class="bi bi-x"></i></button>
+                                </span>
+                            }
+                        }
+                        else { <span class="text-muted small">Žádné.</span> }
+                        @if (AvailableGameSkills.Count > 0)
+                        {
+                            <div class="d-flex gap-2 align-items-end mt-1">
+                                <div style="flex:1">
+                                    <DxComboBox Data="@AvailableGameSkills" @bind-Value="@newSkillId"
+                                                TextFieldName="SkillName" ValueFieldName="SkillId"
+                                                NullText="(přidat dovednost)" SearchMode="ListSearchMode.AutoSearch" />
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary" style="height:34px" disabled="@(newSkillId is null)" @onclick="AddSkillReqAsync"><i class="bi bi-plus"></i></button>
+                            </div>
+                        }
+                    </div>
                     <button class="btn btn-sm btn-outline-danger" @onclick="DeleteRecipeAsync">Smazat recept</button>
                 }
                 else
@@ -277,9 +304,16 @@ else
     private CraftingRecipeDetailDto? recipe;
     private List<ItemListDto> allItems = [];
     private List<BuildingListDto> allBuildings = [];
+    private List<GameSkillDto> gameSkills = [];
     private int? newIngItemId;
     private int newIngQuantity = 1;
     private int? newBuildingId;
+    private int? newSkillId;
+
+    private List<GameSkillDto> AvailableGameSkills =>
+        recipe is null
+            ? []
+            : gameSkills.Where(gs => !recipe.RequiredSkillIds.Contains(gs.SkillId)).ToList();
 
     // GameItem per-game config state
     private bool gameItemLoading, gameItemExists;
@@ -373,14 +407,46 @@ else
     private async Task LoadRecipeAsync(int itemId)
     {
         recipe = null;
-        newIngItemId = null; newIngQuantity = 1; newBuildingId = null;
+        newIngItemId = null; newIngQuantity = 1; newBuildingId = null; newSkillId = null;
         var gameId = GameContext.SelectedGameId;
         if (gameId is null || !isCraftable) return;
+
+        gameSkills = (await SkillSvc.GetGameSkillsAsync(gameId.Value)).ToList();
 
         var recipes = await Api.GetListAsync<CraftingRecipeListDto>($"/api/crafting/by-game/{gameId}");
         var match = recipes.FirstOrDefault(r => r.OutputItemId == itemId);
         if (match is not null)
             recipe = await Api.GetAsync<CraftingRecipeDetailDto>($"/api/crafting/{match.Id}");
+    }
+
+    private async Task AddSkillReqAsync()
+    {
+        if (recipe is null || newSkillId is null) return;
+        var next = recipe.RequiredSkillIds.ToList();
+        if (next.Contains(newSkillId.Value)) return;
+        next.Add(newSkillId.Value);
+        await SaveRecipeSkillsAsync(next);
+    }
+
+    private async Task RemoveSkillReqAsync(int skillId)
+    {
+        if (recipe is null) return;
+        var next = recipe.RequiredSkillIds.Where(s => s != skillId).ToList();
+        await SaveRecipeSkillsAsync(next);
+    }
+
+    private async Task SaveRecipeSkillsAsync(List<int> desiredSkillIds)
+    {
+        if (recipe is null) return;
+        try
+        {
+            await Api.PutAsync($"/api/crafting/{recipe.Id}",
+                new UpdateCraftingRecipeDto(recipe.OutputItemId, recipe.LocationId, desiredSkillIds));
+            newSkillId = null;
+            await LoadRecipeAsync(editingId!.Value);
+            StateHasChanged();
+        }
+        catch (Exception ex) { error = ex.Message; }
     }
 
     private async Task CreateRecipeAsync()

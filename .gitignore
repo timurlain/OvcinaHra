@@ -483,3 +483,6 @@ $RECYCLE.BIN/
 
 # Client dev settings (contains API keys)
 src/OvcinaHra.Client/wwwroot/appsettings.Development.json
+
+# Git worktrees (Claude Code / superpowers)
+.worktrees/

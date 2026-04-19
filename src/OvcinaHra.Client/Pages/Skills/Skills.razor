@@ -1,0 +1,319 @@
+@page "/skills"
+@attribute [Authorize]
+@inject SkillService SkillSvc
+@inject ApiClient Api
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Dovednosti</h1>
+    <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Přidat dovednost</button>
+</div>
+
+@if (loading)
+{
+    <p>Načítám...</p>
+}
+else if (skills.Count == 0)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-star fs-1 d-block mb-2"></i>
+        <p>Zatím žádné dovednosti. Přidejte první pomocí tlačítka nahoře.</p>
+    </div>
+}
+else
+{
+    <OvcinaGrid Data="@skills" KeyFieldName="Id" LayoutKey="grid-layout-skills"
+                RowClick="@(e => OpenModal((SkillDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+        <Columns>
+            <DxGridDataColumn FieldName="Name" Caption="Název" />
+            <DxGridDataColumn FieldName="ClassRestriction" Caption="Povolání" Width="140px">
+                <CellDisplayTemplate>
+                    @(((PlayerClass?)context.Value).GetClassRestrictionLabel())
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="Effect" Caption="Efekt" />
+            <DxGridDataColumn FieldName="RequiredBuildingIds" Caption="Požadované budovy" Width="220px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{
+                        var ids = (IReadOnlyList<int>?)context.Value ?? Array.Empty<int>();
+                        var names = ids
+                            .Where(i => buildingNames.ContainsKey(i))
+                            .Select(i => buildingNames[i]);
+                        <text>@string.Join(", ", names)</text>
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="RequirementNotes" Caption="Poznámka" />
+        </Columns>
+    </OvcinaGrid>
+}
+
+<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="700px">
+    <BodyContentTemplate Context="popupContext">
+        @if (error is not null)
+        {
+            <div class="alert alert-danger">@error</div>
+        }
+
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Název" ColSpanMd="12">
+                <DxTextBox @bind-Text="@name" />
+            </DxFormLayoutItem>
+
+            <DxFormLayoutItem Caption="Typ dovednosti" ColSpanMd="12">
+                <div class="d-flex gap-3 align-items-center">
+                    <label class="form-check-label">
+                        <input type="radio" class="form-check-input me-1" name="skillKind"
+                               checked="@(kind == SkillKind.ClassSpecific)"
+                               @onchange="() => SetKind(SkillKind.ClassSpecific)" />
+                        Povolání
+                    </label>
+                    <label class="form-check-label">
+                        <input type="radio" class="form-check-input me-1" name="skillKind"
+                               checked="@(kind == SkillKind.Adventurer)"
+                               @onchange="() => SetKind(SkillKind.Adventurer)" />
+                        Dobrodružná
+                    </label>
+                </div>
+            </DxFormLayoutItem>
+
+            @if (kind == SkillKind.ClassSpecific)
+            {
+                <DxFormLayoutItem Caption="Povolání" ColSpanMd="12">
+                    <DxComboBox Data="@playerClassValues" @bind-Value="@classRestriction"
+                                TextFieldName="Display" ValueFieldName="Value" />
+                </DxFormLayoutItem>
+            }
+
+            <DxFormLayoutItem Caption="Efekt" ColSpanMd="12">
+                <DxMemo @bind-Text="@effect" Rows="3" />
+            </DxFormLayoutItem>
+
+            <DxFormLayoutItem Caption="Poznámka k požadavkům" ColSpanMd="12">
+                <DxMemo @bind-Text="@requirementNotes" Rows="2" />
+            </DxFormLayoutItem>
+
+            <DxFormLayoutItem Caption="Požadované budovy" ColSpanMd="12">
+                <div>
+                    @if (selectedBuildingIds.Count > 0)
+                    {
+                        <ul class="list-unstyled mb-2">
+                            @foreach (var id in selectedBuildingIds)
+                            {
+                                <li class="d-inline-block me-2 mb-1">
+                                    <span class="badge bg-secondary">
+                                        @(buildingNames.TryGetValue(id, out var n) ? n : $"#{id}")
+                                        <button type="button" class="btn btn-sm btn-link text-white p-0 ms-1"
+                                                @onclick="() => RemoveBuilding(id)" title="Odebrat">
+                                            <i class="bi bi-x"></i>
+                                        </button>
+                                    </span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <p class="text-muted small mb-2">Žádné požadované budovy.</p>
+                    }
+                    <div class="d-flex gap-2 align-items-end">
+                        <div style="flex:1">
+                            <DxComboBox Data="@AvailableBuildings" @bind-Value="@newBuildingId"
+                                        TextFieldName="Name" ValueFieldName="Id"
+                                        NullText="(přidat budovu)" SearchMode="ListSearchMode.AutoSearch" />
+                        </div>
+                        <button class="btn btn-sm btn-outline-primary" style="height:34px"
+                                disabled="@(newBuildingId is null)" @onclick="AddBuilding">
+                            <i class="bi bi-plus"></i>
+                        </button>
+                    </div>
+                </div>
+            </DxFormLayoutItem>
+
+            @if (editingId.HasValue)
+            {
+                <DxFormLayoutItem Caption="Obrázek" ColSpanMd="12">
+                    @* TODO: wire up ImagePicker once /api/skills image upload endpoint is available. *@
+                    <div class="text-muted small">Obrázek (nahrát později)</div>
+                </DxFormLayoutItem>
+            }
+        </DxFormLayout>
+
+        <div class="d-flex gap-2 mt-3">
+            @if (editingId.HasValue)
+            {
+                <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true" disabled="@isSaving">Smazat</button>
+            }
+            <div style="flex: 1"></div>
+            <button class="btn btn-secondary" @onclick="() => isModalVisible = false" disabled="@isSaving">Zrušit</button>
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving">Uložit</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Opravdu smazat dovednost <strong>@name</strong>?</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Ne</button>
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Ano, smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    private enum SkillKind { ClassSpecific, Adventurer }
+
+    private List<SkillDto> skills = [];
+    private List<BuildingListDto> allBuildings = [];
+    private Dictionary<int, string> buildingNames = [];
+
+    private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
+    private string modalTitle = "", name = "";
+    private string? error, effect, requirementNotes;
+    private int? editingId;
+    private PlayerClass classRestriction = PlayerClass.Warrior;
+    private SkillKind kind = SkillKind.ClassSpecific;
+    private List<int> selectedBuildingIds = [];
+    private int? newBuildingId;
+
+    private static readonly List<EnumItem<PlayerClass>> playerClassValues = Enum.GetValues<PlayerClass>()
+        .Select(v => new EnumItem<PlayerClass>(v, v.GetDisplayName())).ToList();
+
+    private record EnumItem<T>(T Value, string Display);
+
+    private IEnumerable<BuildingListDto> AvailableBuildings
+        => allBuildings.Where(b => !selectedBuildingIds.Contains(b.Id));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        try
+        {
+            var skillList = await SkillSvc.GetAllAsync();
+            skills = skillList.ToList();
+            allBuildings = await Api.GetListAsync<BuildingListDto>("/api/buildings");
+            buildingNames = allBuildings.ToDictionary(b => b.Id, b => b.Name);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void OpenModal(SkillDto? s)
+    {
+        error = null;
+        newBuildingId = null;
+        if (s is null)
+        {
+            editingId = null;
+            name = "";
+            effect = null;
+            requirementNotes = null;
+            classRestriction = PlayerClass.Warrior;
+            kind = SkillKind.ClassSpecific;
+            selectedBuildingIds = [];
+            modalTitle = "Nová dovednost";
+        }
+        else
+        {
+            editingId = s.Id;
+            name = s.Name;
+            effect = s.Effect;
+            requirementNotes = s.RequirementNotes;
+            if (s.ClassRestriction.HasValue)
+            {
+                kind = SkillKind.ClassSpecific;
+                classRestriction = s.ClassRestriction.Value;
+            }
+            else
+            {
+                kind = SkillKind.Adventurer;
+                classRestriction = PlayerClass.Warrior;
+            }
+            selectedBuildingIds = s.RequiredBuildingIds.ToList();
+            modalTitle = $"Upravit: {s.Name}";
+        }
+        isModalVisible = true;
+    }
+
+    private void SetKind(SkillKind newKind)
+    {
+        kind = newKind;
+    }
+
+    private void AddBuilding()
+    {
+        if (newBuildingId is int id && !selectedBuildingIds.Contains(id))
+        {
+            selectedBuildingIds.Add(id);
+            newBuildingId = null;
+        }
+    }
+
+    private void RemoveBuilding(int id)
+    {
+        selectedBuildingIds.Remove(id);
+    }
+
+    private async Task SaveAsync()
+    {
+        error = null;
+        isSaving = true;
+        try
+        {
+            PlayerClass? cr = kind == SkillKind.ClassSpecific ? classRestriction : null;
+            if (editingId.HasValue)
+            {
+                await SkillSvc.UpdateAsync(editingId.Value,
+                    new UpdateSkillRequest(name, cr, effect, requirementNotes, selectedBuildingIds));
+            }
+            else
+            {
+                await SkillSvc.CreateAsync(
+                    new CreateSkillRequest(name, cr, effect, requirementNotes, selectedBuildingIds));
+            }
+            isModalVisible = false;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            error = FormatError(ex);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (editingId is null) return;
+        error = null;
+        try
+        {
+            await SkillSvc.DeleteAsync(editingId.Value);
+            isDeleteVisible = false;
+            isModalVisible = false;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            error = FormatError(ex);
+            isDeleteVisible = false;
+        }
+    }
+
+    private static string FormatError(Exception ex)
+    {
+        // Best-effort: surface the underlying message; API returns ProblemDetails
+        // on 400/409 but HttpClient.EnsureSuccessStatusCode throws with status line.
+        // If a richer ProblemDetails parse is needed, wire it here later.
+        return ex.Message;
+    }
+}

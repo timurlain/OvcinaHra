@@ -12,4 +12,5 @@ public class CraftingRecipe
     public Location? Location { get; set; }
     public ICollection<CraftingIngredient> Ingredients { get; set; } = [];
     public ICollection<CraftingBuildingRequirement> BuildingRequirements { get; set; } = [];
+    public ICollection<CraftingSkillRequirement> SkillRequirements { get; set; } = [];
 }
