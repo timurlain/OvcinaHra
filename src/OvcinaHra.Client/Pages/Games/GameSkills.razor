@@ -1,13 +1,19 @@
 @page "/games/{GameId:int}/skills"
 @attribute [Authorize]
 @inject SkillService SkillSvc
+@inject ApiClient Api
 @inject NavigationManager Nav
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="mb-0">Dovednosti hry</h1>
-    <button class="btn btn-outline-secondary" @onclick="@(() => Nav.NavigateTo("/games"))">
-        <i class="bi bi-arrow-left"></i> Zpět na hry
-    </button>
+    <div class="d-flex gap-2">
+        <button class="btn btn-primary" @onclick="OpenChooserPopup">
+            <i class="bi bi-plus"></i> Přidat dovednost
+        </button>
+        <button class="btn btn-outline-secondary" @onclick="@(() => Nav.NavigateTo("/games"))">
+            <i class="bi bi-arrow-left"></i> Zpět na hry
+        </button>
+    </div>
 </div>
 
 @if (loading)
@@ -16,56 +22,36 @@
 }
 else
 {
-    <div class="card mb-3">
-        <div class="card-body">
-            <label class="form-label fw-semibold">Přidat dovednost do hry</label>
-            <div class="d-flex gap-2 align-items-end">
-                <div style="flex:1">
-                    <DxComboBox Data="@AvailableSkills"
-                                @bind-Value="@skillToAddId"
-                                TextFieldName="Display"
-                                ValueFieldName="Id"
-                                NullText="(vyberte dovednost)"
-                                SearchMode="ListSearchMode.AutoSearch" />
-                </div>
-                <button class="btn btn-primary" style="height:34px"
-                        disabled="@(skillToAddId is null)"
-                        @onclick="OpenAddPopup">
-                    <i class="bi bi-plus"></i> Přidat
-                </button>
-            </div>
-            @if (AvailableSkills.Count == 0)
-            {
-                <div class="text-muted small mt-2">Všechny globální dovednosti jsou již v této hře.</div>
-            }
-        </div>
-    </div>
-
     @if (gameSkills.Count == 0)
     {
         <div class="text-center text-muted py-5">
             <i class="bi bi-star fs-1 d-block mb-2"></i>
-            <p>Tato hra zatím nemá žádné dovednosti. Přidejte první pomocí formuláře nahoře.</p>
+            <p>Tato hra zatím nemá žádné dovednosti. Přidejte první pomocí tlačítka nahoře.</p>
         </div>
     }
     else
     {
-        <OvcinaGrid Data="@gameSkills" KeyFieldName="SkillId" LayoutKey="grid-layout-game-skills"
+        <OvcinaGrid Data="@gameSkills" KeyFieldName="Id" LayoutKey="grid-layout-game-skills"
                     RowClick="@(e => OpenEditPopup((GameSkillDto)e.Grid.GetDataItem(e.VisibleIndex)))">
             <Columns>
-                <DxGridDataColumn FieldName="SkillName" Caption="Název" />
+                <DxGridDataColumn FieldName="Name" Caption="Název" />
                 <DxGridDataColumn FieldName="ClassRestriction" Caption="Povolání" Width="140px">
                     <CellDisplayTemplate>
                         @(((PlayerClass?)context.Value).GetClassRestrictionLabel())
                     </CellDisplayTemplate>
                 </DxGridDataColumn>
+                <DxGridDataColumn FieldName="Category" Caption="Kategorie" Width="140px">
+                    <CellDisplayTemplate>
+                        @(((SkillCategory)context.Value).GetDisplayName())
+                    </CellDisplayTemplate>
+                </DxGridDataColumn>
                 <DxGridDataColumn FieldName="XpCost" Caption="XP" Width="100px" />
-                <DxGridDataColumn FieldName="LevelRequirement" Caption="Požadovaná úroveň" Width="170px">
+                <DxGridDataColumn FieldName="LevelRequirement" Caption="Úroveň" Width="140px">
                     <CellDisplayTemplate>
                         @{
                             var lvl = (int?)context.Value;
                         }
-                        @(lvl.HasValue ? lvl.Value.ToString() : "—")
+                        @(lvl.HasValue ? lvl.Value.ToString() : "Bez požadavku")
                     </CellDisplayTemplate>
                 </DxGridDataColumn>
                 <DxGridDataColumn Caption="" Width="60px" AllowSort="false" AllowGroup="false" AllowFilter="false">
@@ -86,19 +72,145 @@ else
     }
 }
 
-@* Edit / add popup *@
-<DxPopup AllowResize="true" @bind-Visible="@isEditVisible" HeaderText="@editTitle" Width="600px">
+@* Chooser popup — "Ze šablony" vs "Vlastní" *@
+<DxPopup @bind-Visible="@isChooserVisible" HeaderText="Přidat dovednost" Width="480px">
+    <BodyContentTemplate Context="popupContext">
+        <p class="text-muted small mb-3">
+            Vyberte, zda chcete přidat dovednost podle existující šablony z knihovny, nebo zcela vlastní.
+        </p>
+        <div class="d-flex gap-2 justify-content-center">
+            <button class="btn btn-primary" @onclick="OpenFromTemplateStep">
+                <i class="bi bi-collection"></i> Ze šablony
+            </button>
+            <button class="btn btn-outline-primary" @onclick="OpenCustomEdit">
+                <i class="bi bi-plus-square"></i> Vlastní
+            </button>
+        </div>
+        <div class="d-flex gap-2 mt-3 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isChooserVisible = false">Zrušit</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@* Template picker popup *@
+<DxPopup @bind-Visible="@isTemplatePickerVisible" HeaderText="Vybrat šablonu" Width="520px">
+    <BodyContentTemplate Context="popupContext">
+        @if (AvailableTemplates.Count == 0)
+        {
+            <div class="alert alert-warning small">
+                V knihovně nejsou žádné další šablony, které by tato hra neměla.
+            </div>
+        }
+        else
+        {
+            <label class="form-label">Šablona</label>
+            <DxComboBox Data="@AvailableTemplates"
+                        @bind-Value="@pickedTemplateId"
+                        TextFieldName="Display"
+                        ValueFieldName="Id"
+                        NullText="(vyberte šablonu)"
+                        SearchMode="ListSearchMode.AutoSearch" />
+        }
+        <div class="d-flex gap-2 mt-3 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isTemplatePickerVisible = false">Zrušit</button>
+            <button class="btn btn-primary"
+                    disabled="@(pickedTemplateId is null)"
+                    @onclick="OpenEditFromTemplate">
+                Pokračovat
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@* Edit popup — full editable form for a GameSkill *@
+<DxPopup AllowResize="true" @bind-Visible="@isEditVisible" HeaderText="@editTitle" Width="680px">
     <BodyContentTemplate Context="popupContext">
         @if (editError is not null)
         {
             <div class="alert alert-danger">@editError</div>
         }
 
+        <div class="mb-2 small text-muted">
+            @templateInfoLine
+        </div>
+
         <DxFormLayout>
-            <DxFormLayoutItem Caption="Dovednost" ColSpanMd="12">
-                <div class="form-control-plaintext">
-                    <strong>@editingSkillName</strong>
-                    <span class="text-muted ms-2">(@editingClassLabel)</span>
+            <DxFormLayoutItem Caption="Název" ColSpanMd="12">
+                <DxTextBox @bind-Text="@editName" />
+            </DxFormLayoutItem>
+
+            <DxFormLayoutItem Caption="Kategorie" ColSpanMd="12">
+                <DxComboBox Data="@skillCategoryValues" @bind-Value="@editCategory"
+                            TextFieldName="Display" ValueFieldName="Value" />
+            </DxFormLayoutItem>
+
+            <DxFormLayoutItem Caption="Typ omezení" ColSpanMd="12">
+                <div class="d-flex gap-3 align-items-center">
+                    <label class="form-check-label">
+                        <input type="radio" class="form-check-input me-1" name="editKind"
+                               checked="@(editKind == EditKind.ClassSpecific)"
+                               @onchange="() => SetEditKind(EditKind.ClassSpecific)" />
+                        Povolání
+                    </label>
+                    <label class="form-check-label">
+                        <input type="radio" class="form-check-input me-1" name="editKind"
+                               checked="@(editKind == EditKind.Unrestricted)"
+                               @onchange="() => SetEditKind(EditKind.Unrestricted)" />
+                        Bez omezení
+                    </label>
+                </div>
+            </DxFormLayoutItem>
+
+            @if (editKind == EditKind.ClassSpecific)
+            {
+                <DxFormLayoutItem Caption="Povolání" ColSpanMd="12">
+                    <DxComboBox Data="@playerClassValues" @bind-Value="@editClassRestriction"
+                                TextFieldName="Display" ValueFieldName="Value" />
+                </DxFormLayoutItem>
+            }
+
+            <DxFormLayoutItem Caption="Efekt" ColSpanMd="12">
+                <DxMemo @bind-Text="@editEffect" Rows="3" />
+            </DxFormLayoutItem>
+
+            <DxFormLayoutItem Caption="Poznámka k požadavkům" ColSpanMd="12">
+                <DxMemo @bind-Text="@editRequirementNotes" Rows="2" />
+            </DxFormLayoutItem>
+
+            <DxFormLayoutItem Caption="Požadované budovy" ColSpanMd="12">
+                <div>
+                    @if (editBuildingIds.Count > 0)
+                    {
+                        <ul class="list-unstyled mb-2">
+                            @foreach (var id in editBuildingIds)
+                            {
+                                <li class="d-inline-block me-2 mb-1">
+                                    <span class="badge bg-secondary">
+                                        @(buildingNames.TryGetValue(id, out var n) ? n : $"#{id}")
+                                        <button type="button" class="btn btn-sm btn-link text-white p-0 ms-1"
+                                                @onclick="() => RemoveBuilding(id)" title="Odebrat">
+                                            <i class="bi bi-x"></i>
+                                        </button>
+                                    </span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <p class="text-muted small mb-2">Žádné požadované budovy.</p>
+                    }
+                    <div class="d-flex gap-2 align-items-end">
+                        <div style="flex:1">
+                            <DxComboBox Data="@AvailableBuildings" @bind-Value="@newBuildingId"
+                                        TextFieldName="Name" ValueFieldName="Id"
+                                        NullText="(přidat budovu)" SearchMode="ListSearchMode.AutoSearch" />
+                        </div>
+                        <button class="btn btn-sm btn-outline-primary" style="height:34px"
+                                disabled="@(newBuildingId is null)" @onclick="AddBuilding">
+                            <i class="bi bi-plus"></i>
+                        </button>
+                    </div>
                 </div>
             </DxFormLayoutItem>
 
@@ -164,48 +276,77 @@ else
 @code {
     [Parameter] public int GameId { get; set; }
 
+    private enum EditKind { ClassSpecific, Unrestricted }
+
     private bool loading = true;
     private List<GameSkillDto> gameSkills = [];
-    private List<SkillDto> allSkills = [];
+    private List<SkillDto> allTemplates = [];
+    private List<BuildingListDto> allBuildings = [];
+    private Dictionary<int, string> buildingNames = [];
 
-    // Add-picker state
-    private int? skillToAddId;
+    // Chooser popup
+    private bool isChooserVisible;
 
-    // Edit popup state
+    // Template picker popup
+    private bool isTemplatePickerVisible;
+    private int? pickedTemplateId;
+
+    // Edit popup state (for both create-from-template, create-custom, and update)
     private bool isEditVisible;
     private bool isSaving;
     private string editTitle = "";
     private string? editError;
-    private int editingSkillId;
-    private string editingSkillName = "";
-    private string editingClassLabel = "";
+    private int? editingGameSkillId;   // null => create; set => update
+    private int? editingTemplateSkillId; // passed along on create; unchanged on update
+    private string templateInfoLine = "";
+    private string editName = "";
+    private SkillCategory editCategory = SkillCategory.Class;
+    private EditKind editKind = EditKind.ClassSpecific;
+    private PlayerClass editClassRestriction = PlayerClass.Warrior;
+    private string? editEffect;
+    private string? editRequirementNotes;
+    private List<int> editBuildingIds = [];
+    private int? newBuildingId;
     private int xpCost;
     private int? levelRequirement;
 
     // Delete popup state
     private bool isDeleteVisible;
     private bool isDeleting;
-    private int deletingSkillId;
+    private int deletingGameSkillId;
     private string deletingSkillName = "";
     private string? deleteError;
 
-    private List<SkillOption> AvailableSkills
+    private static readonly List<EnumItem<PlayerClass>> playerClassValues = Enum.GetValues<PlayerClass>()
+        .Select(v => new EnumItem<PlayerClass>(v, v.GetDisplayName())).ToList();
+
+    private static readonly List<EnumItem<SkillCategory>> skillCategoryValues = Enum.GetValues<SkillCategory>()
+        .Select(v => new EnumItem<SkillCategory>(v, v.GetDisplayName())).ToList();
+
+    private record EnumItem<T>(T Value, string Display);
+
+    private record TemplateOption(int Id, string Name, string Display);
+
+    private List<TemplateOption> AvailableTemplates
     {
         get
         {
-            var inGame = gameSkills.Select(gs => gs.SkillId).ToHashSet();
-            return allSkills
-                .Where(s => !inGame.Contains(s.Id))
-                .Select(s => new SkillOption(
-                    s.Id,
-                    s.Name,
-                    s.ClassRestriction,
-                    $"{s.Name} ({s.ClassRestriction.GetClassRestrictionLabel()})"))
+            var usedTemplateIds = gameSkills
+                .Where(gs => gs.TemplateSkillId.HasValue)
+                .Select(gs => gs.TemplateSkillId!.Value)
+                .ToHashSet();
+            return allTemplates
+                .Where(t => !usedTemplateIds.Contains(t.Id))
+                .Select(t => new TemplateOption(
+                    t.Id,
+                    t.Name,
+                    $"{t.Name} ({t.ClassRestriction.GetClassRestrictionLabel()})"))
                 .ToList();
         }
     }
 
-    private record SkillOption(int Id, string Name, PlayerClass? ClassRestriction, string Display);
+    private IEnumerable<BuildingListDto> AvailableBuildings
+        => allBuildings.Where(b => !editBuildingIds.Contains(b.Id));
 
     protected override async Task OnParametersSetAsync()
     {
@@ -220,7 +361,9 @@ else
             var gs = await SkillSvc.GetGameSkillsAsync(GameId);
             gameSkills = gs.ToList();
             var all = await SkillSvc.GetAllAsync();
-            allSkills = all.ToList();
+            allTemplates = all.ToList();
+            allBuildings = await Api.GetListAsync<BuildingListDto>("/api/buildings");
+            buildingNames = allBuildings.ToDictionary(b => b.Id, b => b.Name);
         }
         finally
         {
@@ -228,45 +371,146 @@ else
         }
     }
 
-    private void OpenAddPopup()
+    private void OpenChooserPopup()
     {
-        if (skillToAddId is null) return;
-        var option = AvailableSkills.FirstOrDefault(s => s.Id == skillToAddId.Value);
-        if (option is null) return;
+        isChooserVisible = true;
+    }
 
-        editError = null;
-        editingSkillId = option.Id;
-        editingSkillName = option.Name;
-        editingClassLabel = option.ClassRestriction.GetClassRestrictionLabel();
+    private void OpenFromTemplateStep()
+    {
+        isChooserVisible = false;
+        pickedTemplateId = null;
+        isTemplatePickerVisible = true;
+    }
+
+    private void OpenCustomEdit()
+    {
+        isChooserVisible = false;
+        ResetEditForm();
+        editingGameSkillId = null;
+        editingTemplateSkillId = null;
+        templateInfoLine = "Vlastní (bez šablony)";
+        editTitle = "Nová vlastní dovednost";
+        isEditVisible = true;
+    }
+
+    private void OpenEditFromTemplate()
+    {
+        if (pickedTemplateId is null) return;
+        var tpl = allTemplates.FirstOrDefault(t => t.Id == pickedTemplateId.Value);
+        if (tpl is null) return;
+
+        isTemplatePickerVisible = false;
+        ResetEditForm();
+        editingGameSkillId = null;
+        editingTemplateSkillId = tpl.Id;
+        templateInfoLine = $"Šablona: {tpl.Name} (Knihovna)";
+
+        editName = tpl.Name;
+        editCategory = tpl.Category;
+        if (tpl.ClassRestriction.HasValue)
+        {
+            editKind = EditKind.ClassSpecific;
+            editClassRestriction = tpl.ClassRestriction.Value;
+        }
+        else
+        {
+            editKind = EditKind.Unrestricted;
+        }
+        editEffect = tpl.Effect;
+        editRequirementNotes = tpl.RequirementNotes;
+        editBuildingIds = tpl.RequiredBuildingIds.ToList();
+
         xpCost = 0;
         levelRequirement = null;
-        editTitle = $"Přidat do hry: {option.Name}";
+
+        editTitle = $"Přidat ze šablony: {tpl.Name}";
         isEditVisible = true;
     }
 
     private void OpenEditPopup(GameSkillDto gs)
     {
-        editError = null;
-        editingSkillId = gs.SkillId;
-        editingSkillName = gs.SkillName;
-        editingClassLabel = gs.ClassRestriction.GetClassRestrictionLabel();
+        ResetEditForm();
+        editingGameSkillId = gs.Id;
+        editingTemplateSkillId = gs.TemplateSkillId;
+
+        if (gs.TemplateSkillId is int tid)
+        {
+            var tpl = allTemplates.FirstOrDefault(t => t.Id == tid);
+            templateInfoLine = tpl is not null
+                ? $"Šablona: {tpl.Name} (Knihovna)"
+                : "Šablona: (odstraněná)";
+        }
+        else
+        {
+            templateInfoLine = "Vlastní (bez šablony)";
+        }
+
+        editName = gs.Name;
+        editCategory = gs.Category;
+        if (gs.ClassRestriction.HasValue)
+        {
+            editKind = EditKind.ClassSpecific;
+            editClassRestriction = gs.ClassRestriction.Value;
+        }
+        else
+        {
+            editKind = EditKind.Unrestricted;
+        }
+        editEffect = gs.Effect;
+        editRequirementNotes = gs.RequirementNotes;
+        editBuildingIds = gs.BuildingRequirementIds.ToList();
         xpCost = gs.XpCost;
         levelRequirement = gs.LevelRequirement;
-        editTitle = $"Upravit: {gs.SkillName}";
+
+        editTitle = $"Upravit: {gs.Name}";
         isEditVisible = true;
+    }
+
+    private void ResetEditForm()
+    {
+        editError = null;
+        editName = "";
+        editCategory = SkillCategory.Class;
+        editKind = EditKind.ClassSpecific;
+        editClassRestriction = PlayerClass.Warrior;
+        editEffect = null;
+        editRequirementNotes = null;
+        editBuildingIds = [];
+        newBuildingId = null;
+        xpCost = 0;
+        levelRequirement = null;
+    }
+
+    private void SetEditKind(EditKind kind)
+    {
+        editKind = kind;
+    }
+
+    private void AddBuilding()
+    {
+        if (newBuildingId is int id && !editBuildingIds.Contains(id))
+        {
+            editBuildingIds.Add(id);
+            newBuildingId = null;
+        }
+    }
+
+    private void RemoveBuilding(int id)
+    {
+        editBuildingIds.Remove(id);
     }
 
     private void OpenDeletePopup(GameSkillDto gs)
     {
         deleteError = null;
-        deletingSkillId = gs.SkillId;
-        deletingSkillName = gs.SkillName;
+        deletingGameSkillId = gs.Id;
+        deletingSkillName = gs.Name;
         isDeleteVisible = true;
     }
 
     private void OnNoLevelRequirementChanged(ChangeEventArgs e)
     {
-        // Checkbox checked => "Bez požadavku" => null level.
         var noRequirement = e.Value is bool b && b;
         levelRequirement = noRequirement ? null : 1;
     }
@@ -275,6 +519,11 @@ else
     {
         editError = null;
 
+        if (string.IsNullOrWhiteSpace(editName))
+        {
+            editError = "Název je povinný.";
+            return;
+        }
         if (xpCost < 0)
         {
             editError = "Cena v XP nemůže být záporná.";
@@ -286,13 +535,39 @@ else
             return;
         }
 
+        PlayerClass? cr = editKind == EditKind.ClassSpecific ? editClassRestriction : null;
+
         isSaving = true;
         try
         {
-            await SkillSvc.UpsertGameSkillAsync(GameId, editingSkillId,
-                new UpsertGameSkillRequest(xpCost, levelRequirement));
+            if (editingGameSkillId is int gsId)
+            {
+                await SkillSvc.UpdateGameSkillAsync(GameId, gsId,
+                    new UpdateGameSkillRequest(
+                        editName,
+                        editCategory,
+                        cr,
+                        editEffect,
+                        editRequirementNotes,
+                        editBuildingIds,
+                        xpCost,
+                        levelRequirement));
+            }
+            else
+            {
+                await SkillSvc.CreateGameSkillAsync(GameId,
+                    new CreateGameSkillRequest(
+                        editingTemplateSkillId,
+                        editName,
+                        editCategory,
+                        cr,
+                        editEffect,
+                        editRequirementNotes,
+                        editBuildingIds,
+                        xpCost,
+                        levelRequirement));
+            }
             isEditVisible = false;
-            skillToAddId = null;
             await LoadAsync();
         }
         catch (Exception ex)
@@ -311,7 +586,7 @@ else
         isDeleting = true;
         try
         {
-            await SkillSvc.RemoveGameSkillAsync(GameId, deletingSkillId);
+            await SkillSvc.RemoveGameSkillAsync(GameId, deletingGameSkillId);
             isDeleteVisible = false;
             await LoadAsync();
         }
