@@ -1,8 +1,14 @@
+using System.Text.Json.Serialization;
 using OvcinaHra.Shared.Domain.Enums;
+using OvcinaHra.Shared.Extensions;
 
 namespace OvcinaHra.Shared.Dtos;
 
-public record ItemListDto(int Id, string Name, ItemType ItemType, string? Effect, bool IsCraftable, bool IsUnique, bool IsLimited);
+public record ItemListDto(int Id, string Name, ItemType ItemType, string? Effect, bool IsCraftable, bool IsUnique, bool IsLimited)
+{
+    [JsonIgnore]
+    public string ItemTypeDisplay => ItemType.GetDisplayName();
+}
 
 public record ItemDetailDto(
     int Id,
