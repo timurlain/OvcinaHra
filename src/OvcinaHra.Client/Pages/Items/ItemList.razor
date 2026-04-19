@@ -253,9 +253,9 @@ else
                         {
                             @foreach (var skillId in recipe.RequiredSkillIds)
                             {
-                                var gs = gameSkills.FirstOrDefault(g => g.SkillId == skillId);
+                                var gs = gameSkills.FirstOrDefault(g => g.Id == skillId);
                                 <span class="badge bg-secondary me-1">
-                                    @(gs?.SkillName ?? $"[Neznámá dovednost #{skillId}]")
+                                    @(gs?.Name ?? $"[Neznámá dovednost #{skillId}]")
                                     <button class="btn btn-sm btn-link text-white p-0 ms-1" @onclick="() => RemoveSkillReqAsync(skillId)"><i class="bi bi-x"></i></button>
                                 </span>
                             }
@@ -266,7 +266,7 @@ else
                             <div class="d-flex gap-2 align-items-end mt-1">
                                 <div style="flex:1">
                                     <DxComboBox Data="@AvailableGameSkills" @bind-Value="@newSkillId"
-                                                TextFieldName="SkillName" ValueFieldName="SkillId"
+                                                TextFieldName="Name" ValueFieldName="Id"
                                                 NullText="(přidat dovednost)" SearchMode="ListSearchMode.AutoSearch" />
                                 </div>
                                 <button class="btn btn-sm btn-outline-primary" style="height:34px" disabled="@(newSkillId is null)" @onclick="AddSkillReqAsync"><i class="bi bi-plus"></i></button>
@@ -394,7 +394,7 @@ else
     private List<GameSkillDto> AvailableGameSkills =>
         recipe is null
             ? []
-            : gameSkills.Where(gs => !recipe.RequiredSkillIds.Contains(gs.SkillId)).ToList();
+            : gameSkills.Where(gs => !recipe.RequiredSkillIds.Contains(gs.Id)).ToList();
 
     // GameItem per-game config state
     private bool gameItemLoading, gameItemExists;
