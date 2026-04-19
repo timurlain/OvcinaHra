@@ -1,0 +1,168 @@
+@page "/personal-quests"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject GameContextService GameContext
+@inject NavigationManager Nav
+@inject PersonalQuestService PqSvc
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">@(Catalog ? "Katalog osobních questů" : "Osobní questy")</h1>
+    <div class="d-flex gap-2">
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm @(Catalog ? "btn-outline-primary" : "btn-primary")"
+                    @onclick='() => Nav.NavigateTo("/personal-quests")'>Jen tato hra</button>
+            <button class="btn btn-sm @(Catalog ? "btn-primary" : "btn-outline-primary")"
+                    @onclick='() => Nav.NavigateTo("/personal-quests?catalog=true")'>Katalog</button>
+        </div>
+        <button class="btn btn-primary" @onclick="() => OpenModal((PersonalQuestListDto?)null)">+ Nový osobní quest</button>
+    </div>
+</div>
+
+@if (loading)
+{
+    <p>Načítám...</p>
+}
+else if (!Catalog && GameContext.SelectedGameId is null)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-controller fs-1 d-block mb-2"></i>
+        <p>Vyber nejprve hru z přepínače nahoře, nebo otevři katalog všech osobních questů.</p>
+        <button class="btn btn-outline-primary" @onclick='() => Nav.NavigateTo("/personal-quests?catalog=true")'>Otevřít katalog</button>
+    </div>
+}
+else if (!Catalog && gameItems.Count == 0)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-person-workspace fs-1 d-block mb-2"></i>
+        <p>Žádné osobní questy přiřazené k této hře.</p>
+        <button class="btn btn-outline-primary" @onclick='() => Nav.NavigateTo("/personal-quests?catalog=true")'>Otevřít katalog</button>
+    </div>
+}
+else if (Catalog)
+{
+    <OvcinaGrid Data="@catalogItems" KeyFieldName="Id" LayoutKey="grid-layout-personal-quests-catalog"
+                RowClick="@(e => OpenModal((PersonalQuestListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+        <Columns>
+            <DxGridDataColumn FieldName="Id" Caption="#" Width="60px" Visible="false" />
+            <DxGridDataColumn FieldName="Name" Caption="Název" />
+            <DxGridDataColumn FieldName="ClassRestrictionDisplay" Caption="Povolání" Width="180px" />
+            <DxGridDataColumn FieldName="AllowWarrior" Caption="Váleč." Width="80px" Visible="false">
+                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="AllowArcher" Caption="Střelec" Width="80px" Visible="false">
+                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="AllowMage" Caption="Mág" Width="80px" Visible="false">
+                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="AllowThief" Caption="Zloděj" Width="80px" Visible="false">
+                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="DifficultyDisplay" Caption="Obtížnost" Width="130px" />
+            <DxGridDataColumn FieldName="Description" Caption="Popis" />
+            <DxGridDataColumn FieldName="RewardNote" Caption="Ostatní odměny" Visible="false" />
+            <DxGridDataColumn FieldName="QuestCardText" Caption="Kartička questu" Visible="false" />
+            <DxGridDataColumn FieldName="RewardCardText" Caption="Kartičky odměn" Visible="false" />
+            <DxGridDataColumn FieldName="Notes" Caption="Poznámky" Visible="false" />
+            <DxGridDataColumn FieldName="HasImage" Caption="Obrázek" Width="100px" Visible="false">
+                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="Id" Caption="Hra" Width="130px" AllowSort="false" AllowGroup="false" AllowFilter="false">
+                <CellDisplayTemplate>
+                    @{
+                        var pqId = (int)context.Value;
+                        if (assignedItemIds.Contains(pqId))
+                        {
+                            <button class="btn btn-sm btn-outline-danger" @onclick:stopPropagation="true"
+                                    @onclick="() => UnassignFromGameAsync(pqId)">Odebrat</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-sm btn-outline-success" @onclick:stopPropagation="true"
+                                    @onclick="() => AssignToGameAsync(pqId)">Přidat</button>
+                        }
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+        </Columns>
+    </OvcinaGrid>
+}
+else
+{
+    <p>Game grid here — Batch E2</p>
+}
+
+@code {
+    [SupplyParameterFromQuery]
+    public bool Catalog { get; set; }
+
+    private List<PersonalQuestListDto> catalogItems = [];
+    private List<GamePersonalQuestListDto> gameItems = [];
+    private HashSet<int> assignedItemIds = [];
+    private bool loading = true;
+
+    private bool _previousCatalog;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GameContext.InitializeAsync();
+        _previousCatalog = Catalog;
+        await LoadAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Catalog != _previousCatalog)
+        {
+            _previousCatalog = Catalog;
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+
+        if (!Catalog && GameContext.SelectedGameId is int gid)
+        {
+            gameItems = await PqSvc.GetByGameAsync(gid);
+            assignedItemIds = gameItems.Select(gi => gi.Id).ToHashSet();
+            catalogItems = [];
+        }
+        else
+        {
+            catalogItems = await PqSvc.GetAllAsync();
+            gameItems = [];
+            if (Catalog && GameContext.SelectedGameId is int catalogGid)
+            {
+                var linked = await PqSvc.GetByGameAsync(catalogGid);
+                assignedItemIds = linked.Select(gi => gi.Id).ToHashSet();
+            }
+            else
+            {
+                assignedItemIds = [];
+            }
+        }
+
+        loading = false;
+    }
+
+    // Popup + detail flow comes in Batch E2.
+    private void OpenModal(PersonalQuestListDto? item) { /* Batch E2 */ }
+
+    private async Task AssignToGameAsync(int pqId)
+    {
+        if (GameContext.SelectedGameId is null) return;
+        await PqSvc.CreateGameLinkAsync(GameContext.SelectedGameId.Value, pqId);
+        await LoadAsync();
+        StateHasChanged();
+    }
+
+    private async Task UnassignFromGameAsync(int pqId)
+    {
+        if (GameContext.SelectedGameId is null) return;
+        await PqSvc.DeleteGameLinkAsync(GameContext.SelectedGameId.Value, pqId);
+        await LoadAsync();
+        StateHasChanged();
+    }
+}
