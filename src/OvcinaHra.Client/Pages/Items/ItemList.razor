@@ -36,9 +36,8 @@ else
         <Columns>
             <DxGridDataColumn FieldName="Name" Caption="Název" />
             <DxGridDataColumn FieldName="Effect" Caption="Efekt" />
-            <DxGridDataColumn FieldName="ItemType" Caption="Typ" Width="150px">
-                <CellDisplayTemplate>@(((ItemType)context.Value).GetDisplayName())</CellDisplayTemplate>
-            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="Typ" Width="150px" />
+
             <DxGridDataColumn FieldName="IsCraftable" Caption="Vyrobitelný" Width="120px">
                 <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
             </DxGridDataColumn>
