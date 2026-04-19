@@ -92,7 +92,56 @@ else if (Catalog)
 }
 else
 {
-    <p>Game grid here — Batch E2</p>
+    <OvcinaGrid Data="@gameItems" KeyFieldName="Id" LayoutKey="grid-layout-personal-quests-game"
+                RowClick="@(e => OpenModal((GamePersonalQuestListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+        <Columns>
+            <DxGridDataColumn FieldName="" Caption="" Width="40px" AllowSort="false" AllowGroup="false" AllowFilter="false" FixedPosition="GridColumnFixedPosition.Left">
+                <CellDisplayTemplate>
+                    @{
+                        var gi = (GamePersonalQuestListDto)context.DataItem;
+                    }
+                    <button class="btn btn-sm btn-link p-0 text-muted" @onclick="async e => await ShowContextMenu(e, gi)" @onclick:stopPropagation="true">
+                        <i class="bi bi-three-dots-vertical"></i>
+                    </button>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="Id" Caption="#" Width="60px" Visible="false" />
+            <DxGridDataColumn FieldName="Name" Caption="Název" />
+            <DxGridDataColumn FieldName="ClassRestrictionDisplay" Caption="Povolání" Width="180px" />
+            <DxGridDataColumn FieldName="AllowWarrior" Caption="Váleč." Width="80px" Visible="false">
+                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="AllowArcher" Caption="Střelec" Width="80px" Visible="false">
+                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="AllowMage" Caption="Mág" Width="80px" Visible="false">
+                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="AllowThief" Caption="Zloděj" Width="80px" Visible="false">
+                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="DifficultyDisplay" Caption="Obtížnost" Width="130px" />
+            <DxGridDataColumn FieldName="Description" Caption="Popis" />
+            <DxGridDataColumn FieldName="RewardSummary" Caption="Odměny" Width="340px" />
+            <DxGridDataColumn FieldName="RewardNote" Caption="Ostatní odměny" Visible="false" />
+            <DxGridDataColumn FieldName="QuestCardText" Caption="Kartička questu" Visible="false" />
+            <DxGridDataColumn FieldName="RewardCardText" Caption="Kartičky odměn" Visible="false" />
+            <DxGridDataColumn FieldName="Notes" Caption="Poznámky" Visible="false" />
+            <DxGridDataColumn FieldName="HasImage" Caption="Obrázek" Width="100px" Visible="false">
+                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="XpCost" Caption="XP cena" Width="100px" />
+            <DxGridDataColumn FieldName="PerKingdomLimit" Caption="Limit / království" Width="150px" />
+        </Columns>
+    </OvcinaGrid>
+
+    <DxContextMenu @ref="contextMenu" ItemClick="OnContextMenuItemClick">
+        <Items>
+            <DxContextMenuItem Text="Upravit" IconCssClass="bi bi-pencil-fill" Name="edit" />
+            <DxContextMenuItem Text="Odebrat z hry" IconCssClass="bi bi-x-circle" Name="unassign" />
+            <DxContextMenuItem BeginGroup="true" Text="Smazat" IconCssClass="bi bi-trash-fill" CssClass="text-danger" Name="delete" />
+        </Items>
+    </DxContextMenu>
 }
 
 <DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="900px">
@@ -302,6 +351,11 @@ else
     private List<SkillDto> allSkills = [];
     private List<ItemListDto> allItems = [];
 
+    // Context menu (game view only)
+    private DxContextMenu? contextMenu;
+    private int? contextMenuTargetId;
+    private string contextMenuTargetName = "";
+
     // Form state
     private string modalTitle = "", name = "";
     private string? error, description, questCardText, rewardCardText, rewardNote, notes;
@@ -478,6 +532,35 @@ else
             gpqPerKingdomLimit = null;
         }
         gpqLoading = false;
+    }
+
+    private async Task ShowContextMenu(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, GamePersonalQuestListDto gi)
+    {
+        contextMenuTargetId = gi.Id;
+        contextMenuTargetName = gi.Name;
+        await contextMenu!.ShowAsync(e);
+    }
+
+    private async Task OnContextMenuItemClick(ContextMenuItemClickEventArgs e)
+    {
+        if (contextMenuTargetId is null) return;
+        var id = contextMenuTargetId.Value;
+
+        switch (e.ItemInfo?.Name)
+        {
+            case "edit":
+                var target = gameItems.FirstOrDefault(x => x.Id == id);
+                if (target is not null) OpenModal(target);
+                break;
+            case "unassign":
+                await UnassignFromGameAsync(id);
+                break;
+            case "delete":
+                editingId = id;
+                name = contextMenuTargetName;
+                isDeleteVisible = true;
+                break;
+        }
     }
 
     private async Task AddSkillRewardAsync()
