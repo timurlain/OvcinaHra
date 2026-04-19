@@ -4,7 +4,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Tests.Fixtures;
+using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
+using OvcinaHra.Shared.Domain.ValueObjects;
 using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Tests.Endpoints;
@@ -270,6 +272,112 @@ public class SkillEndpointsTests(PostgresFixture postgres) : IntegrationTestBase
 
         var response = await Client.PutAsJsonAsync($"/api/skills/{created.Id}", update);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Delete_RemovesSkill()
+    {
+        var created = await CreateSkillAsync("Ke smazání", PlayerClass.Thief, null, null, []);
+
+        var response = await Client.DeleteAsync($"/api/skills/{created.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        var gone = await db.Skills.SingleOrDefaultAsync(s => s.Id == created.Id);
+        Assert.Null(gone);
+    }
+
+    [Fact]
+    public async Task Delete_WithRecipeReference_Returns409()
+    {
+        var skill = await CreateSkillAsync("S receptem", null, null, null, []);
+
+        int skillId = skill.Id;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var game = new Game
+            {
+                Name = "Hra pro recept",
+                Edition = 1,
+                StartDate = new DateOnly(2026, 1, 1),
+                EndDate = new DateOnly(2026, 1, 3),
+                Status = default
+            };
+            db.Games.Add(game);
+
+            var item = new Item
+            {
+                Name = "Výstupní předmět",
+                ItemType = default,
+                ClassRequirements = new ClassRequirements(0, 0, 0, 0),
+                IsCraftable = true
+            };
+            db.Items.Add(item);
+            await db.SaveChangesAsync();
+
+            var recipe = new CraftingRecipe
+            {
+                GameId = game.Id,
+                OutputItemId = item.Id
+            };
+            db.CraftingRecipes.Add(recipe);
+            await db.SaveChangesAsync();
+
+            db.CraftingSkillRequirements.Add(new CraftingSkillRequirement
+            {
+                CraftingRecipeId = recipe.Id,
+                SkillId = skillId
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var response = await Client.DeleteAsync($"/api/skills/{skillId}");
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+
+        using var scope2 = Factory.Services.CreateScope();
+        var db2 = scope2.ServiceProvider.GetRequiredService<WorldDbContext>();
+        Assert.NotNull(await db2.Skills.SingleOrDefaultAsync(s => s.Id == skillId));
+    }
+
+    [Fact]
+    public async Task Delete_WithGameSkillReference_Returns409()
+    {
+        var skill = await CreateSkillAsync("S hrou", null, null, null, []);
+
+        int skillId = skill.Id;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var game = new Game
+            {
+                Name = "Testovací hra",
+                Edition = 1,
+                StartDate = new DateOnly(2026, 1, 1),
+                EndDate = new DateOnly(2026, 1, 3),
+                Status = default
+            };
+            db.Games.Add(game);
+            await db.SaveChangesAsync();
+
+            db.GameSkills.Add(new GameSkill { GameId = game.Id, SkillId = skillId, XpCost = 10 });
+            await db.SaveChangesAsync();
+        }
+
+        var response = await Client.DeleteAsync($"/api/skills/{skillId}");
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+
+        using var scope2 = Factory.Services.CreateScope();
+        var db2 = scope2.ServiceProvider.GetRequiredService<WorldDbContext>();
+        Assert.NotNull(await db2.Skills.SingleOrDefaultAsync(s => s.Id == skillId));
+    }
+
+    [Fact]
+    public async Task Delete_NonExistentId_Returns404()
+    {
+        var response = await Client.DeleteAsync("/api/skills/999999");
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     private async Task<SkillDto> CreateSkillAsync(

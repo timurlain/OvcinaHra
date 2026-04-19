@@ -17,6 +17,7 @@ public static class SkillEndpoints
         group.MapGet("/{id:int}", GetById);
         group.MapPost("/", Create);
         group.MapPut("/{id:int}", Update);
+        group.MapDelete("/{id:int}", Delete);
 
         return group;
     }
@@ -134,6 +135,37 @@ public static class SkillEndpoints
             skill.BuildingRequirements.Add(new SkillBuildingRequirement { SkillId = id, BuildingId = bid });
         }
 
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
+    }
+
+    private static async Task<Results<NoContent, NotFound, Conflict<ProblemDetails>>> Delete(
+        int id, WorldDbContext db)
+    {
+        var skill = await db.Skills.SingleOrDefaultAsync(s => s.Id == id);
+        if (skill is null) return TypedResults.NotFound();
+
+        var usedInGame = await db.GameSkills.AnyAsync(gs => gs.SkillId == id);
+        if (usedInGame)
+        {
+            return TypedResults.Conflict(new ProblemDetails
+            {
+                Title = "Tuto dovednost nelze smazat — je součástí alespoň jedné hry.",
+                Status = StatusCodes.Status409Conflict
+            });
+        }
+
+        var usedInRecipe = await db.CraftingSkillRequirements.AnyAsync(csr => csr.SkillId == id);
+        if (usedInRecipe)
+        {
+            return TypedResults.Conflict(new ProblemDetails
+            {
+                Title = "Tuto dovednost nelze smazat — je vyžadována alespoň jedním receptem.",
+                Status = StatusCodes.Status409Conflict
+            });
+        }
+
+        db.Skills.Remove(skill);
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
     }
