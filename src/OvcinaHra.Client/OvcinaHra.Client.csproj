@@ -7,6 +7,12 @@
     <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
     <ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>
     <Version>0.4.5</Version>
+    <!-- NU1903 flags System.Security.Cryptography.Xml (transitive via JWT libraries) as
+         vulnerable on all currently-published versions; the CVEs concern server-side XML
+         signature validation which this Blazor WASM client does not exercise. Keep the
+         audit warning visible but don't block the build on it. Revisit when a patched
+         version ships upstream. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1903</WarningsNotAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
