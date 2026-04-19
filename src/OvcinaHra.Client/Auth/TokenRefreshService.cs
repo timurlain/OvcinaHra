@@ -26,6 +26,7 @@ public class TokenRefreshService : IDisposable
     private readonly HttpClient _http;
     private readonly JwtAuthStateProvider _authProvider;
     private readonly IJSRuntime _js;
+    private readonly SemaphoreSlim _refreshLock = new(1, 1);
     private Timer? _timer;
     private bool _booted;
 
@@ -84,8 +85,19 @@ public class TokenRefreshService : IDisposable
 
     public async Task RefreshAsync()
     {
+        await _refreshLock.WaitAsync();
         try
         {
+            // Coalesce concurrent callers: if another refresh already produced a
+            // fresh access token while we were queued, skip the round-trip.
+            var currentToken = await GetStoredAccessTokenAsync();
+            if (!string.IsNullOrEmpty(currentToken))
+            {
+                var expiry = GetJwtExpiry(currentToken);
+                if (expiry.HasValue && (expiry.Value - DateTimeOffset.UtcNow).TotalSeconds > 60)
+                    return;
+            }
+
             var refreshToken = await GetStoredRefreshTokenAsync();
 
             if (!string.IsNullOrEmpty(refreshToken))
@@ -136,6 +148,10 @@ public class TokenRefreshService : IDisposable
         {
             // Network error — retry shortly.
             ScheduleRetryAfterError();
+        }
+        finally
+        {
+            _refreshLock.Release();
         }
     }
 
