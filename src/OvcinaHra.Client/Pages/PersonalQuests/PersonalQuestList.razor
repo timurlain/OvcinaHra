@@ -1,6 +1,6 @@
 @page "/personal-quests"
 @attribute [Authorize]
-@inject ApiClient Api
+@implements IDisposable
 @inject GameContextService GameContext
 @inject NavigationManager Nav
 @inject PersonalQuestService PqSvc
@@ -60,6 +60,7 @@ else if (Catalog)
             </DxGridDataColumn>
             <DxGridDataColumn FieldName="DifficultyDisplay" Caption="Obtížnost" Width="130px" />
             <DxGridDataColumn FieldName="Description" Caption="Popis" />
+            <DxGridDataColumn FieldName="RewardSummary" Caption="Odměny" Width="340px" />
             <DxGridDataColumn FieldName="RewardNote" Caption="Ostatní odměny" Visible="false" />
             <DxGridDataColumn FieldName="QuestCardText" Caption="Kartička questu" Visible="false" />
             <DxGridDataColumn FieldName="RewardCardText" Caption="Kartičky odměn" Visible="false" />
@@ -107,6 +108,7 @@ else
     {
         await GameContext.InitializeAsync();
         _previousCatalog = Catalog;
+        GameContext.OnGameChanged += OnGameChanged;
         await LoadAsync();
     }
 
@@ -118,6 +120,10 @@ else
             await LoadAsync();
         }
     }
+
+    private async void OnGameChanged() { await LoadAsync(); StateHasChanged(); }
+
+    public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
 
     private async Task LoadAsync()
     {

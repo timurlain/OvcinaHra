@@ -19,7 +19,8 @@ public record PersonalQuestListDto(
     string? Notes,
     string? ImagePath,
     IReadOnlyList<int> SkillRewardIds,
-    IReadOnlyList<PersonalQuestItemRewardSummary> ItemRewards)
+    IReadOnlyList<PersonalQuestItemRewardSummary> ItemRewards,
+    string? RewardSummary = null)
 {
     [JsonIgnore]
     public string DifficultyDisplay => Difficulty.GetDisplayName();

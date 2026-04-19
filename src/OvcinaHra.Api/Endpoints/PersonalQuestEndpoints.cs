@@ -37,7 +37,7 @@ public static class PersonalQuestEndpoints
     {
         var quests = await db.PersonalQuests
             .AsNoTracking()
-            .Include(q => q.SkillRewards)
+            .Include(q => q.SkillRewards).ThenInclude(sr => sr.Skill)
             .Include(q => q.ItemRewards).ThenInclude(r => r.Item)
             .OrderBy(q => q.Name)
             .ToListAsync();
@@ -122,7 +122,8 @@ public static class PersonalQuestEndpoints
         q.AllowWarrior, q.AllowArcher, q.AllowMage, q.AllowThief,
         q.QuestCardText, q.RewardCardText, q.RewardNote, q.Notes, q.ImagePath,
         q.SkillRewards.Select(sr => sr.SkillId).ToList(),
-        q.ItemRewards.Select(ir => new PersonalQuestItemRewardSummary(ir.ItemId, ir.Item.Name, ir.Quantity)).ToList());
+        q.ItemRewards.Select(ir => new PersonalQuestItemRewardSummary(ir.ItemId, ir.Item.Name, ir.Quantity)).ToList(),
+        BuildRewardSummary(q));
 
     // ---------- Per-game link endpoints ----------
 
