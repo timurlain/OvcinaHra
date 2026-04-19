@@ -115,7 +115,11 @@ public static class ItemEndpoints
             .Include(r => r.SkillRequirements).ThenInclude(s => s.Skill)
             .ToListAsync();
 
-        var summaryByItemId = recipes.ToDictionary(r => r.OutputItemId, BuildRecipeSummary);
+        // GroupBy is defensive — schema doesn't prevent multiple recipes for the same OutputItemId
+        // in a single game, and ToDictionary would throw on duplicates.
+        var summaryByItemId = recipes
+            .GroupBy(r => r.OutputItemId)
+            .ToDictionary(g => g.Key, g => BuildRecipeSummary(g.First()));
 
         var result = gameItems
             .Select(gi => new GameItemListDto(
