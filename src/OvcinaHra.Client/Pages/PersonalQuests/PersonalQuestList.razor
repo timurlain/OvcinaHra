@@ -630,9 +630,11 @@ else
         try
         {
             await PqSvc.UpdateGameLinkAsync(GameContext.SelectedGameId.Value, editingId.Value, gpqXpCost, gpqPerKingdomLimit);
+            await LoadGamePersonalQuestAsync(editingId.Value);
+            await LoadAsync();
         }
         catch (Exception ex) { error = ex.Message; }
-        finally { isSaving = false; }
+        finally { isSaving = false; StateHasChanged(); }
     }
 
     private async Task RemoveGamePersonalQuestAsync()
@@ -643,6 +645,7 @@ else
         {
             await PqSvc.DeleteGameLinkAsync(GameContext.SelectedGameId.Value, editingId.Value);
             gpqExists = false;
+            await LoadAsync();
         }
         catch (Exception ex) { error = ex.Message; }
         finally { isSaving = false; StateHasChanged(); }

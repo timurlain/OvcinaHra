@@ -554,7 +554,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
     }
 
     [Fact]
-    public async Task RemoveSkillReward_NotLinked_ReturnsNoContent()
+    public async Task RemoveSkillReward_NotLinked_Returns404()
     {
         var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
             new CreatePersonalQuestDto(Name: "Idempotent", Difficulty: TreasureQuestDifficulty.Early));
@@ -562,7 +562,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
 
         var response = await Client.DeleteAsync(
             $"/api/personal-quests/{quest!.Id}/skill-rewards/99999");
-        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]

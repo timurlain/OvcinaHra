@@ -235,15 +235,13 @@ public static class PersonalQuestEndpoints
         return TypedResults.Created($"/api/personal-quests/{id}/skill-rewards/{dto.SkillId}");
     }
 
-    private static async Task<NoContent> RemoveSkillReward(int id, int skillId, WorldDbContext db)
+    private static async Task<Results<NoContent, NotFound>> RemoveSkillReward(int id, int skillId, WorldDbContext db)
     {
-        var sr = await db.PersonalQuestSkillRewards
-            .FirstOrDefaultAsync(r => r.PersonalQuestId == id && r.SkillId == skillId);
-        if (sr is not null)
-        {
-            db.PersonalQuestSkillRewards.Remove(sr);
-            await db.SaveChangesAsync();
-        }
+        var sr = await db.PersonalQuestSkillRewards.FindAsync(id, skillId);
+        if (sr is null) return TypedResults.NotFound();
+
+        db.PersonalQuestSkillRewards.Remove(sr);
+        await db.SaveChangesAsync();
         return TypedResults.NoContent();
     }
 
@@ -268,15 +266,13 @@ public static class PersonalQuestEndpoints
         return TypedResults.Created($"/api/personal-quests/{id}/item-rewards/{dto.ItemId}");
     }
 
-    private static async Task<NoContent> RemoveItemReward(int id, int itemId, WorldDbContext db)
+    private static async Task<Results<NoContent, NotFound>> RemoveItemReward(int id, int itemId, WorldDbContext db)
     {
-        var ir = await db.PersonalQuestItemRewards
-            .FirstOrDefaultAsync(r => r.PersonalQuestId == id && r.ItemId == itemId);
-        if (ir is not null)
-        {
-            db.PersonalQuestItemRewards.Remove(ir);
-            await db.SaveChangesAsync();
-        }
+        var ir = await db.PersonalQuestItemRewards.FindAsync(id, itemId);
+        if (ir is null) return TypedResults.NotFound();
+
+        db.PersonalQuestItemRewards.Remove(ir);
+        await db.SaveChangesAsync();
         return TypedResults.NoContent();
     }
 }
