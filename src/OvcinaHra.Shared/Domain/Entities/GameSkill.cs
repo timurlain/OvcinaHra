@@ -9,6 +9,7 @@ public class GameSkill
     public int? TemplateSkillId { get; set; }
 
     public required string Name { get; set; }
+    public SkillCategory Category { get; set; } = SkillCategory.Class;
     public PlayerClass? ClassRestriction { get; set; }
     public string? Effect { get; set; }
     public string? RequirementNotes { get; set; }
