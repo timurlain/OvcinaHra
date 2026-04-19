@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!--
+    Czech translations for DevExpress Blazor components.
+
+    TO FINISH THIS:
+      1. Log into https://localization.devexpress.com/ with your DevExpress account.
+      2. Select the DevExpress.Blazor assembly, version 25.2.x, Czech (cs-CZ).
+      3. Translate or accept the community defaults, then download the package.
+      4. Replace this file with the downloaded LocalizationRes.cs.resx
+         (from DevExpressLocalizedResources_2025.2_cs/src/DevExpress.Blazor/Resources/).
+
+    Until that's done, DevExpress strings stay in English — culture-dependent formatting
+    (dates, numbers) is already switched to Czech via CultureInfo.DefaultThreadCurrentCulture.
+  -->
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+</root>
