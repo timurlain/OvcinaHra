@@ -13,6 +13,7 @@ public static class PersonalQuestEndpoints
         var group = routes.MapGroup("/api/personal-quests").WithTags("PersonalQuests");
 
         group.MapGet("/", GetAll);
+        group.MapPost("/", Create);
 
         return group;
     }
@@ -28,6 +29,35 @@ public static class PersonalQuestEndpoints
 
         return TypedResults.Ok(quests.Select(ToListDto).ToList());
     }
+
+    private static async Task<Created<PersonalQuestDetailDto>> Create(CreatePersonalQuestDto dto, WorldDbContext db)
+    {
+        var q = new PersonalQuest
+        {
+            Name = dto.Name,
+            Difficulty = dto.Difficulty,
+            Description = dto.Description,
+            AllowWarrior = dto.AllowWarrior,
+            AllowArcher = dto.AllowArcher,
+            AllowMage = dto.AllowMage,
+            AllowThief = dto.AllowThief,
+            QuestCardText = dto.QuestCardText,
+            RewardCardText = dto.RewardCardText,
+            RewardNote = dto.RewardNote,
+            Notes = dto.Notes
+        };
+        db.PersonalQuests.Add(q);
+        await db.SaveChangesAsync();
+
+        return TypedResults.Created($"/api/personal-quests/{q.Id}", ToDetailDto(q));
+    }
+
+    private static PersonalQuestDetailDto ToDetailDto(PersonalQuest q) => new(
+        q.Id, q.Name, q.Description, q.Difficulty,
+        q.AllowWarrior, q.AllowArcher, q.AllowMage, q.AllowThief,
+        q.QuestCardText, q.RewardCardText, q.RewardNote, q.Notes, q.ImagePath,
+        q.SkillRewards.Select(sr => new SkillRewardDto(sr.SkillId, sr.Skill?.Name ?? string.Empty)).ToList(),
+        q.ItemRewards.Select(ir => new ItemRewardDto(ir.ItemId, ir.Item?.Name ?? string.Empty, ir.Quantity)).ToList());
 
     private static PersonalQuestListDto ToListDto(PersonalQuest q) => new(
         q.Id, q.Name, q.Description, q.Difficulty,
