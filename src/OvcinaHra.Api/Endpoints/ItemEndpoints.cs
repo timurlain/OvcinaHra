@@ -38,7 +38,11 @@ public static class ItemEndpoints
     {
         var items = await db.Items
             .OrderBy(i => i.Name)
-            .Select(i => new ItemListDto(i.Id, i.Name, i.ItemType, i.Effect, i.IsCraftable, i.IsUnique, i.IsLimited))
+            .Select(i => new ItemListDto(
+                i.Id, i.Name, i.ItemType, i.Effect, i.PhysicalForm, i.IsCraftable,
+                i.ClassRequirements.Warrior, i.ClassRequirements.Archer,
+                i.ClassRequirements.Mage, i.ClassRequirements.Thief,
+                i.IsUnique, i.IsLimited, i.ImagePath))
             .ToListAsync();
         return TypedResults.Ok(items);
     }
@@ -96,15 +100,19 @@ public static class ItemEndpoints
         return TypedResults.NoContent();
     }
 
-    private static async Task<Ok<List<GameItemDto>>> GetByGame(int gameId, WorldDbContext db)
+    private static async Task<Ok<List<GameItemListDto>>> GetByGame(int gameId, WorldDbContext db)
     {
         var items = await db.GameItems
             .Where(gi => gi.GameId == gameId)
             .Include(gi => gi.Item)
             .OrderBy(gi => gi.Item.Name)
-            .Select(gi => new GameItemDto(
-                gi.GameId, gi.ItemId, gi.Item.Name,
-                gi.Price, gi.StockCount, gi.IsSold, gi.SaleCondition, gi.IsFindable))
+            .Select(gi => new GameItemListDto(
+                gi.Item.Id, gi.Item.Name, gi.Item.ItemType, gi.Item.Effect, gi.Item.PhysicalForm,
+                gi.Item.IsCraftable,
+                gi.Item.ClassRequirements.Warrior, gi.Item.ClassRequirements.Archer,
+                gi.Item.ClassRequirements.Mage, gi.Item.ClassRequirements.Thief,
+                gi.Item.IsUnique, gi.Item.IsLimited, gi.Item.ImagePath,
+                gi.GameId, gi.Price, gi.StockCount, gi.IsSold, gi.SaleCondition, gi.IsFindable))
             .ToListAsync();
         return TypedResults.Ok(items);
     }
@@ -176,7 +184,11 @@ public static class ItemEndpoints
             var required = cr.GetRequirement(playerClass);
             return required > 0 && level >= required;
         })
-        .Select(i => new ItemListDto(i.Id, i.Name, i.ItemType, i.Effect, i.IsCraftable, i.IsUnique, i.IsLimited))
+        .Select(i => new ItemListDto(
+            i.Id, i.Name, i.ItemType, i.Effect, i.PhysicalForm, i.IsCraftable,
+            i.ClassRequirements.Warrior, i.ClassRequirements.Archer,
+            i.ClassRequirements.Mage, i.ClassRequirements.Thief,
+            i.IsUnique, i.IsLimited, i.ImagePath))
         .OrderBy(i => i.Name)
         .ToList();
 
