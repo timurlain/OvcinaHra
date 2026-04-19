@@ -141,32 +141,14 @@ public static class SkillEndpoints
         return TypedResults.NoContent();
     }
 
-    private static async Task<Results<NoContent, NotFound, Conflict<ProblemDetails>>> Delete(
+    private static async Task<Results<NoContent, NotFound>> Delete(
         int id, WorldDbContext db)
     {
         var skill = await db.Skills.SingleOrDefaultAsync(s => s.Id == id);
         if (skill is null) return TypedResults.NotFound();
 
-        var usedInGame = await db.GameSkills.AnyAsync(gs => gs.SkillId == id);
-        if (usedInGame)
-        {
-            return TypedResults.Conflict(new ProblemDetails
-            {
-                Title = "Tuto dovednost nelze smazat — je součástí alespoň jedné hry.",
-                Status = StatusCodes.Status409Conflict
-            });
-        }
-
-        var usedInRecipe = await db.CraftingSkillRequirements.AnyAsync(csr => csr.SkillId == id);
-        if (usedInRecipe)
-        {
-            return TypedResults.Conflict(new ProblemDetails
-            {
-                Title = "Tuto dovednost nelze smazat — je vyžadována alespoň jedním receptem.",
-                Status = StatusCodes.Status409Conflict
-            });
-        }
-
+        // Deleting a template is permitted even if GameSkill copies reference it —
+        // the FK uses SetNull on cascade, so per-game copies survive as standalone skills.
         db.Skills.Remove(skill);
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
