@@ -21,8 +21,10 @@ public static class GameEndpoints
         group.MapDelete("/{id:int}/link", UnlinkFromRegistrace);
 
         group.MapGet("/{gameId:int}/skills", GetGameSkills);
-        group.MapPut("/{gameId:int}/skills/{skillId:int}", UpsertGameSkill);
-        group.MapDelete("/{gameId:int}/skills/{skillId:int}", DeleteGameSkill);
+        group.MapGet("/{gameId:int}/skills/{gameSkillId:int}", GetGameSkillById);
+        group.MapPost("/{gameId:int}/skills", CreateGameSkill);
+        group.MapPut("/{gameId:int}/skills/{gameSkillId:int}", UpdateGameSkill);
+        group.MapDelete("/{gameId:int}/skills/{gameSkillId:int}", DeleteGameSkill);
 
         return group;
     }
@@ -111,24 +113,39 @@ public static class GameEndpoints
         var gameExists = await db.Games.AnyAsync(g => g.Id == gameId);
         if (!gameExists) return TypedResults.NotFound();
 
-        var dtos = await db.GameSkills
+        var skills = await db.GameSkills
             .Where(gs => gs.GameId == gameId)
-            .OrderBy(gs => gs.Skill.Name)
-            .Select(gs => new GameSkillDto(
-                gs.GameId,
-                gs.SkillId,
-                gs.Skill.Name,
-                gs.Skill.ClassRestriction,
-                gs.XpCost,
-                gs.LevelRequirement))
+            .Include(gs => gs.BuildingRequirements)
+            .OrderBy(gs => gs.Name)
             .ToListAsync();
 
-        return TypedResults.Ok((IReadOnlyList<GameSkillDto>)dtos);
+        IReadOnlyList<GameSkillDto> dtos = skills.Select(ToDto).ToList();
+        return TypedResults.Ok(dtos);
     }
 
-    private static async Task<Results<Created<GameSkillDto>, NoContent, NotFound, BadRequest<ProblemDetails>>> UpsertGameSkill(
-        int gameId, int skillId, UpsertGameSkillRequest dto, WorldDbContext db)
+    private static async Task<Results<Ok<GameSkillDto>, NotFound>> GetGameSkillById(
+        int gameId, int gameSkillId, WorldDbContext db)
     {
+        var gameSkill = await db.GameSkills
+            .Include(gs => gs.BuildingRequirements)
+            .SingleOrDefaultAsync(gs => gs.Id == gameSkillId);
+        if (gameSkill is null || gameSkill.GameId != gameId) return TypedResults.NotFound();
+
+        return TypedResults.Ok(ToDto(gameSkill));
+    }
+
+    private static async Task<Results<Created<GameSkillDto>, NotFound, BadRequest<ProblemDetails>, Conflict<ProblemDetails>>> CreateGameSkill(
+        int gameId, CreateGameSkillRequest dto, WorldDbContext db)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Name))
+        {
+            return TypedResults.BadRequest(new ProblemDetails
+            {
+                Title = "Název dovednosti je povinný.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
         if (dto.XpCost < 0)
         {
             return TypedResults.BadRequest(new ProblemDetails
@@ -150,50 +167,139 @@ public static class GameEndpoints
         var gameExists = await db.Games.AnyAsync(g => g.Id == gameId);
         if (!gameExists) return TypedResults.NotFound();
 
-        var skill = await db.Skills.SingleOrDefaultAsync(s => s.Id == skillId);
-        if (skill is null) return TypedResults.NotFound();
-
-        var existing = await db.GameSkills
-            .SingleOrDefaultAsync(gs => gs.GameId == gameId && gs.SkillId == skillId);
-
-        if (existing is not null)
+        if (dto.TemplateSkillId is int tid)
         {
-            existing.XpCost = dto.XpCost;
-            existing.LevelRequirement = dto.LevelRequirement;
-            await db.SaveChangesAsync();
-            return TypedResults.NoContent();
+            var templateExists = await db.Skills.AnyAsync(s => s.Id == tid);
+            if (!templateExists)
+            {
+                return TypedResults.BadRequest(new ProblemDetails
+                {
+                    Title = "Šablona dovednosti neexistuje.",
+                    Detail = $"Šablona dovednosti s ID {tid} nebyla nalezena.",
+                    Status = StatusCodes.Status400BadRequest
+                });
+            }
+        }
+
+        var buildingIds = dto.BuildingRequirementIds?.Distinct().ToList() ?? [];
+        var buildingError = await ValidateBuildingIdsAsync(buildingIds, db);
+        if (buildingError is not null) return TypedResults.BadRequest(buildingError);
+
+        var nameConflict = await db.GameSkills.AnyAsync(gs => gs.GameId == gameId && gs.Name == dto.Name);
+        if (nameConflict)
+        {
+            return TypedResults.Conflict(new ProblemDetails
+            {
+                Title = "Dovednost s tímto názvem již v této hře existuje.",
+                Status = StatusCodes.Status409Conflict
+            });
         }
 
         var gameSkill = new GameSkill
         {
             GameId = gameId,
-            SkillId = skillId,
+            TemplateSkillId = dto.TemplateSkillId,
+            Name = dto.Name,
+            Category = dto.Category,
+            ClassRestriction = dto.ClassRestriction,
+            Effect = dto.Effect,
+            RequirementNotes = dto.RequirementNotes,
             XpCost = dto.XpCost,
-            LevelRequirement = dto.LevelRequirement
+            LevelRequirement = dto.LevelRequirement,
+            BuildingRequirements = buildingIds
+                .Select(bid => new GameSkillBuildingRequirement { BuildingId = bid })
+                .ToList()
         };
+
         db.GameSkills.Add(gameSkill);
         await db.SaveChangesAsync();
 
-        var result = new GameSkillDto(
-            gameId,
-            skillId,
-            skill.Name,
-            skill.ClassRestriction,
-            gameSkill.XpCost,
-            gameSkill.LevelRequirement);
+        return TypedResults.Created($"/api/games/{gameId}/skills/{gameSkill.Id}", ToDto(gameSkill));
+    }
 
-        return TypedResults.Created($"/api/games/{gameId}/skills/{skillId}", result);
+    private static async Task<Results<NoContent, NotFound, BadRequest<ProblemDetails>, Conflict<ProblemDetails>>> UpdateGameSkill(
+        int gameId, int gameSkillId, UpdateGameSkillRequest dto, WorldDbContext db)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Name))
+        {
+            return TypedResults.BadRequest(new ProblemDetails
+            {
+                Title = "Název dovednosti je povinný.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
+        if (dto.XpCost < 0)
+        {
+            return TypedResults.BadRequest(new ProblemDetails
+            {
+                Title = "Cena v XP nemůže být záporná.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
+        if (dto.LevelRequirement is < 0)
+        {
+            return TypedResults.BadRequest(new ProblemDetails
+            {
+                Title = "Požadavek na úroveň nemůže být záporný.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
+        var gameSkill = await db.GameSkills
+            .Include(gs => gs.BuildingRequirements)
+            .SingleOrDefaultAsync(gs => gs.Id == gameSkillId);
+        if (gameSkill is null || gameSkill.GameId != gameId) return TypedResults.NotFound();
+
+        var buildingIds = dto.BuildingRequirementIds?.Distinct().ToList() ?? [];
+        var buildingError = await ValidateBuildingIdsAsync(buildingIds, db);
+        if (buildingError is not null) return TypedResults.BadRequest(buildingError);
+
+        var nameConflict = await db.GameSkills
+            .AnyAsync(gs => gs.GameId == gameId && gs.Id != gameSkillId && gs.Name == dto.Name);
+        if (nameConflict)
+        {
+            return TypedResults.Conflict(new ProblemDetails
+            {
+                Title = "Dovednost s tímto názvem již v této hře existuje.",
+                Status = StatusCodes.Status409Conflict
+            });
+        }
+
+        gameSkill.Name = dto.Name;
+        gameSkill.Category = dto.Category;
+        gameSkill.ClassRestriction = dto.ClassRestriction;
+        gameSkill.Effect = dto.Effect;
+        gameSkill.RequirementNotes = dto.RequirementNotes;
+        gameSkill.XpCost = dto.XpCost;
+        gameSkill.LevelRequirement = dto.LevelRequirement;
+
+        var currentIds = gameSkill.BuildingRequirements.Select(r => r.BuildingId).ToHashSet();
+        var desiredIds = buildingIds.ToHashSet();
+
+        foreach (var req in gameSkill.BuildingRequirements.Where(r => !desiredIds.Contains(r.BuildingId)).ToList())
+        {
+            gameSkill.BuildingRequirements.Remove(req);
+        }
+        foreach (var bid in desiredIds.Where(b => !currentIds.Contains(b)))
+        {
+            gameSkill.BuildingRequirements.Add(new GameSkillBuildingRequirement { GameSkillId = gameSkillId, BuildingId = bid });
+        }
+
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
     }
 
     private static async Task<Results<NoContent, NotFound, Conflict<ProblemDetails>>> DeleteGameSkill(
-        int gameId, int skillId, WorldDbContext db)
+        int gameId, int gameSkillId, WorldDbContext db)
     {
         var gameSkill = await db.GameSkills
-            .SingleOrDefaultAsync(gs => gs.GameId == gameId && gs.SkillId == skillId);
-        if (gameSkill is null) return TypedResults.NotFound();
+            .SingleOrDefaultAsync(gs => gs.Id == gameSkillId);
+        if (gameSkill is null || gameSkill.GameId != gameId) return TypedResults.NotFound();
 
         var usedInRecipe = await db.CraftingSkillRequirements
-            .AnyAsync(csr => csr.SkillId == skillId && csr.CraftingRecipe.GameId == gameId);
+            .AnyAsync(csr => csr.GameSkillId == gameSkillId);
         if (usedInRecipe)
         {
             return TypedResults.Conflict(new ProblemDetails
@@ -207,4 +313,36 @@ public static class GameEndpoints
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
     }
+
+    private static async Task<ProblemDetails?> ValidateBuildingIdsAsync(
+        IReadOnlyCollection<int> buildingIds, WorldDbContext db)
+    {
+        if (buildingIds.Count == 0) return null;
+
+        var knownBuildingCount = await db.Buildings
+            .CountAsync(b => buildingIds.Contains(b.Id));
+        if (knownBuildingCount != buildingIds.Count)
+        {
+            return new ProblemDetails
+            {
+                Title = "Některé z požadovaných budov neexistují.",
+                Status = StatusCodes.Status400BadRequest
+            };
+        }
+        return null;
+    }
+
+    private static GameSkillDto ToDto(GameSkill gs) => new(
+        gs.Id,
+        gs.GameId,
+        gs.TemplateSkillId,
+        gs.Name,
+        gs.Category,
+        gs.ClassRestriction,
+        gs.Effect,
+        gs.RequirementNotes,
+        gs.ImagePath,
+        gs.XpCost,
+        gs.LevelRequirement,
+        gs.BuildingRequirements.Select(r => r.BuildingId).ToList());
 }
