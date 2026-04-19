@@ -32,3 +32,13 @@ public record UpdateGameDto(
 /// Links this game to a game in registrace-ovčina.
 /// </summary>
 public record LinkGameDto(int ExternalGameId);
+
+public record GameSkillDto(
+    int GameId,
+    int SkillId,
+    string SkillName,
+    PlayerClass? ClassRestriction,
+    int XpCost,
+    int? LevelRequirement);
+
+public record UpsertGameSkillRequest(int XpCost, int? LevelRequirement);
