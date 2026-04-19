@@ -83,9 +83,9 @@ public class TokenRefreshService : IDisposable
         _timer.Start();
     }
 
-    public async Task RefreshAsync()
+    public async Task RefreshAsync(CancellationToken cancellationToken = default)
     {
-        await _refreshLock.WaitAsync();
+        await _refreshLock.WaitAsync(cancellationToken);
         try
         {
             // Coalesce concurrent callers: if another refresh already produced a
@@ -103,12 +103,12 @@ public class TokenRefreshService : IDisposable
             if (!string.IsNullOrEmpty(refreshToken))
             {
                 // Production OIDC path — stored refresh_token from registrace-ovcina.
-                var response = await _http.PostAsJsonAsync("/api/auth/oidc-refresh",
-                    new OidcRefreshRequestDto(refreshToken));
+                using var response = await _http.PostAsJsonAsync("/api/auth/oidc-refresh",
+                    new OidcRefreshRequestDto(refreshToken), cancellationToken);
 
                 if (response.IsSuccessStatusCode)
                 {
-                    var token = await response.Content.ReadFromJsonAsync<OidcExchangeResponse>();
+                    var token = await response.Content.ReadFromJsonAsync<OidcExchangeResponse>(cancellationToken);
                     if (token is not null)
                     {
                         await _authProvider.SetTokenAsync(token.Token);
@@ -133,16 +133,20 @@ public class TokenRefreshService : IDisposable
             }
 
             // Dev path — self-issued token, no refresh_token involved.
-            var devResponse = await _http.PostAsync("/api/auth/refresh", null);
+            using var devResponse = await _http.PostAsync("/api/auth/refresh", null, cancellationToken);
             if (devResponse.IsSuccessStatusCode)
             {
-                var token = await devResponse.Content.ReadFromJsonAsync<TokenResponse>();
+                var token = await devResponse.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken);
                 if (token is not null)
                 {
                     await _authProvider.SetTokenAsync(token.Token);
                     ScheduleRefresh(token.ExpiresInSeconds);
                 }
             }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {
@@ -234,5 +238,6 @@ public class TokenRefreshService : IDisposable
     public void Dispose()
     {
         _timer?.Dispose();
+        _refreshLock.Dispose();
     }
 }

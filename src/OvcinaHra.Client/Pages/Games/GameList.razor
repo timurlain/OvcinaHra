@@ -21,9 +21,7 @@ else
             <DxGridDataColumn FieldName="Edition" Caption="Ročník" Width="100px" />
             <DxGridDataColumn FieldName="StartDate" Caption="Od" Width="120px" DisplayFormat="d.M.yyyy" />
             <DxGridDataColumn FieldName="EndDate" Caption="Do" Width="120px" DisplayFormat="d.M.yyyy" />
-            <DxGridDataColumn FieldName="Status" Caption="Stav" Width="140px">
-                <CellDisplayTemplate>@(((GameStatus)context.Value).GetDisplayName())</CellDisplayTemplate>
-            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="StatusDisplay" Caption="Stav" Width="140px" />
             <DxGridDataColumn FieldName="ExternalGameId" Caption="Registrace ID" Width="130px" Visible="false" />
         </Columns>
     </OvcinaGrid>

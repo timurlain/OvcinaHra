@@ -1,8 +1,14 @@
+using System.Text.Json.Serialization;
 using OvcinaHra.Shared.Domain.Enums;
+using OvcinaHra.Shared.Extensions;
 
 namespace OvcinaHra.Shared.Dtos;
 
-public record QuestListDto(int Id, string Name, QuestType QuestType, int? ChainOrder, int? ParentQuestId, int? GameId);
+public record QuestListDto(int Id, string Name, QuestType QuestType, int? ChainOrder, int? ParentQuestId, int? GameId)
+{
+    [JsonIgnore]
+    public string QuestTypeDisplay => QuestType.GetDisplayName();
+}
 
 public record QuestDetailDto(
     int Id,
@@ -58,6 +64,10 @@ public record AddQuestRewardDto(int ItemId, int Quantity = 1);
 public record QuestCatalogDto(
     int Id, string Name, QuestType QuestType,
     int? GameId, string? GameName, int? GameEdition,
-    string? Description, string? FullText, string? RewardSummary);
+    string? Description, string? FullText, string? RewardSummary)
+{
+    [JsonIgnore]
+    public string QuestTypeDisplay => QuestType.GetDisplayName();
+}
 public record QuestCopyResultDto(QuestListDto Quest, List<string> Warnings);
 public record MoveQuestToGameDto(int GameId);

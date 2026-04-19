@@ -1,10 +1,16 @@
+using System.Text.Json.Serialization;
 using OvcinaHra.Shared.Domain.Enums;
+using OvcinaHra.Shared.Extensions;
 
 namespace OvcinaHra.Shared.Dtos;
 
 // --- TreasureQuest DTOs ---
 
-public record TreasureQuestListDto(int Id, string Title, TreasureQuestDifficulty Difficulty, int? LocationId, int? SecretStashId, int GameId);
+public record TreasureQuestListDto(int Id, string Title, TreasureQuestDifficulty Difficulty, int? LocationId, int? SecretStashId, int GameId)
+{
+    [JsonIgnore]
+    public string DifficultyDisplay => Difficulty.GetDisplayName();
+}
 
 public record TreasureQuestDetailDto(
     int Id, string Title, string? Clue, TreasureQuestDifficulty Difficulty,
@@ -24,7 +30,11 @@ public record AddTreasureItemDto(int ItemId, int Count = 1);
 
 // --- Treasure Pool DTOs ---
 
-public record TreasurePoolItemDto(int Id, int ItemId, string ItemName, ItemType ItemType, int Count, int GameId);
+public record TreasurePoolItemDto(int Id, int ItemId, string ItemName, ItemType ItemType, int Count, int GameId)
+{
+    [JsonIgnore]
+    public string ItemTypeDisplay => ItemType.GetDisplayName();
+}
 public record CreateTreasurePoolItemDto(int ItemId, int GameId, int Count = 1);
 
 // --- Treasure Planning DTOs ---

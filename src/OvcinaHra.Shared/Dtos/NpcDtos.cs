@@ -1,11 +1,17 @@
+using System.Text.Json.Serialization;
 using OvcinaHra.Shared.Domain.Enums;
+using OvcinaHra.Shared.Extensions;
 
 namespace OvcinaHra.Shared.Dtos;
 
 // Catalog
 public record NpcListDto(
     int Id, string Name, NpcRole Role, string? Description,
-    int? BirthYear, int? DeathYear);
+    int? BirthYear, int? DeathYear)
+{
+    [JsonIgnore]
+    public string RoleDisplay => Role.GetDisplayName();
+}
 
 public record NpcDetailDto(
     int Id, string Name, NpcRole Role,
@@ -26,7 +32,11 @@ public record UpdateNpcDto(
 public record GameNpcDto(
     int GameId, int NpcId, string NpcName, NpcRole Role,
     int? PlayedByPersonId, string? PlayedByName, string? PlayedByEmail,
-    string? Notes);
+    string? Notes)
+{
+    [JsonIgnore]
+    public string RoleDisplay => Role.GetDisplayName();
+}
 
 public record CreateGameNpcDto(
     int GameId, int NpcId,

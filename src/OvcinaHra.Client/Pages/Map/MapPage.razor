@@ -13,14 +13,14 @@
             <button class="btn @(activeStyle == "basic" ? "btn-secondary" : "btn-outline-secondary")" @onclick='() => ToggleStyle("basic")'>Základní</button>
             <button class="btn @(activeStyle == "osm" ? "btn-secondary" : "btn-outline-secondary")" @onclick='() => ToggleStyle("osm")'>OSM</button>
         </div>
-        @if (placingMode)
+        @if (placingMode && placingLocation is not null)
         {
-            <span class="badge bg-warning text-dark">Klikni na mapu pro umístění</span>
+            <span class="badge bg-warning text-dark">Umísťuji: @placingLocation.Name — klikni na mapu</span>
             <button class="btn btn-outline-secondary btn-sm" @onclick="CancelPlacing">Zrušit</button>
         }
         else
         {
-            <button class="btn btn-primary btn-sm" @onclick="StartPlacing">+ Nová lokace (klikni na mapu)</button>
+            <button class="btn btn-primary btn-sm" @onclick="OpenPlacePicker">Umístit lokaci</button>
         }
     </div>
 </div>
@@ -50,6 +50,69 @@
     OnSaved="LoadAndDisplayLocationsAsync"
     OnVariantNavigate="NavigateToLocation" />
 
+<DxPopup @bind-Visible="@isPickerVisible" HeaderText="Vyber lokaci k umístění" Width="520px">
+    <BodyContentTemplate Context="popupContext">
+        @{
+            var unplaced = locations
+                .Where(l => l.ParentLocationId is null && (!l.Latitude.HasValue || !l.Longitude.HasValue))
+                .Where(l => string.IsNullOrWhiteSpace(pickerSearch)
+                    || l.Name.Contains(pickerSearch, StringComparison.OrdinalIgnoreCase)
+                    || (l.Region is not null && l.Region.Contains(pickerSearch, StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(l => l.Name)
+                .ToList();
+        }
+
+        <DxTextBox @bind-Text="@pickerSearch" NullText="Hledat podle názvu nebo oblasti..." CssClass="mb-2" />
+
+        @if (unplaced.Count == 0)
+        {
+            <p class="text-muted text-center py-3">
+                @if (string.IsNullOrWhiteSpace(pickerSearch))
+                { <text>Žádné neumístěné lokace v této hře — všechny už mají GPS.</text> }
+                else
+                { <text>Nic nenalezeno.</text> }
+            </p>
+        }
+        else
+        {
+            <div class="list-group" style="max-height: 420px; overflow-y: auto;">
+                @foreach (var loc in unplaced)
+                {
+                    <button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+                            @onclick="() => SelectForPlacement(loc)">
+                        <div>
+                            <div><strong>@loc.Name</strong></div>
+                            @if (!string.IsNullOrWhiteSpace(loc.Region))
+                            {
+                                <small class="text-muted">@loc.Region</small>
+                            }
+                        </div>
+                        <span class="badge rounded-pill"
+                              style="background-color: @(markerColors.GetValueOrDefault(loc.LocationKind, "#e74c3c")); color: white;">
+                            @loc.LocationKind.GetDisplayName()
+                        </span>
+                    </button>
+                }
+            </div>
+        }
+
+        <div class="d-flex justify-content-end mt-2">
+            <button class="btn btn-secondary" @onclick="() => isPickerVisible = false">Zavřít</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+<DxPopup @bind-Visible="@isPlaceConfirmVisible" HeaderText="Umístit lokaci?" Width="400px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Umístit <strong>@placingLocation?.Name</strong> na zvolené souřadnice?</p>
+        <p class="text-muted small mb-3">@($"{placeLat:F7}, {placeLng:F7}")</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="CancelPlaceConfirm">Zrušit</button>
+            <button class="btn btn-primary" disabled="@isPlaceSaving" @onclick="ConfirmPlace">Umístit</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
 <DxPopup @bind-Visible="@isDragConfirmVisible" HeaderText="Přesunout lokaci?" Width="400px">
     <BodyContentTemplate Context="popupContext">
         <p>Přesunout <strong>@dragLocationName</strong> na novou pozici?</p>
@@ -66,8 +129,17 @@
     private LocationEditPopup locationPopup = null!;
     private List<LocationListDto> locations = [];
     private bool placingMode;
+    private LocationListDto? placingLocation;
     private string activeStyle = "tourist";
     private HashSet<LocationKind> hiddenKinds = [];
+
+    private bool isPickerVisible;
+    private string pickerSearch = "";
+
+    private bool isPlaceConfirmVisible;
+    private bool isPlaceSaving;
+    private double placeLat, placeLng;
+
     private bool isDragConfirmVisible;
     private int dragLocationId;
     private string dragLocationName = "";
@@ -95,7 +167,6 @@
         if (firstRender)
         {
             await LoadAndDisplayLocationsAsync();
-            // Fit to game area bounds
             await mapView.FitBoundsAsync(49.4504644, 18.0177633, 49.4557139, 18.0229133);
         }
     }
@@ -111,7 +182,20 @@
         await LoadAndDisplayLocationsAsync();
     }
 
-    private async void OnGameChanged() { try { await LoadAndDisplayLocationsAsync(); StateHasChanged(); } catch { /* game context change best-effort */ } }
+    private async void OnGameChanged()
+    {
+        try
+        {
+            placingMode = false;
+            placingLocation = null;
+            isPickerVisible = false;
+            isPlaceConfirmVisible = false;
+            isPlaceSaving = false;
+            await LoadAndDisplayLocationsAsync();
+            StateHasChanged();
+        }
+        catch { /* best-effort */ }
+    }
     public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
 
     private async Task LoadAndDisplayLocationsAsync()
@@ -142,22 +226,80 @@
         await DisplayMarkersAsync();
     }
 
-    private void StartPlacing() => placingMode = true;
-    private void CancelPlacing() => placingMode = false;
-
-    private async Task HandleMapClick(OvcinaMapClickEventArgs e)
+    private void OpenPlacePicker()
     {
-        if (placingMode)
+        pickerSearch = "";
+        isPickerVisible = true;
+    }
+
+    private void SelectForPlacement(LocationListDto loc)
+    {
+        placingLocation = loc;
+        placingMode = true;
+        isPickerVisible = false;
+    }
+
+    private void CancelPlacing()
+    {
+        placingMode = false;
+        placingLocation = null;
+        isPlaceConfirmVisible = false;
+        isPlaceSaving = false;
+    }
+
+    private Task HandleMapClick(OvcinaMapClickEventArgs e)
+    {
+        if (placingMode && placingLocation is not null)
         {
-            placingMode = false;
-            locationPopup.OpenNew((decimal)e.Latitude, (decimal)e.Longitude);
+            placeLat = e.Latitude;
+            placeLng = e.Longitude;
+            isPlaceConfirmVisible = true;
             StateHasChanged();
         }
+        return Task.CompletedTask;
+    }
+
+    private async Task ConfirmPlace()
+    {
+        if (placingLocation is null) return;
+        isPlaceSaving = true;
+        try
+        {
+            var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{placingLocation.Id}");
+            if (detail is not null)
+            {
+                var dto = new UpdateLocationDto(detail.Name, detail.LocationKind,
+                    (decimal)placeLat, (decimal)placeLng,
+                    detail.Description, detail.Details, detail.GamePotential, detail.Prompt, detail.Region,
+                    detail.NpcInfo, detail.SetupNotes, detail.ParentLocationId);
+                await Api.PutAsync($"/api/locations/{placingLocation.Id}", dto);
+            }
+            isPlaceConfirmVisible = false;
+            placingMode = false;
+            placingLocation = null;
+            await LoadAndDisplayLocationsAsync();
+        }
+        catch
+        {
+            // Network or server error — close the popup but keep placing mode so
+            // the user can retry with another click.
+            isPlaceConfirmVisible = false;
+        }
+        finally
+        {
+            isPlaceSaving = false;
+        }
+    }
+
+    private void CancelPlaceConfirm()
+    {
+        isPlaceConfirmVisible = false;
+        // Stay in placing mode so the user can click again on a different spot.
     }
 
     private async Task HandleMarkerClick(int id) => await locationPopup.OpenAsync(id);
 
-    private async Task HandleMarkerDrag(OvcinaMarkerDragEventArgs e)
+    private Task HandleMarkerDrag(OvcinaMarkerDragEventArgs e)
     {
         dragLocationId = e.Id;
         dragLocationName = locations.FirstOrDefault(l => l.Id == e.Id)?.Name ?? $"Lokace #{e.Id}";
@@ -167,6 +309,7 @@
         dragOrigLng = e.OrigLongitude;
         isDragConfirmVisible = true;
         StateHasChanged();
+        return Task.CompletedTask;
     }
 
     private async Task ConfirmDrag()

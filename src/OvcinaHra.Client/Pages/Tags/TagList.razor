@@ -14,9 +14,7 @@ else
                 RowClick="@(e => OpenModal((TagDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             <DxGridDataColumn FieldName="Name" Caption="Název" />
-            <DxGridDataColumn FieldName="Kind" Caption="Druh" Width="140px">
-                <CellDisplayTemplate>@(((TagKind)context.Value).GetDisplayName())</CellDisplayTemplate>
-            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="KindDisplay" Caption="Druh" Width="140px" />
         </Columns>
     </OvcinaGrid>
 }

@@ -48,9 +48,7 @@ else if (Catalog)
                 RowClick="@(e => OpenModal((NpcListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             <DxGridDataColumn FieldName="Name" Caption="Název" />
-            <DxGridDataColumn FieldName="Role" Caption="Role" Width="150px">
-                <CellDisplayTemplate>@(((NpcRole)context.Value).GetDisplayName())</CellDisplayTemplate>
-            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="RoleDisplay" Caption="Role" Width="150px" />
             <DxGridDataColumn FieldName="Description" Caption="Popis" />
             <DxGridDataColumn FieldName="BirthYear" Caption="Narozen" Width="100px" Visible="false" />
             <DxGridDataColumn FieldName="DeathYear" Caption="Stav" Width="130px">
@@ -93,9 +91,7 @@ else
                 RowClick="@(e => { var gn = (GameNpcDto)e.Grid.GetDataItem(e.VisibleIndex); var n = npcs.FirstOrDefault(x => x.Id == gn.NpcId); if (n is not null) OpenModal(n); })">
         <Columns>
             <DxGridDataColumn FieldName="NpcName" Caption="Název" />
-            <DxGridDataColumn FieldName="Role" Caption="Role" Width="150px">
-                <CellDisplayTemplate>@(((NpcRole)context.Value).GetDisplayName())</CellDisplayTemplate>
-            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="RoleDisplay" Caption="Role" Width="150px" />
             <DxGridDataColumn FieldName="PlayedByName" Caption="Hraje" Width="180px" />
             <DxGridDataColumn FieldName="PlayedByEmail" Caption="Email" Width="200px" Visible="false" />
         </Columns>

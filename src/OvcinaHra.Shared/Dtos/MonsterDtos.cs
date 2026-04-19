@@ -1,8 +1,14 @@
+using System.Text.Json.Serialization;
 using OvcinaHra.Shared.Domain.Enums;
+using OvcinaHra.Shared.Extensions;
 
 namespace OvcinaHra.Shared.Dtos;
 
-public record MonsterListDto(int Id, string Name, MonsterType MonsterType, int Category, int Attack, int Defense, int Health);
+public record MonsterListDto(int Id, string Name, MonsterType MonsterType, int Category, int Attack, int Defense, int Health)
+{
+    [JsonIgnore]
+    public string MonsterTypeDisplay => MonsterType.GetDisplayName();
+}
 
 public record MonsterDetailDto(
     int Id,

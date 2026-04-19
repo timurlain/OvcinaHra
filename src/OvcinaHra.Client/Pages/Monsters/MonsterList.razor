@@ -35,9 +35,7 @@ else
                 RowClick="@(e => OpenModal((MonsterListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             <DxGridDataColumn FieldName="Name" Caption="Název" />
-            <DxGridDataColumn FieldName="MonsterType" Caption="Typ" Width="130px">
-                <CellDisplayTemplate>@(((MonsterType)context.Value).GetDisplayName())</CellDisplayTemplate>
-            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="MonsterTypeDisplay" Caption="Typ" Width="130px" />
             <DxGridDataColumn FieldName="Category" Caption="Kategorie" Width="110px" />
             <DxGridDataColumn FieldName="Attack" Caption="Útok" Width="80px" />
             <DxGridDataColumn FieldName="Defense" Caption="Obrana" Width="80px" />
