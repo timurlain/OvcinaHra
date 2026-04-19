@@ -1,4 +1,6 @@
 @using System.Reflection
+@inject GameContextService GameContext
+@implements IDisposable
 
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
@@ -55,11 +57,14 @@
                 <i class="bi bi-houses-fill"></i><span class="nav-label">Budovy</span>
             </NavLink>
         </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="skills">
-                <i class="bi bi-star-fill"></i><span class="nav-label">Dovednosti</span>
-            </NavLink>
-        </div>
+        @if (GameContext.SelectedGameId is int hraSkillsGameId)
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="@($"games/{hraSkillsGameId}/skills")">
+                    <i class="bi bi-star-fill"></i><span class="nav-label">Dovednosti</span>
+                </NavLink>
+            </div>
+        }
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="secret-stashes">
                 <i class="bi bi-lock-fill"></i><span class="nav-label">Tajné skrýše</span>
@@ -179,4 +184,19 @@
     private bool collapseNavMenu = true;
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
     private void ToggleNavMenu() => collapseNavMenu = !collapseNavMenu;
+
+    protected override void OnInitialized()
+    {
+        GameContext.OnGameChanged += OnGameChanged;
+    }
+
+    private async void OnGameChanged()
+    {
+        try { await InvokeAsync(StateHasChanged); } catch { /* nav menu best-effort refresh */ }
+    }
+
+    public void Dispose()
+    {
+        GameContext.OnGameChanged -= OnGameChanged;
+    }
 }
