@@ -192,6 +192,7 @@ try
     app.MapNpcEndpoints().RequireAuthorization();
     app.MapQuestEndpoints().RequireAuthorization();
     app.MapBuildingEndpoints().RequireAuthorization();
+    app.MapSkillEndpoints().RequireAuthorization();
     app.MapCraftingEndpoints().RequireAuthorization();
     app.MapTreasureQuestEndpoints().RequireAuthorization();
     app.MapTreasurePlanningEndpoints().RequireAuthorization();
