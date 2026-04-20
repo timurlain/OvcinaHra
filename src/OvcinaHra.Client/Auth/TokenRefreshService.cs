@@ -95,13 +95,20 @@ public class TokenRefreshService : IDisposable
             {
                 var expiry = GetJwtExpiry(currentToken);
                 if (expiry.HasValue && (expiry.Value - DateTimeOffset.UtcNow).TotalSeconds > 60)
+                {
+                    AuthLog.Event("refresh.skipped",
+                        ("reason", "already_fresh"),
+                        ("remaining_s", (int)(expiry.Value - DateTimeOffset.UtcNow).TotalSeconds));
                     return;
+                }
             }
 
             var refreshToken = await GetStoredRefreshTokenAsync();
 
             if (!string.IsNullOrEmpty(refreshToken))
             {
+                AuthLog.Event("refresh.start", ("path", "oidc"));
+
                 // Production OIDC path — stored refresh_token from registrace-ovcina.
                 using var response = await _http.PostAsJsonAsync("/api/auth/oidc-refresh",
                     new OidcRefreshRequestDto(refreshToken), cancellationToken);
@@ -115,24 +122,53 @@ public class TokenRefreshService : IDisposable
                         if (!string.IsNullOrEmpty(token.RefreshToken))
                             await SetStoredRefreshTokenAsync(token.RefreshToken);
                         ScheduleRefresh(token.ExpiresInSeconds);
+                        AuthLog.Event("refresh.ok",
+                            ("path", "oidc"),
+                            ("expires_in_s", token.ExpiresInSeconds),
+                            ("refresh_rotated", !string.IsNullOrEmpty(token.RefreshToken)));
                         return;
                     }
+
+                    // 2xx but empty/unparseable body — don't clear tokens, retry.
+                    AuthLog.Event("refresh.ok_null_body",
+                        ("path", "oidc"),
+                        ("action", "retry_in_30s"));
+                    ScheduleRetryAfterError();
+                    return;
                 }
 
-                if (IsExplicitAuthFailure(response.StatusCode))
+                // Non-success. Read the OAuth2 error code if any.
+                var bodyError = await TryReadOAuth2ErrorAsync(response, cancellationToken);
+
+                // Strict: only a 401 with explicit OAuth2 "invalid_grant" means the refresh
+                // token is truly dead. Anything else (400/403, 5xx, proxy errors, unknown 401)
+                // is treated as transient — we do NOT wipe the refresh token, we retry.
+                var isExplicitlyDead = response.StatusCode == HttpStatusCode.Unauthorized
+                                       && string.Equals(bodyError, "invalid_grant", StringComparison.Ordinal);
+
+                if (isExplicitlyDead)
                 {
-                    // Refresh token definitively rejected — clear it so we don't keep retrying.
+                    AuthLog.Event("refresh.explicit_failure",
+                        ("path", "oidc"),
+                        ("status", (int)response.StatusCode),
+                        ("error", bodyError),
+                        ("action", "clear_tokens"));
                     await ClearStoredRefreshTokenAsync();
                     await _authProvider.ClearTokenAsync();
                     return;
                 }
 
-                // Transient (5xx, 408, 429, or null body on 2xx) — keep the tokens, retry shortly.
+                AuthLog.Event("refresh.transient",
+                    ("path", "oidc"),
+                    ("status", (int)response.StatusCode),
+                    ("error", bodyError ?? "(none)"),
+                    ("action", "retry_in_30s"));
                 ScheduleRetryAfterError();
                 return;
             }
 
             // Dev path — self-issued token, no refresh_token involved.
+            AuthLog.Event("refresh.start", ("path", "dev"));
             using var devResponse = await _http.PostAsync("/api/auth/refresh", null, cancellationToken);
             if (devResponse.IsSuccessStatusCode)
             {
@@ -141,16 +177,30 @@ public class TokenRefreshService : IDisposable
                 {
                     await _authProvider.SetTokenAsync(token.Token);
                     ScheduleRefresh(token.ExpiresInSeconds);
+                    AuthLog.Event("refresh.ok",
+                        ("path", "dev"),
+                        ("expires_in_s", token.ExpiresInSeconds));
+                    return;
                 }
+                AuthLog.Event("refresh.ok_null_body", ("path", "dev"));
+            }
+            else
+            {
+                AuthLog.Event("refresh.dev_failed",
+                    ("status", (int)devResponse.StatusCode));
             }
         }
         catch (OperationCanceledException)
         {
             throw;
         }
-        catch
+        catch (Exception ex)
         {
-            // Network error — retry shortly.
+            // Network error — retry shortly. Keep tokens so we can recover when network returns.
+            AuthLog.Event("refresh.threw",
+                ("type", ex.GetType().Name),
+                ("msg", ex.Message),
+                ("action", "retry_in_30s"));
             ScheduleRetryAfterError();
         }
         finally
@@ -159,10 +209,31 @@ public class TokenRefreshService : IDisposable
         }
     }
 
-    private static bool IsExplicitAuthFailure(HttpStatusCode status) =>
-        status == HttpStatusCode.BadRequest
-        || status == HttpStatusCode.Unauthorized
-        || status == HttpStatusCode.Forbidden;
+    /// <summary>
+    /// Reads an OAuth2-style <c>{"error":"..."}</c> field from the response body,
+    /// returning null if the body isn't JSON or has no error field.
+    /// </summary>
+    private static async Task<string?> TryReadOAuth2ErrorAsync(
+        HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var raw = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            using var doc = JsonDocument.Parse(raw);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty("error", out var err)
+                && err.ValueKind == JsonValueKind.String)
+            {
+                return err.GetString();
+            }
+        }
+        catch
+        {
+            // Non-JSON body or parse error — caller treats as transient.
+        }
+        return null;
+    }
 
     private void ScheduleRetryAfterError()
     {

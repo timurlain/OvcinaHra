@@ -51,6 +51,7 @@ public class UnauthorizedRedirectHandler : DelegatingHandler
         if (response.StatusCode != HttpStatusCode.Unauthorized || isTokenEndpoint)
             return response;
 
+        AuthLog.Event("401.intercepted", ("path", path), ("method", request.Method.Method));
         response.Dispose();
 
         var refresh = _services.GetRequiredService<TokenRefreshService>();
@@ -61,6 +62,9 @@ public class UnauthorizedRedirectHandler : DelegatingHandler
 
         if (string.IsNullOrEmpty(newToken))
         {
+            AuthLog.Event("401.force_logout",
+                ("path", path),
+                ("reason", "no_token_after_refresh"));
             _nav.NavigateTo("/login", forceLoad: true);
             return new HttpResponseMessage(HttpStatusCode.Unauthorized);
         }
@@ -70,7 +74,18 @@ public class UnauthorizedRedirectHandler : DelegatingHandler
 
         var retryResponse = await base.SendAsync(retry, cancellationToken);
         if (retryResponse.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            AuthLog.Event("401.force_logout",
+                ("path", path),
+                ("reason", "retry_also_401"));
             _nav.NavigateTo("/login", forceLoad: true);
+        }
+        else
+        {
+            AuthLog.Event("401.retry_ok",
+                ("path", path),
+                ("status", (int)retryResponse.StatusCode));
+        }
 
         return retryResponse;
     }
