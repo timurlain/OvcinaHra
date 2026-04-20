@@ -36,7 +36,11 @@ public static class LocationEndpoints
                 l.Region,
                 l.Coordinates != null ? l.Coordinates.Latitude : (decimal?)null,
                 l.Coordinates != null ? l.Coordinates.Longitude : (decimal?)null,
-                l.ParentLocationId))
+                l.ParentLocationId,
+                l.Description, l.Details, l.GamePotential, l.NpcInfo, l.SetupNotes,
+                Array.Empty<LocationStashDto>(),
+                Array.Empty<LocationQuestDto>(),
+                Array.Empty<LocationTreasureQuestDto>()))
             .ToListAsync();
 
         return TypedResults.Ok(locations);
@@ -124,7 +128,7 @@ public static class LocationEndpoints
 
     private static async Task<Ok<List<LocationListDto>>> GetByGame(int gameId, WorldDbContext db)
     {
-        var locations = await db.Locations
+        var dtos = await db.Locations
             .Where(l => l.GameLocations.Any(gl => gl.GameId == gameId))
             .OrderBy(l => l.Name)
             .Select(l => new LocationListDto(
@@ -132,10 +136,49 @@ public static class LocationEndpoints
                 l.Region,
                 l.Coordinates != null ? l.Coordinates.Latitude : (decimal?)null,
                 l.Coordinates != null ? l.Coordinates.Longitude : (decimal?)null,
-                l.ParentLocationId))
+                l.ParentLocationId,
+                l.Description, l.Details, l.GamePotential, l.NpcInfo, l.SetupNotes,
+                Stashes: l.GameSecretStashes
+                    .Where(gss => gss.GameId == gameId)
+                    .OrderBy(gss => gss.SecretStash.Name)
+                    .Select(gss => new LocationStashDto(
+                        gss.SecretStashId,
+                        gss.SecretStash.Name,
+                        gss.SecretStash.Description,
+                        gss.SecretStash.TreasureQuests
+                            .Where(tq => tq.GameId == gameId)
+                            .OrderBy(tq => tq.Title)
+                            .ThenBy(tq => tq.Id)
+                            .Select(tq => new LocationTreasureQuestDto(tq.Id, tq.Title, tq.Clue, tq.Difficulty))
+                            .ToList()))
+                    .ToList(),
+                Quests: l.QuestLocations
+                    .Where(ql => ql.Quest.GameId == null || ql.Quest.GameId == gameId)
+                    .OrderBy(ql => ql.Quest.Name)
+                    .Select(ql => new LocationQuestDto(
+                        ql.QuestId,
+                        ql.Quest.Name,
+                        ql.Quest.QuestType,
+                        ql.Quest.Description,
+                        ql.Quest.FullText,
+                        ql.Quest.RewardXp,
+                        ql.Quest.RewardMoney,
+                        ql.Quest.RewardNotes,
+                        ql.Quest.QuestRewards
+                            .OrderBy(qr => qr.Item.Name)
+                            .Select(qr => new LocationQuestRewardItemDto(qr.ItemId, qr.Item.Name, qr.Quantity))
+                            .ToList()))
+                    .ToList(),
+                LocationTreasureQuests: l.TreasureQuests
+                    .Where(tq => tq.GameId == gameId)
+                    .OrderBy(tq => tq.Title)
+                    .ThenBy(tq => tq.Id)
+                    .Select(tq => new LocationTreasureQuestDto(tq.Id, tq.Title, tq.Clue, tq.Difficulty))
+                    .ToList()
+            ))
             .ToListAsync();
 
-        return TypedResults.Ok(locations);
+        return TypedResults.Ok(dtos);
     }
 
     private static async Task<Results<Created, Conflict>> AssignToGame(GameLocationDto dto, WorldDbContext db)
