@@ -65,6 +65,9 @@ public class UnauthorizedRedirectHandler : DelegatingHandler
             AuthLog.Event("401.force_logout",
                 ("path", path),
                 ("reason", "no_token_after_refresh"));
+            // Clear stored tokens + stop the refresh timer BEFORE navigating so the
+            // /login page doesn't inherit a zombie refresh loop against dead tokens.
+            await auth.ClearTokenAsync();
             _nav.NavigateTo("/login", forceLoad: true);
             return new HttpResponseMessage(HttpStatusCode.Unauthorized);
         }
@@ -78,6 +81,7 @@ public class UnauthorizedRedirectHandler : DelegatingHandler
             AuthLog.Event("401.force_logout",
                 ("path", path),
                 ("reason", "retry_also_401"));
+            await auth.ClearTokenAsync();
             _nav.NavigateTo("/login", forceLoad: true);
         }
         else

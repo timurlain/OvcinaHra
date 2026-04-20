@@ -57,9 +57,9 @@ public class JwtAuthStateProvider : AuthenticationStateProvider
                     // Fire-and-forget; TryBootAsync is idempotent.
                     _ = _services.GetRequiredService<TokenRefreshService>().TryBootAsync();
 
-                    AuthLog.Event("authstate.ok",
-                        ("user", me.UserId),
-                        ("roles", me.Roles.Count));
+                    // User id deliberately omitted — this log surfaces in the browser
+                    // console and may be captured in screenshots / shared bug reports.
+                    AuthLog.Event("authstate.ok", ("roles", me.Roles.Count));
                     return new AuthenticationState(
                         new ClaimsPrincipal(new ClaimsIdentity(claims, "oidc")));
                 }
@@ -77,9 +77,10 @@ public class JwtAuthStateProvider : AuthenticationStateProvider
         {
             // API unreachable — treat as unauthenticated but DON'T clear tokens
             // (the refresh timer may still recover us when the network comes back).
+            // ex.Message intentionally omitted — can leak URLs / sensitive detail
+            // into the browser console. Exception type + action is enough signal.
             AuthLog.Event("authstate.me_threw",
                 ("type", ex.GetType().Name),
-                ("msg", ex.Message),
                 ("action", "keep_tokens_treat_unauth"));
             return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
         }

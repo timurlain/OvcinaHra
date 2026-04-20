@@ -197,9 +197,9 @@ public class TokenRefreshService : IDisposable
         catch (Exception ex)
         {
             // Network error — retry shortly. Keep tokens so we can recover when network returns.
+            // ex.Message intentionally omitted — can leak sensitive detail.
             AuthLog.Event("refresh.threw",
                 ("type", ex.GetType().Name),
-                ("msg", ex.Message),
                 ("action", "retry_in_30s"));
             ScheduleRetryAfterError();
         }
