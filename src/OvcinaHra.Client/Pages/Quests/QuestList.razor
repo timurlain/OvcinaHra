@@ -29,7 +29,7 @@ else if (Catalog)
             <DxGridDataColumn FieldName="RewardSummary" Caption="Odměny" Width="220px" />
             <DxGridDataColumn FieldName="CatalogAction" Caption="Akce" Width="110px"
                               UnboundType="GridUnboundColumnType.String"
-                              AllowSort="false" AllowGroup="false" AllowFilter="false">
+                              AllowSort="false" AllowGroup="false">
                 <CellDisplayTemplate>
                     @{
                         var q = (QuestCatalogDto)context.DataItem;

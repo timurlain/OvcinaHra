@@ -70,7 +70,7 @@ else if (Catalog)
             <DxGridDataColumn FieldName="HasImage" Caption="Obrázek" Width="100px" Visible="false">
                 <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="Id" Caption="Hra" Width="130px" AllowSort="false" AllowGroup="false" AllowFilter="false">
+            <DxGridDataColumn FieldName="Id" Caption="Hra" Width="130px" AllowSort="false" AllowGroup="false">
                 <CellDisplayTemplate>
                     @{
                         var pqId = (int)context.Value;
@@ -95,7 +95,7 @@ else
     <OvcinaGrid Data="@gameItems" KeyFieldName="Id" LayoutKey="grid-layout-personal-quests-game"
                 RowClick="@(e => OpenModal((GamePersonalQuestListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
-            <DxGridDataColumn FieldName="" Caption="" Width="40px" AllowSort="false" AllowGroup="false" AllowFilter="false" FixedPosition="GridColumnFixedPosition.Left">
+            <DxGridDataColumn FieldName="" Caption="" Width="40px" AllowSort="false" AllowGroup="false" FixedPosition="GridColumnFixedPosition.Left">
                 <CellDisplayTemplate>
                     @{
                         var gi = (GamePersonalQuestListDto)context.DataItem;

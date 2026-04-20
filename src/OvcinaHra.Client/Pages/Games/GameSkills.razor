@@ -54,7 +54,7 @@ else
                         @(lvl.HasValue ? lvl.Value.ToString() : "Bez požadavku")
                     </CellDisplayTemplate>
                 </DxGridDataColumn>
-                <DxGridDataColumn Caption="" Width="60px" AllowSort="false" AllowGroup="false" AllowFilter="false">
+                <DxGridDataColumn Caption="" Width="60px" AllowSort="false" AllowGroup="false">
                     <CellDisplayTemplate>
                         @{
                             var row = (GameSkillDto)context.DataItem;
