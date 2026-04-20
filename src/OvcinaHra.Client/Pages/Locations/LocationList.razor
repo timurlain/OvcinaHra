@@ -76,7 +76,7 @@ else
             <DxGridDataColumn FieldName="SetupNotes" Caption="Přípravné poznámky" Width="220px" />
             @if (!Catalog)
             {
-                <DxGridDataColumn FieldName="Stashes" Caption="Skrýše" Width="500px" AllowSort="false" AllowFilter="false">
+                <DxGridDataColumn FieldName="Stashes" Caption="Skrýše" Width="500px" AllowSort="false" AllowGroup="false">
                     <CellDisplayTemplate>
                         @{
                             var loc = (LocationListDto)context.DataItem;
@@ -103,7 +103,7 @@ else
                         }
                     </CellDisplayTemplate>
                 </DxGridDataColumn>
-                <DxGridDataColumn FieldName="Quests" Caption="Questy" Width="600px" AllowSort="false" AllowFilter="false">
+                <DxGridDataColumn FieldName="Quests" Caption="Questy" Width="600px" AllowSort="false" AllowGroup="false">
                     <CellDisplayTemplate>
                         @{
                             var loc = (LocationListDto)context.DataItem;
