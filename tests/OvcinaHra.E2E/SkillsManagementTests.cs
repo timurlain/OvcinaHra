@@ -9,9 +9,9 @@ namespace OvcinaHra.E2E;
 /// Phase 9 — E2E flow for the skills domain.
 ///
 /// Exercises the full user flow end-to-end via the same API that the UI drives:
-/// catalog create → game activation → crafting recipe requirement → persistence
-/// re-fetch. Follows the API-driven pattern of existing E2E tests (see the
-/// class-level comment in <see cref="GameManagementTests"/>) because the E2E
+/// catalog template create → per-game copy-on-assign → crafting recipe requirement →
+/// persistence re-fetch. Follows the API-driven pattern of existing E2E tests (see
+/// the class-level comment in <see cref="GameManagementTests"/>) because the E2E
 /// harness hosts the API through WebApplicationFactory and does not serve the
 /// Blazor WASM client for browser-level navigation.
 /// </summary>
@@ -55,79 +55,94 @@ public class SkillsManagementTests
         var item = await itemResp.Content.ReadFromJsonAsync<ItemDetailDto>();
         Assert.NotNull(item);
 
-        // 2) Create a skill in the catalog — equivalent of /skills page + popup.
+        // 2) Create a skill template in the catalog — equivalent of /skills (Knihovna).
         var skillCreateResp = await client.PostAsJsonAsync("/api/skills",
             new CreateSkillRequest(
                 Name: "Tichý úder",
+                Category: SkillCategory.Class,
                 ClassRestriction: PlayerClass.Thief,
                 Effect: "Test — útok z úkrytu",
                 RequirementNotes: null,
                 RequiredBuildingIds: [building!.Id]));
         skillCreateResp.EnsureSuccessStatusCode();
-        var skill = await skillCreateResp.Content.ReadFromJsonAsync<SkillDto>();
-        Assert.NotNull(skill);
-        Assert.Equal("Tichý úder", skill.Name);
-        Assert.Equal(PlayerClass.Thief, skill.ClassRestriction);
-        Assert.Contains(building.Id, skill.RequiredBuildingIds);
+        var template = await skillCreateResp.Content.ReadFromJsonAsync<SkillDto>();
+        Assert.NotNull(template);
+        Assert.Equal("Tichý úder", template.Name);
+        Assert.Equal(SkillCategory.Class, template.Category);
+        Assert.Equal(PlayerClass.Thief, template.ClassRestriction);
+        Assert.Contains(building.Id, template.RequiredBuildingIds);
 
-        // Assert it shows up in the catalog listing — equivalent of "row appears in grid".
+        // Template appears in the catalog listing — mirrors "row appears in grid".
         var catalog = await client.GetFromJsonAsync<List<SkillDto>>("/api/skills");
         Assert.NotNull(catalog);
-        Assert.Contains(catalog, s => s.Id == skill.Id && s.Name == "Tichý úder");
+        Assert.Contains(catalog, s => s.Id == template.Id && s.Name == "Tichý úder");
 
-        // 3) Activate the skill in the game — equivalent of /games/{id}/skills + dropdown.
-        var upsertResp = await client.PutAsJsonAsync(
-            $"/api/games/{game!.Id}/skills/{skill.Id}",
-            new UpsertGameSkillRequest(XpCost: 10, LevelRequirement: 2));
-        upsertResp.EnsureSuccessStatusCode();
+        // 3) Copy-on-assign: create a GameSkill from the template with per-game XP/Level.
+        //    Equivalent of "Ze šablony" flow in the per-game page.
+        var createGameSkillResp = await client.PostAsJsonAsync(
+            $"/api/games/{game!.Id}/skills",
+            new CreateGameSkillRequest(
+                TemplateSkillId: template.Id,
+                Name: template.Name,
+                Category: template.Category,
+                ClassRestriction: template.ClassRestriction,
+                Effect: template.Effect,
+                RequirementNotes: template.RequirementNotes,
+                BuildingRequirementIds: template.RequiredBuildingIds.ToList(),
+                XpCost: 10,
+                LevelRequirement: 2));
+        createGameSkillResp.EnsureSuccessStatusCode();
+        var gameSkill = await createGameSkillResp.Content.ReadFromJsonAsync<GameSkillDto>();
+        Assert.NotNull(gameSkill);
+        Assert.Equal(template.Id, gameSkill.TemplateSkillId);
+        Assert.Equal("Tichý úder", gameSkill.Name);
+        Assert.Equal(SkillCategory.Class, gameSkill.Category);
+        Assert.Equal(10, gameSkill.XpCost);
+        Assert.Equal(2, gameSkill.LevelRequirement);
 
         var gameSkills = await client.GetFromJsonAsync<List<GameSkillDto>>(
             $"/api/games/{game.Id}/skills");
         Assert.NotNull(gameSkills);
-        var activated = Assert.Single(gameSkills, gs => gs.SkillId == skill.Id);
-        Assert.Equal(10, activated.XpCost);
-        Assert.Equal(2, activated.LevelRequirement);
-        Assert.Equal("Tichý úder", activated.SkillName);
+        Assert.Single(gameSkills, gs => gs.Id == gameSkill.Id);
 
-        // 4) Require the skill in a crafting recipe — equivalent of the Recept
-        //    block on the item edit dialog. Create the recipe (output = seeded item,
-        //    no ingredients, recipe requires the freshly activated skill).
+        // 4) Require the GameSkill in a crafting recipe — equivalent of the Recept
+        //    block on the item edit dialog. Recipes reference GameSkill.Id now,
+        //    not the template's Skill.Id.
         var recipeResp = await client.PostAsJsonAsync("/api/crafting",
             new CreateCraftingRecipeDto(
                 GameId: game.Id,
                 OutputItemId: item!.Id,
                 LocationId: null,
-                RequiredSkillIds: [skill.Id]));
+                RequiredSkillIds: [gameSkill.Id]));
         recipeResp.EnsureSuccessStatusCode();
         var recipe = await recipeResp.Content.ReadFromJsonAsync<CraftingRecipeDetailDto>();
         Assert.NotNull(recipe);
-        Assert.Contains(skill.Id, recipe.RequiredSkillIds);
+        Assert.Contains(gameSkill.Id, recipe.RequiredSkillIds);
 
         // 5) Persistence check — round-trip fetch (mirrors "reload page, reopen item").
-        //    Fetch via both the detail endpoint and the game-scoped list to verify
-        //    the requirement survived the write.
         var recipeReloaded = await client.GetFromJsonAsync<CraftingRecipeDetailDto>(
             $"/api/crafting/{recipe.Id}");
         Assert.NotNull(recipeReloaded);
         Assert.Equal(recipe.Id, recipeReloaded.Id);
         Assert.Equal(item.Id, recipeReloaded.OutputItemId);
-        Assert.Contains(skill.Id, recipeReloaded.RequiredSkillIds);
+        Assert.Contains(gameSkill.Id, recipeReloaded.RequiredSkillIds);
 
         var gameRecipes = await client.GetFromJsonAsync<List<CraftingRecipeListDto>>(
             $"/api/crafting/by-game/{game.Id}");
         Assert.NotNull(gameRecipes);
         Assert.Contains(gameRecipes, r => r.Id == recipe.Id && r.OutputItemId == item.Id);
 
-        // Skill catalog still shows the skill with its building requirement
-        // after all downstream wiring — guards against accidental cascade side effects.
-        var skillAfter = await client.GetFromJsonAsync<SkillDto>($"/api/skills/{skill.Id}");
-        Assert.NotNull(skillAfter);
-        Assert.Equal("Tichý úder", skillAfter.Name);
-        Assert.Contains(building.Id, skillAfter.RequiredBuildingIds);
+        // Template is still unchanged after all downstream wiring — the Effect on
+        // the game copy and the Effect on the template are independent.
+        var templateAfter = await client.GetFromJsonAsync<SkillDto>($"/api/skills/{template.Id}");
+        Assert.NotNull(templateAfter);
+        Assert.Equal("Tichý úder", templateAfter.Name);
+        Assert.Equal("Test — útok z úkrytu", templateAfter.Effect);
+        Assert.Contains(building.Id, templateAfter.RequiredBuildingIds);
     }
 
     [Fact]
-    public async Task Skill_CannotBeDeleted_WhenReferencedByRecipe()
+    public async Task GameSkill_CannotBeRemoved_WhenReferencedByRecipe()
     {
         await _fixture.CleanDatabaseAsync();
         var client = _fixture.ApiClient;
@@ -135,7 +150,7 @@ public class SkillsManagementTests
         client.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
-        // Minimal seed: game + item + skill
+        // Minimal seed: game + item + template + GameSkill copy
         var gameResp = await client.PostAsJsonAsync("/api/games",
             new CreateGameDto("Guard hra", 31,
                 new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 3)));
@@ -145,24 +160,57 @@ public class SkillsManagementTests
             new CreateItemDto("Dýka", ItemType.Weapon, IsCraftable: true));
         var item = (await itemResp.Content.ReadFromJsonAsync<ItemDetailDto>())!;
 
-        var skillResp = await client.PostAsJsonAsync("/api/skills",
-            new CreateSkillRequest("Tichý krok", PlayerClass.Thief, "E2E guard", null, []));
-        var skill = (await skillResp.Content.ReadFromJsonAsync<SkillDto>())!;
+        var templateResp = await client.PostAsJsonAsync("/api/skills",
+            new CreateSkillRequest(
+                Name: "Tichý krok",
+                Category: SkillCategory.Class,
+                ClassRestriction: PlayerClass.Thief,
+                Effect: "E2E guard",
+                RequirementNotes: null,
+                RequiredBuildingIds: []));
+        var template = (await templateResp.Content.ReadFromJsonAsync<SkillDto>())!;
 
-        // Activate in game and reference from recipe
-        await client.PutAsJsonAsync($"/api/games/{game.Id}/skills/{skill.Id}",
-            new UpsertGameSkillRequest(5, null));
+        // Assign into the game (copy-on-assign) and reference from a recipe
+        var gsResp = await client.PostAsJsonAsync(
+            $"/api/games/{game.Id}/skills",
+            new CreateGameSkillRequest(
+                TemplateSkillId: template.Id,
+                Name: template.Name,
+                Category: template.Category,
+                ClassRestriction: template.ClassRestriction,
+                Effect: template.Effect,
+                RequirementNotes: null,
+                BuildingRequirementIds: [],
+                XpCost: 5,
+                LevelRequirement: null));
+        var gameSkill = (await gsResp.Content.ReadFromJsonAsync<GameSkillDto>())!;
+
         await client.PostAsJsonAsync("/api/crafting",
-            new CreateCraftingRecipeDto(game.Id, item.Id, null, [skill.Id]));
+            new CreateCraftingRecipeDto(game.Id, item.Id, null, [gameSkill.Id]));
 
-        // Attempting to delete the skill should fail with Conflict —
+        // Attempting to remove the GameSkill from the game should fail with Conflict —
         // mirrors what the UI surfaces when the user tries to remove an in-use skill.
-        var deleteResp = await client.DeleteAsync($"/api/skills/{skill.Id}");
-        Assert.Equal(System.Net.HttpStatusCode.Conflict, deleteResp.StatusCode);
+        var removeResp = await client.DeleteAsync(
+            $"/api/games/{game.Id}/skills/{gameSkill.Id}");
+        Assert.Equal(System.Net.HttpStatusCode.Conflict, removeResp.StatusCode);
 
-        // And the skill survives
-        var skillAfter = await client.GetFromJsonAsync<SkillDto>($"/api/skills/{skill.Id}");
-        Assert.NotNull(skillAfter);
-        Assert.Equal("Tichý krok", skillAfter.Name);
+        // GameSkill survives
+        var stillThere = await client.GetFromJsonAsync<List<GameSkillDto>>(
+            $"/api/games/{game.Id}/skills");
+        Assert.NotNull(stillThere);
+        Assert.Contains(stillThere, gs => gs.Id == gameSkill.Id);
+
+        // Template DELETE is independently permitted now — it nulls out TemplateSkillId
+        // on any copy (cascade SetNull). The per-game copy survives the template being
+        // removed, which is the copy-on-assign guarantee.
+        var templateDeleteResp = await client.DeleteAsync($"/api/skills/{template.Id}");
+        Assert.Equal(System.Net.HttpStatusCode.NoContent, templateDeleteResp.StatusCode);
+
+        var afterTemplateGone = await client.GetFromJsonAsync<List<GameSkillDto>>(
+            $"/api/games/{game.Id}/skills");
+        Assert.NotNull(afterTemplateGone);
+        var orphan = Assert.Single(afterTemplateGone, gs => gs.Id == gameSkill.Id);
+        Assert.Null(orphan.TemplateSkillId);
+        Assert.Equal("Tichý krok", orphan.Name); // name preserved in the copy
     }
 }

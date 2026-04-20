@@ -64,15 +64,27 @@ public class SkillService
         return list;
     }
 
-    public async Task UpsertGameSkillAsync(int gameId, int skillId, UpsertGameSkillRequest req, CancellationToken ct = default)
+    public Task<GameSkillDto?> GetGameSkillAsync(int gameId, int gameSkillId, CancellationToken ct = default)
+        => _api.GetAsync<GameSkillDto>($"/api/games/{gameId}/skills/{gameSkillId}");
+
+    public async Task<GameSkillDto> CreateGameSkillAsync(int gameId, CreateGameSkillRequest req, CancellationToken ct = default)
     {
-        var response = await _http.PutAsJsonAsync($"/api/games/{gameId}/skills/{skillId}", req, JsonOptions, ct);
+        var response = await _http.PostAsJsonAsync($"/api/games/{gameId}/skills", req, JsonOptions, ct);
+        response.EnsureSuccessStatusCode();
+        var created = await response.Content.ReadFromJsonAsync<GameSkillDto>(JsonOptions, ct);
+        return created
+            ?? throw new InvalidOperationException("Server returned empty body for created game skill.");
+    }
+
+    public async Task UpdateGameSkillAsync(int gameId, int gameSkillId, UpdateGameSkillRequest req, CancellationToken ct = default)
+    {
+        var response = await _http.PutAsJsonAsync($"/api/games/{gameId}/skills/{gameSkillId}", req, JsonOptions, ct);
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task RemoveGameSkillAsync(int gameId, int skillId, CancellationToken ct = default)
+    public async Task RemoveGameSkillAsync(int gameId, int gameSkillId, CancellationToken ct = default)
     {
-        var response = await _http.DeleteAsync($"/api/games/{gameId}/skills/{skillId}", ct);
+        var response = await _http.DeleteAsync($"/api/games/{gameId}/skills/{gameSkillId}", ct);
         response.EnsureSuccessStatusCode();
     }
 }

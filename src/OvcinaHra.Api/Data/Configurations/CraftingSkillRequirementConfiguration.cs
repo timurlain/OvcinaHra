@@ -8,8 +8,14 @@ public class CraftingSkillRequirementConfiguration : IEntityTypeConfiguration<Cr
 {
     public void Configure(EntityTypeBuilder<CraftingSkillRequirement> builder)
     {
-        builder.HasKey(e => new { e.CraftingRecipeId, e.SkillId });
-        builder.HasOne(e => e.CraftingRecipe).WithMany(r => r.SkillRequirements).HasForeignKey(e => e.CraftingRecipeId);
-        builder.HasOne(e => e.Skill).WithMany(s => s.CraftingRequirements).HasForeignKey(e => e.SkillId);
+        builder.HasKey(e => new { e.CraftingRecipeId, e.GameSkillId });
+        builder.HasOne(e => e.CraftingRecipe)
+            .WithMany(r => r.SkillRequirements)
+            .HasForeignKey(e => e.CraftingRecipeId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(e => e.GameSkill)
+            .WithMany(s => s.CraftingRequirements)
+            .HasForeignKey(e => e.GameSkillId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

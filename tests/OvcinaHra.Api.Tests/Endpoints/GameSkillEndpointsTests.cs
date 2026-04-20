@@ -21,13 +21,22 @@ public class GameSkillEndpointsTests(PostgresFixture postgres) : IntegrationTest
         return (await response.Content.ReadFromJsonAsync<GameDetailDto>())!;
     }
 
-    private async Task<int> CreateSkillAsync(string name, PlayerClass? classRestriction)
+    /// <summary>
+    /// Seeds a Skill template row directly via DbContext.
+    /// </summary>
+    private async Task<int> CreateTemplateSkillAsync(
+        string name,
+        SkillCategory category = SkillCategory.Class,
+        string? effect = null,
+        PlayerClass? classRestriction = null)
     {
         using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
         var skill = new Skill
         {
             Name = name,
+            Category = category,
+            Effect = effect,
             ClassRestriction = classRestriction
         };
         db.Skills.Add(skill);
@@ -35,114 +44,240 @@ public class GameSkillEndpointsTests(PostgresFixture postgres) : IntegrationTest
         return skill.Id;
     }
 
-    private async Task CreateGameSkillAsync(int gameId, int skillId, int xpCost, int? levelRequirement)
+    private static CreateGameSkillRequest MakeCreate(
+        string name,
+        int? templateSkillId = null,
+        SkillCategory category = SkillCategory.Class,
+        PlayerClass? classRestriction = null,
+        string? effect = null,
+        string? requirementNotes = null,
+        IReadOnlyList<int>? buildingRequirementIds = null,
+        int xpCost = 5,
+        int? levelRequirement = null) =>
+        new(
+            TemplateSkillId: templateSkillId,
+            Name: name,
+            Category: category,
+            ClassRestriction: classRestriction,
+            Effect: effect,
+            RequirementNotes: requirementNotes,
+            BuildingRequirementIds: buildingRequirementIds ?? [],
+            XpCost: xpCost,
+            LevelRequirement: levelRequirement);
+
+    private async Task<GameSkillDto> CreateGameSkillAsync(int gameId, CreateGameSkillRequest req)
     {
-        using var scope = Factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
-        db.GameSkills.Add(new GameSkill
-        {
-            GameId = gameId,
-            SkillId = skillId,
-            XpCost = xpCost,
-            LevelRequirement = levelRequirement
-        });
-        await db.SaveChangesAsync();
+        var response = await Client.PostAsJsonAsync($"/api/games/{gameId}/skills", req);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<GameSkillDto>())!;
     }
 
     [Fact]
-    public async Task Put_AddsSkillToGame()
+    public async Task Post_AddsFromTemplate_CopiesAllFields()
     {
-        var game = await CreateGameAsync("G1");
-        var skillId = await CreateSkillAsync("Tichý úder", PlayerClass.Thief);
+        var game = await CreateGameAsync("TmplGame");
+        var templateId = await CreateTemplateSkillAsync("Tichý úder", SkillCategory.Adventure, effect: "Test");
 
-        var response = await Client.PutAsJsonAsync(
-            $"/api/games/{game.Id}/skills/{skillId}",
-            new UpsertGameSkillRequest(XpCost: 10, LevelRequirement: 2));
+        var req = MakeCreate(
+            name: "Test",
+            templateSkillId: templateId,
+            category: SkillCategory.Adventure,
+            effect: "Test",
+            xpCost: 10);
 
-        Assert.True(
-            response.StatusCode == HttpStatusCode.Created ||
-            response.StatusCode == HttpStatusCode.NoContent,
-            $"Expected 201 or 204, got {(int)response.StatusCode}");
+        var response = await Client.PostAsJsonAsync($"/api/games/{game.Id}/skills", req);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
-        var listResp = await Client.GetAsync($"/api/games/{game.Id}/skills");
-        Assert.Equal(HttpStatusCode.OK, listResp.StatusCode);
-        var list = await listResp.Content.ReadFromJsonAsync<List<GameSkillDto>>();
-        Assert.NotNull(list);
-        Assert.Single(list);
-        Assert.Equal(skillId, list[0].SkillId);
-        Assert.Equal(10, list[0].XpCost);
-        Assert.Equal(2, list[0].LevelRequirement);
+        var created = await response.Content.ReadFromJsonAsync<GameSkillDto>();
+        Assert.NotNull(created);
+        Assert.Equal(templateId, created!.TemplateSkillId);
+        Assert.Equal(SkillCategory.Adventure, created.Category);
+        Assert.Equal("Test", created.Effect);
+        Assert.Equal("Test", created.Name);
+        Assert.Equal(10, created.XpCost);
     }
 
     [Fact]
-    public async Task Put_SecondCall_UpdatesXpAndLevel()
+    public async Task Post_CreatesCustom_NullTemplate_Accepted()
     {
-        var game = await CreateGameAsync("G2");
-        var skillId = await CreateSkillAsync("Léčitelství", null);
-        await CreateGameSkillAsync(game.Id, skillId, xpCost: 10, levelRequirement: 1);
+        var game = await CreateGameAsync("CustomGame");
 
-        var response = await Client.PutAsJsonAsync(
-            $"/api/games/{game.Id}/skills/{skillId}",
-            new UpsertGameSkillRequest(XpCost: 20, LevelRequirement: 5));
+        var req = MakeCreate(
+            name: "Vlastní",
+            templateSkillId: null,
+            category: SkillCategory.Quest,
+            xpCost: 5);
 
-        Assert.True(
-            response.StatusCode == HttpStatusCode.Created ||
-            response.StatusCode == HttpStatusCode.NoContent,
-            $"Expected 201 or 204, got {(int)response.StatusCode}");
+        var response = await Client.PostAsJsonAsync($"/api/games/{game.Id}/skills", req);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
-        using var scope = Factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
-        var gs = await db.GameSkills.SingleAsync(g => g.GameId == game.Id && g.SkillId == skillId);
-        Assert.Equal(20, gs.XpCost);
-        Assert.Equal(5, gs.LevelRequirement);
+        var created = await response.Content.ReadFromJsonAsync<GameSkillDto>();
+        Assert.NotNull(created);
+        Assert.Null(created!.TemplateSkillId);
+        Assert.Equal("Vlastní", created.Name);
+        Assert.Equal(SkillCategory.Quest, created.Category);
     }
 
     [Fact]
-    public async Task Put_NegativeXpCost_Returns400()
+    public async Task Post_DuplicateNameInSameGame_Returns409()
     {
-        var game = await CreateGameAsync("G3");
-        var skillId = await CreateSkillAsync("Neg XP", null);
+        var game = await CreateGameAsync("DupGame");
 
-        var response = await Client.PutAsJsonAsync(
-            $"/api/games/{game.Id}/skills/{skillId}",
-            new UpsertGameSkillRequest(XpCost: -1, LevelRequirement: null));
+        var first = await Client.PostAsJsonAsync($"/api/games/{game.Id}/skills", MakeCreate(name: "X"));
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+
+        var second = await Client.PostAsJsonAsync($"/api/games/{game.Id}/skills", MakeCreate(name: "X"));
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task Post_NegativeXpCost_Returns400()
+    {
+        var game = await CreateGameAsync("NegXpGame");
+
+        var response = await Client.PostAsJsonAsync(
+            $"/api/games/{game.Id}/skills",
+            MakeCreate(name: "NegXp", xpCost: -1));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
-    public async Task Put_NegativeLevelRequirement_Returns400()
+    public async Task Post_NegativeLevelRequirement_Returns400()
     {
-        var game = await CreateGameAsync("G4");
-        var skillId = await CreateSkillAsync("Neg Level", null);
+        var game = await CreateGameAsync("NegLvlGame");
 
-        var response = await Client.PutAsJsonAsync(
-            $"/api/games/{game.Id}/skills/{skillId}",
-            new UpsertGameSkillRequest(XpCost: 0, LevelRequirement: -3));
+        var response = await Client.PostAsJsonAsync(
+            $"/api/games/{game.Id}/skills",
+            MakeCreate(name: "NegLvl", xpCost: 1, levelRequirement: -3));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
-    public async Task Put_LevelRequirementNull_Accepted()
+    public async Task Post_LevelRequirementNull_Accepted()
     {
-        var game = await CreateGameAsync("G5");
-        var skillId = await CreateSkillAsync("Null Level", null);
+        var game = await CreateGameAsync("NullLvlGame");
 
-        var response = await Client.PutAsJsonAsync(
-            $"/api/games/{game.Id}/skills/{skillId}",
-            new UpsertGameSkillRequest(XpCost: 5, LevelRequirement: null));
+        var response = await Client.PostAsJsonAsync(
+            $"/api/games/{game.Id}/skills",
+            MakeCreate(name: "NullLvl", xpCost: 5, levelRequirement: null));
 
-        Assert.True(
-            response.StatusCode == HttpStatusCode.Created ||
-            response.StatusCode == HttpStatusCode.NoContent,
-            $"Expected 201 or 204, got {(int)response.StatusCode}");
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<GameSkillDto>();
+        Assert.NotNull(created);
+        Assert.Null(created!.LevelRequirement);
+    }
 
-        using var scope = Factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
-        var gs = await db.GameSkills.SingleAsync(g => g.GameId == game.Id && g.SkillId == skillId);
-        Assert.Equal(5, gs.XpCost);
-        Assert.Null(gs.LevelRequirement);
+    [Fact]
+    public async Task Post_UnknownTemplateId_Returns400()
+    {
+        var game = await CreateGameAsync("UnkTmpl");
+
+        var response = await Client.PostAsJsonAsync(
+            $"/api/games/{game.Id}/skills",
+            MakeCreate(name: "X", templateSkillId: 999999));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Post_DuplicateTemplateSkillIdInGame_Returns409()
+    {
+        var game = await CreateGameAsync("DupTmplGame");
+        var templateId = await CreateTemplateSkillAsync("Tichý úder", SkillCategory.Class);
+
+        // First copy from this template — should succeed
+        var first = await Client.PostAsJsonAsync(
+            $"/api/games/{game.Id}/skills",
+            MakeCreate(name: "First", templateSkillId: templateId));
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+
+        // Second copy from the same template in the same game — must be blocked
+        // BEFORE hitting the unique constraint (which would be a 500).
+        var second = await Client.PostAsJsonAsync(
+            $"/api/games/{game.Id}/skills",
+            MakeCreate(name: "Second", templateSkillId: templateId));
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task Put_UpdatesAllFields_PreservesId()
+    {
+        var game = await CreateGameAsync("PutGame");
+        var created = await CreateGameSkillAsync(game.Id, MakeCreate(
+            name: "Původní",
+            category: SkillCategory.Class,
+            effect: "Pův. efekt",
+            xpCost: 5,
+            levelRequirement: 1));
+
+        var update = new UpdateGameSkillRequest(
+            Name: "Nový",
+            Category: SkillCategory.Adventure,
+            ClassRestriction: PlayerClass.Mage,
+            Effect: "Nový efekt",
+            RequirementNotes: "Nová poznámka",
+            BuildingRequirementIds: [],
+            XpCost: 17,
+            LevelRequirement: 4);
+
+        var putResp = await Client.PutAsJsonAsync($"/api/games/{game.Id}/skills/{created.Id}", update);
+        Assert.Equal(HttpStatusCode.NoContent, putResp.StatusCode);
+
+        var getResp = await Client.GetAsync($"/api/games/{game.Id}/skills/{created.Id}");
+        Assert.Equal(HttpStatusCode.OK, getResp.StatusCode);
+        var fetched = await getResp.Content.ReadFromJsonAsync<GameSkillDto>();
+        Assert.NotNull(fetched);
+        Assert.Equal(created.Id, fetched!.Id);
+        Assert.Equal("Nový", fetched.Name);
+        Assert.Equal(SkillCategory.Adventure, fetched.Category);
+        Assert.Equal(PlayerClass.Mage, fetched.ClassRestriction);
+        Assert.Equal("Nový efekt", fetched.Effect);
+        Assert.Equal("Nová poznámka", fetched.RequirementNotes);
+        Assert.Equal(17, fetched.XpCost);
+        Assert.Equal(4, fetched.LevelRequirement);
+    }
+
+    [Fact]
+    public async Task Put_ChangingNameToDuplicate_Returns409()
+    {
+        var game = await CreateGameAsync("DupPutGame");
+        var a = await CreateGameSkillAsync(game.Id, MakeCreate(name: "Ajda"));
+        var b = await CreateGameSkillAsync(game.Id, MakeCreate(name: "Brumla"));
+
+        var update = new UpdateGameSkillRequest(
+            Name: "Brumla",
+            Category: SkillCategory.Class,
+            ClassRestriction: null,
+            Effect: null,
+            RequirementNotes: null,
+            BuildingRequirementIds: [],
+            XpCost: 5,
+            LevelRequirement: null);
+
+        var response = await Client.PutAsJsonAsync($"/api/games/{game.Id}/skills/{a.Id}", update);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Put_UnknownBuildingId_Returns400()
+    {
+        var game = await CreateGameAsync("UnkBldgGame");
+        var created = await CreateGameSkillAsync(game.Id, MakeCreate(name: "BldgGS"));
+
+        var update = new UpdateGameSkillRequest(
+            Name: "BldgGS",
+            Category: SkillCategory.Class,
+            ClassRestriction: null,
+            Effect: null,
+            RequirementNotes: null,
+            BuildingRequirementIds: [999999],
+            XpCost: 5,
+            LevelRequirement: null);
+
+        var response = await Client.PutAsJsonAsync($"/api/games/{game.Id}/skills/{created.Id}", update);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
@@ -150,48 +285,39 @@ public class GameSkillEndpointsTests(PostgresFixture postgres) : IntegrationTest
     {
         var game1 = await CreateGameAsync("Game1");
         var game2 = await CreateGameAsync("Game2");
-        var skillA = await CreateSkillAsync("Skill A", PlayerClass.Warrior);
-        var skillB = await CreateSkillAsync("Skill B", PlayerClass.Mage);
 
-        await CreateGameSkillAsync(game1.Id, skillA, xpCost: 7, levelRequirement: null);
-        await CreateGameSkillAsync(game2.Id, skillB, xpCost: 9, levelRequirement: 3);
+        await CreateGameSkillAsync(game1.Id, MakeCreate(name: "Jen v 1", xpCost: 7));
+        await CreateGameSkillAsync(game2.Id, MakeCreate(name: "Jen v 2", xpCost: 9));
 
         var response = await Client.GetAsync($"/api/games/{game1.Id}/skills");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var list = await response.Content.ReadFromJsonAsync<List<GameSkillDto>>();
         Assert.NotNull(list);
-        Assert.Single(list);
-        Assert.Equal(skillA, list[0].SkillId);
-        Assert.Equal("Skill A", list[0].SkillName);
-        Assert.Equal(PlayerClass.Warrior, list[0].ClassRestriction);
-        Assert.Equal(7, list[0].XpCost);
-        Assert.Null(list[0].LevelRequirement);
+        Assert.Single(list!);
+        Assert.Equal("Jen v 1", list![0].Name);
+        Assert.Equal(game1.Id, list[0].GameId);
     }
 
     [Fact]
-    public async Task Delete_RemovesSkillFromGame()
+    public async Task Delete_RemovesGameSkill()
     {
-        var game = await CreateGameAsync("G7");
-        var skillId = await CreateSkillAsync("K smazání", null);
-        await CreateGameSkillAsync(game.Id, skillId, xpCost: 3, levelRequirement: null);
+        var game = await CreateGameAsync("DelGame");
+        var created = await CreateGameSkillAsync(game.Id, MakeCreate(name: "K smazání"));
 
-        var response = await Client.DeleteAsync($"/api/games/{game.Id}/skills/{skillId}");
+        var response = await Client.DeleteAsync($"/api/games/{game.Id}/skills/{created.Id}");
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
         using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
-        var gone = await db.GameSkills
-            .SingleOrDefaultAsync(g => g.GameId == game.Id && g.SkillId == skillId);
-        Assert.Null(gone);
+        Assert.Null(await db.GameSkills.SingleOrDefaultAsync(gs => gs.Id == created.Id));
     }
 
     [Fact]
-    public async Task Delete_BlockedWhenRecipeRequiresSkill_Returns409()
+    public async Task Delete_BlockedWhenRecipeReferences_Returns409()
     {
-        var game = await CreateGameAsync("G8");
-        var skillId = await CreateSkillAsync("S receptem v hře", null);
-        await CreateGameSkillAsync(game.Id, skillId, xpCost: 5, levelRequirement: null);
+        var game = await CreateGameAsync("BlockDelGame");
+        var created = await CreateGameSkillAsync(game.Id, MakeCreate(name: "S receptem"));
 
         using (var scope = Factory.Services.CreateScope())
         {
@@ -217,18 +343,39 @@ public class GameSkillEndpointsTests(PostgresFixture postgres) : IntegrationTest
             db.CraftingSkillRequirements.Add(new CraftingSkillRequirement
             {
                 CraftingRecipeId = recipe.Id,
-                SkillId = skillId
+                GameSkillId = created.Id
             });
             await db.SaveChangesAsync();
         }
 
-        var response = await Client.DeleteAsync($"/api/games/{game.Id}/skills/{skillId}");
+        var response = await Client.DeleteAsync($"/api/games/{game.Id}/skills/{created.Id}");
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
 
         using var scope2 = Factory.Services.CreateScope();
         var db2 = scope2.ServiceProvider.GetRequiredService<WorldDbContext>();
-        var stillThere = await db2.GameSkills
-            .SingleOrDefaultAsync(g => g.GameId == game.Id && g.SkillId == skillId);
-        Assert.NotNull(stillThere);
+        Assert.NotNull(await db2.GameSkills.SingleOrDefaultAsync(gs => gs.Id == created.Id));
+    }
+
+    [Fact]
+    public async Task DeletingTemplate_NullsOutTemplateSkillIdOnCopies()
+    {
+        var game = await CreateGameAsync("CascadeGame");
+        var templateId = await CreateTemplateSkillAsync("Šablona k smazání", SkillCategory.Class);
+        var gs = await CreateGameSkillAsync(game.Id, MakeCreate(
+            name: "Kopie šablony",
+            templateSkillId: templateId));
+
+        Assert.Equal(templateId, gs.TemplateSkillId);
+
+        var deleteResp = await Client.DeleteAsync($"/api/skills/{templateId}");
+        Assert.Equal(HttpStatusCode.NoContent, deleteResp.StatusCode);
+
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        var persisted = await db.GameSkills.SingleOrDefaultAsync(g => g.Id == gs.Id);
+        Assert.NotNull(persisted);
+        Assert.Null(persisted!.TemplateSkillId);
+
+        Assert.Null(await db.Skills.SingleOrDefaultAsync(s => s.Id == templateId));
     }
 }

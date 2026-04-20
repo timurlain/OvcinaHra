@@ -5,6 +5,7 @@ namespace OvcinaHra.Shared.Dtos;
 public record SkillDto(
     int Id,
     string Name,
+    SkillCategory Category,
     PlayerClass? ClassRestriction,
     string? Effect,
     string? RequirementNotes,
@@ -16,11 +17,13 @@ public record CreateSkillRequest(
     PlayerClass? ClassRestriction,
     string? Effect,
     string? RequirementNotes,
-    IReadOnlyList<int> RequiredBuildingIds);
+    IReadOnlyList<int> RequiredBuildingIds,
+    SkillCategory Category = SkillCategory.Class);
 
 public record UpdateSkillRequest(
     string Name,
     PlayerClass? ClassRestriction,
     string? Effect,
     string? RequirementNotes,
-    IReadOnlyList<int> RequiredBuildingIds);
+    IReadOnlyList<int> RequiredBuildingIds,
+    SkillCategory Category = SkillCategory.Class);

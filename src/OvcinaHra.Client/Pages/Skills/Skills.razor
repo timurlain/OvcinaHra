@@ -4,8 +4,12 @@
 @inject ApiClient Api
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="mb-0">Dovednosti</h1>
+    <h1 class="mb-0">Knihovna dovedností</h1>
     <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Přidat dovednost</button>
+</div>
+
+<div class="alert alert-info small">
+    Tyto dovednosti jsou šablony. Při přidání do hry se vytvoří kopie, kterou lze pro danou hru upravit nezávisle.
 </div>
 
 @if (loading)
@@ -25,6 +29,11 @@ else
                 RowClick="@(e => OpenModal((SkillDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             <DxGridDataColumn FieldName="Name" Caption="Název" />
+            <DxGridDataColumn FieldName="Category" Caption="Kategorie" Width="140px">
+                <CellDisplayTemplate>
+                    @(((SkillCategory)context.Value).GetDisplayName())
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
             <DxGridDataColumn FieldName="ClassRestriction" Caption="Povolání" Width="140px">
                 <CellDisplayTemplate>
                     @(((PlayerClass?)context.Value).GetClassRestrictionLabel())
@@ -59,24 +68,12 @@ else
                 <DxTextBox @bind-Text="@name" />
             </DxFormLayoutItem>
 
-            <DxFormLayoutItem Caption="Typ dovednosti" ColSpanMd="12">
-                <div class="d-flex gap-3 align-items-center">
-                    <label class="form-check-label">
-                        <input type="radio" class="form-check-input me-1" name="skillKind"
-                               checked="@(kind == SkillKind.ClassSpecific)"
-                               @onchange="() => SetKind(SkillKind.ClassSpecific)" />
-                        Povolání
-                    </label>
-                    <label class="form-check-label">
-                        <input type="radio" class="form-check-input me-1" name="skillKind"
-                               checked="@(kind == SkillKind.Adventurer)"
-                               @onchange="() => SetKind(SkillKind.Adventurer)" />
-                        Dobrodružná
-                    </label>
-                </div>
+            <DxFormLayoutItem Caption="Kategorie" ColSpanMd="12">
+                <DxComboBox Data="@skillCategoryValues" @bind-Value="@editCategory"
+                            TextFieldName="Display" ValueFieldName="Value" />
             </DxFormLayoutItem>
 
-            @if (kind == SkillKind.ClassSpecific)
+            @if (editCategory == SkillCategory.Class)
             {
                 <DxFormLayoutItem Caption="Povolání" ColSpanMd="12">
                     <DxComboBox Data="@playerClassValues" @bind-Value="@classRestriction"
@@ -161,7 +158,6 @@ else
 </DxPopup>
 
 @code {
-    private enum SkillKind { ClassSpecific, Adventurer }
 
     private List<SkillDto> skills = [];
     private List<BuildingListDto> allBuildings = [];
@@ -172,12 +168,15 @@ else
     private string? error, effect, requirementNotes;
     private int? editingId;
     private PlayerClass classRestriction = PlayerClass.Warrior;
-    private SkillKind kind = SkillKind.ClassSpecific;
+    private SkillCategory editCategory = SkillCategory.Class;
     private List<int> selectedBuildingIds = [];
     private int? newBuildingId;
 
     private static readonly List<EnumItem<PlayerClass>> playerClassValues = Enum.GetValues<PlayerClass>()
         .Select(v => new EnumItem<PlayerClass>(v, v.GetDisplayName())).ToList();
+
+    private static readonly List<EnumItem<SkillCategory>> skillCategoryValues = Enum.GetValues<SkillCategory>()
+        .Select(v => new EnumItem<SkillCategory>(v, v.GetDisplayName())).ToList();
 
     private record EnumItem<T>(T Value, string Display);
 
@@ -216,7 +215,7 @@ else
             effect = null;
             requirementNotes = null;
             classRestriction = PlayerClass.Warrior;
-            kind = SkillKind.ClassSpecific;
+            editCategory = SkillCategory.Class;
             selectedBuildingIds = [];
             modalTitle = "Nová dovednost";
         }
@@ -226,25 +225,12 @@ else
             name = s.Name;
             effect = s.Effect;
             requirementNotes = s.RequirementNotes;
-            if (s.ClassRestriction.HasValue)
-            {
-                kind = SkillKind.ClassSpecific;
-                classRestriction = s.ClassRestriction.Value;
-            }
-            else
-            {
-                kind = SkillKind.Adventurer;
-                classRestriction = PlayerClass.Warrior;
-            }
+            editCategory = s.Category;
+            classRestriction = s.ClassRestriction ?? PlayerClass.Warrior;
             selectedBuildingIds = s.RequiredBuildingIds.ToList();
             modalTitle = $"Upravit: {s.Name}";
         }
         isModalVisible = true;
-    }
-
-    private void SetKind(SkillKind newKind)
-    {
-        kind = newKind;
     }
 
     private void AddBuilding()
@@ -267,16 +253,16 @@ else
         isSaving = true;
         try
         {
-            PlayerClass? cr = kind == SkillKind.ClassSpecific ? classRestriction : null;
+            PlayerClass? cr = editCategory == SkillCategory.Class ? classRestriction : null;
             if (editingId.HasValue)
             {
                 await SkillSvc.UpdateAsync(editingId.Value,
-                    new UpdateSkillRequest(name, cr, effect, requirementNotes, selectedBuildingIds));
+                    new UpdateSkillRequest(name, cr, effect, requirementNotes, selectedBuildingIds, editCategory));
             }
             else
             {
                 await SkillSvc.CreateAsync(
-                    new CreateSkillRequest(name, cr, effect, requirementNotes, selectedBuildingIds));
+                    new CreateSkillRequest(name, cr, effect, requirementNotes, selectedBuildingIds, editCategory));
             }
             isModalVisible = false;
             await LoadAsync();

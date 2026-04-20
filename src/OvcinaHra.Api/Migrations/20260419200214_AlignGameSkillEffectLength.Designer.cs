@@ -13,8 +13,8 @@ using OvcinaHra.Api.Data;
 namespace OvcinaHra.Api.Migrations
 {
     [DbContext(typeof(WorldDbContext))]
-    [Migration("20260419045332_AddSkillsDomain")]
-    partial class AddSkillsDomain
+    [Migration("20260419200214_AlignGameSkillEffectLength")]
+    partial class AlignGameSkillEffectLength
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -242,6 +242,27 @@ namespace OvcinaHra.Api.Migrations
                     b.ToTable("CharacterEvents");
                 });
 
+            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.CharacterPersonalQuest", b =>
+                {
+                    b.Property<int>("CharacterId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("AssignedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("PersonalQuestId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("CharacterId");
+
+                    b.HasIndex("PersonalQuestId");
+
+                    b.ToTable("CharacterPersonalQuests");
+                });
+
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.CraftingBuildingRequirement", b =>
                 {
                     b.Property<int>("CraftingRecipeId")
@@ -308,12 +329,12 @@ namespace OvcinaHra.Api.Migrations
                     b.Property<int>("CraftingRecipeId")
                         .HasColumnType("integer");
 
-                    b.Property<int>("SkillId")
+                    b.Property<int>("GameSkillId")
                         .HasColumnType("integer");
 
-                    b.HasKey("CraftingRecipeId", "SkillId");
+                    b.HasKey("CraftingRecipeId", "GameSkillId");
 
-                    b.HasIndex("SkillId");
+                    b.HasIndex("GameSkillId");
 
                     b.ToTable("CraftingSkillRequirements");
                 });
@@ -573,6 +594,34 @@ namespace OvcinaHra.Api.Migrations
                     b.ToTable("GameNpcs");
                 });
 
+            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GamePersonalQuest", b =>
+                {
+                    b.Property<int>("GameId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PersonalQuestId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("PerKingdomLimit")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("XpCost")
+                        .HasColumnType("integer");
+
+                    b.HasKey("GameId", "PersonalQuestId");
+
+                    b.HasIndex("GameId");
+
+                    b.HasIndex("PersonalQuestId");
+
+                    b.ToTable("GamePersonalQuests", t =>
+                        {
+                            t.HasCheckConstraint("CK_GamePersonalQuest_PKL_Positive", "\"PerKingdomLimit\" IS NULL OR \"PerKingdomLimit\" >= 1");
+
+                            t.HasCheckConstraint("CK_GamePersonalQuest_XpCost_NonNegative", "\"XpCost\" >= 0");
+                        });
+                });
+
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameSecretStash", b =>
                 {
                     b.Property<int>("GameId")
@@ -597,23 +646,60 @@ namespace OvcinaHra.Api.Migrations
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameSkill", b =>
                 {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("ClassRestriction")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Effect")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
                     b.Property<int>("GameId")
                         .HasColumnType("integer");
 
-                    b.Property<int>("SkillId")
-                        .HasColumnType("integer");
+                    b.Property<string>("ImagePath")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<int?>("LevelRequirement")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("RequirementNotes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int?>("TemplateSkillId")
                         .HasColumnType("integer");
 
                     b.Property<int>("XpCost")
                         .HasColumnType("integer");
 
-                    b.HasKey("GameId", "SkillId");
+                    b.HasKey("Id");
 
-                    b.HasIndex("GameId");
+                    b.HasIndex("TemplateSkillId");
 
-                    b.HasIndex("SkillId");
+                    b.HasIndex("GameId", "Name")
+                        .IsUnique();
+
+                    b.HasIndex("GameId", "TemplateSkillId")
+                        .IsUnique()
+                        .HasFilter("\"TemplateSkillId\" IS NOT NULL");
 
                     b.ToTable("GameSkills", t =>
                         {
@@ -621,6 +707,21 @@ namespace OvcinaHra.Api.Migrations
 
                             t.HasCheckConstraint("CK_GameSkill_XpCost_NonNegative", "\"XpCost\" >= 0");
                         });
+                });
+
+            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameSkillBuildingRequirement", b =>
+                {
+                    b.Property<int>("GameSkillId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("BuildingId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("GameSkillId", "BuildingId");
+
+                    b.HasIndex("BuildingId");
+
+                    b.ToTable("GameSkillBuildingRequirements");
                 });
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameTimeSlot", b =>
@@ -953,6 +1054,101 @@ namespace OvcinaHra.Api.Migrations
                     b.ToTable("Npcs");
                 });
 
+            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.PersonalQuest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("AllowArcher")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("AllowMage")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("AllowThief")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("AllowWarrior")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Difficulty")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("ImagePath")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("QuestCardText")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RewardCardText")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RewardNote")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("PersonalQuests");
+                });
+
+            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.PersonalQuestItemReward", b =>
+                {
+                    b.Property<int>("PersonalQuestId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ItemId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Quantity")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
+                    b.HasKey("PersonalQuestId", "ItemId");
+
+                    b.HasIndex("ItemId");
+
+                    b.ToTable("PersonalQuestItemRewards", t =>
+                        {
+                            t.HasCheckConstraint("CK_PQItemReward_Qty_Positive", "\"Quantity\" >= 1");
+                        });
+                });
+
+            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.PersonalQuestSkillReward", b =>
+                {
+                    b.Property<int>("PersonalQuestId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SkillId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("PersonalQuestId", "SkillId");
+
+                    b.HasIndex("SkillId");
+
+                    b.ToTable("PersonalQuestSkillRewards");
+                });
+
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.Quest", b =>
                 {
                     b.Property<int>("Id")
@@ -1117,13 +1313,18 @@ namespace OvcinaHra.Api.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<string>("ClassRestriction")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
                     b.Property<string>("Effect")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
 
                     b.Property<string>("ImagePath")
                         .HasMaxLength(500)
@@ -1313,6 +1514,25 @@ namespace OvcinaHra.Api.Migrations
                     b.Navigation("Assignment");
                 });
 
+            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.CharacterPersonalQuest", b =>
+                {
+                    b.HasOne("OvcinaHra.Shared.Domain.Entities.Character", "Character")
+                        .WithMany()
+                        .HasForeignKey("CharacterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("OvcinaHra.Shared.Domain.Entities.PersonalQuest", "PersonalQuest")
+                        .WithMany("CharacterAssignments")
+                        .HasForeignKey("PersonalQuestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Character");
+
+                    b.Navigation("PersonalQuest");
+                });
+
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.CraftingBuildingRequirement", b =>
                 {
                     b.HasOne("OvcinaHra.Shared.Domain.Entities.Building", "Building")
@@ -1384,15 +1604,15 @@ namespace OvcinaHra.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("OvcinaHra.Shared.Domain.Entities.Skill", "Skill")
+                    b.HasOne("OvcinaHra.Shared.Domain.Entities.GameSkill", "GameSkill")
                         .WithMany("CraftingRequirements")
-                        .HasForeignKey("SkillId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasForeignKey("GameSkillId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("CraftingRecipe");
 
-                    b.Navigation("Skill");
+                    b.Navigation("GameSkill");
                 });
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameBuilding", b =>
@@ -1577,6 +1797,25 @@ namespace OvcinaHra.Api.Migrations
                     b.Navigation("Npc");
                 });
 
+            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GamePersonalQuest", b =>
+                {
+                    b.HasOne("OvcinaHra.Shared.Domain.Entities.Game", "Game")
+                        .WithMany()
+                        .HasForeignKey("GameId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("OvcinaHra.Shared.Domain.Entities.PersonalQuest", "PersonalQuest")
+                        .WithMany("GameLinks")
+                        .HasForeignKey("PersonalQuestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Game");
+
+                    b.Navigation("PersonalQuest");
+                });
+
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameSecretStash", b =>
                 {
                     b.HasOne("OvcinaHra.Shared.Domain.Entities.Game", "Game")
@@ -1614,13 +1853,31 @@ namespace OvcinaHra.Api.Migrations
 
                     b.HasOne("OvcinaHra.Shared.Domain.Entities.Skill", "Skill")
                         .WithMany("GameSkills")
-                        .HasForeignKey("SkillId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("TemplateSkillId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Game");
 
                     b.Navigation("Skill");
+                });
+
+            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameSkillBuildingRequirement", b =>
+                {
+                    b.HasOne("OvcinaHra.Shared.Domain.Entities.Building", "Building")
+                        .WithMany()
+                        .HasForeignKey("BuildingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("OvcinaHra.Shared.Domain.Entities.GameSkill", "GameSkill")
+                        .WithMany("BuildingRequirements")
+                        .HasForeignKey("GameSkillId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Building");
+
+                    b.Navigation("GameSkill");
                 });
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameTimeSlot", b =>
@@ -1785,6 +2042,44 @@ namespace OvcinaHra.Api.Migrations
                     b.Navigation("Monster");
 
                     b.Navigation("Tag");
+                });
+
+            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.PersonalQuestItemReward", b =>
+                {
+                    b.HasOne("OvcinaHra.Shared.Domain.Entities.Item", "Item")
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("OvcinaHra.Shared.Domain.Entities.PersonalQuest", "PersonalQuest")
+                        .WithMany("ItemRewards")
+                        .HasForeignKey("PersonalQuestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Item");
+
+                    b.Navigation("PersonalQuest");
+                });
+
+            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.PersonalQuestSkillReward", b =>
+                {
+                    b.HasOne("OvcinaHra.Shared.Domain.Entities.PersonalQuest", "PersonalQuest")
+                        .WithMany("SkillRewards")
+                        .HasForeignKey("PersonalQuestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("OvcinaHra.Shared.Domain.Entities.Skill", "Skill")
+                        .WithMany()
+                        .HasForeignKey("SkillId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("PersonalQuest");
+
+                    b.Navigation("Skill");
                 });
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.Quest", b =>
@@ -2018,6 +2313,13 @@ namespace OvcinaHra.Api.Migrations
                     b.Navigation("EventTimeSlots");
                 });
 
+            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameSkill", b =>
+                {
+                    b.Navigation("BuildingRequirements");
+
+                    b.Navigation("CraftingRequirements");
+                });
+
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameTimeSlot", b =>
                 {
                     b.Navigation("EventTimeSlots");
@@ -2071,6 +2373,17 @@ namespace OvcinaHra.Api.Migrations
                     b.Navigation("GameNpcs");
                 });
 
+            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.PersonalQuest", b =>
+                {
+                    b.Navigation("CharacterAssignments");
+
+                    b.Navigation("GameLinks");
+
+                    b.Navigation("ItemRewards");
+
+                    b.Navigation("SkillRewards");
+                });
+
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.Quest", b =>
                 {
                     b.Navigation("ChildQuests");
@@ -2096,8 +2409,6 @@ namespace OvcinaHra.Api.Migrations
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.Skill", b =>
                 {
                     b.Navigation("BuildingRequirements");
-
-                    b.Navigation("CraftingRequirements");
 
                     b.Navigation("GameSkills");
                 });
