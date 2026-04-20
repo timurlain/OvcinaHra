@@ -393,12 +393,18 @@
         selectedExistingStashId = null;
         CancelNewStashForm();
         stashError = null;
+        isRemoveStashVisible = false;
+        stashIdToRemove = null;
+        stashToRemoveName = null;
+        isStashBusy = false;
+        stashesLoading = false;
 
         isVisible = true;
+        StateHasChanged();
 
         if (GameId.HasValue)
         {
-            _ = LoadStashesAsync();
+            await LoadStashesAsync();
         }
     }
 
@@ -563,7 +569,12 @@
         isStashBusy = true;
         try
         {
-            await Api.DeleteAsync($"/api/secret-stashes/game-stash/{GameId.Value}/{stashIdToRemove.Value}");
+            var success = await Api.DeleteAsync($"/api/secret-stashes/game-stash/{GameId.Value}/{stashIdToRemove.Value}");
+            if (!success)
+            {
+                stashError = "Nepodařilo se odebrat skrýš z lokace.";
+                return;
+            }
             isRemoveStashVisible = false;
             stashIdToRemove = null;
             await LoadStashesAsync();
@@ -599,14 +610,26 @@
             var created = await Api.PostAsync<CreateSecretStashDto, SecretStashDetailDto>(
                 "/api/secret-stashes",
                 new CreateSecretStashDto(newStashName!, newStashDescription));
-            if (created is not null)
+            if (created is null)
+            {
+                stashError = "Skrýš se nepodařilo vytvořit.";
+                return;
+            }
+            CancelNewStashForm();
+            try
             {
                 await Api.PostAsync<CreateGameSecretStashDto, object>(
                     "/api/secret-stashes/game-stash",
                     new CreateGameSecretStashDto(GameId.Value, created.Id, editingId.Value));
+                await LoadStashesAsync();
             }
-            CancelNewStashForm();
-            await LoadStashesAsync();
+            catch (Exception assignEx)
+            {
+                // Stash exists in catalog but assignment failed — reload so user can retry.
+                await LoadStashesAsync();
+                selectedExistingStashId = created.Id;
+                stashError = $"Skrýš byla vytvořena, ale nepodařilo se ji přiřadit k lokaci. Vyberte ji ze seznamu existujících a zkuste přiřazení znovu. {assignEx.Message}";
+            }
         }
         catch (Exception ex) { stashError = ex.Message; }
         finally { isStashBusy = false; }
