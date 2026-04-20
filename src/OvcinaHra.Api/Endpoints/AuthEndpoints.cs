@@ -148,7 +148,27 @@ public static class AuthEndpoints
                     }));
 
                 if (!tokenResponse.IsSuccessStatusCode)
+                {
+                    // Forward the OAuth2 error body from the upstream identity provider so the
+                    // client can distinguish a definitively-dead refresh token (body contains
+                    // {"error":"invalid_grant"}) from a transient hiccup.
+                    var errorBody = await tokenResponse.Content.ReadAsStringAsync();
+                    if (!string.IsNullOrWhiteSpace(errorBody))
+                    {
+                        try
+                        {
+                            using var _ = System.Text.Json.JsonDocument.Parse(errorBody);
+                            return Results.Content(errorBody, "application/json",
+                                Encoding.UTF8, statusCode: StatusCodes.Status401Unauthorized);
+                        }
+                        catch (System.Text.Json.JsonException)
+                        {
+                            // Upstream didn't return JSON (e.g., HTML error page from a proxy).
+                            // Fall through to bare 401.
+                        }
+                    }
                     return Results.Unauthorized();
+                }
 
                 var tokenData = await tokenResponse.Content.ReadFromJsonAsync<OidcTokenResponse>();
                 if (tokenData?.AccessToken is null)

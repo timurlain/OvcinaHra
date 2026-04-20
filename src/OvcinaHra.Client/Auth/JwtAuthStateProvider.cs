@@ -27,6 +27,7 @@ public class JwtAuthStateProvider : AuthenticationStateProvider
         var token = await GetTokenAsync();
         if (string.IsNullOrEmpty(token))
         {
+            AuthLog.Event("authstate.no_token");
             _http.DefaultRequestHeaders.Authorization = null;
             return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
         }
@@ -56,17 +57,35 @@ public class JwtAuthStateProvider : AuthenticationStateProvider
                     // Fire-and-forget; TryBootAsync is idempotent.
                     _ = _services.GetRequiredService<TokenRefreshService>().TryBootAsync();
 
+                    // User id deliberately omitted — this log surfaces in the browser
+                    // console and may be captured in screenshots / shared bug reports.
+                    AuthLog.Event("authstate.ok", ("roles", me.Roles.Count));
                     return new AuthenticationState(
                         new ClaimsPrincipal(new ClaimsIdentity(claims, "oidc")));
                 }
+
+                AuthLog.Event("authstate.me_null_body", ("action", "clear"));
+            }
+            else
+            {
+                AuthLog.Event("authstate.me_failed",
+                    ("status", (int)response.StatusCode),
+                    ("action", "clear"));
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // API unreachable — treat as unauthenticated.
+            // API unreachable — treat as unauthenticated but DON'T clear tokens
+            // (the refresh timer may still recover us when the network comes back).
+            // ex.Message intentionally omitted — can leak URLs / sensitive detail
+            // into the browser console. Exception type + action is enough signal.
+            AuthLog.Event("authstate.me_threw",
+                ("type", ex.GetType().Name),
+                ("action", "keep_tokens_treat_unauth"));
+            return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
         }
 
-        // Token invalid or API down — clear stale tokens from localStorage.
+        // Token invalid response body — clear stale tokens from localStorage.
         await ClearTokenAsync();
         return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
     }
