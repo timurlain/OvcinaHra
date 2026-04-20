@@ -79,74 +79,80 @@ else
                 <DxGridDataColumn FieldName="Stashes" Caption="Skrýše" Width="500px" AllowSort="false" AllowGroup="false">
                     <CellDisplayTemplate>
                         @{
-                            var loc = (LocationListDto)context.DataItem;
+                            var loc = context.DataItem as LocationListDto;
                         }
-                        @foreach (var stash in loc.Stashes)
+                        @if (loc is not null)
                         {
-                            <div class="location-stash-card mb-2">
-                                <div><strong>@stash.Name</strong></div>
-                                @if (!string.IsNullOrWhiteSpace(stash.Description))
-                                {
-                                    <div class="text-muted small" style="white-space: pre-wrap">@stash.Description</div>
-                                }
-                                @foreach (var tq in stash.TreasureQuests)
-                                {
-                                    <div class="ps-2 mt-1 small">
-                                        <span class="badge bg-warning text-dark me-1">Poklad</span><strong>@tq.Title</strong>
-                                        @if (!string.IsNullOrWhiteSpace(tq.Clue))
-                                        {
-                                            <span class="text-muted"> — @tq.Clue</span>
-                                        }
-                                    </div>
-                                }
-                            </div>
+                            @foreach (var stash in loc.Stashes ?? [])
+                            {
+                                <div class="location-stash-card mb-2">
+                                    <div><strong>@stash.Name</strong></div>
+                                    @if (!string.IsNullOrWhiteSpace(stash.Description))
+                                    {
+                                        <div class="text-muted small" style="white-space: pre-wrap">@stash.Description</div>
+                                    }
+                                    @foreach (var tq in stash.TreasureQuests ?? [])
+                                    {
+                                        <div class="ps-2 mt-1 small">
+                                            <span class="badge bg-warning text-dark me-1">Poklad</span><strong>@tq.Title</strong>
+                                            @if (!string.IsNullOrWhiteSpace(tq.Clue))
+                                            {
+                                                <span class="text-muted"> — @tq.Clue</span>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
                         }
                     </CellDisplayTemplate>
                 </DxGridDataColumn>
                 <DxGridDataColumn FieldName="Quests" Caption="Questy" Width="600px" AllowSort="false" AllowGroup="false">
                     <CellDisplayTemplate>
                         @{
-                            var loc = (LocationListDto)context.DataItem;
+                            var loc = context.DataItem as LocationListDto;
                         }
-                        @foreach (var quest in loc.Quests)
+                        @if (loc is not null)
                         {
-                            <div class="location-quest-card mb-2">
-                                <div>
-                                    <strong>@quest.Name</strong>
-                                    <span class="badge bg-info text-dark ms-1">@quest.QuestTypeDisplay</span>
+                            @foreach (var quest in loc.Quests ?? [])
+                            {
+                                <div class="location-quest-card mb-2">
+                                    <div>
+                                        <strong>@quest.Name</strong>
+                                        <span class="badge bg-info text-dark ms-1">@quest.QuestTypeDisplay</span>
+                                    </div>
+                                    @{
+                                        var body = !string.IsNullOrWhiteSpace(quest.FullText) ? quest.FullText : quest.Description;
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(body))
+                                    {
+                                        <div class="small" style="white-space: pre-wrap">@body</div>
+                                    }
+                                    @{
+                                        var parts = new List<string>();
+                                        if (quest.RewardXp.HasValue) parts.Add($"{quest.RewardXp} XP");
+                                        if (quest.RewardMoney.HasValue) parts.Add($"{quest.RewardMoney} grošů");
+                                        foreach (var itm in quest.ItemRewards ?? []) parts.Add($"{itm.ItemName} ×{itm.Quantity}");
+                                        if (!string.IsNullOrWhiteSpace(quest.RewardNotes)) parts.Add(quest.RewardNotes!);
+                                    }
+                                    @if (parts.Count > 0)
+                                    {
+                                        <div class="text-muted small"><em>Odměna:</em> @string.Join(", ", parts)</div>
+                                    }
                                 </div>
-                                @{
-                                    var body = !string.IsNullOrWhiteSpace(quest.FullText) ? quest.FullText : quest.Description;
-                                }
-                                @if (!string.IsNullOrWhiteSpace(body))
-                                {
-                                    <div class="small" style="white-space: pre-wrap">@body</div>
-                                }
-                                @{
-                                    var parts = new List<string>();
-                                    if (quest.RewardXp.HasValue) parts.Add($"{quest.RewardXp} XP");
-                                    if (quest.RewardMoney.HasValue) parts.Add($"{quest.RewardMoney} grošů");
-                                    foreach (var itm in quest.ItemRewards) parts.Add($"{itm.ItemName} ×{itm.Quantity}");
-                                    if (!string.IsNullOrWhiteSpace(quest.RewardNotes)) parts.Add(quest.RewardNotes!);
-                                }
-                                @if (parts.Count > 0)
-                                {
-                                    <div class="text-muted small"><em>Odměna:</em> @string.Join(", ", parts)</div>
-                                }
-                            </div>
-                        }
-                        @foreach (var tq in loc.LocationTreasureQuests)
-                        {
-                            <div class="location-quest-card mb-2">
-                                <div>
-                                    <strong>@tq.Title</strong>
-                                    <span class="badge bg-warning text-dark ms-1">Poklad</span>
+                            }
+                            @foreach (var tq in loc.LocationTreasureQuests ?? [])
+                            {
+                                <div class="location-quest-card mb-2">
+                                    <div>
+                                        <strong>@tq.Title</strong>
+                                        <span class="badge bg-warning text-dark ms-1">Poklad</span>
+                                    </div>
+                                    @if (!string.IsNullOrWhiteSpace(tq.Clue))
+                                    {
+                                        <div class="small" style="white-space: pre-wrap">@tq.Clue</div>
+                                    }
                                 </div>
-                                @if (!string.IsNullOrWhiteSpace(tq.Clue))
-                                {
-                                    <div class="small" style="white-space: pre-wrap">@tq.Clue</div>
-                                }
-                            </div>
+                            }
                         }
                     </CellDisplayTemplate>
                 </DxGridDataColumn>
