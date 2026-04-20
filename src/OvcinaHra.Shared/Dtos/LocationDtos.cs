@@ -11,10 +11,54 @@ public record LocationListDto(
     string? Region,
     decimal? Latitude,
     decimal? Longitude,
-    int? ParentLocationId)
+    int? ParentLocationId,
+    string? Description,
+    string? Details,
+    string? GamePotential,
+    string? NpcInfo,
+    string? SetupNotes,
+    IReadOnlyList<LocationStashDto> Stashes,
+    IReadOnlyList<LocationQuestDto> Quests,
+    IReadOnlyList<LocationTreasureQuestDto> LocationTreasureQuests)
 {
     [JsonIgnore]
     public string LocationKindDisplay => LocationKind.GetDisplayName();
+}
+
+public record LocationStashDto(
+    int Id,
+    string Name,
+    string? Description,
+    IReadOnlyList<LocationTreasureQuestDto> TreasureQuests);
+
+public record LocationQuestDto(
+    int Id,
+    string Name,
+    QuestType QuestType,
+    string? Description,
+    string? FullText,
+    int? RewardXp,
+    int? RewardMoney,
+    string? RewardNotes,
+    IReadOnlyList<LocationQuestRewardItemDto> ItemRewards)
+{
+    [JsonIgnore]
+    public string QuestTypeDisplay => QuestType.GetDisplayName();
+}
+
+public record LocationQuestRewardItemDto(
+    int ItemId,
+    string ItemName,
+    int Quantity);
+
+public record LocationTreasureQuestDto(
+    int Id,
+    string Title,
+    string? Clue,
+    TreasureQuestDifficulty Difficulty)
+{
+    [JsonIgnore]
+    public string DifficultyDisplay => Difficulty.GetDisplayName();
 }
 
 public record LocationDetailDto(

@@ -1,7 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.Extensions.DependencyInjection;
+using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Tests.Fixtures;
+using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
+using OvcinaHra.Shared.Domain.ValueObjects;
 using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Tests.Endpoints;
@@ -150,5 +154,147 @@ public class LocationEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         var locations = await Client.GetFromJsonAsync<List<LocationListDto>>("/api/locations");
         var dol = locations!.First(l => l.Name == "Dol");
         Assert.Equal("Úpatí Osamělé hory", dol.Region);
+    }
+
+    [Fact]
+    public async Task GetAll_CatalogView_StashQuestListsEmpty()
+    {
+        await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Katalog lokace", LocationKind.PointOfInterest,
+                Description: "Popis", GamePotential: "Záměr", SetupNotes: "Postavit"));
+
+        var locations = await Client.GetFromJsonAsync<List<LocationListDto>>("/api/locations");
+        var loc = locations!.First(l => l.Name == "Katalog lokace");
+        Assert.Equal("Popis", loc.Description);
+        Assert.Equal("Záměr", loc.GamePotential);
+        Assert.Equal("Postavit", loc.SetupNotes);
+        Assert.Empty(loc.Stashes);
+        Assert.Empty(loc.Quests);
+        Assert.Empty(loc.LocationTreasureQuests);
+    }
+
+    [Fact]
+    public async Task GetByGame_LocationWithStashesAndQuests_ReturnsEnrichedDto()
+    {
+        var gameResponse = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Enrich Test", 1, new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 3)));
+        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
+
+        var locResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Dol u řeky", LocationKind.PointOfInterest, 49.5m, 17.1m,
+                Description: "Tichý dol",
+                GamePotential: "Skrýše, setkání",
+                SetupNotes: "Postavit mostek"));
+        var loc = await locResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+
+        await Client.PostAsJsonAsync("/api/locations/by-game",
+            new GameLocationDto(game!.Id, loc!.Id));
+
+        int stashId, questId, locationTreasureId, stashTreasureId, itemId;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+
+            var stash = new SecretStash { Name = "Skrýš u kořene", Description = "Pod kořenem starého dubu" };
+            var item = new Item
+            {
+                Name = "Lektvar zdraví",
+                ItemType = ItemType.Potion,
+                ClassRequirements = new ClassRequirements(0, 0, 0, 0)
+            };
+            db.SecretStashes.Add(stash);
+            db.Items.Add(item);
+            await db.SaveChangesAsync();
+
+            db.GameSecretStashes.Add(new GameSecretStash
+            {
+                GameId = game.Id,
+                SecretStashId = stash.Id,
+                LocationId = loc.Id
+            });
+
+            var quest = new Quest
+            {
+                Name = "Najít kámen",
+                QuestType = QuestType.Location,
+                Description = "Najít ztracený kámen",
+                FullText = "Dlouhá verze úkolu",
+                RewardXp = 50,
+                RewardMoney = 20,
+                RewardNotes = "Bonus poznámka",
+                QuestRewards = [new QuestReward { ItemId = item.Id, Quantity = 2 }]
+            };
+            db.Quests.Add(quest);
+            await db.SaveChangesAsync();
+
+            db.QuestLocationLinks.Add(new QuestLocationLink
+            {
+                QuestId = quest.Id,
+                LocationId = loc.Id
+            });
+
+            var locTreasure = new TreasureQuest
+            {
+                Title = "Poklad v dole",
+                Clue = "Pod velkým kamenem",
+                Difficulty = TreasureQuestDifficulty.Midgame,
+                LocationId = loc.Id,
+                GameId = game.Id
+            };
+            var stashTreasure = new TreasureQuest
+            {
+                Title = "Poklad ve skrýši",
+                Clue = "V dřevěné krabici",
+                Difficulty = TreasureQuestDifficulty.Early,
+                SecretStashId = stash.Id,
+                GameId = game.Id
+            };
+            db.TreasureQuests.AddRange(locTreasure, stashTreasure);
+            await db.SaveChangesAsync();
+
+            stashId = stash.Id;
+            questId = quest.Id;
+            locationTreasureId = locTreasure.Id;
+            stashTreasureId = stashTreasure.Id;
+            itemId = item.Id;
+        }
+
+        var gameLocations = await Client.GetFromJsonAsync<List<LocationListDto>>(
+            $"/api/locations/by-game/{game.Id}");
+        Assert.NotNull(gameLocations);
+        Assert.Single(gameLocations);
+        var dto = gameLocations[0];
+
+        Assert.Equal("Dol u řeky", dto.Name);
+        Assert.Equal("Tichý dol", dto.Description);
+        Assert.Equal("Skrýše, setkání", dto.GamePotential);
+        Assert.Equal("Postavit mostek", dto.SetupNotes);
+
+        Assert.Single(dto.Stashes);
+        var stashDto = dto.Stashes[0];
+        Assert.Equal(stashId, stashDto.Id);
+        Assert.Equal("Skrýš u kořene", stashDto.Name);
+        Assert.Equal("Pod kořenem starého dubu", stashDto.Description);
+        Assert.Single(stashDto.TreasureQuests);
+        Assert.Equal(stashTreasureId, stashDto.TreasureQuests[0].Id);
+        Assert.Equal("Poklad ve skrýši", stashDto.TreasureQuests[0].Title);
+
+        Assert.Single(dto.Quests);
+        var questDto = dto.Quests[0];
+        Assert.Equal(questId, questDto.Id);
+        Assert.Equal("Najít kámen", questDto.Name);
+        Assert.Equal(QuestType.Location, questDto.QuestType);
+        Assert.Equal("Dlouhá verze úkolu", questDto.FullText);
+        Assert.Equal(50, questDto.RewardXp);
+        Assert.Equal(20, questDto.RewardMoney);
+        Assert.Equal("Bonus poznámka", questDto.RewardNotes);
+        Assert.Single(questDto.ItemRewards);
+        Assert.Equal(itemId, questDto.ItemRewards[0].ItemId);
+        Assert.Equal("Lektvar zdraví", questDto.ItemRewards[0].ItemName);
+        Assert.Equal(2, questDto.ItemRewards[0].Quantity);
+
+        Assert.Single(dto.LocationTreasureQuests);
+        Assert.Equal(locationTreasureId, dto.LocationTreasureQuests[0].Id);
+        Assert.Equal("Poklad v dole", dto.LocationTreasureQuests[0].Title);
     }
 }

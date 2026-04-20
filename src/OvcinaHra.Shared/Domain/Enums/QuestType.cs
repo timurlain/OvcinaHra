@@ -19,5 +19,8 @@ public enum QuestType
     Penance,
 
     [Display(Name = "Časový")]
-    Timed
+    Timed,
+
+    [Display(Name = "Lokační")]
+    Location
 }
