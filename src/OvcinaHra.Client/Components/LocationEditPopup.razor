@@ -10,6 +10,10 @@
             <DxTab Text="Karta" />
             <DxTab Text="Upravit" />
             <DxTab Text="Lore" />
+            @if (GameId.HasValue && editingId.HasValue)
+            {
+                <DxTab Text="Skrýše" />
+            }
         </DxTabs>
 
         @* ── Tab 0: Card view (read-only presentation) ── *@
@@ -176,6 +180,123 @@
                 </button>
             </div>
         }
+
+        @* ── Tab 3: Stashes (game mode only) ── *@
+        @if (activeTab == 3 && GameId.HasValue && editingId.HasValue)
+        {
+            @if (stashesLoading)
+            {
+                <p class="mt-3">Načítám skrýše...</p>
+            }
+            else
+            {
+                <div class="mt-3">
+                    @if (stashCards.Count == 0)
+                    {
+                        <p class="text-muted">Žádné skrýše přiřazeny na této lokaci.</p>
+                    }
+                    @foreach (var card in stashCards)
+                    {
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <div class="d-flex gap-3">
+                                    <div style="flex: 0 0 auto">
+                                        <ImagePicker EntityType="secretstashes" EntityId="card.StashId" Alt="Obrázek skrýše" AspectRatio="1:1" Width="120px" />
+                                    </div>
+                                    <div style="flex: 1">
+                                        <DxFormLayout>
+                                            <DxFormLayoutItem Caption="Název skrýše" ColSpanMd="12">
+                                                <DxTextBox @bind-Text="card.Name" />
+                                            </DxFormLayoutItem>
+                                            <DxFormLayoutItem Caption="Popis (co je ukryto)" ColSpanMd="12">
+                                                <DxMemo @bind-Text="card.Description" Rows="4" />
+                                            </DxFormLayoutItem>
+                                        </DxFormLayout>
+
+                                        @if (card.Treasures.Count > 0)
+                                        {
+                                            <div class="mt-2">
+                                                <small class="text-muted">Poklady ve skrýši:</small>
+                                                <ul class="mb-0">
+                                                    @foreach (var t in card.Treasures)
+                                                    {
+                                                        <li>
+                                                            <a href="/treasures">@t.Title</a>
+                                                            <span class="badge bg-secondary ms-1">@t.Difficulty.GetDisplayName()</span>
+                                                        </li>
+                                                    }
+                                                </ul>
+                                            </div>
+                                        }
+
+                                        <div class="d-flex gap-2 mt-3">
+                                            <button class="btn btn-outline-danger btn-sm" @onclick="() => PromptRemoveStash(card.StashId)" disabled="@card.IsSaving">
+                                                Odebrat z lokace
+                                            </button>
+                                            <div style="flex: 1"></div>
+                                            <button class="btn btn-primary btn-sm" @onclick="() => SaveStashAsync(card)" disabled="@card.IsSaving">
+                                                @if (card.IsSaving)
+                                                {
+                                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                                }
+                                                Uložit změny
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    @* Add bar *@
+                    <div class="card mt-3">
+                        <div class="card-body">
+                            <h6 class="mb-3">Přidat skrýš</h6>
+                            <div class="d-flex gap-2 align-items-end mb-2">
+                                <div style="flex: 1">
+                                    <label class="small text-muted">Existující (dosud nepřiřazená v této hře)</label>
+                                    <DxComboBox Data="@catalogStashesAvailable" @bind-Value="selectedExistingStashId"
+                                                TextFieldName="Name" ValueFieldName="Id"
+                                                NullText="(vyberte skrýš)" SearchMode="ListSearchMode.AutoSearch" />
+                                </div>
+                                <button class="btn btn-outline-primary" @onclick="AssignExistingStashAsync" disabled="@(selectedExistingStashId is null || isStashBusy)">
+                                    Přiřadit
+                                </button>
+                            </div>
+
+                            @if (!showNewStashForm)
+                            {
+                                <button class="btn btn-outline-success btn-sm" @onclick="() => showNewStashForm = true">+ Nová skrýš</button>
+                            }
+                            else
+                            {
+                                <div class="border rounded p-2 mt-2">
+                                    <DxFormLayout>
+                                        <DxFormLayoutItem Caption="Název" ColSpanMd="12">
+                                            <DxTextBox @bind-Text="newStashName" />
+                                        </DxFormLayoutItem>
+                                        <DxFormLayoutItem Caption="Popis" ColSpanMd="12">
+                                            <DxMemo @bind-Text="newStashDescription" Rows="3" />
+                                        </DxFormLayoutItem>
+                                    </DxFormLayout>
+                                    <div class="d-flex gap-2 mt-2 justify-content-end">
+                                        <button class="btn btn-secondary btn-sm" @onclick="CancelNewStashForm">Zrušit</button>
+                                        <button class="btn btn-success btn-sm" @onclick="CreateAndAssignStashAsync" disabled="@(string.IsNullOrWhiteSpace(newStashName) || isStashBusy)">
+                                            Vytvořit a přiřadit
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+
+                            @if (stashError is not null)
+                            {
+                                <div class="alert alert-danger mt-2 py-2">@stashError</div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        }
     </BodyContentTemplate>
 </DxPopup>
 
@@ -195,6 +316,16 @@
         <div class="d-flex gap-2 justify-content-end">
             <button class="btn btn-secondary" @onclick="CancelParentChange">Zrušit</button>
             <button class="btn btn-primary" @onclick="ConfirmParentChange">Změnit</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+<DxPopup @bind-Visible="@isRemoveStashVisible" HeaderText="Odebrat skrýš z lokace?" Width="400px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Opravdu chcete odebrat skrýš <strong>@stashToRemoveName</strong> z této lokace v této hře? Samotná skrýš z katalogu odstraněna nebude.</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isRemoveStashVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmRemoveStashAsync" disabled="@isStashBusy">Odebrat</button>
         </div>
     </BodyContentTemplate>
 </DxPopup>
@@ -255,7 +386,20 @@
             .Where(l => l.Id != locationId && l.ParentLocationId != locationId)
             .OrderBy(l => l.Name)
             .ToList();
+
+        // Reset stash tab state; data loaded on demand by LoadStashesAsync below
+        stashCards = [];
+        catalogStashesAvailable = [];
+        selectedExistingStashId = null;
+        CancelNewStashForm();
+        stashError = null;
+
         isVisible = true;
+
+        if (GameId.HasValue)
+        {
+            _ = LoadStashesAsync();
+        }
     }
 
     /// <summary>Open for creating a new location at given coordinates.</summary>
@@ -328,5 +472,150 @@
         }
         catch (Exception ex) { error = ex.Message; }
         finally { isSaving = false; }
+    }
+
+    // ── Stash tab state ─────────────────────────────────────────────
+    private bool stashesLoading;
+    private bool isStashBusy;
+    private string? stashError;
+    private List<GameSecretStashCard> stashCards = [];
+    private List<SecretStashListDto> catalogStashesAvailable = [];
+    private int? selectedExistingStashId;
+    private bool showNewStashForm;
+    private string? newStashName;
+    private string? newStashDescription;
+    private bool isRemoveStashVisible;
+    private int? stashIdToRemove;
+    private string? stashToRemoveName;
+
+    private sealed class GameSecretStashCard
+    {
+        public int StashId { get; set; }
+        public string Name { get; set; } = "";
+        public string? Description { get; set; }
+        public bool IsSaving { get; set; }
+        public List<TreasureQuestListDto> Treasures { get; set; } = [];
+    }
+
+    private async Task LoadStashesAsync()
+    {
+        if (!GameId.HasValue || !editingId.HasValue) return;
+        stashesLoading = true;
+        stashError = null;
+        StateHasChanged();
+        try
+        {
+            var gameStashes = await Api.GetListAsync<GameSecretStashDto>($"/api/secret-stashes/by-game/{GameId.Value}");
+            var catalog = await Api.GetListAsync<SecretStashListDto>("/api/secret-stashes");
+            var treasures = await Api.GetListAsync<TreasureQuestListDto>($"/api/treasure-quests/by-game/{GameId.Value}");
+
+            var atLocation = gameStashes.Where(g => g.LocationId == editingId!.Value).ToList();
+            stashCards = atLocation.Select(g =>
+            {
+                var catalogEntry = catalog.FirstOrDefault(c => c.Id == g.SecretStashId);
+                return new GameSecretStashCard
+                {
+                    StashId = g.SecretStashId,
+                    Name = catalogEntry?.Name ?? g.StashName,
+                    Description = catalogEntry?.Description,
+                    Treasures = treasures.Where(t => t.SecretStashId == g.SecretStashId).ToList()
+                };
+            }).ToList();
+
+            var assignedInGame = gameStashes.Select(g => g.SecretStashId).ToHashSet();
+            catalogStashesAvailable = catalog
+                .Where(c => !assignedInGame.Contains(c.Id))
+                .OrderBy(c => c.Name)
+                .ToList();
+        }
+        catch (Exception ex) { stashError = ex.Message; }
+        finally
+        {
+            stashesLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SaveStashAsync(GameSecretStashCard card)
+    {
+        stashError = null;
+        card.IsSaving = true;
+        try
+        {
+            await Api.PutAsync($"/api/secret-stashes/{card.StashId}",
+                new UpdateSecretStashDto(card.Name, card.Description));
+        }
+        catch (Exception ex) { stashError = ex.Message; }
+        finally { card.IsSaving = false; }
+    }
+
+    private void PromptRemoveStash(int stashId)
+    {
+        stashIdToRemove = stashId;
+        stashToRemoveName = stashCards.FirstOrDefault(c => c.StashId == stashId)?.Name ?? $"#{stashId}";
+        isRemoveStashVisible = true;
+    }
+
+    private async Task ConfirmRemoveStashAsync()
+    {
+        if (!GameId.HasValue || stashIdToRemove is null) return;
+        stashError = null;
+        isStashBusy = true;
+        try
+        {
+            await Api.DeleteAsync($"/api/secret-stashes/game-stash/{GameId.Value}/{stashIdToRemove.Value}");
+            isRemoveStashVisible = false;
+            stashIdToRemove = null;
+            await LoadStashesAsync();
+        }
+        catch (Exception ex) { stashError = ex.Message; }
+        finally { isStashBusy = false; }
+    }
+
+    private async Task AssignExistingStashAsync()
+    {
+        if (!GameId.HasValue || !editingId.HasValue || selectedExistingStashId is null) return;
+        stashError = null;
+        isStashBusy = true;
+        try
+        {
+            await Api.PostAsync<CreateGameSecretStashDto, object>(
+                "/api/secret-stashes/game-stash",
+                new CreateGameSecretStashDto(GameId.Value, selectedExistingStashId.Value, editingId.Value));
+            selectedExistingStashId = null;
+            await LoadStashesAsync();
+        }
+        catch (Exception ex) { stashError = ex.Message; }
+        finally { isStashBusy = false; }
+    }
+
+    private async Task CreateAndAssignStashAsync()
+    {
+        if (!GameId.HasValue || !editingId.HasValue || string.IsNullOrWhiteSpace(newStashName)) return;
+        stashError = null;
+        isStashBusy = true;
+        try
+        {
+            var created = await Api.PostAsync<CreateSecretStashDto, SecretStashDetailDto>(
+                "/api/secret-stashes",
+                new CreateSecretStashDto(newStashName!, newStashDescription));
+            if (created is not null)
+            {
+                await Api.PostAsync<CreateGameSecretStashDto, object>(
+                    "/api/secret-stashes/game-stash",
+                    new CreateGameSecretStashDto(GameId.Value, created.Id, editingId.Value));
+            }
+            CancelNewStashForm();
+            await LoadStashesAsync();
+        }
+        catch (Exception ex) { stashError = ex.Message; }
+        finally { isStashBusy = false; }
+    }
+
+    private void CancelNewStashForm()
+    {
+        showNewStashForm = false;
+        newStashName = null;
+        newStashDescription = null;
     }
 }
