@@ -39,6 +39,7 @@ jobs:
           build-args: |
             DEVEXPRESS_NUGET_SOURCE=${{ secrets.DEVEXPRESS_NUGET_SOURCE }}
             DEVEXPRESS_LICENSE_CONTENT=${{ secrets.DEVEXPRESS_LICENSE_CONTENT }}
+            GIT_SHA=${{ github.sha }}
 
       - name: Build and push Client image
         uses: docker/build-push-action@v6
@@ -71,3 +72,78 @@ jobs:
           resourceGroup: ${{ env.RESOURCE_GROUP }}
           containerAppName: ${{ env.CLIENT_CONTAINER_APP }}
           imageToDeploy: ${{ env.CLIENT_IMAGE }}:${{ github.sha }}
+
+      # Post-deploy verification — Azure's deploy action returns as soon as it
+      # submits the update; a revision that fails to start (image pull error,
+      # migration crash on the API, etc.) keeps the previous revision serving
+      # traffic silently. Poll the latest revision until it's Running+Healthy
+      # or fail the job so the workflow badge reflects reality.
+      - name: Wait for API revision to become Running+Healthy
+        run: |
+          set -e
+          APP=${{ env.API_CONTAINER_APP }}
+          RG=${{ env.RESOURCE_GROUP }}
+          echo "Polling latest revision of $APP..."
+          for i in $(seq 1 30); do
+            REV=$(az containerapp show --name $APP --resource-group $RG --query properties.latestRevisionName -o tsv)
+            STATE=$(az containerapp revision show --name $APP --resource-group $RG --revision $REV --query properties.runningState -o tsv 2>/dev/null || echo "Unknown")
+            HEALTH=$(az containerapp revision show --name $APP --resource-group $RG --revision $REV --query properties.healthState -o tsv 2>/dev/null || echo "Unknown")
+            echo "attempt $i: revision=$REV state=$STATE health=$HEALTH"
+            if [ "$STATE" = "ActivationFailed" ]; then
+              echo "::error::$APP revision $REV failed to activate."
+              echo "Last 100 lines of console logs:"
+              az containerapp logs show --name $APP --resource-group $RG --revision $REV --type console --tail 100 --format text || true
+              exit 1
+            fi
+            if { [ "$STATE" = "Running" ] || [ "$STATE" = "RunningAtMaxScale" ]; } && [ "$HEALTH" = "Healthy" ]; then
+              echo "::notice::$APP revision $REV is $STATE / $HEALTH"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Timed out waiting for $APP revision $REV to become Running+Healthy."
+          exit 1
+
+      - name: Wait for Client revision to become Running+Healthy
+        run: |
+          set -e
+          APP=${{ env.CLIENT_CONTAINER_APP }}
+          RG=${{ env.RESOURCE_GROUP }}
+          echo "Polling latest revision of $APP..."
+          for i in $(seq 1 30); do
+            REV=$(az containerapp show --name $APP --resource-group $RG --query properties.latestRevisionName -o tsv)
+            STATE=$(az containerapp revision show --name $APP --resource-group $RG --revision $REV --query properties.runningState -o tsv 2>/dev/null || echo "Unknown")
+            HEALTH=$(az containerapp revision show --name $APP --resource-group $RG --revision $REV --query properties.healthState -o tsv 2>/dev/null || echo "Unknown")
+            echo "attempt $i: revision=$REV state=$STATE health=$HEALTH"
+            if [ "$STATE" = "ActivationFailed" ]; then
+              echo "::error::$APP revision $REV failed to activate."
+              az containerapp logs show --name $APP --resource-group $RG --revision $REV --type console --tail 100 --format text || true
+              exit 1
+            fi
+            if { [ "$STATE" = "Running" ] || [ "$STATE" = "RunningAtMaxScale" ]; } && [ "$HEALTH" = "Healthy" ]; then
+              echo "::notice::$APP revision $REV is $STATE / $HEALTH"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Timed out waiting for $APP revision $REV to become Running+Healthy."
+          exit 1
+
+      - name: Verify /api/version matches the deployed commit
+        run: |
+          set -e
+          # Give envoy a moment to switch traffic to the new revision
+          sleep 5
+          EXPECTED=${{ github.sha }}
+          echo "Expecting commit=$EXPECTED"
+          for i in $(seq 1 10); do
+            BODY=$(curl -sf https://api.hra.ovcina.cz/api/version || echo "")
+            echo "attempt $i: $BODY"
+            if echo "$BODY" | grep -q "\"commit\":\"$EXPECTED\""; then
+              echo "::notice::/api/version reports commit=$EXPECTED"
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "::error::/api/version never reported the expected commit ($EXPECTED)."
+          exit 1

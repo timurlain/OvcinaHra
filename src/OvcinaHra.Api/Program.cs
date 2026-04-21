@@ -172,6 +172,17 @@ try
 
     app.MapHealthChecks("/health").AllowAnonymous();
 
+    // Diagnostic endpoint — returns the git SHA embedded at container build time
+    // (via Dockerfile ARG GIT_SHA → ENV) plus container start time. Lets us detect
+    // a stale image surviving a "green" deploy workflow, which happened once
+    // (see PR #44 / memory: no-post-publish-mutation + silent-revision-failure).
+    var apiStartedUtc = DateTimeOffset.UtcNow;
+    app.MapGet("/api/version", () => Results.Ok(new
+    {
+        commit = Environment.GetEnvironmentVariable("GIT_SHA") ?? "unknown",
+        startedUtc = apiStartedUtc
+    })).AllowAnonymous();
+
     // Auth — dev token only in Development, refresh always available
     app.MapAuthEndpoints(builder.Configuration, app.Environment.IsDevelopment());
 
