@@ -274,7 +274,8 @@ public class LocationEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         var stashDto = dto.Stashes[0];
         Assert.Equal(stashId, stashDto.Id);
         Assert.Equal("Skrýš u kořene", stashDto.Name);
-        Assert.Equal("Pod kořenem starého dubu", stashDto.Description);
+        // Description intentionally absent from LocationStashDto — grid doesn't need it;
+        // stash edit popup fetches the full stash via /api/secret-stashes/{id}.
         Assert.Single(stashDto.TreasureQuests);
         Assert.Equal(stashTreasureId, stashDto.TreasureQuests[0].Id);
         Assert.Equal("Poklad ve skrýši", stashDto.TreasureQuests[0].Title);

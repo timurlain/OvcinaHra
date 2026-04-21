@@ -28,7 +28,6 @@ public record LocationListDto(
 public record LocationStashDto(
     int Id,
     string Name,
-    string? Description,
     IReadOnlyList<LocationTreasureQuestDto> TreasureQuests);
 
 public record LocationQuestDto(

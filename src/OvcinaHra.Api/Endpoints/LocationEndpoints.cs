@@ -144,7 +144,6 @@ public static class LocationEndpoints
                     .Select(gss => new LocationStashDto(
                         gss.SecretStashId,
                         gss.SecretStash.Name,
-                        gss.SecretStash.Description,
                         gss.SecretStash.TreasureQuests
                             .Where(tq => tq.GameId == gameId)
                             .OrderBy(tq => tq.Title)
