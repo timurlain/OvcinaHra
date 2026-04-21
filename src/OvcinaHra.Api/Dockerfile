@@ -25,9 +25,12 @@ COPY src/ src/
 RUN dotnet publish src/OvcinaHra.Api/OvcinaHra.Api.csproj -c Release -o /app/publish --no-restore /p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+ARG GIT_SHA=unknown
 WORKDIR /app
 
 ENV ASPNETCORE_URLS=http://+:8080
+# Propagate the build-time commit SHA to the runtime so /api/version can report it.
+ENV GIT_SHA=$GIT_SHA
 EXPOSE 8080
 
 COPY --from=build /app/publish .

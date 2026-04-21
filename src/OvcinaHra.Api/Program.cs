@@ -172,6 +172,17 @@ try
 
     app.MapHealthChecks("/health").AllowAnonymous();
 
+    // Deployment diagnostic — returns the commit SHA and container start time so
+    // operators can confirm the deployed image matches the expected build. In CI
+    // the SHA is injected via Dockerfile ARG GIT_SHA → ENV; locally it reports
+    // "unknown".
+    var apiStartedUtc = DateTimeOffset.UtcNow;
+    app.MapGet("/api/version", () => Results.Ok(new
+    {
+        commit = Environment.GetEnvironmentVariable("GIT_SHA") ?? "unknown",
+        startedUtc = apiStartedUtc
+    })).AllowAnonymous();
+
     // Auth — dev token only in Development, refresh always available
     app.MapAuthEndpoints(builder.Configuration, app.Environment.IsDevelopment());
 

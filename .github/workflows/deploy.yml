@@ -39,6 +39,7 @@ jobs:
           build-args: |
             DEVEXPRESS_NUGET_SOURCE=${{ secrets.DEVEXPRESS_NUGET_SOURCE }}
             DEVEXPRESS_LICENSE_CONTENT=${{ secrets.DEVEXPRESS_LICENSE_CONTENT }}
+            GIT_SHA=${{ github.sha }}
 
       - name: Build and push Client image
         uses: docker/build-push-action@v6
@@ -65,9 +66,38 @@ jobs:
           containerAppName: ${{ env.API_CONTAINER_APP }}
           imageToDeploy: ${{ env.API_IMAGE }}:${{ github.sha }}
 
+      # Fail-fast: if the API revision can't start (migration crash, image pull
+      # error, etc.) don't let the Client deploy proceed against a half-broken
+      # backend. Azure's deploy-action returns as soon as it submits the update,
+      # so we poll here to reflect the real activation outcome.
+      - name: Wait for API revision to become Running+Healthy
+        run: bash .github/scripts/wait-for-containerapp-revision.sh "${{ env.API_CONTAINER_APP }}" "${{ env.RESOURCE_GROUP }}"
+
       - name: Deploy Client to Azure Container Apps
         uses: azure/container-apps-deploy-action@v2
         with:
           resourceGroup: ${{ env.RESOURCE_GROUP }}
           containerAppName: ${{ env.CLIENT_CONTAINER_APP }}
           imageToDeploy: ${{ env.CLIENT_IMAGE }}:${{ github.sha }}
+
+      - name: Wait for Client revision to become Running+Healthy
+        run: bash .github/scripts/wait-for-containerapp-revision.sh "${{ env.CLIENT_CONTAINER_APP }}" "${{ env.RESOURCE_GROUP }}"
+
+      - name: Verify /api/version matches the deployed commit
+        run: |
+          set -e
+          # Give envoy a moment to switch traffic to the new revision
+          sleep 5
+          EXPECTED=${{ github.sha }}
+          echo "Expecting commit=$EXPECTED"
+          for i in $(seq 1 10); do
+            BODY=$(curl -sf https://api.hra.ovcina.cz/api/version || echo "")
+            echo "attempt $i: $BODY"
+            if echo "$BODY" | grep -q "\"commit\":\"$EXPECTED\""; then
+              echo "::notice::/api/version reports commit=$EXPECTED"
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "::error::/api/version never reported the expected commit ($EXPECTED)."
+          exit 1
