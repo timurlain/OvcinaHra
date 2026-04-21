@@ -1,7 +1,6 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG DEVEXPRESS_NUGET_SOURCE
 ARG DEVEXPRESS_LICENSE_CONTENT
-ARG API_BASE_URL=https://localhost:5280
 WORKDIR /src
 
 COPY ["global.json", "."]
@@ -25,10 +24,13 @@ COPY src/ src/
 
 RUN dotnet publish src/OvcinaHra.Client/OvcinaHra.Client.csproj -c Release -o /app/publish --no-restore
 
-# Inject production API URL into the published appsettings.json
-RUN if [ "${API_BASE_URL}" != "https://localhost:5280" ]; then \
-      sed -i "s|https://localhost:5280|${API_BASE_URL}|g" /app/publish/wwwroot/appsettings.json; \
-    fi
+# IMPORTANT: do NOT modify /app/publish/wwwroot/appsettings.json after this point.
+# `dotnet publish` has already emitted service-worker-assets.js with SHA-256
+# integrity hashes for every static asset. Post-publish mutation breaks SRI and
+# leaves the PWA service worker stuck in the "installing" state. Production
+# configuration (ApiBaseUrl, OidcAuthority, OidcClientId) lives in
+# appsettings.Production.json, which Blazor WASM merges over the base file at
+# runtime when HostEnvironment.Environment == "Production".
 
 FROM nginx:alpine AS final
 

@@ -52,7 +52,6 @@ jobs:
           build-args: |
             DEVEXPRESS_NUGET_SOURCE=${{ secrets.DEVEXPRESS_NUGET_SOURCE }}
             DEVEXPRESS_LICENSE_CONTENT=${{ secrets.DEVEXPRESS_LICENSE_CONTENT }}
-            API_BASE_URL=${{ secrets.API_BASE_URL }}
 
       - name: Azure Login
         uses: azure/login@v2
