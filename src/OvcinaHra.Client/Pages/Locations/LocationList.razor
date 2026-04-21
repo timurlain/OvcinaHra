@@ -87,10 +87,9 @@ else
                             {
                                 <div class="location-stash-card mb-2">
                                     <div><strong>@stash.Name</strong></div>
-                                    @if (!string.IsNullOrWhiteSpace(stash.Description))
-                                    {
-                                        <div class="text-muted small" style="white-space: pre-wrap">@stash.Description</div>
-                                    }
+                                    @* Stash description deliberately hidden in the grid —
+                                       it's low-level flavor text. Full description shows in the
+                                       Skrýše tab of the location detail popup. *@
                                     @foreach (var tq in stash.TreasureQuests ?? [])
                                     {
                                         <div class="ps-2 mt-1 small">
