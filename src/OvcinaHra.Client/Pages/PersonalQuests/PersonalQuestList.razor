@@ -17,6 +17,12 @@
                     @onclick='() => Nav.NavigateTo("/personal-quests?catalog=true")'>Katalog</button>
         </div>
         <button class="btn btn-primary" @onclick="() => OpenModal((PersonalQuestListDto?)null)">+ Nový osobní quest</button>
+        @if (!Catalog && GameContext.SelectedGameId is int wizardGameId)
+        {
+            <button class="btn btn-outline-primary ms-2" @onclick="() => wizardVisible = true">
+                <i class="bi bi-magic me-1"></i>Vytvořit quest pro hru
+            </button>
+        }
     </div>
 </div>
 
@@ -400,6 +406,13 @@ else
     </BodyContentTemplate>
 </DxPopup>
 
+@if (GameContext.SelectedGameId is int wizardMountGameId)
+{
+    <QuestWizard @bind-Visible="@wizardVisible"
+                 GameId="@wizardMountGameId"
+                 Saved="@LoadAsync" />
+}
+
 @code {
     [SupplyParameterFromQuery]
     public bool Catalog { get; set; }
@@ -408,6 +421,7 @@ else
     private List<GamePersonalQuestListDto> gameItems = [];
     private HashSet<int> assignedItemIds = [];
     private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
+    private bool wizardVisible;
 
     // Lookup lists for combo boxes
     private List<SkillDto> allSkills = [];
