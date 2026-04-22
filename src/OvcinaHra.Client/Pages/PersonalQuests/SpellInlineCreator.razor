@@ -1,0 +1,192 @@
+@* SpellInlineCreator.razor — inline popup for creating a brand-new Spell template
+   and auto-linking it into the currently selected game. Emits the created
+   SpellListDto via the `Created` callback so the parent wizard can auto-select
+   it as a quest reward.
+
+   Note: IsLearnable is intentionally NOT exposed. Phase 1's personal-quest spell-
+   reward endpoint rejects learnable spells (400), so every spell created via
+   this wizard-inline path is forced to IsLearnable = false. *@
+
+@inject ApiClient Api
+
+<DxPopup @bind-Visible="@Visible" HeaderText="Nové kouzlo" Width="640px">
+    <BodyContentTemplate Context="ctx">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Název" ColSpanMd="12">
+                <DxTextBox @bind-Text="@name" />
+            </DxFormLayoutItem>
+
+            <DxFormLayoutItem Caption="Typ (škola)" ColSpanMd="12">
+                <DxComboBox Data="@schoolValues" @bind-Value="@school"
+                            TextFieldName="Display" ValueFieldName="Value" />
+            </DxFormLayoutItem>
+
+            <DxFormLayoutItem Caption="Úroveň" ColSpanMd="4">
+                <DxSpinEdit @bind-Value="@level" MinValue="0" MaxValue="5" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Mana" ColSpanMd="4">
+                <DxSpinEdit @bind-Value="@manaCost" MinValue="0" MaxValue="5" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Min. úroveň mága" ColSpanMd="4">
+                <DxSpinEdit @bind-Value="@minMageLevel" MinValue="0" MaxValue="5" />
+            </DxFormLayoutItem>
+
+            <DxFormLayoutItem Caption="Svitek" ColSpanMd="6">
+                <DxCheckBox @bind-Checked="@isScroll" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Reakce" ColSpanMd="6">
+                <DxCheckBox @bind-Checked="@isReaction" />
+            </DxFormLayoutItem>
+
+            <DxFormLayoutItem Caption="Cena (groše)" ColSpanMd="12">
+                <DxSpinEdit @bind-Value="@price" MinValue="0" MaxValue="9999"
+                            NullText="(žádná)"
+                            ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+            </DxFormLayoutItem>
+
+            <DxFormLayoutItem Caption="Efekt (text karty)" ColSpanMd="12">
+                <DxMemo @bind-Text="@effect" Rows="3" />
+            </DxFormLayoutItem>
+        </DxFormLayout>
+
+        @if (error is not null)
+        {
+            <div class="alert alert-danger mt-2">@error</div>
+        }
+
+        <div class="d-flex gap-2 justify-content-end mt-3">
+            <button class="btn btn-secondary" @onclick="Cancel" disabled="@isSaving">Zrušit</button>
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving">
+                @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Vytvořit a přidat
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public int GameId { get; set; }
+    [Parameter] public EventCallback<SpellListDto> Created { get; set; }
+
+    private string name = "";
+    private int level;
+    private int manaCost;
+    private int minMageLevel;
+    private SpellSchool school = SpellSchool.Fire;
+    private bool isScroll;
+    private bool isReaction;
+    private int? price;
+    private string effect = "";
+
+    private bool isSaving;
+    private string? error;
+
+    private static readonly List<EnumItem<SpellSchool>> schoolValues =
+        Enum.GetValues<SpellSchool>()
+            .Select(v => new EnumItem<SpellSchool>(v, v.GetDisplayName()))
+            .ToList();
+
+    private record EnumItem<T>(T Value, string Display);
+
+    public override async Task SetParametersAsync(ParameterView parameters)
+    {
+        var wasVisible = Visible;
+        await base.SetParametersAsync(parameters);
+        if (!wasVisible && Visible)
+        {
+            name = "";
+            level = 0;
+            manaCost = 0;
+            minMageLevel = 0;
+            school = SpellSchool.Fire;
+            isScroll = false;
+            isReaction = false;
+            price = null;
+            effect = "";
+            error = null;
+            isSaving = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            error = "Název je povinný.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(effect))
+        {
+            error = "Efekt je povinný — je to text karty.";
+            return;
+        }
+
+        error = null;
+        isSaving = true;
+        try
+        {
+            // 1) Create catalog spell. IsLearnable is forced to false because the
+            //    Phase 1 personal-quest spell-reward endpoint rejects learnable
+            //    spells with 400 (they're not scroll/reward material by definition).
+            var created = await Api.PostAsync<CreateSpellDto, SpellDetailDto>(
+                "/api/spells",
+                new CreateSpellDto(
+                    Name: name,
+                    Level: level,
+                    ManaCost: manaCost,
+                    School: school,
+                    IsScroll: isScroll,
+                    IsReaction: isReaction,
+                    IsLearnable: false,
+                    MinMageLevel: minMageLevel,
+                    Price: price,
+                    Effect: effect,
+                    Description: null));
+
+            if (created is null)
+            {
+                error = "Server nevrátil vytvořené kouzlo.";
+                return;
+            }
+
+            // 2) Auto-link to the current game with defaults (no per-game price
+            //    override, not findable, no availability notes).
+            await Api.PostAsync<CreateGameSpellDto, object?>(
+                "/api/spells/game-spell",
+                new CreateGameSpellDto(
+                    GameId: GameId,
+                    SpellId: created.Id));
+
+            // Convert to the SpellListDto shape the parent wizard already uses for
+            // its existing-spell picker.
+            var listDto = new SpellListDto(
+                Id: created.Id,
+                Name: created.Name,
+                Level: created.Level,
+                School: created.School,
+                IsScroll: created.IsScroll,
+                IsReaction: created.IsReaction,
+                IsLearnable: created.IsLearnable,
+                ManaCost: created.ManaCost,
+                MinMageLevel: created.MinMageLevel,
+                Price: created.Price,
+                Effect: created.Effect,
+                Description: created.Description);
+
+            await Created.InvokeAsync(listDto);
+            await VisibleChanged.InvokeAsync(false);
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task Cancel() => await VisibleChanged.InvokeAsync(false);
+}
