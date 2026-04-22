@@ -52,6 +52,7 @@ public class WorldDbContext(DbContextOptions<WorldDbContext> options) : DbContex
     public DbSet<PersonalQuest> PersonalQuests => Set<PersonalQuest>();
     public DbSet<PersonalQuestSkillReward> PersonalQuestSkillRewards => Set<PersonalQuestSkillReward>();
     public DbSet<PersonalQuestItemReward> PersonalQuestItemRewards => Set<PersonalQuestItemReward>();
+    public DbSet<PersonalQuestSpellReward> PersonalQuestSpellRewards => Set<PersonalQuestSpellReward>();
     public DbSet<GamePersonalQuest> GamePersonalQuests => Set<GamePersonalQuest>();
     public DbSet<CharacterPersonalQuest> CharacterPersonalQuests => Set<CharacterPersonalQuest>();
 

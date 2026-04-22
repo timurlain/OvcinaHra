@@ -23,6 +23,7 @@ public class PersonalQuest
 
     public ICollection<PersonalQuestSkillReward> SkillRewards { get; set; } = [];
     public ICollection<PersonalQuestItemReward> ItemRewards { get; set; } = [];
+    public ICollection<PersonalQuestSpellReward> SpellRewards { get; set; } = [];
     public ICollection<GamePersonalQuest> GameLinks { get; set; } = [];
     public ICollection<CharacterPersonalQuest> CharacterAssignments { get; set; } = [];
 }
