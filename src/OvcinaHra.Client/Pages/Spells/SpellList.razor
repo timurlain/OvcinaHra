@@ -40,10 +40,10 @@ else
 <DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="760px" MinHeight="640px">
     <BodyContentTemplate Context="popupContext">
         <DxFormLayout>
-            <DxFormLayoutItem Caption="Název" ColSpanMd="8">
+            <DxFormLayoutItem Caption="Název" ColSpanMd="12">
                 <DxTextBox @bind-Text="@model.Name" />
             </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Typ (škola)" ColSpanMd="4">
+            <DxFormLayoutItem Caption="Typ (škola)" ColSpanMd="12">
                 <DxComboBox Data="@schoolValues" @bind-Value="@model.School"
                             TextFieldName="Display" ValueFieldName="Value" />
             </DxFormLayoutItem>
@@ -58,14 +58,16 @@ else
                 <DxSpinEdit @bind-Value="@model.MinMageLevel" MinValue="0" MaxValue="5" />
             </DxFormLayoutItem>
 
-            <DxFormLayoutItem Caption="Svitek (MAG-005)" ColSpanMd="4">
+            <DxFormLayoutItem Caption="Svitek" ColSpanMd="4">
                 <DxCheckBox @bind-Checked="@model.IsScroll" />
             </DxFormLayoutItem>
             <DxFormLayoutItem Caption="Reakce" ColSpanMd="4">
                 <DxCheckBox @bind-Checked="@model.IsReaction" />
             </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Naučitelné u budovy" ColSpanMd="4">
-                <DxCheckBox @bind-Checked="@model.IsLearnable" />
+            <DxFormLayoutItem Caption="Standartní" ColSpanMd="4">
+                <span title="Toto kouzlo se dá naučit ve městě dle standartních pravidel.">
+                    <DxCheckBox @bind-Checked="@model.IsLearnable" />
+                </span>
             </DxFormLayoutItem>
 
             <DxFormLayoutItem Caption="Cena naučení (groše)" ColSpanMd="12">
