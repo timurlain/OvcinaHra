@@ -112,7 +112,8 @@ public record GamePersonalQuestListDto(
     string? Notes,
     string? ImagePath,
     int GameId,
-    int XpCost,
+    int? XpCost,
+    int EffectiveXpCost,
     int? PerKingdomLimit,
     string? RewardSummary)
 {
@@ -142,13 +143,13 @@ public record GamePersonalQuestListDto(
 public record GamePersonalQuestDto(
     int GameId,
     int PersonalQuestId,
-    int XpCost,
+    int? XpCost,
     int? PerKingdomLimit);
 
 public record CreateGamePersonalQuestDto(int GameId, int PersonalQuestId,
-    int XpCost = 0, int? PerKingdomLimit = null);
+    int? XpCost = null, int? PerKingdomLimit = null);
 
-public record UpdateGamePersonalQuestDto(int XpCost, int? PerKingdomLimit);
+public record UpdateGamePersonalQuestDto(int? XpCost, int? PerKingdomLimit);
 
 public record AddSkillRewardDto(int SkillId);
 public record AddItemRewardDto(int ItemId, int Quantity = 1);

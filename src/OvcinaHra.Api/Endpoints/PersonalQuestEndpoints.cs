@@ -197,7 +197,7 @@ public static class PersonalQuestEndpoints
             q.Id, q.Name, q.Description, q.Difficulty,
             q.AllowWarrior, q.AllowArcher, q.AllowMage, q.AllowThief,
             q.QuestCardText, q.RewardCardText, q.RewardNote, q.Notes, q.ImagePath,
-            g.GameId, g.XpCost, g.PerKingdomLimit,
+            g.GameId, g.XpCost, g.XpCost ?? q.XpCost, g.PerKingdomLimit,
             BuildRewardSummary(q));
     }
 

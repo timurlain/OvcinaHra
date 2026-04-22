@@ -658,4 +658,57 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         Assert.NotNull(body);
         Assert.Equal(12, body.XpCost);
     }
+
+    [Fact]
+    public async Task GamePersonalQuest_XpCostNull_EffectiveFallsBackToCatalog()
+    {
+        var gameResponse = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Hra fallback", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
+
+        var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
+            new CreatePersonalQuestDto(
+                Name: "Fallback úkol",
+                Difficulty: TreasureQuestDifficulty.Early,
+                XpCost: 42));
+        var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
+
+        var link = await Client.PostAsJsonAsync("/api/personal-quests/game-link",
+            new CreateGamePersonalQuestDto(GameId: game!.Id, PersonalQuestId: quest!.Id,
+                                           XpCost: null, PerKingdomLimit: null));
+        Assert.Equal(HttpStatusCode.Created, link.StatusCode);
+
+        var list = await Client.GetFromJsonAsync<List<GamePersonalQuestListDto>>(
+            $"/api/personal-quests/by-game/{game.Id}");
+        Assert.NotNull(list);
+        var row = Assert.Single(list);
+
+        Assert.Null(row.XpCost);
+        Assert.Equal(42, row.EffectiveXpCost);
+    }
+
+    [Fact]
+    public async Task GamePersonalQuest_XpCostSet_EffectiveEqualsOverride()
+    {
+        var gameResponse = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Hra override", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
+
+        var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
+            new CreatePersonalQuestDto(
+                Name: "Override úkol",
+                Difficulty: TreasureQuestDifficulty.Early,
+                XpCost: 42));
+        var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
+
+        await Client.PostAsJsonAsync("/api/personal-quests/game-link",
+            new CreateGamePersonalQuestDto(game!.Id, quest!.Id, XpCost: 7, PerKingdomLimit: null));
+
+        var list = await Client.GetFromJsonAsync<List<GamePersonalQuestListDto>>(
+            $"/api/personal-quests/by-game/{game.Id}");
+        var row = Assert.Single(list!);
+
+        Assert.Equal(7, row.XpCost);
+        Assert.Equal(7, row.EffectiveXpCost);
+    }
 }
