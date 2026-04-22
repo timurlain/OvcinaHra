@@ -65,7 +65,7 @@ else
         }
         else
         {
-            <p class="text-muted small mb-3">Vyberte kouzlo z katalogu. Cenu a dostupnost upravíš po přidání.</p>
+            <p class="text-muted small mb-3">Vyberte kouzlo z katalogu. Cenu a dostupnost upravíte po přidání.</p>
             <DxComboBox Data="@addable" @bind-Value="@addingSpellId"
                         TextFieldName="Label" ValueFieldName="Id"
                         NullText="(vyberte kouzlo)" SearchMode="ListSearchMode.AutoSearch" />
@@ -132,6 +132,10 @@ else
             Odebrat <strong>@(deleting?.SpellName)</strong> z této hry?
             Kouzlo zůstane v katalogu, jen přestane být dostupné v této hře.
         </p>
+        @if (deleteError is not null)
+        {
+            <div class="alert alert-danger py-2 mb-2">@deleteError</div>
+        }
         <div class="d-flex gap-2 justify-content-end">
             <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
             <button class="btn btn-danger" @onclick="ConfirmDeleteAsync" disabled="@isSaving">Odebrat</button>
@@ -160,6 +164,7 @@ else
 
     // Delete-popup state
     private GameSpellDto? deleting;
+    private string? deleteError;
 
     private record SpellChoice(int Id, string Label);
 
@@ -239,7 +244,7 @@ else
 
     private void OpenDeletePopup(GameSpellDto row)
     {
-        error = null;
+        deleteError = null;
         deleting = row;
         isDeleteVisible = true;
     }
@@ -247,20 +252,20 @@ else
     private async Task ConfirmDeleteAsync()
     {
         if (deleting is null) return;
-        error = null;
+        deleteError = null;
         isSaving = true;
         try
         {
             var ok = await Api.DeleteAsync($"/api/spells/game-spell/{GameId}/{deleting.SpellId}");
             if (!ok)
             {
-                error = "Odebrání kouzla se nepodařilo.";
+                deleteError = "Odebrání kouzla se nepodařilo.";
                 return;
             }
             isDeleteVisible = false;
             await LoadAsync();
         }
-        catch (Exception ex) { error = ex.Message; }
+        catch (Exception ex) { deleteError = ex.Message; }
         finally { isSaving = false; }
     }
 }
