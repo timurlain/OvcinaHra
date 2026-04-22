@@ -6,15 +6,15 @@ namespace OvcinaHra.Shared.Domain.Enums;
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum TreasureQuestDifficulty
 {
-    [Display(Name = "Začátek")]
+    [Display(Name = "Start")]
     Start,
 
-    [Display(Name = "Začátek hry")]
+    [Display(Name = "Rozvoj hry")]
     Early,
 
     [Display(Name = "Střed hry")]
     Midgame,
 
-    [Display(Name = "Konec hry")]
+    [Display(Name = "Závěr hry")]
     Lategame
 }
