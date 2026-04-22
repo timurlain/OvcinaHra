@@ -38,12 +38,12 @@ public class PersonalQuestService
     public Task<List<GamePersonalQuestListDto>> GetByGameAsync(int gameId)
         => _api.GetListAsync<GamePersonalQuestListDto>($"/api/personal-quests/by-game/{gameId}");
 
-    public Task<GamePersonalQuestDto?> CreateGameLinkAsync(int gameId, int pqId, int xpCost = 0, int? perKingdomLimit = null)
+    public Task<GamePersonalQuestDto?> CreateGameLinkAsync(int gameId, int pqId, int? xpCost = null, int? perKingdomLimit = null)
         => _api.PostAsync<CreateGamePersonalQuestDto, GamePersonalQuestDto>(
             "/api/personal-quests/game-link",
             new CreateGamePersonalQuestDto(gameId, pqId, xpCost, perKingdomLimit));
 
-    public Task UpdateGameLinkAsync(int gameId, int pqId, int xpCost, int? perKingdomLimit)
+    public Task UpdateGameLinkAsync(int gameId, int pqId, int? xpCost, int? perKingdomLimit)
         => _api.PutAsync(
             $"/api/personal-quests/game-link/{gameId}/{pqId}",
             new UpdateGamePersonalQuestDto(xpCost, perKingdomLimit));
