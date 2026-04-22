@@ -29,7 +29,7 @@ else if (!Catalog && buildings.Count == 0)
 }
 else
 {
-    <OvcinaGrid Data="@buildings" KeyFieldName="Id" LayoutKey="grid-layout-buildings"
+    <OvcinaGrid Data="@buildings" KeyFieldName="Id" LayoutKey="grid-layout-buildings-v2"
                 RowClick="@(e => OpenModal((BuildingListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             <DxGridDataColumn FieldName="Name" Caption="Název" />
@@ -37,6 +37,8 @@ else
             <DxGridDataColumn FieldName="IsPrebuilt" Caption="Představěná" Width="120px">
                 <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
             </DxGridDataColumn>
+            <DxGridDataColumn FieldName="Description" Caption="Popis" Width="260px" Visible="false" />
+            <DxGridDataColumn FieldName="Notes" Caption="Poznámky" Width="260px" Visible="false" />
 @if (Catalog)
             {
                 <DxGridDataColumn Caption="" Width="120px" TextAlignment="GridTextAlignment.Center">
@@ -162,15 +164,9 @@ else
         error = null;
         gameLocations = await Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gameId}");
         if (b is null) { editingId = null; name = ""; description = null; notes = null; locationId = null; isPrebuilt = false; modalTitle = "Nová budova"; }
-        else { editingId = b.Id; name = b.Name; locationId = b.LocationId; isPrebuilt = b.IsPrebuilt; modalTitle = $"Upravit: {b.Name}"; _ = LoadDetailAsync(b.Id); }
+        else { editingId = b.Id; name = b.Name; description = b.Description; notes = b.Notes; locationId = b.LocationId; isPrebuilt = b.IsPrebuilt; modalTitle = $"Upravit: {b.Name}"; }
         isModalVisible = true;
         StateHasChanged();
-    }
-
-    private async Task LoadDetailAsync(int id)
-    {
-        var d = await Api.GetAsync<BuildingDetailDto>($"/api/buildings/{id}");
-        if (d is not null) { description = d.Description; notes = d.Notes; StateHasChanged(); }
     }
 
     private async Task SaveAsync()

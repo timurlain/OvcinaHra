@@ -31,7 +31,9 @@ public static class BuildingEndpoints
         var buildings = await db.Buildings
             .Include(b => b.Location)
             .OrderBy(b => b.Name)
-            .Select(b => new BuildingListDto(b.Id, b.Name, b.LocationId, b.Location != null ? b.Location.Name : null, b.IsPrebuilt))
+            .Select(b => new BuildingListDto(
+                b.Id, b.Name, b.Description, b.Notes,
+                b.LocationId, b.Location != null ? b.Location.Name : null, b.IsPrebuilt))
             .ToListAsync();
         return TypedResults.Ok(buildings);
     }
@@ -45,6 +47,8 @@ public static class BuildingEndpoints
             .Select(gb => new BuildingListDto(
                 gb.Building.Id,
                 gb.Building.Name,
+                gb.Building.Description,
+                gb.Building.Notes,
                 gb.Building.LocationId,
                 gb.Building.Location != null ? gb.Building.Location.Name : null,
                 gb.Building.IsPrebuilt))
