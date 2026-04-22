@@ -65,6 +65,14 @@
                 </NavLink>
             </div>
         }
+        @if (GameContext.SelectedGameId is int hraSpellsGameId)
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="@($"games/{hraSpellsGameId}/spells")">
+                    <i class="bi bi-magic"></i><span class="nav-label">Kouzla</span>
+                </NavLink>
+            </div>
+        }
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="secret-stashes">
                 <i class="bi bi-lock-fill"></i><span class="nav-label">Tajné skrýše</span>
