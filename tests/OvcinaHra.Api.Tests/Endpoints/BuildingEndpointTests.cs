@@ -161,9 +161,11 @@ public class BuildingEndpointTests(PostgresFixture postgres) : IntegrationTestBa
     {
         var createResp = await Client.PostAsJsonAsync("/api/buildings",
             new CreateBuildingDto("Chata", Notes: "původní poznámka"));
+        Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
         var created = await createResp.Content.ReadFromJsonAsync<BuildingDetailDto>();
+        Assert.NotNull(created);
 
-        var updateDto = new UpdateBuildingDto(created!.Name, created.Description, "nová poznámka pro orgy", created.LocationId, created.IsPrebuilt);
+        var updateDto = new UpdateBuildingDto(created.Name, created.Description, "nová poznámka pro orgy", created.LocationId, created.IsPrebuilt);
         var updateResp = await Client.PutAsJsonAsync($"/api/buildings/{created.Id}", updateDto);
         Assert.Equal(HttpStatusCode.NoContent, updateResp.StatusCode);
 

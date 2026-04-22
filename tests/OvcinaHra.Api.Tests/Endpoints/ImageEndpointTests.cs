@@ -61,14 +61,16 @@ public class ImageEndpointTests(PostgresFixture postgres) : IntegrationTestBase(
     public async Task Upload_ForBuilding_ReturnsOkAndPersistsBlobKey()
     {
         var createResp = await Client.PostAsJsonAsync("/api/buildings", new CreateBuildingDto("Foto budova"));
+        Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
         var building = await createResp.Content.ReadFromJsonAsync<BuildingDetailDto>();
+        Assert.NotNull(building);
 
         using var content = new MultipartFormDataContent();
         var fileContent = new ByteArrayContent(ValidPng);
         fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
         content.Add(fileContent, "file", "photo.png");
 
-        var response = await Client.PostAsync($"/api/images/buildings/{building!.Id}", content);
+        var response = await Client.PostAsync($"/api/images/buildings/{building.Id}", content);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var result = await response.Content.ReadFromJsonAsync<ImageUploadResult>();
@@ -76,7 +78,8 @@ public class ImageEndpointTests(PostgresFixture postgres) : IntegrationTestBase(
         Assert.StartsWith($"buildings/{building.Id}/", result.BlobKey);
 
         var refreshed = await Client.GetFromJsonAsync<BuildingDetailDto>($"/api/buildings/{building.Id}");
-        Assert.Equal(result.BlobKey, refreshed!.ImagePath);
+        Assert.NotNull(refreshed);
+        Assert.Equal(result.BlobKey, refreshed.ImagePath);
     }
 
     [Fact]
