@@ -24,6 +24,7 @@ public class GameContextService
     public async Task InitializeAsync()
     {
         if (_initialized) return;
+        var becameSet = false;
         try
         {
             var games = await _api.GetListAsync<GameListDto>("/api/games");
@@ -32,10 +33,12 @@ public class GameContextService
             {
                 _selectedGameId = active.Id;
                 _gameName = $"{active.Name} (#{active.Edition})";
+                becameSet = true;
             }
         }
         catch { /* offline or API unavailable */ }
         _initialized = true;
+        if (becameSet) OnGameChanged?.Invoke();
     }
 
     /// <summary>
