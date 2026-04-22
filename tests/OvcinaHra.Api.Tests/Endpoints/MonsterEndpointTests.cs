@@ -85,7 +85,8 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
         Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
 
         var created = await createResp.Content.ReadFromJsonAsync<MonsterDetailDto>();
-        Assert.Equal("Reaguje na světlo.", created!.Notes);
+        Assert.NotNull(created);
+        Assert.Equal("Reaguje na světlo.", created.Notes);
 
         var list = await Client.GetFromJsonAsync<List<MonsterListDto>>("/api/monsters");
         var listed = Assert.Single(list!, m => m.Id == created.Id);
@@ -98,9 +99,11 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
     {
         var createResp = await Client.PostAsJsonAsync("/api/monsters",
             new CreateMonsterDto("Goblin", 1, MonsterType.Goblin, 2, 1, 4, Notes: "původní"));
+        Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
         var created = await createResp.Content.ReadFromJsonAsync<MonsterDetailDto>();
+        Assert.NotNull(created);
 
-        var updateDto = new UpdateMonsterDto(created!.Name, created.Category, created.MonsterType,
+        var updateDto = new UpdateMonsterDto(created.Name, created.Category, created.MonsterType,
             created.Attack, created.Defense, created.Health,
             created.Abilities, created.AiBehavior, created.RewardXp, created.RewardMoney, created.RewardNotes,
             Notes: "nová poznámka");
@@ -112,18 +115,33 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
     }
 
     [Fact]
+    public async Task Create_NotesOverLimit_ReturnsBadRequest()
+    {
+        var tooLong = new string('a', 1001);
+        var resp = await Client.PostAsJsonAsync("/api/monsters",
+            new CreateMonsterDto("Dlouhonotář", 1, MonsterType.Beast, 1, 1, 1, Notes: tooLong));
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
     public async Task GetAll_EnrichedListDto_IncludesRewardsAbilitiesAndTags()
     {
         var createResp = await Client.PostAsJsonAsync("/api/monsters",
             new CreateMonsterDto("Arcimág", 5, MonsterType.Legend, 7, 5, 25,
                 Abilities: "Kouzlí", AiBehavior: "útočí z dálky",
                 RewardXp: 120, RewardMoney: 30, RewardNotes: "odměna"));
+        Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
         var created = await createResp.Content.ReadFromJsonAsync<MonsterDetailDto>();
+        Assert.NotNull(created);
 
         var tagResp = await Client.PostAsJsonAsync("/api/tags",
             new CreateTagDto("elitní", TagKind.Monster));
+        Assert.Equal(HttpStatusCode.Created, tagResp.StatusCode);
         var tag = await tagResp.Content.ReadFromJsonAsync<TagDto>();
-        await Client.PostAsync($"/api/monsters/{created!.Id}/tags/{tag!.Id}", null);
+        Assert.NotNull(tag);
+
+        var assignResp = await Client.PostAsync($"/api/monsters/{created.Id}/tags/{tag.Id}", null);
+        Assert.Equal(HttpStatusCode.Created, assignResp.StatusCode);
 
         var list = await Client.GetFromJsonAsync<List<MonsterListDto>>("/api/monsters");
         var listed = Assert.Single(list!, m => m.Id == created.Id);

@@ -15,7 +15,7 @@ public record MonsterListDto(
     public string MonsterTypeDisplay => MonsterType.GetDisplayName();
 
     [JsonIgnore]
-    public string TagsDisplay => string.Join(", ", TagNames ?? []);
+    public string TagsDisplay => string.Join(", ", TagNames);
 }
 
 public record MonsterDetailDto(

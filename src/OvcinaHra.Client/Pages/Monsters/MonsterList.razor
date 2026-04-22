@@ -295,6 +295,9 @@ else
         {
             editingId = m.Id; name = m.Name; monsterType = m.MonsterType; category = m.Category;
             attack = m.Attack; defense = m.Defense; health = m.Health;
+            abilities = m.Abilities; aiBehavior = m.AiBehavior;
+            rewardXp = m.RewardXp ?? 0; rewardMoney = m.RewardMoney ?? 0;
+            rewardNotes = m.RewardNotes; notes = m.Notes;
             modalTitle = $"Upravit: {m.Name}";
             _ = LoadDetailAsync(m.Id);
         }
