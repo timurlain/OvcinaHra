@@ -56,7 +56,7 @@ public static class BuildingEndpoints
     {
         var b = await db.Buildings.FindAsync(id);
         if (b is null) return TypedResults.NotFound();
-        return TypedResults.Ok(new BuildingDetailDto(b.Id, b.Name, b.Description, b.ImagePath, b.LocationId, b.IsPrebuilt));
+        return TypedResults.Ok(new BuildingDetailDto(b.Id, b.Name, b.Description, b.Notes, b.ImagePath, b.LocationId, b.IsPrebuilt));
     }
 
     private static async Task<Created<BuildingDetailDto>> Create(CreateBuildingDto dto, HttpContext http, WorldDbContext db)
@@ -65,6 +65,7 @@ public static class BuildingEndpoints
         {
             Name = dto.Name,
             Description = dto.Description,
+            Notes = dto.Notes,
             LocationId = dto.LocationId,
             IsPrebuilt = dto.IsPrebuilt
         };
@@ -80,14 +81,14 @@ public static class BuildingEndpoints
         }
 
         return TypedResults.Created($"/api/buildings/{b.Id}",
-            new BuildingDetailDto(b.Id, b.Name, b.Description, b.ImagePath, b.LocationId, b.IsPrebuilt));
+            new BuildingDetailDto(b.Id, b.Name, b.Description, b.Notes, b.ImagePath, b.LocationId, b.IsPrebuilt));
     }
 
     private static async Task<Results<NoContent, NotFound>> Update(int id, UpdateBuildingDto dto, WorldDbContext db)
     {
         var b = await db.Buildings.FindAsync(id);
         if (b is null) return TypedResults.NotFound();
-        b.Name = dto.Name; b.Description = dto.Description; b.LocationId = dto.LocationId; b.IsPrebuilt = dto.IsPrebuilt;
+        b.Name = dto.Name; b.Description = dto.Description; b.Notes = dto.Notes; b.LocationId = dto.LocationId; b.IsPrebuilt = dto.IsPrebuilt;
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
     }

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using NpgsqlTypes;
@@ -12,9 +13,11 @@ using OvcinaHra.Api.Data;
 namespace OvcinaHra.Api.Migrations
 {
     [DbContext(typeof(WorldDbContext))]
-    partial class WorldDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260422040350_AddBuildingNotes")]
+    partial class AddBuildingNotes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -725,40 +728,6 @@ namespace OvcinaHra.Api.Migrations
                     b.ToTable("GameSkillBuildingRequirements");
                 });
 
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameSpell", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("AvailabilityNotes")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<int>("GameId")
-                        .HasColumnType("integer");
-
-                    b.Property<bool>("IsFindable")
-                        .HasColumnType("boolean");
-
-                    b.Property<int?>("Price")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("SpellId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SpellId");
-
-                    b.HasIndex("GameId", "SpellId")
-                        .IsUnique();
-
-                    b.ToTable("GameSpells");
-                });
-
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameTimeSlot", b =>
                 {
                     b.Property<int>("Id")
@@ -1397,75 +1366,6 @@ namespace OvcinaHra.Api.Migrations
                     b.ToTable("SkillBuildingRequirements");
                 });
 
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.Spell", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)");
-
-                    b.Property<string>("Effect")
-                        .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)");
-
-                    b.Property<string>("ImagePath")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<bool>("IsLearnable")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsReaction")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsScroll")
-                        .HasColumnType("boolean");
-
-                    b.Property<int>("Level")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("ManaCost")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("MinMageLevel")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<int?>("Price")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("School")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<NpgsqlTsVector>("SearchVector")
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("tsvector")
-                        .HasComputedColumnSql("to_tsvector('simple', coalesce(\"Name\", '') || ' ' || coalesce(\"Effect\", '') || ' ' || coalesce(\"Description\", ''))", true);
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Name")
-                        .IsUnique();
-
-                    b.HasIndex("SearchVector");
-
-                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchVector"), "GIN");
-
-                    b.ToTable("Spells");
-                });
-
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.Tag", b =>
                 {
                     b.Property<int>("Id")
@@ -1982,25 +1882,6 @@ namespace OvcinaHra.Api.Migrations
                     b.Navigation("Building");
 
                     b.Navigation("GameSkill");
-                });
-
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameSpell", b =>
-                {
-                    b.HasOne("OvcinaHra.Shared.Domain.Entities.Game", "Game")
-                        .WithMany()
-                        .HasForeignKey("GameId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("OvcinaHra.Shared.Domain.Entities.Spell", "Spell")
-                        .WithMany("GameSpells")
-                        .HasForeignKey("SpellId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Game");
-
-                    b.Navigation("Spell");
                 });
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameTimeSlot", b =>
@@ -2534,11 +2415,6 @@ namespace OvcinaHra.Api.Migrations
                     b.Navigation("BuildingRequirements");
 
                     b.Navigation("GameSkills");
-                });
-
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.Spell", b =>
-                {
-                    b.Navigation("GameSpells");
                 });
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.Tag", b =>
