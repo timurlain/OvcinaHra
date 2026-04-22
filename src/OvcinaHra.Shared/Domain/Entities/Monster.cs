@@ -15,6 +15,7 @@ public class Monster
     public int? RewardXp { get; set; }
     public int? RewardMoney { get; set; }
     public string? RewardNotes { get; set; }
+    public string? Notes { get; set; }
     public string? ImagePath { get; set; }
 
     public ICollection<MonsterTagLink> MonsterTags { get; set; } = [];
