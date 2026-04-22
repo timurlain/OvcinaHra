@@ -9,6 +9,8 @@ namespace OvcinaHra.Api.Endpoints;
 
 public static class MonsterEndpoints
 {
+    private const int MaxNotesLength = 1000;
+
     public static RouteGroupBuilder MapMonsterEndpoints(this IEndpointRouteBuilder routes)
     {
         var group = routes.MapGroup("/api/monsters").WithTags("Monsters");
@@ -42,7 +44,10 @@ public static class MonsterEndpoints
             .OrderBy(m => m.Name)
             .Select(m => new MonsterListDto(
                 m.Id, m.Name, m.MonsterType, m.Category,
-                m.Stats.Attack, m.Stats.Defense, m.Stats.Health))
+                m.Stats.Attack, m.Stats.Defense, m.Stats.Health,
+                m.RewardXp, m.RewardMoney,
+                m.Abilities, m.AiBehavior, m.RewardNotes, m.Notes,
+                m.MonsterTags.OrderBy(mt => mt.Tag.Name).Select(mt => mt.Tag.Name).ToList()))
             .ToListAsync();
         return TypedResults.Ok(monsters);
     }
@@ -58,11 +63,14 @@ public static class MonsterEndpoints
         return TypedResults.Ok(new MonsterDetailDto(
             m.Id, m.Name, m.Category, m.MonsterType, m.Abilities, m.AiBehavior,
             m.Stats.Attack, m.Stats.Defense, m.Stats.Health,
-            m.RewardXp, m.RewardMoney, m.RewardNotes, m.ImagePath, tags));
+            m.RewardXp, m.RewardMoney, m.RewardNotes, m.Notes, m.ImagePath, tags));
     }
 
-    private static async Task<Created<MonsterDetailDto>> Create(CreateMonsterDto dto, WorldDbContext db)
+    private static async Task<Results<Created<MonsterDetailDto>, BadRequest<string>>> Create(CreateMonsterDto dto, WorldDbContext db)
     {
+        if (dto.Notes?.Length > MaxNotesLength)
+            return TypedResults.BadRequest($"Notes cannot exceed {MaxNotesLength} characters.");
+
         var m = new Monster
         {
             Name = dto.Name,
@@ -73,7 +81,8 @@ public static class MonsterEndpoints
             AiBehavior = dto.AiBehavior,
             RewardXp = dto.RewardXp,
             RewardMoney = dto.RewardMoney,
-            RewardNotes = dto.RewardNotes
+            RewardNotes = dto.RewardNotes,
+            Notes = dto.Notes
         };
         db.Monsters.Add(m);
         await db.SaveChangesAsync();
@@ -81,11 +90,14 @@ public static class MonsterEndpoints
         return TypedResults.Created($"/api/monsters/{m.Id}",
             new MonsterDetailDto(m.Id, m.Name, m.Category, m.MonsterType, m.Abilities, m.AiBehavior,
                 m.Stats.Attack, m.Stats.Defense, m.Stats.Health,
-                m.RewardXp, m.RewardMoney, m.RewardNotes, m.ImagePath, []));
+                m.RewardXp, m.RewardMoney, m.RewardNotes, m.Notes, m.ImagePath, []));
     }
 
-    private static async Task<Results<NoContent, NotFound>> Update(int id, UpdateMonsterDto dto, WorldDbContext db)
+    private static async Task<Results<NoContent, NotFound, BadRequest<string>>> Update(int id, UpdateMonsterDto dto, WorldDbContext db)
     {
+        if (dto.Notes?.Length > MaxNotesLength)
+            return TypedResults.BadRequest($"Notes cannot exceed {MaxNotesLength} characters.");
+
         var m = await db.Monsters.FindAsync(id);
         if (m is null) return TypedResults.NotFound();
 
@@ -98,6 +110,7 @@ public static class MonsterEndpoints
         m.RewardXp = dto.RewardXp;
         m.RewardMoney = dto.RewardMoney;
         m.RewardNotes = dto.RewardNotes;
+        m.Notes = dto.Notes;
 
         await db.SaveChangesAsync();
         return TypedResults.NoContent();

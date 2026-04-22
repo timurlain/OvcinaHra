@@ -12,6 +12,7 @@ public class MonsterConfiguration : IEntityTypeConfiguration<Monster>
         builder.Property(e => e.Name).IsRequired().HasMaxLength(200);
         builder.HasIndex(e => e.Name).IsUnique();
         builder.Property(e => e.MonsterType).HasConversion<string>().HasMaxLength(30);
+        builder.Property(e => e.Notes).HasMaxLength(1000);
 
         builder.OwnsOne(e => e.Stats, s =>
         {

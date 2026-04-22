@@ -31,7 +31,7 @@ else if (!Catalog && monsters.Count == 0)
 }
 else
 {
-    <OvcinaGrid Data="@monsters" KeyFieldName="Id" LayoutKey="grid-layout-monsters"
+    <OvcinaGrid Data="@monsters" KeyFieldName="Id" LayoutKey="grid-layout-monsters-v2"
                 RowClick="@(e => OpenModal((MonsterListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             <DxGridDataColumn FieldName="Name" Caption="Název" />
@@ -40,6 +40,13 @@ else
             <DxGridDataColumn FieldName="Attack" Caption="Útok" Width="80px" />
             <DxGridDataColumn FieldName="Defense" Caption="Obrana" Width="80px" />
             <DxGridDataColumn FieldName="Health" Caption="Životy" Width="80px" />
+            <DxGridDataColumn FieldName="RewardXp" Caption="XP" Width="80px" />
+            <DxGridDataColumn FieldName="RewardMoney" Caption="Groše" Width="90px" />
+            <DxGridDataColumn FieldName="TagsDisplay" Caption="Tagy" Width="180px" />
+            <DxGridDataColumn FieldName="Abilities" Caption="Schopnosti" Width="240px" Visible="false" />
+            <DxGridDataColumn FieldName="AiBehavior" Caption="AI chování" Width="240px" Visible="false" />
+            <DxGridDataColumn FieldName="RewardNotes" Caption="Odměna pozn." Width="200px" Visible="false" />
+            <DxGridDataColumn FieldName="Notes" Caption="Poznámky" Width="240px" Visible="false" />
             @if (Catalog)
             {
                 <DxGridDataColumn FieldName="Id" Caption="Hra" Width="130px" AllowSort="false" AllowGroup="false">
@@ -93,6 +100,9 @@ else
             </DxFormLayoutItem>
             <DxFormLayoutItem Caption="AI chování" ColSpanMd="12">
                 <DxMemo @bind-Text="@aiBehavior" Rows="2" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Poznámky" ColSpanMd="12">
+                <DxMemo @bind-Text="@notes" Rows="3" />
             </DxFormLayoutItem>
             <DxFormLayoutGroup Caption="Odměny" ColSpanMd="12">
                 <DxFormLayoutItem Caption="XP" ColSpanMd="4">
@@ -184,7 +194,7 @@ else
     private List<MonsterListDto> monsters = [];
     private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
     private string modalTitle = "", name = "";
-    private string? error, abilities, aiBehavior, rewardNotes;
+    private string? error, abilities, aiBehavior, rewardNotes, notes;
     private int? editingId;
     private MonsterType monsterType = MonsterType.Beast;
     private int category = 1, attack = 1, defense = 1, health = 5;
@@ -278,13 +288,16 @@ else
         {
             editingId = null; name = ""; monsterType = MonsterType.Beast; category = 1;
             attack = 1; defense = 1; health = 5; abilities = null; aiBehavior = null;
-            rewardXp = 0; rewardMoney = 0; rewardNotes = null;
+            rewardXp = 0; rewardMoney = 0; rewardNotes = null; notes = null;
             modalTitle = "Nová příšera";
         }
         else
         {
             editingId = m.Id; name = m.Name; monsterType = m.MonsterType; category = m.Category;
             attack = m.Attack; defense = m.Defense; health = m.Health;
+            abilities = m.Abilities; aiBehavior = m.AiBehavior;
+            rewardXp = m.RewardXp ?? 0; rewardMoney = m.RewardMoney ?? 0;
+            rewardNotes = m.RewardNotes; notes = m.Notes;
             modalTitle = $"Upravit: {m.Name}";
             _ = LoadDetailAsync(m.Id);
         }
@@ -294,7 +307,7 @@ else
     private async Task LoadDetailAsync(int id)
     {
         var d = await Api.GetAsync<MonsterDetailDto>($"/api/monsters/{id}");
-        if (d is not null) { abilities = d.Abilities; aiBehavior = d.AiBehavior; rewardXp = d.RewardXp ?? 0; rewardMoney = d.RewardMoney ?? 0; rewardNotes = d.RewardNotes; }
+        if (d is not null) { abilities = d.Abilities; aiBehavior = d.AiBehavior; rewardXp = d.RewardXp ?? 0; rewardMoney = d.RewardMoney ?? 0; rewardNotes = d.RewardNotes; notes = d.Notes; }
         await LoadLootAsync(id);
         StateHasChanged();
     }
@@ -339,9 +352,9 @@ else
             int? xp = rewardXp > 0 ? rewardXp : null;
             int? money = rewardMoney > 0 ? rewardMoney : null;
             if (editingId.HasValue)
-                await Api.PutAsync($"/api/monsters/{editingId}", new UpdateMonsterDto(name, category, monsterType, attack, defense, health, abilities, aiBehavior, xp, money, rewardNotes));
+                await Api.PutAsync($"/api/monsters/{editingId}", new UpdateMonsterDto(name, category, monsterType, attack, defense, health, abilities, aiBehavior, xp, money, rewardNotes, notes));
             else
-                await Api.PostAsync<CreateMonsterDto, MonsterDetailDto>("/api/monsters", new CreateMonsterDto(name, category, monsterType, attack, defense, health, abilities, aiBehavior, xp, money, rewardNotes));
+                await Api.PostAsync<CreateMonsterDto, MonsterDetailDto>("/api/monsters", new CreateMonsterDto(name, category, monsterType, attack, defense, health, abilities, aiBehavior, xp, money, rewardNotes, notes));
             isModalVisible = false; await LoadAsync();
         }
         catch (Exception ex) { error = ex.Message; }

@@ -4,10 +4,18 @@ using OvcinaHra.Shared.Extensions;
 
 namespace OvcinaHra.Shared.Dtos;
 
-public record MonsterListDto(int Id, string Name, MonsterType MonsterType, int Category, int Attack, int Defense, int Health)
+public record MonsterListDto(
+    int Id, string Name, MonsterType MonsterType, int Category,
+    int Attack, int Defense, int Health,
+    int? RewardXp, int? RewardMoney,
+    string? Abilities, string? AiBehavior, string? RewardNotes, string? Notes,
+    List<string> TagNames)
 {
     [JsonIgnore]
     public string MonsterTypeDisplay => MonsterType.GetDisplayName();
+
+    [JsonIgnore]
+    public string TagsDisplay => string.Join(", ", TagNames);
 }
 
 public record MonsterDetailDto(
@@ -23,6 +31,7 @@ public record MonsterDetailDto(
     int? RewardXp,
     int? RewardMoney,
     string? RewardNotes,
+    string? Notes,
     string? ImagePath,
     List<TagDto> Tags);
 
@@ -37,7 +46,8 @@ public record CreateMonsterDto(
     string? AiBehavior = null,
     int? RewardXp = null,
     int? RewardMoney = null,
-    string? RewardNotes = null);
+    string? RewardNotes = null,
+    string? Notes = null);
 
 public record UpdateMonsterDto(
     string Name,
@@ -50,7 +60,8 @@ public record UpdateMonsterDto(
     string? AiBehavior,
     int? RewardXp,
     int? RewardMoney,
-    string? RewardNotes);
+    string? RewardNotes,
+    string? Notes = null);
 
 // Per-game monster assignment
 public record GameMonsterDto(int GameId, int MonsterId, string MonsterName);
