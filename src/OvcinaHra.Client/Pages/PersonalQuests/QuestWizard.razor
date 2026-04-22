@@ -263,6 +263,7 @@
 
     private WizardModel model = new();
     private bool loaded;
+    private bool wasVisible;
 
     // Catalog reference lists.
     private List<SkillDto> allSkills = new();
@@ -304,6 +305,27 @@
     // Scroll detection for optional quantity spinner.
     private bool SelectedSpellIsScroll =>
         newSpellId is int id && allSpells.FirstOrDefault(s => s.Id == id)?.IsScroll == true;
+
+    public override async Task SetParametersAsync(ParameterView parameters)
+    {
+        await base.SetParametersAsync(parameters);
+        if (Visible && !wasVisible)
+        {
+            // Closed → open transition. Reset form state so a reopened wizard is pristine.
+            model = new();
+            newSkillId = null;
+            newItemId = null;
+            newSpellId = null;
+            newItemQuantity = 1;
+            newSpellQuantity = 1;
+            error = null;
+            progressLabel = "";
+            skillCreatorVisible = false;
+            itemCreatorVisible = false;
+            spellCreatorVisible = false;
+        }
+        wasVisible = Visible;
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -454,7 +476,7 @@
             progressLabel = "Hotovo.";
             await Saved.InvokeAsync();
             await VisibleChanged.InvokeAsync(false);
-            model = new();  // reset for next open
+            // Form reset now centralized in SetParametersAsync on closed → open transition.
         }
         catch (Exception ex)
         {

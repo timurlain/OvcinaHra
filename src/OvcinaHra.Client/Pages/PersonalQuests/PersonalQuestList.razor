@@ -17,7 +17,7 @@
                     @onclick='() => Nav.NavigateTo("/personal-quests?catalog=true")'>Katalog</button>
         </div>
         <button class="btn btn-primary" @onclick="() => OpenModal((PersonalQuestListDto?)null)">+ Nový osobní quest</button>
-        @if (!Catalog && GameContext.SelectedGameId is int wizardGameId)
+        @if (!Catalog && GameContext.SelectedGameId.HasValue)
         {
             <button class="btn btn-outline-primary ms-2" @onclick="() => wizardVisible = true">
                 <i class="bi bi-magic me-1"></i>Vytvořit quest pro hru

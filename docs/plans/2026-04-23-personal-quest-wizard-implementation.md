@@ -21,7 +21,7 @@
 - `Api.PostAsync<TRequest, TResponse>(path, body)` + `Api.DeleteAsync(path)` patterns established in `PersonalQuestList.razor`.
 - Destructive UI actions need `DxPopup` confirmations; reward badges follow the existing "no-confirm" pattern (match Items).
 
-**Working directory:** `C:\Users\TomášPajonk\source\repos\timurlain\ovcinahra`.
+**Working directory:** Repository root (`.`).
 
 ---
 
