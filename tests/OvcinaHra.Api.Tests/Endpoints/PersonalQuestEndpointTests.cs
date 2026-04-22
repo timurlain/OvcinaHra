@@ -639,4 +639,23 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
             $"/api/personal-quests/{quest.Id}");
         Assert.Empty(reloaded!.ItemRewards);
     }
+
+    [Fact]
+    public async Task CreateQuest_WithXpCost_Persisted()
+    {
+        var create = new CreatePersonalQuestDto(
+            Name: "Test XP Quest",
+            Difficulty: TreasureQuestDifficulty.Early,
+            Description: null,
+            AllowWarrior: true, AllowArcher: false, AllowMage: false, AllowThief: false,
+            QuestCardText: null, RewardCardText: null, RewardNote: null, Notes: null,
+            XpCost: 12);
+
+        var resp = await Client.PostAsJsonAsync("/api/personal-quests", create);
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+
+        var body = await resp.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
+        Assert.NotNull(body);
+        Assert.Equal(12, body.XpCost);
+    }
 }

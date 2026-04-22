@@ -71,7 +71,8 @@ public static class PersonalQuestEndpoints
             QuestCardText = dto.QuestCardText,
             RewardCardText = dto.RewardCardText,
             RewardNote = dto.RewardNote,
-            Notes = dto.Notes
+            Notes = dto.Notes,
+            XpCost = dto.XpCost
         };
         db.PersonalQuests.Add(q);
         await db.SaveChangesAsync();
@@ -95,6 +96,7 @@ public static class PersonalQuestEndpoints
         q.RewardCardText = dto.RewardCardText;
         q.RewardNote = dto.RewardNote;
         q.Notes = dto.Notes;
+        q.XpCost = dto.XpCost;
 
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
@@ -115,7 +117,8 @@ public static class PersonalQuestEndpoints
         q.AllowWarrior, q.AllowArcher, q.AllowMage, q.AllowThief,
         q.QuestCardText, q.RewardCardText, q.RewardNote, q.Notes, q.ImagePath,
         q.SkillRewards.Select(sr => new SkillRewardDto(sr.SkillId, sr.Skill?.Name ?? string.Empty)).ToList(),
-        q.ItemRewards.Select(ir => new ItemRewardDto(ir.ItemId, ir.Item?.Name ?? string.Empty, ir.Quantity)).ToList());
+        q.ItemRewards.Select(ir => new ItemRewardDto(ir.ItemId, ir.Item?.Name ?? string.Empty, ir.Quantity)).ToList(),
+        q.XpCost);
 
     private static PersonalQuestListDto ToListDto(PersonalQuest q) => new(
         q.Id, q.Name, q.Description, q.Difficulty,
@@ -123,7 +126,8 @@ public static class PersonalQuestEndpoints
         q.QuestCardText, q.RewardCardText, q.RewardNote, q.Notes, q.ImagePath,
         q.SkillRewards.Select(sr => sr.SkillId).ToList(),
         q.ItemRewards.Select(ir => new PersonalQuestItemRewardSummary(ir.ItemId, ir.Item.Name, ir.Quantity)).ToList(),
-        BuildRewardSummary(q));
+        BuildRewardSummary(q),
+        q.XpCost);
 
     // ---------- Per-game link endpoints ----------
 
