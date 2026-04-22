@@ -639,4 +639,279 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
             $"/api/personal-quests/{quest.Id}");
         Assert.Empty(reloaded!.ItemRewards);
     }
+
+    [Fact]
+    public async Task CreateQuest_WithXpCost_Persisted()
+    {
+        var create = new CreatePersonalQuestDto(
+            Name: "Test XP Quest",
+            Difficulty: TreasureQuestDifficulty.Early,
+            Description: null,
+            AllowWarrior: true, AllowArcher: false, AllowMage: false, AllowThief: false,
+            QuestCardText: null, RewardCardText: null, RewardNote: null, Notes: null,
+            XpCost: 12);
+
+        var resp = await Client.PostAsJsonAsync("/api/personal-quests", create);
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+
+        var body = await resp.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
+        Assert.NotNull(body);
+        Assert.Equal(12, body.XpCost);
+    }
+
+    [Fact]
+    public async Task GamePersonalQuest_XpCostNull_EffectiveFallsBackToCatalog()
+    {
+        var gameResponse = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Hra fallback", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
+
+        var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
+            new CreatePersonalQuestDto(
+                Name: "Fallback úkol",
+                Difficulty: TreasureQuestDifficulty.Early,
+                XpCost: 42));
+        var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
+
+        var link = await Client.PostAsJsonAsync("/api/personal-quests/game-link",
+            new CreateGamePersonalQuestDto(GameId: game!.Id, PersonalQuestId: quest!.Id,
+                                           XpCost: null, PerKingdomLimit: null));
+        Assert.Equal(HttpStatusCode.Created, link.StatusCode);
+
+        var list = await Client.GetFromJsonAsync<List<GamePersonalQuestListDto>>(
+            $"/api/personal-quests/by-game/{game.Id}");
+        Assert.NotNull(list);
+        var row = Assert.Single(list);
+
+        Assert.Null(row.XpCost);
+        Assert.Equal(42, row.EffectiveXpCost);
+    }
+
+    [Fact]
+    public async Task GamePersonalQuest_XpCostSet_EffectiveEqualsOverride()
+    {
+        var gameResponse = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Hra override", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
+
+        var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
+            new CreatePersonalQuestDto(
+                Name: "Override úkol",
+                Difficulty: TreasureQuestDifficulty.Early,
+                XpCost: 42));
+        var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
+
+        await Client.PostAsJsonAsync("/api/personal-quests/game-link",
+            new CreateGamePersonalQuestDto(game!.Id, quest!.Id, XpCost: 7, PerKingdomLimit: null));
+
+        var list = await Client.GetFromJsonAsync<List<GamePersonalQuestListDto>>(
+            $"/api/personal-quests/by-game/{game.Id}");
+        var row = Assert.Single(list!);
+
+        Assert.Equal(7, row.XpCost);
+        Assert.Equal(7, row.EffectiveXpCost);
+    }
+
+    // ======================================================================
+    // Batch D — Spell reward endpoints (Tasks 4–7)
+    // ======================================================================
+
+    [Fact]
+    public async Task SpellReward_NonLearnable_Returns201()
+    {
+        var quest = await CreatePersonalQuestAsync();
+        var spell = await CreateSpellAsync(name: "Svitek ohně (test)",
+                                           isScroll: true, isLearnable: false);
+
+        var resp = await Client.PostAsJsonAsync(
+            $"/api/personal-quests/{quest.Id}/spell-rewards",
+            new AddSpellRewardDto(spell.Id, Quantity: 1));
+
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+
+        var detail = await Client.GetFromJsonAsync<PersonalQuestDetailDto>(
+            $"/api/personal-quests/{quest.Id}");
+        Assert.NotNull(detail);
+        Assert.Single(detail.SpellRewards);
+        Assert.Equal(spell.Id, detail.SpellRewards[0].SpellId);
+        Assert.Equal(1, detail.SpellRewards[0].Quantity);
+    }
+
+    [Fact]
+    public async Task SpellReward_LearnableSpell_Returns400()
+    {
+        var quest = await CreatePersonalQuestAsync();
+        var spell = await CreateSpellAsync(name: "Učenlivé kouzlo (test)",
+                                           isScroll: false, isLearnable: true);
+
+        var resp = await Client.PostAsJsonAsync(
+            $"/api/personal-quests/{quest.Id}/spell-rewards",
+            new AddSpellRewardDto(spell.Id));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        var detail = await Client.GetFromJsonAsync<PersonalQuestDetailDto>(
+            $"/api/personal-quests/{quest.Id}");
+        Assert.Empty(detail!.SpellRewards);
+    }
+
+    [Fact]
+    public async Task SpellReward_Scroll_QuantityGreaterThanOne_Persisted()
+    {
+        var quest = await CreatePersonalQuestAsync();
+        var scroll = await CreateSpellAsync(name: "Svitek léčení (test)",
+                                            isScroll: true, isLearnable: false);
+
+        var resp = await Client.PostAsJsonAsync(
+            $"/api/personal-quests/{quest.Id}/spell-rewards",
+            new AddSpellRewardDto(scroll.Id, Quantity: 3));
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+
+        var detail = await Client.GetFromJsonAsync<PersonalQuestDetailDto>(
+            $"/api/personal-quests/{quest.Id}");
+        var reward = Assert.Single(detail!.SpellRewards);
+        Assert.Equal(3, reward.Quantity);
+        Assert.True(reward.IsScroll);
+    }
+
+    [Fact]
+    public async Task Delete_SpellReward_Returns204()
+    {
+        var quest = await CreatePersonalQuestAsync();
+        var spell = await CreateSpellAsync(name: "Svitek bleskového úderu (test)",
+                                            isScroll: true, isLearnable: false);
+
+        await Client.PostAsJsonAsync($"/api/personal-quests/{quest.Id}/spell-rewards",
+            new AddSpellRewardDto(spell.Id));
+
+        var del = await Client.DeleteAsync(
+            $"/api/personal-quests/{quest.Id}/spell-rewards/{spell.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, del.StatusCode);
+
+        var detail = await Client.GetFromJsonAsync<PersonalQuestDetailDto>(
+            $"/api/personal-quests/{quest.Id}");
+        Assert.Empty(detail!.SpellRewards);
+    }
+
+    [Fact]
+    public async Task GetByGame_QuestWithSpellReward_IncludesSpellInRewardSummary()
+    {
+        var game = await CreateGameAsync();
+        var quest = await CreatePersonalQuestAsync(xpCost: 5);
+        var scroll = await CreateSpellAsync(name: "Svitek léčení (test-summary)",
+                                            isScroll: true, isLearnable: false);
+        await Client.PostAsJsonAsync(
+            $"/api/personal-quests/{quest.Id}/spell-rewards",
+            new AddSpellRewardDto(scroll.Id, Quantity: 2));
+        await Client.PostAsJsonAsync("/api/personal-quests/game-link",
+            new CreateGamePersonalQuestDto(game.Id, quest.Id, XpCost: null, PerKingdomLimit: null));
+
+        var list = await Client.GetFromJsonAsync<List<GamePersonalQuestListDto>>(
+            $"/api/personal-quests/by-game/{game.Id}");
+        var row = Assert.Single(list!);
+        Assert.NotNull(row.RewardSummary);
+        Assert.Contains("Svitek léčení (test-summary)", row.RewardSummary);
+        Assert.Contains("×2", row.RewardSummary);
+        // Confirm SpellRewards arrays are populated on the list DTO too
+        Assert.Single(row.SpellRewards);
+        Assert.Equal(scroll.Id, row.SpellRewards[0].SpellId);
+        Assert.Equal(2, row.SpellRewards[0].Quantity);
+        Assert.True(row.SpellRewards[0].IsScroll);
+    }
+
+    [Fact]
+    public async Task CreateQuest_NegativeXpCost_Returns400()
+    {
+        var dto = new CreatePersonalQuestDto(
+            Name: "Bad XP quest",
+            Difficulty: TreasureQuestDifficulty.Early,
+            Description: null,
+            AllowWarrior: true, AllowArcher: false, AllowMage: false, AllowThief: false,
+            QuestCardText: null, RewardCardText: null, RewardNote: null, Notes: null,
+            XpCost: -5);
+
+        var resp = await Client.PostAsJsonAsync("/api/personal-quests", dto);
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateQuest_NegativeXpCost_Returns400()
+    {
+        var quest = await CreatePersonalQuestAsync(xpCost: 5);
+        var upd = new UpdatePersonalQuestDto(
+            Name: quest.Name,
+            Difficulty: quest.Difficulty,
+            Description: null,
+            AllowWarrior: false, AllowArcher: false, AllowMage: false, AllowThief: false,
+            QuestCardText: null, RewardCardText: null, RewardNote: null, Notes: null,
+            XpCost: -1);
+
+        var resp = await Client.PutAsJsonAsync($"/api/personal-quests/{quest.Id}", upd);
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task SpellReward_Duplicate_Returns409()
+    {
+        var quest = await CreatePersonalQuestAsync();
+        var spell = await CreateSpellAsync(name: "Dvojitý svitek (test)",
+                                            isScroll: true, isLearnable: false);
+
+        var first = await Client.PostAsJsonAsync(
+            $"/api/personal-quests/{quest.Id}/spell-rewards",
+            new AddSpellRewardDto(spell.Id));
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+
+        var second = await Client.PostAsJsonAsync(
+            $"/api/personal-quests/{quest.Id}/spell-rewards",
+            new AddSpellRewardDto(spell.Id));
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+    }
+
+    // ---------- helpers ----------
+
+    private async Task<PersonalQuestDetailDto> CreatePersonalQuestAsync(
+        string name = "Test quest",
+        int xpCost = 0)
+    {
+        var resp = await Client.PostAsJsonAsync("/api/personal-quests",
+            new CreatePersonalQuestDto(
+                Name: name,
+                Difficulty: TreasureQuestDifficulty.Early,
+                XpCost: xpCost));
+        resp.EnsureSuccessStatusCode();
+        var quest = await resp.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
+        return quest!;
+    }
+
+    private async Task<GameDetailDto> CreateGameAsync(string name = "Test Hra")
+    {
+        var resp = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto(name, 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        resp.EnsureSuccessStatusCode();
+        var game = await resp.Content.ReadFromJsonAsync<GameDetailDto>();
+        return game!;
+    }
+
+    private async Task<Spell> CreateSpellAsync(
+        string name,
+        bool isScroll,
+        bool isLearnable)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        var spell = new Spell
+        {
+            Name = name,
+            Effect = "Testovací efekt",
+            IsScroll = isScroll,
+            IsLearnable = isLearnable,
+            Level = isScroll ? 0 : 1,
+            ManaCost = isScroll ? 0 : 1
+        };
+        db.Spells.Add(spell);
+        await db.SaveChangesAsync();
+        return spell;
+    }
 }

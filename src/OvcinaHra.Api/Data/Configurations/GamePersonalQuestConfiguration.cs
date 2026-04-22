@@ -16,7 +16,8 @@ public class GamePersonalQuestConfiguration : IEntityTypeConfiguration<GamePerso
         b.HasIndex(e => e.GameId);
         b.ToTable(t =>
         {
-            t.HasCheckConstraint("CK_GamePersonalQuest_XpCost_NonNegative", "\"XpCost\" >= 0");
+            t.HasCheckConstraint("CK_GamePersonalQuest_XpCost_NonNegative",
+                "\"XpCost\" IS NULL OR \"XpCost\" >= 0");
             t.HasCheckConstraint("CK_GamePersonalQuest_PKL_Positive",
                 "\"PerKingdomLimit\" IS NULL OR \"PerKingdomLimit\" >= 1");
         });

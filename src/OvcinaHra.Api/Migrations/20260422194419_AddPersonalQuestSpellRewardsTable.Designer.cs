@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using NpgsqlTypes;
@@ -12,9 +13,11 @@ using OvcinaHra.Api.Data;
 namespace OvcinaHra.Api.Migrations
 {
     [DbContext(typeof(WorldDbContext))]
-    partial class WorldDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260422194419_AddPersonalQuestSpellRewardsTable")]
+    partial class AddPersonalQuestSpellRewardsTable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1150,10 +1153,7 @@ namespace OvcinaHra.Api.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("PersonalQuests", t =>
-                        {
-                            t.HasCheckConstraint("CK_PersonalQuest_XpCost_NonNegative", "\"XpCost\" >= 0");
-                        });
+                    b.ToTable("PersonalQuests");
                 });
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.PersonalQuestItemReward", b =>

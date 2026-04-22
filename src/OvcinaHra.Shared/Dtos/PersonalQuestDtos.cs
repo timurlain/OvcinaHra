@@ -20,7 +20,9 @@ public record PersonalQuestListDto(
     string? ImagePath,
     IReadOnlyList<int> SkillRewardIds,
     IReadOnlyList<PersonalQuestItemRewardSummary> ItemRewards,
-    string? RewardSummary = null)
+    IReadOnlyList<PersonalQuestSpellRewardSummary> SpellRewards,
+    string? RewardSummary = null,
+    int XpCost = 0)
 {
     [JsonIgnore]
     public string DifficultyDisplay => Difficulty.GetDisplayName();
@@ -47,6 +49,8 @@ public record PersonalQuestListDto(
 
 public record PersonalQuestItemRewardSummary(int ItemId, string ItemName, int Quantity);
 
+public record PersonalQuestSpellRewardSummary(int SpellId, string SpellName, bool IsScroll, int Quantity);
+
 public record PersonalQuestDetailDto(
     int Id,
     string Name,
@@ -62,7 +66,9 @@ public record PersonalQuestDetailDto(
     string? Notes,
     string? ImagePath,
     List<SkillRewardDto> SkillRewards,
-    List<ItemRewardDto> ItemRewards);
+    List<ItemRewardDto> ItemRewards,
+    IReadOnlyList<PersonalQuestSpellRewardSummary> SpellRewards,
+    int XpCost = 0);
 
 public record SkillRewardDto(int SkillId, string SkillName);
 public record ItemRewardDto(int ItemId, string ItemName, int Quantity);
@@ -78,7 +84,8 @@ public record CreatePersonalQuestDto(
     string? QuestCardText = null,
     string? RewardCardText = null,
     string? RewardNote = null,
-    string? Notes = null);
+    string? Notes = null,
+    int XpCost = 0);
 
 public record UpdatePersonalQuestDto(
     string Name,
@@ -91,7 +98,8 @@ public record UpdatePersonalQuestDto(
     string? QuestCardText,
     string? RewardCardText,
     string? RewardNote,
-    string? Notes);
+    string? Notes,
+    int XpCost = 0);
 
 public record GamePersonalQuestListDto(
     int Id,            // PersonalQuest.Id, matches the ListDto for popup reuse
@@ -108,9 +116,11 @@ public record GamePersonalQuestListDto(
     string? Notes,
     string? ImagePath,
     int GameId,
-    int XpCost,
+    int? XpCost,
+    int EffectiveXpCost,
     int? PerKingdomLimit,
-    string? RewardSummary)
+    string? RewardSummary,
+    IReadOnlyList<PersonalQuestSpellRewardSummary> SpellRewards)
 {
     [JsonIgnore]
     public string DifficultyDisplay => Difficulty.GetDisplayName();
@@ -138,13 +148,14 @@ public record GamePersonalQuestListDto(
 public record GamePersonalQuestDto(
     int GameId,
     int PersonalQuestId,
-    int XpCost,
+    int? XpCost,
     int? PerKingdomLimit);
 
 public record CreateGamePersonalQuestDto(int GameId, int PersonalQuestId,
-    int XpCost = 0, int? PerKingdomLimit = null);
+    int? XpCost = null, int? PerKingdomLimit = null);
 
-public record UpdateGamePersonalQuestDto(int XpCost, int? PerKingdomLimit);
+public record UpdateGamePersonalQuestDto(int? XpCost, int? PerKingdomLimit);
 
 public record AddSkillRewardDto(int SkillId);
 public record AddItemRewardDto(int ItemId, int Quantity = 1);
+public record AddSpellRewardDto(int SpellId, int Quantity = 1);

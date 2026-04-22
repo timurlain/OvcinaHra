@@ -29,6 +29,8 @@ public static class PersonalQuestEndpoints
         group.MapDelete("/{id:int}/skill-rewards/{skillId:int}", RemoveSkillReward);
         group.MapPost("/{id:int}/item-rewards", AddItemReward);
         group.MapDelete("/{id:int}/item-rewards/{itemId:int}", RemoveItemReward);
+        group.MapPost("/{id:int}/spell-rewards", AddSpellReward);
+        group.MapDelete("/{id:int}/spell-rewards/{spellId:int}", RemoveSpellReward);
 
         return group;
     }
@@ -39,6 +41,7 @@ public static class PersonalQuestEndpoints
             .AsNoTracking()
             .Include(q => q.SkillRewards).ThenInclude(sr => sr.Skill)
             .Include(q => q.ItemRewards).ThenInclude(r => r.Item)
+            .Include(q => q.SpellRewards).ThenInclude(sr => sr.Spell)
             .OrderBy(q => q.Name)
             .ToListAsync();
 
@@ -51,14 +54,18 @@ public static class PersonalQuestEndpoints
             .AsNoTracking()
             .Include(pq => pq.SkillRewards).ThenInclude(sr => sr.Skill)
             .Include(pq => pq.ItemRewards).ThenInclude(ir => ir.Item)
+            .Include(pq => pq.SpellRewards).ThenInclude(sr => sr.Spell)
             .FirstOrDefaultAsync(pq => pq.Id == id);
         if (q is null) return TypedResults.NotFound();
 
         return TypedResults.Ok(ToDetailDto(q));
     }
 
-    private static async Task<Created<PersonalQuestDetailDto>> Create(CreatePersonalQuestDto dto, WorldDbContext db)
+    private static async Task<Results<Created<PersonalQuestDetailDto>, BadRequest<string>>> Create(CreatePersonalQuestDto dto, WorldDbContext db)
     {
+        if (dto.XpCost < 0)
+            return TypedResults.BadRequest("XP cena nesmí být záporná.");
+
         var q = new PersonalQuest
         {
             Name = dto.Name,
@@ -71,7 +78,8 @@ public static class PersonalQuestEndpoints
             QuestCardText = dto.QuestCardText,
             RewardCardText = dto.RewardCardText,
             RewardNote = dto.RewardNote,
-            Notes = dto.Notes
+            Notes = dto.Notes,
+            XpCost = dto.XpCost
         };
         db.PersonalQuests.Add(q);
         await db.SaveChangesAsync();
@@ -79,8 +87,11 @@ public static class PersonalQuestEndpoints
         return TypedResults.Created($"/api/personal-quests/{q.Id}", ToDetailDto(q));
     }
 
-    private static async Task<Results<NoContent, NotFound>> Update(int id, UpdatePersonalQuestDto dto, WorldDbContext db)
+    private static async Task<Results<NoContent, NotFound, BadRequest<string>>> Update(int id, UpdatePersonalQuestDto dto, WorldDbContext db)
     {
+        if (dto.XpCost < 0)
+            return TypedResults.BadRequest("XP cena nesmí být záporná.");
+
         var q = await db.PersonalQuests.FindAsync(id);
         if (q is null) return TypedResults.NotFound();
 
@@ -95,6 +106,7 @@ public static class PersonalQuestEndpoints
         q.RewardCardText = dto.RewardCardText;
         q.RewardNote = dto.RewardNote;
         q.Notes = dto.Notes;
+        q.XpCost = dto.XpCost;
 
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
@@ -115,7 +127,9 @@ public static class PersonalQuestEndpoints
         q.AllowWarrior, q.AllowArcher, q.AllowMage, q.AllowThief,
         q.QuestCardText, q.RewardCardText, q.RewardNote, q.Notes, q.ImagePath,
         q.SkillRewards.Select(sr => new SkillRewardDto(sr.SkillId, sr.Skill?.Name ?? string.Empty)).ToList(),
-        q.ItemRewards.Select(ir => new ItemRewardDto(ir.ItemId, ir.Item?.Name ?? string.Empty, ir.Quantity)).ToList());
+        q.ItemRewards.Select(ir => new ItemRewardDto(ir.ItemId, ir.Item?.Name ?? string.Empty, ir.Quantity)).ToList(),
+        q.SpellRewards.Select(sr => new PersonalQuestSpellRewardSummary(sr.SpellId, sr.Spell?.Name ?? string.Empty, sr.Spell?.IsScroll ?? false, sr.Quantity)).ToList(),
+        q.XpCost);
 
     private static PersonalQuestListDto ToListDto(PersonalQuest q) => new(
         q.Id, q.Name, q.Description, q.Difficulty,
@@ -123,7 +137,9 @@ public static class PersonalQuestEndpoints
         q.QuestCardText, q.RewardCardText, q.RewardNote, q.Notes, q.ImagePath,
         q.SkillRewards.Select(sr => sr.SkillId).ToList(),
         q.ItemRewards.Select(ir => new PersonalQuestItemRewardSummary(ir.ItemId, ir.Item.Name, ir.Quantity)).ToList(),
-        BuildRewardSummary(q));
+        q.SpellRewards.Select(sr => new PersonalQuestSpellRewardSummary(sr.SpellId, sr.Spell.Name, sr.Spell.IsScroll, sr.Quantity)).ToList(),
+        BuildRewardSummary(q),
+        q.XpCost);
 
     // ---------- Per-game link endpoints ----------
 
@@ -134,6 +150,7 @@ public static class PersonalQuestEndpoints
             .Where(g => g.GameId == gameId)
             .Include(g => g.PersonalQuest).ThenInclude(q => q.SkillRewards).ThenInclude(sr => sr.Skill)
             .Include(g => g.PersonalQuest).ThenInclude(q => q.ItemRewards).ThenInclude(ir => ir.Item)
+            .Include(g => g.PersonalQuest).ThenInclude(q => q.SpellRewards).ThenInclude(sr => sr.Spell)
             .OrderBy(g => g.PersonalQuest.Name)
             .ToListAsync();
 
@@ -193,8 +210,9 @@ public static class PersonalQuestEndpoints
             q.Id, q.Name, q.Description, q.Difficulty,
             q.AllowWarrior, q.AllowArcher, q.AllowMage, q.AllowThief,
             q.QuestCardText, q.RewardCardText, q.RewardNote, q.Notes, q.ImagePath,
-            g.GameId, g.XpCost, g.PerKingdomLimit,
-            BuildRewardSummary(q));
+            g.GameId, g.XpCost, g.XpCost ?? q.XpCost, g.PerKingdomLimit,
+            BuildRewardSummary(q),
+            q.SpellRewards.Select(sr => new PersonalQuestSpellRewardSummary(sr.SpellId, sr.Spell.Name, sr.Spell.IsScroll, sr.Quantity)).ToList());
     }
 
     private static string? BuildRewardSummary(PersonalQuest q)
@@ -209,6 +227,12 @@ public static class PersonalQuestEndpoints
         {
             parts.Add(string.Join(", ",
                 q.ItemRewards.OrderBy(i => i.Item.Name).Select(i => $"{i.Item.Name} ×{i.Quantity}")));
+        }
+        if (q.SpellRewards.Count > 0)
+        {
+            parts.Add(string.Join(", ",
+                q.SpellRewards.OrderBy(s => s.Spell.Name)
+                    .Select(s => s.Quantity > 1 ? $"{s.Spell.Name} ×{s.Quantity}" : s.Spell.Name)));
         }
         return parts.Count > 0 ? string.Join(" │ ", parts) : null;
     }
@@ -272,6 +296,46 @@ public static class PersonalQuestEndpoints
         if (ir is null) return TypedResults.NotFound();
 
         db.PersonalQuestItemRewards.Remove(ir);
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
+    }
+
+    private static async Task<IResult> AddSpellReward(int id, AddSpellRewardDto dto, WorldDbContext db)
+    {
+        if (!await db.PersonalQuests.AnyAsync(q => q.Id == id))
+            return TypedResults.NotFound($"Quest #{id} neexistuje.");
+
+        var spell = await db.Spells.FindAsync(dto.SpellId);
+        if (spell is null)
+            return TypedResults.NotFound($"Kouzlo #{dto.SpellId} neexistuje.");
+
+        if (spell.IsLearnable)
+            return TypedResults.BadRequest($"Kouzlo #{dto.SpellId} je naučitelné — nelze ho použít jako odměnu personal questu.");
+
+        var exists = await db.PersonalQuestSpellRewards
+            .AnyAsync(x => x.PersonalQuestId == id && x.SpellId == dto.SpellId);
+        if (exists)
+            return TypedResults.Conflict($"Kouzlo #{dto.SpellId} už je přiřazeno jako odměna tohoto questu.");
+
+        var link = new PersonalQuestSpellReward
+        {
+            PersonalQuestId = id,
+            SpellId = dto.SpellId,
+            Quantity = dto.Quantity
+        };
+        db.PersonalQuestSpellRewards.Add(link);
+        await db.SaveChangesAsync();
+
+        return TypedResults.Created($"/api/personal-quests/{id}/spell-rewards/{dto.SpellId}");
+    }
+
+    private static async Task<IResult> RemoveSpellReward(int id, int spellId, WorldDbContext db)
+    {
+        var link = await db.PersonalQuestSpellRewards
+            .FirstOrDefaultAsync(x => x.PersonalQuestId == id && x.SpellId == spellId);
+        if (link is null) return TypedResults.NotFound();
+
+        db.PersonalQuestSpellRewards.Remove(link);
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
     }

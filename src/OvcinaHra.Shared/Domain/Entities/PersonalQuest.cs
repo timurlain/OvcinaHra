@@ -19,9 +19,11 @@ public class PersonalQuest
     public string? RewardNote { get; set; }
     public string? Notes { get; set; }
     public string? ImagePath { get; set; }
+    public int XpCost { get; set; }
 
     public ICollection<PersonalQuestSkillReward> SkillRewards { get; set; } = [];
     public ICollection<PersonalQuestItemReward> ItemRewards { get; set; } = [];
+    public ICollection<PersonalQuestSpellReward> SpellRewards { get; set; } = [];
     public ICollection<GamePersonalQuest> GameLinks { get; set; } = [];
     public ICollection<CharacterPersonalQuest> CharacterAssignments { get; set; } = [];
 }

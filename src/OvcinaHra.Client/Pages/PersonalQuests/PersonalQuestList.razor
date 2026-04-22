@@ -92,7 +92,7 @@ else if (Catalog)
 }
 else
 {
-    <OvcinaGrid Data="@gameItems" KeyFieldName="Id" LayoutKey="grid-layout-personal-quests-game"
+    <OvcinaGrid Data="@gameItems" KeyFieldName="Id" LayoutKey="grid-layout-personal-quests-game-v2"
                 RowClick="@(e => OpenModal((GamePersonalQuestListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             <DxGridDataColumn FieldName="" Caption="" Width="40px" AllowSort="false" AllowGroup="false" FixedPosition="GridColumnFixedPosition.Left">
@@ -130,7 +130,8 @@ else
             <DxGridDataColumn FieldName="HasImage" Caption="Obrázek" Width="100px" Visible="false">
                 <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="XpCost" Caption="XP cena" Width="100px" />
+            <DxGridDataColumn FieldName="EffectiveXpCost" Caption="XP cena" Width="110px" />
+            <DxGridDataColumn FieldName="XpCost" Caption="XP (přepis)" Width="120px" Visible="false" />
             <DxGridDataColumn FieldName="PerKingdomLimit" Caption="Limit / království" Width="150px" />
         </Columns>
     </OvcinaGrid>
@@ -153,6 +154,9 @@ else
             <DxFormLayoutItem Caption="Obtížnost" ColSpanMd="6">
                 <DxComboBox Data="@difficultyValues" @bind-Value="@difficulty"
                             TextFieldName="Display" ValueFieldName="Value" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="XP cena" ColSpanMd="6">
+                <DxSpinEdit @bind-Value="@xpCost" MinValue="0" MaxValue="999" />
             </DxFormLayoutItem>
             <DxFormLayoutItem Caption="Popis" ColSpanMd="12">
                 <DxTextBox @bind-Text="@description" />
@@ -269,6 +273,48 @@ else
                         </button>
                     </div>
                 </div>
+
+                @* --- Spell rewards (catalog-level, mirrors Items section) --- *@
+                <div class="mt-2">
+                    <strong class="small">Kouzla:</strong>
+                    @if (detailSpellRewards.Any())
+                    {
+                        <div class="mt-1">
+                            @foreach (var sr in detailSpellRewards)
+                            {
+                                <span class="badge bg-secondary me-1">
+                                    @sr.SpellName@(sr.Quantity > 1 ? $" ×{sr.Quantity}" : "")
+                                    <button class="btn btn-sm btn-link text-white p-0 ms-1"
+                                            @onclick="() => RemoveSpellRewardAsync(sr.SpellId)">
+                                        <i class="bi bi-x"></i>
+                                    </button>
+                                </span>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <span class="text-muted small ms-2">Žádná kouzla.</span>
+                    }
+                    <div class="d-flex gap-2 align-items-end mt-1">
+                        <div style="flex:1">
+                            <DxComboBox Data="@SpellsNotYetAdded" @bind-Value="@newSpellId"
+                                        TextFieldName="Name" ValueFieldName="Id"
+                                        NullText="(přidat kouzlo)" SearchMode="ListSearchMode.AutoSearch" />
+                        </div>
+                        @if (SelectedSpellIsScroll)
+                        {
+                            <div style="width:70px">
+                                <DxSpinEdit @bind-Value="@newSpellQuantity" MinValue="1" />
+                            </div>
+                        }
+                        <button class="btn btn-sm btn-outline-primary" style="height:34px"
+                                disabled="@(newSpellId is null)"
+                                @onclick="AddSpellRewardAsync">
+                            <i class="bi bi-plus me-1"></i>Přidat
+                        </button>
+                    </div>
+                </div>
             </div>
         }
 
@@ -286,12 +332,20 @@ else
                     <p class="text-muted small mb-2">Quest není přiřazen k této hře.</p>
                     <DxFormLayout>
                         <DxFormLayoutItem Caption="XP cena" ColSpanMd="6">
-                            <DxSpinEdit @bind-Value="@gpqXpCost" MinValue="0" />
+                            <DxSpinEdit @bind-Value="@gpqXpCost" MinValue="0"
+                                        NullText="@($"výchozí: {xpCost}")"
+                                        ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
                         </DxFormLayoutItem>
                         <DxFormLayoutItem Caption="Limit na království" ColSpanMd="6">
                             <DxSpinEdit @bind-Value="@gpqPerKingdomLimit" MinValue="1" NullText="(neomezeno)" />
                         </DxFormLayoutItem>
                     </DxFormLayout>
+                    @if (gpqXpCost is null)
+                    {
+                        <div class="form-text small">
+                            Bez přepisu — pro tuto hru platí výchozí @xpCost XP z katalogu.
+                        </div>
+                    }
                     <button class="btn btn-outline-primary btn-sm mt-2" @onclick="AddGamePersonalQuestAsync">
                         <i class="bi bi-plus-circle me-1"></i>Přidat do hry
                     </button>
@@ -300,12 +354,20 @@ else
                 {
                     <DxFormLayout>
                         <DxFormLayoutItem Caption="XP cena" ColSpanMd="6">
-                            <DxSpinEdit @bind-Value="@gpqXpCost" MinValue="0" />
+                            <DxSpinEdit @bind-Value="@gpqXpCost" MinValue="0"
+                                        NullText="@($"výchozí: {xpCost}")"
+                                        ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
                         </DxFormLayoutItem>
                         <DxFormLayoutItem Caption="Limit na království" ColSpanMd="6">
                             <DxSpinEdit @bind-Value="@gpqPerKingdomLimit" MinValue="1" NullText="(neomezeno)" />
                         </DxFormLayoutItem>
                     </DxFormLayout>
+                    @if (gpqXpCost is null)
+                    {
+                        <div class="form-text small">
+                            Bez přepisu — pro tuto hru platí výchozí @xpCost XP z katalogu.
+                        </div>
+                    }
                     <div class="d-flex gap-2 mt-2">
                         <button class="btn btn-sm btn-primary" @onclick="SaveGamePersonalQuestAsync" disabled="@isSaving">Uložit nastavení</button>
                         <button class="btn btn-sm btn-outline-danger" @onclick="RemoveGamePersonalQuestAsync" disabled="@isSaving">Odebrat z hry</button>
@@ -350,6 +412,7 @@ else
     // Lookup lists for combo boxes
     private List<SkillDto> allSkills = [];
     private List<ItemListDto> allItems = [];
+    private List<SpellListDto> allSpells = [];
 
     // Context menu (game view only)
     private DxContextMenu? contextMenu;
@@ -361,18 +424,22 @@ else
     private string? error, description, questCardText, rewardCardText, rewardNote, notes;
     private int? editingId;
     private TreasureQuestDifficulty difficulty = TreasureQuestDifficulty.Start;
+    private int xpCost;
     private bool allowWarrior, allowArcher, allowMage, allowThief;
 
     // Reward pickers
     private List<SkillRewardDto> detailSkillRewards = [];
     private List<ItemRewardDto> detailItemRewards = [];
+    private List<PersonalQuestSpellRewardSummary> detailSpellRewards = [];
     private int? newSkillId;
     private int? newItemId;
     private int newItemQuantity = 1;
+    private int? newSpellId;
+    private int newSpellQuantity = 1;
 
     // Per-game config
     private bool gpqLoading, gpqExists;
-    private int gpqXpCost;
+    private int? gpqXpCost;
     private int? gpqPerKingdomLimit;
 
     private static readonly List<EnumItem<TreasureQuestDifficulty>> difficultyValues =
@@ -387,6 +454,16 @@ else
     private List<ItemListDto> ItemsNotYetAdded =>
         allItems.Where(i => !detailItemRewards.Any(ir => ir.ItemId == i.Id)).ToList();
 
+    private SpellListDto? SelectedAddableSpell =>
+        allSpells.FirstOrDefault(s => s.Id == newSpellId);
+
+    private bool SelectedSpellIsScroll => SelectedAddableSpell?.IsScroll == true;
+
+    private IEnumerable<SpellListDto> SpellsNotYetAdded =>
+        allSpells.Where(s =>
+            !s.IsLearnable &&
+            !detailSpellRewards.Any(r => r.SpellId == s.Id));
+
     private bool _previousCatalog;
 
     protected override async Task OnInitializedAsync()
@@ -397,6 +474,7 @@ else
         await LoadAsync();
         allItems = await Api.GetListAsync<ItemListDto>("/api/items");
         allSkills = (await SkillSvc.GetAllAsync()).ToList();
+        allSpells = await Api.GetListAsync<SpellListDto>("/api/spells");
     }
 
     protected override async Task OnParametersSetAsync()
@@ -477,15 +555,19 @@ else
         name = "";
         description = null;
         difficulty = TreasureQuestDifficulty.Start;
+        xpCost = 0;
         allowWarrior = allowArcher = allowMage = allowThief = false;
         questCardText = rewardCardText = rewardNote = notes = null;
         detailSkillRewards = [];
         detailItemRewards = [];
+        detailSpellRewards = [];
         newSkillId = null;
         newItemId = null;
         newItemQuantity = 1;
+        newSpellId = null;
+        newSpellQuantity = 1;
         gpqExists = false;
-        gpqXpCost = 0;
+        gpqXpCost = null;
         gpqPerKingdomLimit = null;
     }
 
@@ -496,6 +578,7 @@ else
         {
             description = d.Description;
             difficulty = d.Difficulty;
+            xpCost = d.XpCost;
             allowWarrior = d.AllowWarrior;
             allowArcher = d.AllowArcher;
             allowMage = d.AllowMage;
@@ -506,6 +589,7 @@ else
             notes = d.Notes;
             detailSkillRewards = d.SkillRewards.ToList();
             detailItemRewards = d.ItemRewards.ToList();
+            detailSpellRewards = d.SpellRewards.ToList();
         }
         await LoadGamePersonalQuestAsync(id);
         StateHasChanged();
@@ -528,7 +612,7 @@ else
         }
         else
         {
-            gpqXpCost = 0;
+            gpqXpCost = null;
             gpqPerKingdomLimit = null;
         }
         gpqLoading = false;
@@ -610,6 +694,38 @@ else
         catch (Exception ex) { error = ex.Message; }
     }
 
+    private async Task AddSpellRewardAsync()
+    {
+        if (editingId is null || newSpellId is null) return;
+        var qty = SelectedSpellIsScroll ? newSpellQuantity : 1;
+        try
+        {
+            await Api.PostAsync<AddSpellRewardDto, object?>(
+                $"/api/personal-quests/{editingId.Value}/spell-rewards",
+                new AddSpellRewardDto(newSpellId.Value, qty));
+            var updated = await Api.GetAsync<PersonalQuestDetailDto>(
+                $"/api/personal-quests/{editingId.Value}");
+            if (updated is not null) detailSpellRewards = updated.SpellRewards.ToList();
+            newSpellId = null;
+            newSpellQuantity = 1;
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task RemoveSpellRewardAsync(int spellId)
+    {
+        if (editingId is null) return;
+        try
+        {
+            var ok = await Api.DeleteAsync(
+                $"/api/personal-quests/{editingId.Value}/spell-rewards/{spellId}");
+            if (ok)
+                detailSpellRewards = detailSpellRewards
+                    .Where(r => r.SpellId != spellId).ToList();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
     private async Task AddGamePersonalQuestAsync()
     {
         if (editingId is null || GameContext.SelectedGameId is null) return;
@@ -678,14 +794,14 @@ else
                 await PqSvc.UpdateAsync(editingId.Value,
                     new UpdatePersonalQuestDto(name, difficulty, description,
                         allowWarrior, allowArcher, allowMage, allowThief,
-                        questCardText, rewardCardText, rewardNote, notes));
+                        questCardText, rewardCardText, rewardNote, notes, xpCost));
             }
             else
             {
                 var created = await PqSvc.CreateAsync(
                     new CreatePersonalQuestDto(name, difficulty, description,
                         allowWarrior, allowArcher, allowMage, allowThief,
-                        questCardText, rewardCardText, rewardNote, notes));
+                        questCardText, rewardCardText, rewardNote, notes, xpCost));
                 if (!Catalog && GameContext.SelectedGameId is int gid && created is not null)
                     await PqSvc.CreateGameLinkAsync(gid, created.Id);
             }

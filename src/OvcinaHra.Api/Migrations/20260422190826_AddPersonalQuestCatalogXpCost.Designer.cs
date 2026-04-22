@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using NpgsqlTypes;
@@ -12,9 +13,11 @@ using OvcinaHra.Api.Data;
 namespace OvcinaHra.Api.Migrations
 {
     [DbContext(typeof(WorldDbContext))]
-    partial class WorldDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260422190826_AddPersonalQuestCatalogXpCost")]
+    partial class AddPersonalQuestCatalogXpCost
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -606,7 +609,7 @@ namespace OvcinaHra.Api.Migrations
                     b.Property<int?>("PerKingdomLimit")
                         .HasColumnType("integer");
 
-                    b.Property<int?>("XpCost")
+                    b.Property<int>("XpCost")
                         .HasColumnType("integer");
 
                     b.HasKey("GameId", "PersonalQuestId");
@@ -619,7 +622,7 @@ namespace OvcinaHra.Api.Migrations
                         {
                             t.HasCheckConstraint("CK_GamePersonalQuest_PKL_Positive", "\"PerKingdomLimit\" IS NULL OR \"PerKingdomLimit\" >= 1");
 
-                            t.HasCheckConstraint("CK_GamePersonalQuest_XpCost_NonNegative", "\"XpCost\" IS NULL OR \"XpCost\" >= 0");
+                            t.HasCheckConstraint("CK_GamePersonalQuest_XpCost_NonNegative", "\"XpCost\" >= 0");
                         });
                 });
 
@@ -1150,10 +1153,7 @@ namespace OvcinaHra.Api.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("PersonalQuests", t =>
-                        {
-                            t.HasCheckConstraint("CK_PersonalQuest_XpCost_NonNegative", "\"XpCost\" >= 0");
-                        });
+                    b.ToTable("PersonalQuests");
                 });
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.PersonalQuestItemReward", b =>
@@ -1192,29 +1192,6 @@ namespace OvcinaHra.Api.Migrations
                     b.HasIndex("SkillId");
 
                     b.ToTable("PersonalQuestSkillRewards");
-                });
-
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.PersonalQuestSpellReward", b =>
-                {
-                    b.Property<int>("PersonalQuestId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("SpellId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("Quantity")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(1);
-
-                    b.HasKey("PersonalQuestId", "SpellId");
-
-                    b.HasIndex("SpellId");
-
-                    b.ToTable("PersonalQuestSpellRewards", t =>
-                        {
-                            t.HasCheckConstraint("CK_PQSpellReward_Qty_Positive", "\"Quantity\" >= 1");
-                        });
                 });
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.Quest", b =>
@@ -2238,25 +2215,6 @@ namespace OvcinaHra.Api.Migrations
                     b.Navigation("Skill");
                 });
 
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.PersonalQuestSpellReward", b =>
-                {
-                    b.HasOne("OvcinaHra.Shared.Domain.Entities.PersonalQuest", "PersonalQuest")
-                        .WithMany("SpellRewards")
-                        .HasForeignKey("PersonalQuestId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("OvcinaHra.Shared.Domain.Entities.Spell", "Spell")
-                        .WithMany()
-                        .HasForeignKey("SpellId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("PersonalQuest");
-
-                    b.Navigation("Spell");
-                });
-
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.Quest", b =>
                 {
                     b.HasOne("OvcinaHra.Shared.Domain.Entities.Game", "Game")
@@ -2557,8 +2515,6 @@ namespace OvcinaHra.Api.Migrations
                     b.Navigation("ItemRewards");
 
                     b.Navigation("SkillRewards");
-
-                    b.Navigation("SpellRewards");
                 });
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.Quest", b =>
