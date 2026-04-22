@@ -48,6 +48,8 @@ public record PersonalQuestListDto(
 
 public record PersonalQuestItemRewardSummary(int ItemId, string ItemName, int Quantity);
 
+public record PersonalQuestSpellRewardSummary(int SpellId, string SpellName, bool IsScroll, int Quantity);
+
 public record PersonalQuestDetailDto(
     int Id,
     string Name,
@@ -64,6 +66,7 @@ public record PersonalQuestDetailDto(
     string? ImagePath,
     List<SkillRewardDto> SkillRewards,
     List<ItemRewardDto> ItemRewards,
+    IReadOnlyList<PersonalQuestSpellRewardSummary> SpellRewards,
     int XpCost = 0);
 
 public record SkillRewardDto(int SkillId, string SkillName);
@@ -153,3 +156,4 @@ public record UpdateGamePersonalQuestDto(int? XpCost, int? PerKingdomLimit);
 
 public record AddSkillRewardDto(int SkillId);
 public record AddItemRewardDto(int ItemId, int Quantity = 1);
+public record AddSpellRewardDto(int SpellId, int Quantity = 1);

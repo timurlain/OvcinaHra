@@ -29,6 +29,8 @@ public static class PersonalQuestEndpoints
         group.MapDelete("/{id:int}/skill-rewards/{skillId:int}", RemoveSkillReward);
         group.MapPost("/{id:int}/item-rewards", AddItemReward);
         group.MapDelete("/{id:int}/item-rewards/{itemId:int}", RemoveItemReward);
+        group.MapPost("/{id:int}/spell-rewards", AddSpellReward);
+        group.MapDelete("/{id:int}/spell-rewards/{spellId:int}", RemoveSpellReward);
 
         return group;
     }
@@ -51,6 +53,7 @@ public static class PersonalQuestEndpoints
             .AsNoTracking()
             .Include(pq => pq.SkillRewards).ThenInclude(sr => sr.Skill)
             .Include(pq => pq.ItemRewards).ThenInclude(ir => ir.Item)
+            .Include(pq => pq.SpellRewards).ThenInclude(sr => sr.Spell)
             .FirstOrDefaultAsync(pq => pq.Id == id);
         if (q is null) return TypedResults.NotFound();
 
@@ -118,6 +121,7 @@ public static class PersonalQuestEndpoints
         q.QuestCardText, q.RewardCardText, q.RewardNote, q.Notes, q.ImagePath,
         q.SkillRewards.Select(sr => new SkillRewardDto(sr.SkillId, sr.Skill?.Name ?? string.Empty)).ToList(),
         q.ItemRewards.Select(ir => new ItemRewardDto(ir.ItemId, ir.Item?.Name ?? string.Empty, ir.Quantity)).ToList(),
+        q.SpellRewards.Select(sr => new PersonalQuestSpellRewardSummary(sr.SpellId, sr.Spell?.Name ?? string.Empty, sr.Spell?.IsScroll ?? false, sr.Quantity)).ToList(),
         q.XpCost);
 
     private static PersonalQuestListDto ToListDto(PersonalQuest q) => new(
@@ -276,6 +280,41 @@ public static class PersonalQuestEndpoints
         if (ir is null) return TypedResults.NotFound();
 
         db.PersonalQuestItemRewards.Remove(ir);
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
+    }
+
+    private static async Task<IResult> AddSpellReward(int id, AddSpellRewardDto dto, WorldDbContext db)
+    {
+        if (!await db.PersonalQuests.AnyAsync(q => q.Id == id))
+            return TypedResults.NotFound($"Quest #{id} neexistuje.");
+
+        var spell = await db.Spells.FindAsync(dto.SpellId);
+        if (spell is null)
+            return TypedResults.NotFound($"Kouzlo #{dto.SpellId} neexistuje.");
+
+        if (spell.IsLearnable)
+            return TypedResults.BadRequest($"Kouzlo #{dto.SpellId} je naučitelné — nelze ho použít jako odměnu personal questu.");
+
+        var link = new PersonalQuestSpellReward
+        {
+            PersonalQuestId = id,
+            SpellId = dto.SpellId,
+            Quantity = dto.Quantity
+        };
+        db.PersonalQuestSpellRewards.Add(link);
+        await db.SaveChangesAsync();
+
+        return TypedResults.Created($"/api/personal-quests/{id}/spell-rewards/{dto.SpellId}");
+    }
+
+    private static async Task<IResult> RemoveSpellReward(int id, int spellId, WorldDbContext db)
+    {
+        var link = await db.PersonalQuestSpellRewards
+            .FirstOrDefaultAsync(x => x.PersonalQuestId == id && x.SpellId == spellId);
+        if (link is null) return TypedResults.NotFound();
+
+        db.PersonalQuestSpellRewards.Remove(link);
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
     }

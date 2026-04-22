@@ -711,4 +711,119 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         Assert.Equal(7, row.XpCost);
         Assert.Equal(7, row.EffectiveXpCost);
     }
+
+    // ======================================================================
+    // Batch D — Spell reward endpoints (Tasks 4–7)
+    // ======================================================================
+
+    [Fact]
+    public async Task SpellReward_NonLearnable_Returns201()
+    {
+        var quest = await CreatePersonalQuestAsync();
+        var spell = await CreateSpellAsync(name: "Svitek ohně (test)",
+                                           isScroll: true, isLearnable: false);
+
+        var resp = await Client.PostAsJsonAsync(
+            $"/api/personal-quests/{quest.Id}/spell-rewards",
+            new AddSpellRewardDto(spell.Id, Quantity: 1));
+
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+
+        var detail = await Client.GetFromJsonAsync<PersonalQuestDetailDto>(
+            $"/api/personal-quests/{quest.Id}");
+        Assert.NotNull(detail);
+        Assert.Single(detail.SpellRewards);
+        Assert.Equal(spell.Id, detail.SpellRewards[0].SpellId);
+        Assert.Equal(1, detail.SpellRewards[0].Quantity);
+    }
+
+    [Fact]
+    public async Task SpellReward_LearnableSpell_Returns400()
+    {
+        var quest = await CreatePersonalQuestAsync();
+        var spell = await CreateSpellAsync(name: "Učenlivé kouzlo (test)",
+                                           isScroll: false, isLearnable: true);
+
+        var resp = await Client.PostAsJsonAsync(
+            $"/api/personal-quests/{quest.Id}/spell-rewards",
+            new AddSpellRewardDto(spell.Id));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        var detail = await Client.GetFromJsonAsync<PersonalQuestDetailDto>(
+            $"/api/personal-quests/{quest.Id}");
+        Assert.Empty(detail!.SpellRewards);
+    }
+
+    [Fact]
+    public async Task SpellReward_Scroll_QuantityGreaterThanOne_Persisted()
+    {
+        var quest = await CreatePersonalQuestAsync();
+        var scroll = await CreateSpellAsync(name: "Svitek léčení (test)",
+                                            isScroll: true, isLearnable: false);
+
+        var resp = await Client.PostAsJsonAsync(
+            $"/api/personal-quests/{quest.Id}/spell-rewards",
+            new AddSpellRewardDto(scroll.Id, Quantity: 3));
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+
+        var detail = await Client.GetFromJsonAsync<PersonalQuestDetailDto>(
+            $"/api/personal-quests/{quest.Id}");
+        var reward = Assert.Single(detail!.SpellRewards);
+        Assert.Equal(3, reward.Quantity);
+        Assert.True(reward.IsScroll);
+    }
+
+    [Fact]
+    public async Task Delete_SpellReward_Returns204()
+    {
+        var quest = await CreatePersonalQuestAsync();
+        var spell = await CreateSpellAsync(name: "Svitek bleskového úderu (test)",
+                                            isScroll: true, isLearnable: false);
+
+        await Client.PostAsJsonAsync($"/api/personal-quests/{quest.Id}/spell-rewards",
+            new AddSpellRewardDto(spell.Id));
+
+        var del = await Client.DeleteAsync(
+            $"/api/personal-quests/{quest.Id}/spell-rewards/{spell.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, del.StatusCode);
+
+        var detail = await Client.GetFromJsonAsync<PersonalQuestDetailDto>(
+            $"/api/personal-quests/{quest.Id}");
+        Assert.Empty(detail!.SpellRewards);
+    }
+
+    // ---------- helpers ----------
+
+    private async Task<PersonalQuestDetailDto> CreatePersonalQuestAsync(
+        string name = "Test quest")
+    {
+        var resp = await Client.PostAsJsonAsync("/api/personal-quests",
+            new CreatePersonalQuestDto(
+                Name: name,
+                Difficulty: TreasureQuestDifficulty.Early));
+        resp.EnsureSuccessStatusCode();
+        var quest = await resp.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
+        return quest!;
+    }
+
+    private async Task<Spell> CreateSpellAsync(
+        string name,
+        bool isScroll,
+        bool isLearnable)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        var spell = new Spell
+        {
+            Name = name,
+            Effect = "Testovací efekt",
+            IsScroll = isScroll,
+            IsLearnable = isLearnable,
+            Level = isScroll ? 0 : 1,
+            ManaCost = isScroll ? 0 : 1
+        };
+        db.Spells.Add(spell);
+        await db.SaveChangesAsync();
+        return spell;
+    }
 }
