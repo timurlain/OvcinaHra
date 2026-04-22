@@ -61,8 +61,11 @@ public static class PersonalQuestEndpoints
         return TypedResults.Ok(ToDetailDto(q));
     }
 
-    private static async Task<Created<PersonalQuestDetailDto>> Create(CreatePersonalQuestDto dto, WorldDbContext db)
+    private static async Task<Results<Created<PersonalQuestDetailDto>, BadRequest<string>>> Create(CreatePersonalQuestDto dto, WorldDbContext db)
     {
+        if (dto.XpCost < 0)
+            return TypedResults.BadRequest("XP cena nesmí být záporná.");
+
         var q = new PersonalQuest
         {
             Name = dto.Name,
@@ -84,8 +87,11 @@ public static class PersonalQuestEndpoints
         return TypedResults.Created($"/api/personal-quests/{q.Id}", ToDetailDto(q));
     }
 
-    private static async Task<Results<NoContent, NotFound>> Update(int id, UpdatePersonalQuestDto dto, WorldDbContext db)
+    private static async Task<Results<NoContent, NotFound, BadRequest<string>>> Update(int id, UpdatePersonalQuestDto dto, WorldDbContext db)
     {
+        if (dto.XpCost < 0)
+            return TypedResults.BadRequest("XP cena nesmí být záporná.");
+
         var q = await db.PersonalQuests.FindAsync(id);
         if (q is null) return TypedResults.NotFound();
 
@@ -305,6 +311,11 @@ public static class PersonalQuestEndpoints
 
         if (spell.IsLearnable)
             return TypedResults.BadRequest($"Kouzlo #{dto.SpellId} je naučitelné — nelze ho použít jako odměnu personal questu.");
+
+        var exists = await db.PersonalQuestSpellRewards
+            .AnyAsync(x => x.PersonalQuestId == id && x.SpellId == dto.SpellId);
+        if (exists)
+            return TypedResults.Conflict($"Kouzlo #{dto.SpellId} už je přiřazeno jako odměna tohoto questu.");
 
         var link = new PersonalQuestSpellReward
         {

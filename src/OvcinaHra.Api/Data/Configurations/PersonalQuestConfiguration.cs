@@ -13,5 +13,8 @@ public class PersonalQuestConfiguration : IEntityTypeConfiguration<PersonalQuest
         b.HasIndex(e => e.Name).IsUnique();
         b.Property(e => e.Description).HasMaxLength(500);
         b.Property(e => e.Difficulty).HasConversion<string>().HasMaxLength(20);
+        b.ToTable(t => t.HasCheckConstraint(
+            "CK_PersonalQuest_XpCost_NonNegative",
+            "\"XpCost\" >= 0"));
     }
 }

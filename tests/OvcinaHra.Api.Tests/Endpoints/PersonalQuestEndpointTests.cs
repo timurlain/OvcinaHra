@@ -818,6 +818,57 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         Assert.True(row.SpellRewards[0].IsScroll);
     }
 
+    [Fact]
+    public async Task CreateQuest_NegativeXpCost_Returns400()
+    {
+        var dto = new CreatePersonalQuestDto(
+            Name: "Bad XP quest",
+            Difficulty: TreasureQuestDifficulty.Early,
+            Description: null,
+            AllowWarrior: true, AllowArcher: false, AllowMage: false, AllowThief: false,
+            QuestCardText: null, RewardCardText: null, RewardNote: null, Notes: null,
+            XpCost: -5);
+
+        var resp = await Client.PostAsJsonAsync("/api/personal-quests", dto);
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateQuest_NegativeXpCost_Returns400()
+    {
+        var quest = await CreatePersonalQuestAsync(xpCost: 5);
+        var upd = new UpdatePersonalQuestDto(
+            Name: quest.Name,
+            Difficulty: quest.Difficulty,
+            Description: null,
+            AllowWarrior: false, AllowArcher: false, AllowMage: false, AllowThief: false,
+            QuestCardText: null, RewardCardText: null, RewardNote: null, Notes: null,
+            XpCost: -1);
+
+        var resp = await Client.PutAsJsonAsync($"/api/personal-quests/{quest.Id}", upd);
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task SpellReward_Duplicate_Returns409()
+    {
+        var quest = await CreatePersonalQuestAsync();
+        var spell = await CreateSpellAsync(name: "Dvojitý svitek (test)",
+                                            isScroll: true, isLearnable: false);
+
+        var first = await Client.PostAsJsonAsync(
+            $"/api/personal-quests/{quest.Id}/spell-rewards",
+            new AddSpellRewardDto(spell.Id));
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+
+        var second = await Client.PostAsJsonAsync(
+            $"/api/personal-quests/{quest.Id}/spell-rewards",
+            new AddSpellRewardDto(spell.Id));
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+    }
+
     // ---------- helpers ----------
 
     private async Task<PersonalQuestDetailDto> CreatePersonalQuestAsync(
