@@ -1,0 +1,271 @@
+@page "/games/{GameId:int}/spells"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Extensions
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Kouzla hry</h1>
+    <div class="d-flex gap-2">
+        <button class="btn btn-primary" @onclick="OpenAddPopup">
+            <i class="bi bi-plus"></i> Přidat kouzlo
+        </button>
+        <button class="btn btn-outline-secondary" @onclick="@(() => Nav.NavigateTo("/games"))">
+            <i class="bi bi-arrow-left"></i> Zpět na hry
+        </button>
+    </div>
+</div>
+
+@if (loading)
+{
+    <p>Načítám...</p>
+}
+else if (gameSpells.Count == 0)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-magic fs-1 d-block mb-2"></i>
+        <p>Tato hra zatím nemá žádná kouzla. Přidejte první pomocí tlačítka nahoře.</p>
+    </div>
+}
+else
+{
+    <OvcinaGrid Data="@gameSpells" KeyFieldName="Id" LayoutKey="grid-layout-game-spells"
+                RowClick="@(e => OpenEditPopup((GameSpellDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+        <Columns>
+            <DxGridDataColumn FieldName="SpellName" Caption="Název" />
+            <DxGridDataColumn FieldName="Level" Caption="Úroveň" Width="90px" />
+            <DxGridDataColumn FieldName="SchoolDisplay" Caption="Typ" Width="130px" />
+            <DxGridDataColumn FieldName="Price" Caption="Cena (gr)" Width="110px" />
+            <DxGridDataColumn FieldName="IsFindable" Caption="K nalezení" Width="120px" />
+            <DxGridDataColumn FieldName="AvailabilityNotes" Caption="Poznámky k dostupnosti" />
+            <DxGridDataColumn Caption="" Width="60px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{
+                        var row = (GameSpellDto)context.DataItem;
+                    }
+                    <button class="btn btn-sm btn-outline-danger"
+                            title="Odebrat z hry"
+                            @onclick="() => OpenDeletePopup(row)"
+                            @onclick:stopPropagation="true">
+                        <i class="bi bi-x"></i>
+                    </button>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+        </Columns>
+    </OvcinaGrid>
+}
+
+@* ── Add popup — pick an unassigned catalog spell ── *@
+<DxPopup @bind-Visible="@isAddVisible" HeaderText="Přidat kouzlo do hry" Width="520px">
+    <BodyContentTemplate Context="popupContext">
+        @if (addable.Count == 0)
+        {
+            <p class="text-muted">Všechna kouzla z katalogu už jsou ve hře přiřazena.</p>
+        }
+        else
+        {
+            <p class="text-muted small mb-3">Vyberte kouzlo z katalogu. Cenu a dostupnost upravíte po přidání.</p>
+            <DxComboBox Data="@addable" @bind-Value="@addingSpellId"
+                        TextFieldName="Label" ValueFieldName="Id"
+                        NullText="(vyberte kouzlo)" SearchMode="ListSearchMode.AutoSearch" />
+        }
+        @if (error is not null)
+        {
+            <div class="alert alert-danger mt-2">@error</div>
+        }
+        <div class="d-flex gap-2 justify-content-end mt-3">
+            <button class="btn btn-secondary" @onclick="() => isAddVisible = false">Zrušit</button>
+            <button class="btn btn-primary" @onclick="ConfirmAddAsync"
+                    disabled="@(addingSpellId is null || isSaving)">
+                @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Přidat
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@* ── Edit popup — per-game overrides ── *@
+<DxPopup @bind-Visible="@isEditVisible" HeaderText="@editTitle" Width="560px">
+    <BodyContentTemplate Context="popupContext">
+        @if (editing is not null)
+        {
+            <DxFormLayout>
+                <DxFormLayoutItem Caption="Kouzlo" ColSpanMd="12">
+                    <div class="form-control-plaintext">
+                        @editing.SpellName
+                        <span class="text-muted small ms-2">
+                            úroveň @editing.Level · @editing.School.GetDisplayName()
+                        </span>
+                    </div>
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Cena (groše, prázdné = výchozí z katalogu)" ColSpanMd="12">
+                    <DxSpinEdit @bind-Value="@editPrice" MinValue="0" MaxValue="9999"
+                                ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Lze najít ve hře" ColSpanMd="12">
+                    <DxCheckBox @bind-Checked="@editIsFindable" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Poznámky k dostupnosti" ColSpanMd="12">
+                    <DxMemo @bind-Text="@editNotes" Rows="3" />
+                </DxFormLayoutItem>
+            </DxFormLayout>
+        }
+        @if (error is not null)
+        {
+            <div class="alert alert-danger mt-2">@error</div>
+        }
+        <div class="d-flex gap-2 justify-content-end mt-3">
+            <button class="btn btn-secondary" @onclick="() => isEditVisible = false" disabled="@isSaving">Zrušit</button>
+            <button class="btn btn-primary" @onclick="SaveEditAsync" disabled="@isSaving">
+                @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Uložit
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@* ── Delete confirm ── *@
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Odebrat kouzlo z hry?" Width="420px">
+    <BodyContentTemplate Context="popupContext">
+        <p>
+            Odebrat <strong>@(deleting?.SpellName)</strong> z této hry?
+            Kouzlo zůstane v katalogu, jen přestane být dostupné v této hře.
+        </p>
+        @if (deleteError is not null)
+        {
+            <div class="alert alert-danger py-2 mb-2">@deleteError</div>
+        }
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync" disabled="@isSaving">Odebrat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    [Parameter] public int GameId { get; set; }
+
+    private List<GameSpellDto> gameSpells = [];
+    private List<SpellChoice> addable = [];
+    private bool loading = true;
+    private bool isAddVisible, isEditVisible, isDeleteVisible, isSaving;
+    private string? error;
+
+    // Add-popup state
+    private int? addingSpellId;
+
+    // Edit-popup state
+    private GameSpellDto? editing;
+    private string editTitle = "";
+    private int? editPrice;
+    private bool editIsFindable;
+    private string? editNotes;
+
+    // Delete-popup state
+    private GameSpellDto? deleting;
+    private string? deleteError;
+
+    private record SpellChoice(int Id, string Label);
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        gameSpells = await Api.GetListAsync<GameSpellDto>($"/api/spells/by-game/{GameId}");
+        loading = false;
+    }
+
+    private async Task LoadAddableAsync()
+    {
+        var catalog = await Api.GetListAsync<SpellListDto>("/api/spells");
+        var assigned = gameSpells.Select(gs => gs.SpellId).ToHashSet();
+        addable = catalog
+            .Where(s => !assigned.Contains(s.Id))
+            .OrderBy(s => s.Level)
+            .ThenBy(s => s.Name)
+            .Select(s => new SpellChoice(s.Id, $"{s.Name} (úroveň {s.Level} · {s.School.GetDisplayName()})"))
+            .ToList();
+    }
+
+    private async Task OpenAddPopup()
+    {
+        error = null;
+        addingSpellId = null;
+        await LoadAddableAsync();
+        isAddVisible = true;
+    }
+
+    private async Task ConfirmAddAsync()
+    {
+        if (addingSpellId is null) return;
+        error = null;
+        isSaving = true;
+        try
+        {
+            await Api.PostAsync<CreateGameSpellDto, GameSpellDto>(
+                "/api/spells/game-spell",
+                new CreateGameSpellDto(GameId, addingSpellId.Value));
+            isAddVisible = false;
+            await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private void OpenEditPopup(GameSpellDto row)
+    {
+        error = null;
+        editing = row;
+        editTitle = $"Upravit: {row.SpellName}";
+        editPrice = row.Price;
+        editIsFindable = row.IsFindable;
+        editNotes = row.AvailabilityNotes;
+        isEditVisible = true;
+    }
+
+    private async Task SaveEditAsync()
+    {
+        if (editing is null) return;
+        error = null;
+        isSaving = true;
+        try
+        {
+            await Api.PutAsync(
+                $"/api/spells/game-spell/{GameId}/{editing.SpellId}",
+                new UpdateGameSpellDto(editPrice, editIsFindable, editNotes));
+            isEditVisible = false;
+            await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private void OpenDeletePopup(GameSpellDto row)
+    {
+        deleteError = null;
+        deleting = row;
+        isDeleteVisible = true;
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (deleting is null) return;
+        deleteError = null;
+        isSaving = true;
+        try
+        {
+            var ok = await Api.DeleteAsync($"/api/spells/game-spell/{GameId}/{deleting.SpellId}");
+            if (!ok)
+            {
+                deleteError = "Odebrání kouzla se nepodařilo.";
+                return;
+            }
+            isDeleteVisible = false;
+            await LoadAsync();
+        }
+        catch (Exception ex) { deleteError = ex.Message; }
+        finally { isSaving = false; }
+    }
+}
