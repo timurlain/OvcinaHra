@@ -21,6 +21,8 @@ public class WorldDbContext(DbContextOptions<WorldDbContext> options) : DbContex
     public DbSet<GameSkill> GameSkills => Set<GameSkill>();
     public DbSet<GameSkillBuildingRequirement> GameSkillBuildingRequirements => Set<GameSkillBuildingRequirement>();
     public DbSet<CraftingSkillRequirement> CraftingSkillRequirements => Set<CraftingSkillRequirement>();
+    public DbSet<Spell> Spells => Set<Spell>();
+    public DbSet<GameSpell> GameSpells => Set<GameSpell>();
     public DbSet<Monster> Monsters => Set<Monster>();
     public DbSet<Npc> Npcs => Set<Npc>();
     public DbSet<GameNpc> GameNpcs => Set<GameNpc>();

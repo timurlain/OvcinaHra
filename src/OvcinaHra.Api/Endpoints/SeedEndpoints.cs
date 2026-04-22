@@ -25,8 +25,91 @@ public static class SeedEndpoints
         group.MapPost("/monsters", SeedMonsters);
         group.MapPost("/buildings", SeedBuildings);
         group.MapPost("/quests", SeedQuests);
+        group.MapPost("/spells", SeedSpells);
 
         return group;
+    }
+
+    private static async Task<Ok<SeedResult>> SeedSpells(WorldDbContext db, IWebHostEnvironment env)
+    {
+        if (await db.Spells.AnyAsync())
+            return TypedResults.Ok(new SeedResult(0, "Kouzla už existují. Smaž je nejdřív."));
+
+        var mdPath = Path.Combine(env.ContentRootPath, "..", "..", "docs", "imports", "spells.md");
+        if (!File.Exists(mdPath))
+            return TypedResults.Ok(new SeedResult(0, $"Soubor nenalezen: {Path.GetFullPath(mdPath)}"));
+
+        var content = await File.ReadAllTextAsync(mdPath);
+        var spells = ParseSpellsMarkdown(content);
+
+        foreach (var s in spells)
+            db.Spells.Add(s);
+
+        await db.SaveChangesAsync();
+        return TypedResults.Ok(new SeedResult(spells.Count, $"Importováno {spells.Count} kouzel z spells.md."));
+    }
+
+    /// <summary>
+    /// Parses the per-level spell tables out of docs/imports/spells.md.
+    /// Expected columns (in order): Name, Level, ManaCost, School, IsScroll,
+    /// IsReaction, MinMageLevel, Price, Effect, SourceRule.
+    /// Only rows under "## Úroveň ..." sections are processed — the schema
+    /// table at the top has different columns and is skipped.
+    /// IsLearnable is derived by the loader: <c>!IsScroll</c>.
+    /// </summary>
+    private static List<Spell> ParseSpellsMarkdown(string content)
+    {
+        var spells = new List<Spell>();
+        var inSpellSection = false;
+
+        foreach (var raw in content.Split('\n'))
+        {
+            var line = raw.TrimEnd('\r');
+
+            if (line.StartsWith("## Úroveň"))
+            {
+                inSpellSection = true;
+                continue;
+            }
+            if (line.StartsWith("## "))
+            {
+                // Any other level-2 heading ends the spell-table region.
+                inSpellSection = false;
+                continue;
+            }
+            if (!inSpellSection) continue;
+            if (!line.StartsWith("|")) continue;
+
+            var cells = line.Split('|').Select(c => c.Trim()).ToList();
+            if (cells.Count > 0 && cells[0] == "") cells.RemoveAt(0);
+            if (cells.Count > 0 && cells[^1] == "") cells.RemoveAt(cells.Count - 1);
+
+            // Need: Name, Level, ManaCost, School, IsScroll, IsReaction,
+            //       MinMageLevel, Price, Effect, SourceRule → 10 cells
+            if (cells.Count < 10) continue;
+            if (cells[0] == "Name" || cells[0].StartsWith("---")) continue;
+            if (string.IsNullOrWhiteSpace(cells[0])) continue;
+
+            var school = Enum.Parse<SpellSchool>(cells[3], ignoreCase: true);
+            var isScroll = bool.Parse(cells[4]);
+            var isReaction = bool.Parse(cells[5]);
+
+            spells.Add(new Spell
+            {
+                Name = cells[0],
+                Level = int.Parse(cells[1]),
+                ManaCost = int.Parse(cells[2]),
+                School = school,
+                IsScroll = isScroll,
+                IsReaction = isReaction,
+                IsLearnable = !isScroll,
+                MinMageLevel = int.Parse(cells[6]),
+                Price = int.TryParse(cells[7], out var p) ? p : null,
+                Effect = cells[8]
+            });
+        }
+
+        return spells;
     }
 
     private static async Task<Ok<SeedResult>> SeedGames(WorldDbContext db)

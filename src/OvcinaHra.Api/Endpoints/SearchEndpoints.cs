@@ -78,6 +78,22 @@ public static class SearchEndpoints
             .ToListAsync();
         results.AddRange(quests);
 
+        // Search Spells — catalog is cross-game. When gameId is provided, filter to
+        // spells actually assigned to that game via GameSpell.
+        var spellQuery = db.Spells
+            .FromSqlRaw(
+                """
+                SELECT * FROM "Spells"
+                WHERE "SearchVector" @@ to_tsquery('simple', {0})
+                LIMIT {1}
+                """, tsQuery, limit)
+            .AsQueryable();
+        if (gameId.HasValue)
+            spellQuery = spellQuery.Where(s => s.GameSpells.Any(gs => gs.GameId == gameId.Value));
+        results.AddRange(await spellQuery
+            .Select(s => new SearchResultDto("Spell", s.Id, s.Name, s.Effect))
+            .ToListAsync());
+
         return TypedResults.Ok(new SearchResponseDto(q, results.Count, results));
     }
 }
