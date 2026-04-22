@@ -173,6 +173,21 @@ public class BuildingEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         Assert.Equal("nová poznámka pro orgy", updated!.Notes);
     }
 
+    [Fact]
+    public async Task GetAll_EnrichedListDto_IncludesDescriptionAndNotes()
+    {
+        var createResp = await Client.PostAsJsonAsync("/api/buildings",
+            new CreateBuildingDto("Kovárna", Description: "Místní kovárna", Notes: "Kovář má rád medovinu."));
+        Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
+        var created = await createResp.Content.ReadFromJsonAsync<BuildingDetailDto>();
+        Assert.NotNull(created);
+
+        var list = await Client.GetFromJsonAsync<List<BuildingListDto>>("/api/buildings");
+        var listed = Assert.Single(list!, b => b.Id == created.Id);
+        Assert.Equal("Místní kovárna", listed.Description);
+        Assert.Equal("Kovář má rád medovinu.", listed.Notes);
+    }
+
     // ── Delete ──────────────────────────────────────────────────────────────
 
     [Fact]
