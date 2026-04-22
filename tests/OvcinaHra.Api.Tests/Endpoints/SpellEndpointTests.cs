@@ -82,17 +82,21 @@ public class SpellEndpointTests(PostgresFixture postgres) : IntegrationTestBase(
         // Create a game
         var gameResponse = await Client.PostAsJsonAsync("/api/games",
             new CreateGameDto("Spell Test", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 2)));
+        gameResponse.EnsureSuccessStatusCode();
         var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
 
         // Create two spells
-        var s1 = await (await Client.PostAsJsonAsync("/api/spells",
+        var s1Response = await Client.PostAsJsonAsync("/api/spells",
             new CreateSpellDto("Jedový šíp", 0, 0, SpellSchool.Poison, true, false, false, 0, null,
-                "3 ž jedem.")))
-            .Content.ReadFromJsonAsync<SpellDetailDto>();
-        var s2 = await (await Client.PostAsJsonAsync("/api/spells",
+                "3 ž jedem."));
+        s1Response.EnsureSuccessStatusCode();
+        var s1 = await s1Response.Content.ReadFromJsonAsync<SpellDetailDto>();
+
+        var s2Response = await Client.PostAsJsonAsync("/api/spells",
             new CreateSpellDto("Bažina", 3, 3, SpellSchool.Utility, false, false, true, 3, 22,
-                "Výsledky blízkých útoků = [1].")))
-            .Content.ReadFromJsonAsync<SpellDetailDto>();
+                "Výsledky blízkých útoků = [1]."));
+        s2Response.EnsureSuccessStatusCode();
+        var s2 = await s2Response.Content.ReadFromJsonAsync<SpellDetailDto>();
 
         // Assign only s1 to the game
         var assign = await Client.PostAsJsonAsync("/api/spells/game-spell",

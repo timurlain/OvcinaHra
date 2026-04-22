@@ -80,17 +80,19 @@ public static class SearchEndpoints
 
         // Search Spells — catalog is cross-game. When gameId is provided, filter to
         // spells actually assigned to that game via GameSpell.
+        // NOTE: no LIMIT in the raw SQL; Take(limit) runs AFTER the optional game
+        // filter so we don't chop off valid matches before they get filtered.
         var spellQuery = db.Spells
             .FromSqlRaw(
                 """
                 SELECT * FROM "Spells"
                 WHERE "SearchVector" @@ to_tsquery('simple', {0})
-                LIMIT {1}
-                """, tsQuery, limit)
+                """, tsQuery)
             .AsQueryable();
         if (gameId.HasValue)
             spellQuery = spellQuery.Where(s => s.GameSpells.Any(gs => gs.GameId == gameId.Value));
         results.AddRange(await spellQuery
+            .Take(limit)
             .Select(s => new SearchResultDto("Spell", s.Id, s.Name, s.Effect))
             .ToListAsync());
 

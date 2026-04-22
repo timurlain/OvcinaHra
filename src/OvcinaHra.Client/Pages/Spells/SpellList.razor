@@ -176,10 +176,18 @@ else
 
     private async Task ConfirmDeleteAsync()
     {
+        error = null;
         isSaving = true;
         try
         {
-            await Api.DeleteAsync($"/api/spells/{editingId}");
+            // ApiClient.DeleteAsync returns bool — it does not throw on non-success.
+            // Ignoring the value would close the dialog even on a failed delete.
+            var ok = await Api.DeleteAsync($"/api/spells/{editingId}");
+            if (!ok)
+            {
+                error = "Smazání kouzla se nepodařilo.";
+                return;
+            }
             isDeleteVisible = false;
             isModalVisible = false;
             await LoadAsync();

@@ -138,11 +138,15 @@ public static class SpellEndpoints
     private static async Task<Results<Created<GameSpellDto>, Conflict<string>, NotFound<string>>> CreateGameSpell(
         CreateGameSpellDto dto, WorldDbContext db)
     {
-        if (await db.GameSpells.AnyAsync(gs => gs.GameId == dto.GameId && gs.SpellId == dto.SpellId))
-            return TypedResults.Conflict("Kouzlo už je ve hře přiřazené.");
-
+        // Validate FKs up front — otherwise EF surfaces FK violations as 500.
         var spell = await db.Spells.FindAsync(dto.SpellId);
         if (spell is null) return TypedResults.NotFound($"Kouzlo #{dto.SpellId} neexistuje.");
+
+        if (!await db.Games.AnyAsync(g => g.Id == dto.GameId))
+            return TypedResults.NotFound($"Hra #{dto.GameId} neexistuje.");
+
+        if (await db.GameSpells.AnyAsync(gs => gs.GameId == dto.GameId && gs.SpellId == dto.SpellId))
+            return TypedResults.Conflict("Kouzlo už je ve hře přiřazené.");
 
         var gs = new GameSpell
         {

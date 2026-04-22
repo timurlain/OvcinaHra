@@ -32,21 +32,32 @@ public static class SeedEndpoints
 
     private static async Task<Ok<SeedResult>> SeedSpells(WorldDbContext db, IWebHostEnvironment env)
     {
-        if (await db.Spells.AnyAsync())
-            return TypedResults.Ok(new SeedResult(0, "Kouzla už existují. Smaž je nejdřív."));
-
         var mdPath = Path.Combine(env.ContentRootPath, "..", "..", "docs", "imports", "spells.md");
         if (!File.Exists(mdPath))
             return TypedResults.Ok(new SeedResult(0, $"Soubor nenalezen: {Path.GetFullPath(mdPath)}"));
 
         var content = await File.ReadAllTextAsync(mdPath);
-        var spells = ParseSpellsMarkdown(content);
+        var (parsed, parseErrors) = ParseSpellsMarkdown(content);
 
-        foreach (var s in spells)
+        // Idempotent by Name: pull existing names and insert only the missing spells.
+        // Lets reruns top up new rows added to spells.md without needing a manual wipe.
+        var existingNames = await db.Spells.Select(s => s.Name).ToListAsync();
+        var existingSet = existingNames.ToHashSet();
+        var toInsert = parsed.Where(s => !existingSet.Contains(s.Name)).ToList();
+
+        foreach (var s in toInsert)
             db.Spells.Add(s);
 
-        await db.SaveChangesAsync();
-        return TypedResults.Ok(new SeedResult(spells.Count, $"Importováno {spells.Count} kouzel z spells.md."));
+        if (toInsert.Count > 0)
+            await db.SaveChangesAsync();
+
+        var message =
+            $"Vloženo {toInsert.Count} nových kouzel " +
+            $"(z {parsed.Count} v souboru, {existingSet.Count} už existovalo).";
+        if (parseErrors.Count > 0)
+            message += $" Přeskočeno {parseErrors.Count} chybných řádků: {string.Join("; ", parseErrors)}";
+
+        return TypedResults.Ok(new SeedResult(toInsert.Count, message));
     }
 
     /// <summary>
@@ -56,14 +67,20 @@ public static class SeedEndpoints
     /// Only rows under "## Úroveň ..." sections are processed — the schema
     /// table at the top has different columns and is skipped.
     /// IsLearnable is derived by the loader: <c>!IsScroll</c>.
+    /// Returns parsed spells plus a list of error messages for rows that
+    /// couldn't be parsed (malformed numbers, unknown enum values, empty
+    /// effect, etc.) so the endpoint can surface them instead of 500-ing.
     /// </summary>
-    private static List<Spell> ParseSpellsMarkdown(string content)
+    private static (List<Spell> spells, List<string> errors) ParseSpellsMarkdown(string content)
     {
         var spells = new List<Spell>();
+        var errors = new List<string>();
         var inSpellSection = false;
+        var lineNo = 0;
 
         foreach (var raw in content.Split('\n'))
         {
+            lineNo++;
             var line = raw.TrimEnd('\r');
 
             if (line.StartsWith("## Úroveň"))
@@ -90,26 +107,42 @@ public static class SeedEndpoints
             if (cells[0] == "Name" || cells[0].StartsWith("---")) continue;
             if (string.IsNullOrWhiteSpace(cells[0])) continue;
 
-            var school = Enum.Parse<SpellSchool>(cells[3], ignoreCase: true);
-            var isScroll = bool.Parse(cells[4]);
-            var isReaction = bool.Parse(cells[5]);
+            var name = cells[0];
+
+            if (!int.TryParse(cells[1], out var level))
+            { errors.Add($"ř.{lineNo} '{name}': Level='{cells[1]}' není celé číslo"); continue; }
+            if (!int.TryParse(cells[2], out var manaCost))
+            { errors.Add($"ř.{lineNo} '{name}': ManaCost='{cells[2]}' není celé číslo"); continue; }
+            if (!Enum.TryParse<SpellSchool>(cells[3], ignoreCase: true, out var school))
+            { errors.Add($"ř.{lineNo} '{name}': School='{cells[3]}' neodpovídá enum SpellSchool"); continue; }
+            if (!bool.TryParse(cells[4], out var isScroll))
+            { errors.Add($"ř.{lineNo} '{name}': IsScroll='{cells[4]}' není true/false"); continue; }
+            if (!bool.TryParse(cells[5], out var isReaction))
+            { errors.Add($"ř.{lineNo} '{name}': IsReaction='{cells[5]}' není true/false"); continue; }
+            if (!int.TryParse(cells[6], out var minMageLevel))
+            { errors.Add($"ř.{lineNo} '{name}': MinMageLevel='{cells[6]}' není celé číslo"); continue; }
+
+            int? price = int.TryParse(cells[7], out var p) ? p : null;
+            var effect = cells[8];
+            if (string.IsNullOrWhiteSpace(effect))
+            { errors.Add($"ř.{lineNo} '{name}': Effect je prázdný"); continue; }
 
             spells.Add(new Spell
             {
-                Name = cells[0],
-                Level = int.Parse(cells[1]),
-                ManaCost = int.Parse(cells[2]),
+                Name = name,
+                Level = level,
+                ManaCost = manaCost,
                 School = school,
                 IsScroll = isScroll,
                 IsReaction = isReaction,
                 IsLearnable = !isScroll,
-                MinMageLevel = int.Parse(cells[6]),
-                Price = int.TryParse(cells[7], out var p) ? p : null,
-                Effect = cells[8]
+                MinMageLevel = minMageLevel,
+                Price = price,
+                Effect = effect
             });
         }
 
-        return spells;
+        return (spells, errors);
     }
 
     private static async Task<Ok<SeedResult>> SeedGames(WorldDbContext db)
