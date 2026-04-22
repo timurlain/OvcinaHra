@@ -1,0 +1,234 @@
+@page "/spells"
+@attribute [Authorize]
+@inject ApiClient Api
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Extensions
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Katalog kouzel</h1>
+    <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nové kouzlo</button>
+</div>
+
+@if (loading)
+{
+    <p>Načítám...</p>
+}
+else
+{
+    <OvcinaGrid Data="@spells" KeyFieldName="Id" LayoutKey="grid-layout-spells"
+                RowClick="@(async e => await OpenDetailAsync((SpellListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+        <Columns>
+            @* Default visible — the common "at-a-glance" set *@
+            <DxGridDataColumn FieldName="Id" Caption="#" Width="60px" />
+            <DxGridDataColumn FieldName="Name" Caption="Název" Width="200px" />
+            <DxGridDataColumn FieldName="Level" Caption="Úroveň" Width="90px" />
+            <DxGridDataColumn FieldName="SchoolDisplay" Caption="Typ" Width="130px" />
+            <DxGridDataColumn FieldName="ManaCost" Caption="Mana" Width="80px" />
+            <DxGridDataColumn FieldName="MinMageLevel" Caption="Min. mág" Width="100px" />
+            <DxGridDataColumn FieldName="Price" Caption="Cena (gr)" Width="100px" />
+            <DxGridDataColumn FieldName="IsScroll" Caption="Svitek" Width="80px" />
+            <DxGridDataColumn FieldName="IsReaction" Caption="Reakce" Width="90px" />
+            <DxGridDataColumn FieldName="IsLearnable" Caption="Naučitelné" Width="110px" />
+            <DxGridDataColumn FieldName="Effect" Caption="Efekt" Width="420px" />
+
+            @* Hidden by default — reveal via column chooser *@
+            <DxGridDataColumn FieldName="Description" Caption="Popis" Width="360px" Visible="false" />
+        </Columns>
+    </OvcinaGrid>
+}
+
+<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="760px" MinHeight="640px">
+    <BodyContentTemplate Context="popupContext">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Název" ColSpanMd="8">
+                <DxTextBox @bind-Text="@model.Name" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Typ (škola)" ColSpanMd="4">
+                <DxComboBox Data="@schoolValues" @bind-Value="@model.School"
+                            TextFieldName="Display" ValueFieldName="Value" />
+            </DxFormLayoutItem>
+
+            <DxFormLayoutItem Caption="Úroveň (0=svitek, 1-5=mág)" ColSpanMd="4">
+                <DxSpinEdit @bind-Value="@model.Level" MinValue="0" MaxValue="5" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Mana" ColSpanMd="4">
+                <DxSpinEdit @bind-Value="@model.ManaCost" MinValue="0" MaxValue="5" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Min. úroveň mága" ColSpanMd="4">
+                <DxSpinEdit @bind-Value="@model.MinMageLevel" MinValue="0" MaxValue="5" />
+            </DxFormLayoutItem>
+
+            <DxFormLayoutItem Caption="Svitek (MAG-005)" ColSpanMd="4">
+                <DxCheckBox @bind-Checked="@model.IsScroll" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Reakce" ColSpanMd="4">
+                <DxCheckBox @bind-Checked="@model.IsReaction" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Naučitelné u budovy" ColSpanMd="4">
+                <DxCheckBox @bind-Checked="@model.IsLearnable" />
+            </DxFormLayoutItem>
+
+            <DxFormLayoutItem Caption="Cena naučení (groše)" ColSpanMd="12">
+                <DxSpinEdit @bind-Value="@model.Price" MinValue="0" MaxValue="9999" ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+            </DxFormLayoutItem>
+
+            <DxFormLayoutItem Caption="Efekt (text karty)" ColSpanMd="12">
+                <DxMemo @bind-Text="@model.Effect" Rows="4" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Popis / flavor (volitelný)" ColSpanMd="12">
+                <DxMemo @bind-Text="@model.Description" Rows="4" />
+            </DxFormLayoutItem>
+        </DxFormLayout>
+
+        @if (error is not null)
+        {
+            <div class="alert alert-danger mt-2">@error</div>
+        }
+
+        <div class="d-flex gap-2 mt-3">
+            @if (editingId.HasValue)
+            {
+                <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true" disabled="@isSaving">Smazat</button>
+            }
+            <div style="flex: 1"></div>
+            <button class="btn btn-secondary" @onclick="() => isModalVisible = false" disabled="@isSaving">Zrušit</button>
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving">
+                @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Uložit
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Smazat kouzlo?" Width="400px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Opravdu chcete smazat kouzlo <strong>@model.Name</strong>?</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync" disabled="@isSaving">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    private List<SpellListDto> spells = [];
+    private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
+    private string modalTitle = "";
+    private string? error;
+    private int? editingId;
+    private SpellFormModel model = new();
+
+    private static readonly List<SchoolOption> schoolValues = Enum.GetValues<SpellSchool>()
+        .Select(v => new SchoolOption(v, v.GetDisplayName())).ToList();
+
+    private record SchoolOption(SpellSchool Value, string Display);
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        spells = await Api.GetListAsync<SpellListDto>("/api/spells");
+        loading = false;
+    }
+
+    private void OpenModal(SpellListDto? _)
+    {
+        error = null;
+        editingId = null;
+        model = new SpellFormModel();
+        modalTitle = "Nové kouzlo";
+        isModalVisible = true;
+    }
+
+    private async Task OpenDetailAsync(SpellListDto s)
+    {
+        error = null;
+        var detail = await Api.GetAsync<SpellDetailDto>($"/api/spells/{s.Id}");
+        if (detail is null) return;
+
+        editingId = detail.Id;
+        model = SpellFormModel.FromDetail(detail);
+        modalTitle = $"Upravit: {detail.Name}";
+        isModalVisible = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        error = null;
+        isSaving = true;
+        try
+        {
+            if (editingId.HasValue)
+            {
+                await Api.PutAsync($"/api/spells/{editingId}", model.ToUpdateDto());
+            }
+            else
+            {
+                await Api.PostAsync<CreateSpellDto, SpellDetailDto>("/api/spells", model.ToCreateDto());
+            }
+            isModalVisible = false;
+            await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        error = null;
+        isSaving = true;
+        try
+        {
+            // ApiClient.DeleteAsync returns bool — it does not throw on non-success.
+            // Ignoring the value would close the dialog even on a failed delete.
+            var ok = await Api.DeleteAsync($"/api/spells/{editingId}");
+            if (!ok)
+            {
+                error = "Smazání kouzla se nepodařilo.";
+                return;
+            }
+            isDeleteVisible = false;
+            isModalVisible = false;
+            await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private sealed class SpellFormModel
+    {
+        public string Name { get; set; } = "";
+        public int Level { get; set; }
+        public int ManaCost { get; set; }
+        public SpellSchool School { get; set; } = SpellSchool.Fire;
+        public bool IsScroll { get; set; }
+        public bool IsReaction { get; set; }
+        public bool IsLearnable { get; set; } = true;
+        public int MinMageLevel { get; set; }
+        public int? Price { get; set; }
+        public string Effect { get; set; } = "";
+        public string? Description { get; set; }
+
+        public static SpellFormModel FromDetail(SpellDetailDto d) => new()
+        {
+            Name = d.Name,
+            Level = d.Level,
+            ManaCost = d.ManaCost,
+            School = d.School,
+            IsScroll = d.IsScroll,
+            IsReaction = d.IsReaction,
+            IsLearnable = d.IsLearnable,
+            MinMageLevel = d.MinMageLevel,
+            Price = d.Price,
+            Effect = d.Effect,
+            Description = d.Description
+        };
+
+        public CreateSpellDto ToCreateDto() => new(
+            Name, Level, ManaCost, School, IsScroll, IsReaction, IsLearnable, MinMageLevel, Price, Effect, Description);
+
+        public UpdateSpellDto ToUpdateDto() => new(
+            Name, Level, ManaCost, School, IsScroll, IsReaction, IsLearnable, MinMageLevel, Price, Effect, Description);
+    }
+}

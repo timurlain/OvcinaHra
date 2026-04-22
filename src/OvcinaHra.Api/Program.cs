@@ -204,6 +204,7 @@ try
     app.MapQuestEndpoints().RequireAuthorization();
     app.MapBuildingEndpoints().RequireAuthorization();
     app.MapSkillEndpoints().RequireAuthorization();
+    app.MapSpellEndpoints().RequireAuthorization();
     app.MapCraftingEndpoints().RequireAuthorization();
     app.MapTreasureQuestEndpoints().RequireAuthorization();
     app.MapPersonalQuestEndpoints().RequireAuthorization();
