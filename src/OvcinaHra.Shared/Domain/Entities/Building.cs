@@ -5,6 +5,7 @@ public class Building
     public int Id { get; set; }
     public required string Name { get; set; }
     public string? Description { get; set; }
+    public string? Notes { get; set; }
     public string? ImagePath { get; set; }
     public int? LocationId { get; set; }
     public bool IsPrebuilt { get; set; }

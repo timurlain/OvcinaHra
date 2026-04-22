@@ -128,7 +128,7 @@ public class BuildingEndpointTests(PostgresFixture postgres) : IntegrationTestBa
             new CreateBuildingDto("Stará věž"));
         var created = await createResponse.Content.ReadFromJsonAsync<BuildingDetailDto>();
 
-        var updateDto = new UpdateBuildingDto("Nová věž", "Opravená a posílená věž", null, true);
+        var updateDto = new UpdateBuildingDto("Nová věž", "Opravená a posílená věž", null, null, true);
         var response = await Client.PutAsJsonAsync($"/api/buildings/{created!.Id}", updateDto);
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
@@ -137,6 +137,38 @@ public class BuildingEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         Assert.Equal("Nová věž", updated!.Name);
         Assert.Equal("Opravená a posílená věž", updated.Description);
         Assert.True(updated.IsPrebuilt);
+    }
+
+    // ── Notes round-trip ────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Create_WithNotes_PersistsAndReturnsThem()
+    {
+        var dto = new CreateBuildingDto("Strážní věž", Notes: "Dveře se zasekávají — org má náhradní kliku.");
+        var response = await Client.PostAsJsonAsync("/api/buildings", dto);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var created = await response.Content.ReadFromJsonAsync<BuildingDetailDto>();
+        Assert.NotNull(created);
+        Assert.Equal("Dveře se zasekávají — org má náhradní kliku.", created.Notes);
+
+        var fetched = await Client.GetFromJsonAsync<BuildingDetailDto>($"/api/buildings/{created.Id}");
+        Assert.Equal("Dveře se zasekávají — org má náhradní kliku.", fetched!.Notes);
+    }
+
+    [Fact]
+    public async Task Update_ChangesNotes_PersistsNewValue()
+    {
+        var createResp = await Client.PostAsJsonAsync("/api/buildings",
+            new CreateBuildingDto("Chata", Notes: "původní poznámka"));
+        var created = await createResp.Content.ReadFromJsonAsync<BuildingDetailDto>();
+
+        var updateDto = new UpdateBuildingDto(created!.Name, created.Description, "nová poznámka pro orgy", created.LocationId, created.IsPrebuilt);
+        var updateResp = await Client.PutAsJsonAsync($"/api/buildings/{created.Id}", updateDto);
+        Assert.Equal(HttpStatusCode.NoContent, updateResp.StatusCode);
+
+        var updated = await Client.GetFromJsonAsync<BuildingDetailDto>($"/api/buildings/{created.Id}");
+        Assert.Equal("nová poznámka pro orgy", updated!.Notes);
     }
 
     // ── Delete ──────────────────────────────────────────────────────────────

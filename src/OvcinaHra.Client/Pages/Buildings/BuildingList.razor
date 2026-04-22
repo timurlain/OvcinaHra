@@ -60,24 +60,37 @@ else
     </OvcinaGrid>
 }
 
-<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="500px">
+<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="900px">
     <BodyContentTemplate Context="popupContext">
-        <DxFormLayout>
-            <DxFormLayoutItem Caption="Název" ColSpanMd="12">
-                <DxTextBox @bind-Text="@name" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Popis" ColSpanMd="12">
-                <DxMemo @bind-Text="@description" Rows="3" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Lokace" ColSpanMd="12">
-                <DxComboBox Data="@gameLocations" @bind-Value="@locationId"
-                            TextFieldName="Name" ValueFieldName="Id"
-                            NullText="Bez lokace" ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="" ColSpanMd="12">
-                <DxCheckBox @bind-Checked="@isPrebuilt">Představěná organizátory</DxCheckBox>
-            </DxFormLayoutItem>
-        </DxFormLayout>
+        <div class="row g-3">
+            @if (editingId.HasValue)
+            {
+                <div class="col-md-5">
+                    <ImagePicker EntityType="buildings" EntityId="editingId.Value" Alt="Obrázek budovy" AspectRatio="3:2" />
+                </div>
+            }
+            <div class="@(editingId.HasValue ? "col-md-7" : "col-md-12")">
+                <DxFormLayout>
+                    <DxFormLayoutItem Caption="Název" ColSpanMd="12">
+                        <DxTextBox @bind-Text="@name" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Popis" ColSpanMd="12">
+                        <DxMemo @bind-Text="@description" Rows="3" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Poznámky" ColSpanMd="12">
+                        <DxMemo @bind-Text="@notes" Rows="3" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Lokace" ColSpanMd="12">
+                        <DxComboBox Data="@gameLocations" @bind-Value="@locationId"
+                                    TextFieldName="Name" ValueFieldName="Id"
+                                    NullText="Bez lokace" ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="" ColSpanMd="12">
+                        <DxCheckBox @bind-Checked="@isPrebuilt">Představěná organizátory</DxCheckBox>
+                    </DxFormLayoutItem>
+                </DxFormLayout>
+            </div>
+        </div>
         @if (error is not null) { <div class="alert alert-danger mt-2">@error</div> }
         <div class="d-flex gap-2 mt-3">
             @if (editingId.HasValue) { <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true">Smazat</button> }
@@ -102,7 +115,7 @@ else
     [SupplyParameterFromQuery] public bool Catalog { get; set; }
 
     private List<BuildingListDto> buildings = []; private bool loading = true, isModalVisible, isDeleteVisible, isSaving, isPrebuilt;
-    private string modalTitle = "", name = ""; private string? error, description; private int? editingId;
+    private string modalTitle = "", name = ""; private string? error, description, notes; private int? editingId;
     private int? locationId;
     private List<LocationListDto> gameLocations = [];
     private HashSet<int> assignedBuildingIds = [];
@@ -148,7 +161,7 @@ else
     {
         error = null;
         gameLocations = await Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gameId}");
-        if (b is null) { editingId = null; name = ""; description = null; locationId = null; isPrebuilt = false; modalTitle = "Nová budova"; }
+        if (b is null) { editingId = null; name = ""; description = null; notes = null; locationId = null; isPrebuilt = false; modalTitle = "Nová budova"; }
         else { editingId = b.Id; name = b.Name; locationId = b.LocationId; isPrebuilt = b.IsPrebuilt; modalTitle = $"Upravit: {b.Name}"; _ = LoadDetailAsync(b.Id); }
         isModalVisible = true;
         StateHasChanged();
@@ -157,7 +170,7 @@ else
     private async Task LoadDetailAsync(int id)
     {
         var d = await Api.GetAsync<BuildingDetailDto>($"/api/buildings/{id}");
-        if (d is not null) { description = d.Description; StateHasChanged(); }
+        if (d is not null) { description = d.Description; notes = d.Notes; StateHasChanged(); }
     }
 
     private async Task SaveAsync()
@@ -165,8 +178,8 @@ else
         error = null; isSaving = true;
         try
         {
-            if (editingId.HasValue) await Api.PutAsync($"/api/buildings/{editingId}", new UpdateBuildingDto(name, description, locationId, isPrebuilt));
-            else await Api.PostAsync<CreateBuildingDto, BuildingDetailDto>($"/api/buildings?gameId={gameId}", new CreateBuildingDto(name, description, locationId, isPrebuilt));
+            if (editingId.HasValue) await Api.PutAsync($"/api/buildings/{editingId}", new UpdateBuildingDto(name, description, notes, locationId, isPrebuilt));
+            else await Api.PostAsync<CreateBuildingDto, BuildingDetailDto>($"/api/buildings?gameId={gameId}", new CreateBuildingDto(name, description, notes, locationId, isPrebuilt));
             isModalVisible = false; await LoadAsync();
         }
         catch (Exception ex) { error = ex.Message; } finally { isSaving = false; }

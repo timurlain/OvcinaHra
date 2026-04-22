@@ -10,6 +10,7 @@ public class BuildingConfiguration : IEntityTypeConfiguration<Building>
     {
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Name).IsRequired().HasMaxLength(200);
+        builder.Property(e => e.Notes).HasMaxLength(1000);
         builder.HasOne(e => e.Location).WithMany(l => l.Buildings).HasForeignKey(e => e.LocationId);
     }
 }
