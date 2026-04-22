@@ -7,7 +7,7 @@
         {
             <img src="@currentUrl" alt="@Alt" class="image-picker-img" />
             <button type="button" class="image-picker-delete"
-                    @onclick="DeleteImage" @onclick:stopPropagation="true"
+                    @onclick="PromptDelete" @onclick:stopPropagation="true"
                     disabled="@isWorking" title="Odebrat obrázek">&#10005;</button>
         }
         else
@@ -37,6 +37,16 @@
     }
 </div>
 
+<DxPopup @bind-Visible="@isDeleteConfirmVisible" HeaderText="Odebrat obrázek?" Width="400px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Opravdu chcete odebrat tento obrázek?</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isDeleteConfirmVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync" disabled="@isWorking">Odebrat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
 @code {
     [Inject] private ApiClient Api { get; set; } = null!;
 
@@ -51,6 +61,7 @@
     private string? currentUrl;
     private string? errorMessage;
     private bool isWorking;
+    private bool isDeleteConfirmVisible;
 
     private string parsedAspect = "1 / 1";
 
@@ -139,6 +150,14 @@
         {
             isWorking = false;
         }
+    }
+
+    private void PromptDelete() => isDeleteConfirmVisible = true;
+
+    private async Task ConfirmDeleteAsync()
+    {
+        isDeleteConfirmVisible = false;
+        await DeleteImage();
     }
 
     private async Task DeleteImage()
