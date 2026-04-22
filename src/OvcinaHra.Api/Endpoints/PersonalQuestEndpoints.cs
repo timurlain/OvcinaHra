@@ -41,6 +41,7 @@ public static class PersonalQuestEndpoints
             .AsNoTracking()
             .Include(q => q.SkillRewards).ThenInclude(sr => sr.Skill)
             .Include(q => q.ItemRewards).ThenInclude(r => r.Item)
+            .Include(q => q.SpellRewards).ThenInclude(sr => sr.Spell)
             .OrderBy(q => q.Name)
             .ToListAsync();
 
@@ -130,6 +131,7 @@ public static class PersonalQuestEndpoints
         q.QuestCardText, q.RewardCardText, q.RewardNote, q.Notes, q.ImagePath,
         q.SkillRewards.Select(sr => sr.SkillId).ToList(),
         q.ItemRewards.Select(ir => new PersonalQuestItemRewardSummary(ir.ItemId, ir.Item.Name, ir.Quantity)).ToList(),
+        q.SpellRewards.Select(sr => new PersonalQuestSpellRewardSummary(sr.SpellId, sr.Spell.Name, sr.Spell.IsScroll, sr.Quantity)).ToList(),
         BuildRewardSummary(q),
         q.XpCost);
 
@@ -142,6 +144,7 @@ public static class PersonalQuestEndpoints
             .Where(g => g.GameId == gameId)
             .Include(g => g.PersonalQuest).ThenInclude(q => q.SkillRewards).ThenInclude(sr => sr.Skill)
             .Include(g => g.PersonalQuest).ThenInclude(q => q.ItemRewards).ThenInclude(ir => ir.Item)
+            .Include(g => g.PersonalQuest).ThenInclude(q => q.SpellRewards).ThenInclude(sr => sr.Spell)
             .OrderBy(g => g.PersonalQuest.Name)
             .ToListAsync();
 
@@ -202,7 +205,8 @@ public static class PersonalQuestEndpoints
             q.AllowWarrior, q.AllowArcher, q.AllowMage, q.AllowThief,
             q.QuestCardText, q.RewardCardText, q.RewardNote, q.Notes, q.ImagePath,
             g.GameId, g.XpCost, g.XpCost ?? q.XpCost, g.PerKingdomLimit,
-            BuildRewardSummary(q));
+            BuildRewardSummary(q),
+            q.SpellRewards.Select(sr => new PersonalQuestSpellRewardSummary(sr.SpellId, sr.Spell.Name, sr.Spell.IsScroll, sr.Quantity)).ToList());
     }
 
     private static string? BuildRewardSummary(PersonalQuest q)
@@ -217,6 +221,12 @@ public static class PersonalQuestEndpoints
         {
             parts.Add(string.Join(", ",
                 q.ItemRewards.OrderBy(i => i.Item.Name).Select(i => $"{i.Item.Name} ×{i.Quantity}")));
+        }
+        if (q.SpellRewards.Count > 0)
+        {
+            parts.Add(string.Join(", ",
+                q.SpellRewards.OrderBy(s => s.Spell.Name)
+                    .Select(s => s.Quantity > 1 ? $"{s.Spell.Name} ×{s.Quantity}" : s.Spell.Name)));
         }
         return parts.Count > 0 ? string.Join(" │ ", parts) : null;
     }

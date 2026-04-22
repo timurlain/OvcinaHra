@@ -792,18 +792,55 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         Assert.Empty(detail!.SpellRewards);
     }
 
+    [Fact]
+    public async Task GetByGame_QuestWithSpellReward_IncludesSpellInRewardSummary()
+    {
+        var game = await CreateGameAsync();
+        var quest = await CreatePersonalQuestAsync(xpCost: 5);
+        var scroll = await CreateSpellAsync(name: "Svitek léčení (test-summary)",
+                                            isScroll: true, isLearnable: false);
+        await Client.PostAsJsonAsync(
+            $"/api/personal-quests/{quest.Id}/spell-rewards",
+            new AddSpellRewardDto(scroll.Id, Quantity: 2));
+        await Client.PostAsJsonAsync("/api/personal-quests/game-link",
+            new CreateGamePersonalQuestDto(game.Id, quest.Id, XpCost: null, PerKingdomLimit: null));
+
+        var list = await Client.GetFromJsonAsync<List<GamePersonalQuestListDto>>(
+            $"/api/personal-quests/by-game/{game.Id}");
+        var row = Assert.Single(list!);
+        Assert.NotNull(row.RewardSummary);
+        Assert.Contains("Svitek léčení (test-summary)", row.RewardSummary);
+        Assert.Contains("×2", row.RewardSummary);
+        // Confirm SpellRewards arrays are populated on the list DTO too
+        Assert.Single(row.SpellRewards);
+        Assert.Equal(scroll.Id, row.SpellRewards[0].SpellId);
+        Assert.Equal(2, row.SpellRewards[0].Quantity);
+        Assert.True(row.SpellRewards[0].IsScroll);
+    }
+
     // ---------- helpers ----------
 
     private async Task<PersonalQuestDetailDto> CreatePersonalQuestAsync(
-        string name = "Test quest")
+        string name = "Test quest",
+        int xpCost = 0)
     {
         var resp = await Client.PostAsJsonAsync("/api/personal-quests",
             new CreatePersonalQuestDto(
                 Name: name,
-                Difficulty: TreasureQuestDifficulty.Early));
+                Difficulty: TreasureQuestDifficulty.Early,
+                XpCost: xpCost));
         resp.EnsureSuccessStatusCode();
         var quest = await resp.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
         return quest!;
+    }
+
+    private async Task<GameDetailDto> CreateGameAsync(string name = "Test Hra")
+    {
+        var resp = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto(name, 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        resp.EnsureSuccessStatusCode();
+        var game = await resp.Content.ReadFromJsonAsync<GameDetailDto>();
+        return game!;
     }
 
     private async Task<Spell> CreateSpellAsync(

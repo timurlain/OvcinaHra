@@ -20,6 +20,7 @@ public record PersonalQuestListDto(
     string? ImagePath,
     IReadOnlyList<int> SkillRewardIds,
     IReadOnlyList<PersonalQuestItemRewardSummary> ItemRewards,
+    IReadOnlyList<PersonalQuestSpellRewardSummary> SpellRewards,
     string? RewardSummary = null,
     int XpCost = 0)
 {
@@ -118,7 +119,8 @@ public record GamePersonalQuestListDto(
     int? XpCost,
     int EffectiveXpCost,
     int? PerKingdomLimit,
-    string? RewardSummary)
+    string? RewardSummary,
+    IReadOnlyList<PersonalQuestSpellRewardSummary> SpellRewards)
 {
     [JsonIgnore]
     public string DifficultyDisplay => Difficulty.GetDisplayName();
