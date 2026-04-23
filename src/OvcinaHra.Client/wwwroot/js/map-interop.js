@@ -231,6 +231,7 @@ window.ovcinaMiniMap = {
     // styleKey:
     //   'aerial'  → Mapy.cz aerial (photo) — default for the LocationDetail orientation map (issue #74)
     //   'outdoor' → Mapy.cz tourist raster (previous default)
+    //   'basic'   → Mapy.cz basic raster
     //   anything else (or no apiKey) → OSM raster fallback
     _styleFor: function (styleKey, apiKey) {
         if (apiKey && apiKey.length > 5 && (styleKey === 'aerial' || styleKey === 'outdoor' || styleKey === 'basic')) {

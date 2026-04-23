@@ -384,6 +384,10 @@ else
     private bool miniMapInited;
     private decimal? lastMiniMapLat, lastMiniMapLon;
     private LocationKind? lastMiniMapKind;
+    // Tracks which elementId the live JS instance belongs to, so navigating between
+    // /locations/{id} pages without leaving the Upravit tab disposes the stale instance
+    // before re-initing under the new Id (per Copilot review on PR #85).
+    private string? lastMiniMapElementId;
 
     private bool HasGps => ParseGps(out _, out _);
 
@@ -577,6 +581,18 @@ else
 
     private async Task ReconcileMiniMapAsync()
     {
+        // If the route Id changed (user navigated to a different /locations/{id} while
+        // staying on Upravit), the old elementId no longer exists in the DOM. Dispose
+        // the stale JS instance before doing anything else.
+        if (miniMapInited && lastMiniMapElementId is not null && lastMiniMapElementId != MiniMapElementId)
+        {
+            try { await JS.InvokeVoidAsync("ovcinaMiniMap.dispose", lastMiniMapElementId); } catch { }
+            miniMapInited = false;
+            lastMiniMapLat = null; lastMiniMapLon = null;
+            lastMiniMapKind = null;
+            lastMiniMapElementId = null;
+        }
+
         decimal lat = 0, lon = 0;
         var shouldShow = activeTab == "upravit" && loc is not null && ParseGps(out lat, out lon);
 
@@ -588,6 +604,7 @@ else
                 miniMapInited = false;
                 lastMiniMapLat = null; lastMiniMapLon = null;
                 lastMiniMapKind = null;
+                lastMiniMapElementId = null;
             }
             return;
         }
@@ -616,6 +633,7 @@ else
                 miniMapInited = true;
                 lastMiniMapLat = lat; lastMiniMapLon = lon;
                 lastMiniMapKind = locationKind;
+                lastMiniMapElementId = MiniMapElementId;
                 await PaintContextMarkersAsync();
             }
             catch { /* element may not be in DOM yet; retried on next render */ }
