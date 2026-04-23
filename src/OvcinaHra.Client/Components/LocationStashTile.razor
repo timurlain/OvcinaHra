@@ -1,0 +1,71 @@
+@using OvcinaHra.Shared.Dtos
+@inject ApiClient Api
+
+<a class="oh-lc-tile" href="/secret-stashes/@Stash.Id">
+    <div class="oh-lc-tile-img">
+        @if (imageUrl is not null)
+        {
+            <img src="@imageUrl" alt="@Stash.Name" />
+        }
+        else
+        {
+            <div class="oh-lc-tile-img-empty">bez obrázku</div>
+        }
+        <span class="oh-lc-tile-mtgtag">5:7</span>
+    </div>
+    <div class="oh-lc-tile-body">
+        <div class="oh-lc-tile-name">@Stash.Name</div>
+        <div class="oh-lc-tile-sep"></div>
+        <ul class="oh-lc-tile-quests">
+            @foreach (var q in visibleQuests)
+            {
+                <li class="oh-lc-tile-quest">
+                    <span class="oh-lc-tile-quest-name">@q.Title</span>
+                    <span class="oh-lc-tile-quest-pill">Poklad</span>
+                </li>
+            }
+        </ul>
+        @if (overflowCount > 0)
+        {
+            <div class="oh-lc-tile-more">+ @overflowCount @PluralForm(overflowCount, "další", "další", "dalších")</div>
+        }
+    </div>
+</a>
+
+@code {
+    [Parameter, EditorRequired] public LocationStashDto Stash { get; set; } = null!;
+    [Parameter] public int MaxVisibleQuests { get; set; } = 5;
+
+    private string? imageUrl;
+    private List<LocationTreasureQuestDto> visibleQuests = [];
+    private int overflowCount;
+
+    private int? _loadedForStashId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedForStashId != Stash.Id)
+        {
+            _loadedForStashId = Stash.Id;
+            await LoadImageAsync();
+        }
+
+        var all = Stash.TreasureQuests ?? [];
+        visibleQuests = all.Take(MaxVisibleQuests).ToList();
+        overflowCount = Math.Max(0, all.Count - MaxVisibleQuests);
+    }
+
+    private async Task LoadImageAsync()
+    {
+        try
+        {
+            var urls = await Api.GetAsync<ImageUrlsDto>($"/api/images/secretstashes/{Stash.Id}");
+            imageUrl = urls?.ImageUrl;
+        }
+        catch { imageUrl = null; }
+    }
+
+    // Czech plural for count: 1 → "další", 2-4 → "další", 5+ → "dalších"
+    private static string PluralForm(int n, string one, string few, string many)
+        => n == 1 ? one : (n >= 2 && n <= 4 ? few : many);
+}

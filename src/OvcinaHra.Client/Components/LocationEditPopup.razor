@@ -2,6 +2,7 @@
 @using OvcinaHra.Shared.Dtos
 @using OvcinaHra.Client.Pages.Locations
 @inject ApiClient Api
+@inject NavigationManager Nav
 
 <DxPopup AllowResize="true" @bind-Visible="@isVisible" HeaderText="@modalTitle" Width="900px" MinHeight="700px"
          CloseOnOutsideClick="false" ShowCloseButton="true">
@@ -78,6 +79,17 @@
                     </div>
                 }
             </div>
+
+            @* Quick-peek footer — jumps to the full /locations/{id} page *@
+            @if (editingId.HasValue)
+            {
+                <div class="d-flex justify-content-end gap-2 mt-3 pt-3" style="border-top:1px solid var(--oh-border);">
+                    <button class="btn btn-secondary" @onclick="() => isVisible = false">Zavřít</button>
+                    <button class="btn btn-primary" @onclick="OpenFullDetail">
+                        Otevřít detail <i class="bi bi-arrow-right-short"></i>
+                    </button>
+                </div>
+            }
         }
 
         @* ── Tab 1: Edit form ── *@
@@ -426,6 +438,15 @@
     }
 
     public void Close() => isVisible = false;
+
+    // Jumps to the full /locations/{id} page — organizers who open the popup
+    // from the grid can drop into deep-edit mode without losing their place.
+    private void OpenFullDetail()
+    {
+        if (!editingId.HasValue) return;
+        isVisible = false;
+        Nav.NavigateTo($"/locations/{editingId.Value}");
+    }
 
     private void OnParentChangeRequested(int? newParentId)
     {

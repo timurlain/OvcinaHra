@@ -489,3 +489,7 @@ src/OvcinaHra.Client/wwwroot/appsettings.Development.json
 
 # Claude Design handoff bundles (large, regenerable)
 docs/design/handoff/
+
+# Claude Design mockup exports (kept in Downloads, regenerable)
+*.mockup.html
+*.mockup.unbundled.html
