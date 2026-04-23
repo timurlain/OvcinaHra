@@ -703,39 +703,64 @@ else
     private async Task RemoveGameItemAsync()
     {
         if (editingId is null || GameContext.SelectedGameId is null) return;
-        isSaving = true;
+        error = null; isSaving = true;
         try
         {
-            await Api.DeleteAsync($"/api/items/game-item/{GameContext.SelectedGameId}/{editingId}");
+            var deleted = await Api.DeleteAsync($"/api/items/game-item/{GameContext.SelectedGameId}/{editingId}");
+            if (!deleted)
+            {
+                error = "Odebrání předmětu ze hry se nezdařilo.";
+                return;
+            }
             gameItemExists = false;
+            await ReloadGameLinkAsync();
         }
         catch (Exception ex) { error = ex.Message; }
-        finally { isSaving = false; StateHasChanged(); }
+        finally { isSaving = false; }
     }
 
     private async Task AssignItemAsync(int itemId)
     {
         if (GameContext.SelectedGameId is null) return;
+        error = null;
         try
         {
             await Api.PostAsync<CreateGameItemDto, GameItemDto>("/api/items/game-item",
                 new CreateGameItemDto(GameContext.SelectedGameId.Value, itemId));
-            assignedItemIds.Add(itemId);
-            StateHasChanged();
+            await ReloadGameLinkAsync();
         }
-        catch (Exception ex) { error = ex.Message; StateHasChanged(); }
+        catch (Exception ex) { error = ex.Message; }
     }
 
     private async Task UnassignItemAsync(int itemId)
     {
         if (GameContext.SelectedGameId is null) return;
+        error = null;
         try
         {
-            await Api.DeleteAsync($"/api/items/game-item/{GameContext.SelectedGameId}/{itemId}");
-            assignedItemIds.Remove(itemId);
-            StateHasChanged();
+            var deleted = await Api.DeleteAsync($"/api/items/game-item/{GameContext.SelectedGameId}/{itemId}");
+            if (!deleted)
+            {
+                error = "Odebrání předmětu ze hry se nezdařilo.";
+                return;
+            }
+            await ReloadGameLinkAsync();
         }
-        catch (Exception ex) { error = ex.Message; StateHasChanged(); }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    // Targeted refresh after assign/unassign operations. In main ("Jen tato hra")
+    // mode the grid binds to gameItems, so we re-pull the per-game list and
+    // derive assignedItemIds from it. In catalog mode the catalog itself hasn't
+    // changed — only the set of linked ids — so we skip re-fetching /api/items
+    // and only refresh assignedItemIds. Avoids reloading the full ~180-item
+    // catalog on every Přidat/Odebrat click.
+    private async Task ReloadGameLinkAsync()
+    {
+        if (GameContext.SelectedGameId is not int gid) return;
+        var linked = await Api.GetListAsync<GameItemListDto>($"/api/items/by-game/{gid}");
+        assignedItemIds = linked.Select(gi => gi.Id).ToHashSet();
+        if (!Catalog) gameItems = linked;
     }
 
     private async Task SaveAsync()
