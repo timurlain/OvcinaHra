@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Services;
 
@@ -36,6 +37,16 @@ public class ApiWebApplicationFactory : WebApplicationFactory<Program>
                 services.Remove(blobDescriptor);
 
             services.AddSingleton<IBlobStorageService, InMemoryBlobService>();
+
+            // Remove the startup thumbnail backfill hosted service — tests that
+            // exercise the /api/images/backfill-thumbs endpoint seed their own
+            // data and assert on the result of an explicit call. Letting the
+            // hosted service run in parallel would race against the test's
+            // arrange phase and flake assertions.
+            var hostedDescriptor = services.SingleOrDefault(
+                d => d.ImplementationType == typeof(ThumbnailBackfillHostedService));
+            if (hostedDescriptor != null)
+                services.Remove(hostedDescriptor);
         });
     }
 }
@@ -76,4 +87,12 @@ public class InMemoryBlobService : IBlobStorageService
 
     public Task<bool> ExistsAsync(string blobKey, CancellationToken ct = default)
         => Task.FromResult(_blobs.ContainsKey(blobKey));
+
+    /// <summary>
+    /// Synchronous cache probe for tests — lets assertions like
+    /// <c>blob.Contains("locations-thumbs/1-120x120.webp")</c> verify the
+    /// backfill sweep generated the expected cache entries without paying
+    /// the async ceremony of <see cref="ExistsAsync"/>.
+    /// </summary>
+    public bool Contains(string blobKey) => _blobs.ContainsKey(blobKey);
 }

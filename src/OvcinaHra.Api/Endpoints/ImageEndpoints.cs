@@ -242,71 +242,80 @@ public static class ImageEndpoints
     {
         // (entityType, id, blobKey) triples — pulled up front so we're not
         // holding a long-lived DB cursor across network-bound thumbnail work.
+        //
+        // Projection note: we select anonymous { Id, BlobKey } per query and
+        // attach the constant entityType in-memory. An earlier version used
+        // `.Select(x => ValueTuple.Create("...", x.Id, x.ImagePath!))`, which
+        // EF Core translates into a PostgreSQL composite ROW literal
+        // (`SELECT ('locations', l."Id", l."ImagePath")`) that Npgsql then
+        // fails to deserialise into a .NET ValueTuple without an opt-in
+        // `EnableRecordsAsTuples` on the data source builder. Selecting
+        // scalar columns is the safe, cross-provider shape.
         var targets = new List<(string EntityType, int Id, string BlobKey)>();
 
-        foreach (var (entityType, id, blobKey) in await db.Locations
+        foreach (var row in await db.Locations
             .Where(l => l.ImagePath != null && l.ImagePath != "")
-            .Select(l => ValueTuple.Create("locations", l.Id, l.ImagePath!))
+            .Select(l => new { l.Id, BlobKey = l.ImagePath! })
             .ToListAsync(ct))
-            targets.Add((entityType, id, blobKey));
+            targets.Add(("locations", row.Id, row.BlobKey));
 
         // Rubber-stamp image on Location is surfaced as the "locationstamps"
         // entity-type alias; see the comment on ValidEntityTypes.
-        foreach (var (entityType, id, blobKey) in await db.Locations
+        foreach (var row in await db.Locations
             .Where(l => l.StampImagePath != null && l.StampImagePath != "")
-            .Select(l => ValueTuple.Create("locationstamps", l.Id, l.StampImagePath!))
+            .Select(l => new { l.Id, BlobKey = l.StampImagePath! })
             .ToListAsync(ct))
-            targets.Add((entityType, id, blobKey));
+            targets.Add(("locationstamps", row.Id, row.BlobKey));
 
-        foreach (var (entityType, id, blobKey) in await db.Items
+        foreach (var row in await db.Items
             .Where(i => i.ImagePath != null && i.ImagePath != "")
-            .Select(i => ValueTuple.Create("items", i.Id, i.ImagePath!))
+            .Select(i => new { i.Id, BlobKey = i.ImagePath! })
             .ToListAsync(ct))
-            targets.Add((entityType, id, blobKey));
+            targets.Add(("items", row.Id, row.BlobKey));
 
-        foreach (var (entityType, id, blobKey) in await db.Monsters
+        foreach (var row in await db.Monsters
             .Where(m => m.ImagePath != null && m.ImagePath != "")
-            .Select(m => ValueTuple.Create("monsters", m.Id, m.ImagePath!))
+            .Select(m => new { m.Id, BlobKey = m.ImagePath! })
             .ToListAsync(ct))
-            targets.Add((entityType, id, blobKey));
+            targets.Add(("monsters", row.Id, row.BlobKey));
 
-        foreach (var (entityType, id, blobKey) in await db.SecretStashes
+        foreach (var row in await db.SecretStashes
             .Where(s => s.ImagePath != null && s.ImagePath != "")
-            .Select(s => ValueTuple.Create("secretstashes", s.Id, s.ImagePath!))
+            .Select(s => new { s.Id, BlobKey = s.ImagePath! })
             .ToListAsync(ct))
-            targets.Add((entityType, id, blobKey));
+            targets.Add(("secretstashes", row.Id, row.BlobKey));
 
-        foreach (var (entityType, id, blobKey) in await db.Npcs
+        foreach (var row in await db.Npcs
             .Where(n => n.ImagePath != null && n.ImagePath != "")
-            .Select(n => ValueTuple.Create("npcs", n.Id, n.ImagePath!))
+            .Select(n => new { n.Id, BlobKey = n.ImagePath! })
             .ToListAsync(ct))
-            targets.Add((entityType, id, blobKey));
+            targets.Add(("npcs", row.Id, row.BlobKey));
 
-        foreach (var (entityType, id, blobKey) in await db.Buildings
+        foreach (var row in await db.Buildings
             .Where(b => b.ImagePath != null && b.ImagePath != "")
-            .Select(b => ValueTuple.Create("buildings", b.Id, b.ImagePath!))
+            .Select(b => new { b.Id, BlobKey = b.ImagePath! })
             .ToListAsync(ct))
-            targets.Add((entityType, id, blobKey));
+            targets.Add(("buildings", row.Id, row.BlobKey));
 
-        foreach (var (entityType, id, blobKey) in await db.Characters
+        foreach (var row in await db.Characters
             .Where(c => c.ImagePath != null && c.ImagePath != "")
-            .Select(c => ValueTuple.Create("characters", c.Id, c.ImagePath!))
+            .Select(c => new { c.Id, BlobKey = c.ImagePath! })
             .ToListAsync(ct))
-            targets.Add((entityType, id, blobKey));
+            targets.Add(("characters", row.Id, row.BlobKey));
 
         // Kingdom.BadgeImageUrl is the blob-key field — the column name is
         // legacy tech debt (see MEMORY feedback_ovcinahra_kingdom_badgeimageurl_is_blob_key).
-        foreach (var (entityType, id, blobKey) in await db.Kingdoms
+        foreach (var row in await db.Kingdoms
             .Where(k => k.BadgeImageUrl != null && k.BadgeImageUrl != "")
-            .Select(k => ValueTuple.Create("kingdoms", k.Id, k.BadgeImageUrl!))
+            .Select(k => new { k.Id, BlobKey = k.BadgeImageUrl! })
             .ToListAsync(ct))
-            targets.Add((entityType, id, blobKey));
+            targets.Add(("kingdoms", row.Id, row.BlobKey));
 
-        foreach (var (entityType, id, blobKey) in await db.Spells
+        foreach (var row in await db.Spells
             .Where(s => s.ImagePath != null && s.ImagePath != "")
-            .Select(s => ValueTuple.Create("spells", s.Id, s.ImagePath!))
+            .Select(s => new { s.Id, BlobKey = s.ImagePath! })
             .ToListAsync(ct))
-            targets.Add((entityType, id, blobKey));
+            targets.Add(("spells", row.Id, row.BlobKey));
 
         var presets = Enum.GetValues<ThumbnailPreset>();
         var attempted = 0;
