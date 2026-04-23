@@ -20,6 +20,7 @@ public static class ImageEndpoints
         group.MapGet("/{entityType}/{entityId:int}", GetUrls);
         group.MapGet("/{entityType}/{entityId:int}/thumb", GetThumbnail).AllowAnonymous();
         group.MapDelete("/{entityType}/{entityId:int}", Delete);
+        group.MapPost("/backfill-thumbs", BackfillThumbs);
 
         return group;
     }
@@ -104,6 +105,7 @@ public static class ImageEndpoints
 
     private static async Task<Results<Ok<ImageUploadResult>, NotFound, BadRequest<string>>> Upload(
         string entityType, int entityId, IFormFile file, IBlobStorageService blobService,
+        IThumbnailService thumbnailService, ILogger<ThumbnailService> thumbLogger,
         WorldDbContext db, string? field = null)
     {
         if (!ValidEntityTypes.Contains(entityType))
@@ -136,12 +138,212 @@ public static class ImageEndpoints
         // from the previous source image and are stale now. Only apply to the
         // main image path; placement photos are detail-only and not cached.
         if (!isPlacement)
+        {
             await blobService.DeletePrefixAsync($"{entityType}-thumbs/{entityId}-");
+            // Fire-and-forget pre-generation of all presets so the first
+            // list-page viewer hits the hot-cache 302-redirect path instead of
+            // paying cold resize cost. Upload response returns immediately;
+            // generation runs on a background task. Discard (_ =) silences
+            // CS4014 without a pragma.
+            _ = PreGenerateAllPresetsAsync(thumbnailService, thumbLogger, entityType, entityId, blobKey);
+        }
 
         await UpdateEntityImagePath(db, entityType, entityId, blobKey, isPlacement);
 
         var url = await blobService.GetSasUrlAsync(blobKey);
         return TypedResults.Ok(new ImageUploadResult(blobKey, url));
+    }
+
+    /// <summary>
+    /// Kicks off a background task that pre-generates every thumbnail preset
+    /// for a freshly-uploaded source image. Fire-and-forget; failures are
+    /// logged but don't propagate — the on-demand thumbnail endpoint is still
+    /// the fallback. Wraps the whole body in try/catch so an unobserved
+    /// exception can't crash the host.
+    /// </summary>
+    private static async Task PreGenerateAllPresetsAsync(
+        IThumbnailService thumbnailService, ILogger logger,
+        string entityType, int entityId, string sourceBlobKey)
+    {
+        // No Task.Run — the work is I/O-bound (blob download/upload around a
+        // short CPU resize burst that already runs inside a SemaphoreSlim(4)
+        // in ThumbnailService). Wrapping in Task.Run would burn a thread-pool
+        // thread per upload and let a burst of uploads spawn unbounded work.
+        // Fire-and-forget via `_ =` at the caller means this Task runs on the
+        // current sync context, yielding to the pool only on await.
+        try
+        {
+            foreach (var preset in Enum.GetValues<ThumbnailPreset>())
+            {
+                try
+                {
+                    await thumbnailService.GetOrCreateAsync(entityType, entityId, sourceBlobKey, preset);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex,
+                        "Thumbnail pre-generation failed for {EntityType}/{EntityId} preset {Preset}",
+                        entityType, entityId, preset);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "Thumbnail pre-generation task failed for {EntityType}/{EntityId}",
+                entityType, entityId);
+        }
+    }
+
+    /// <summary>
+    /// Manual trigger to re-run the same backfill sweep the
+    /// <c>ThumbnailBackfillHostedService</c> performs on container startup.
+    /// Useful after bulk imports or whenever the hosted service didn't cover
+    /// an entity.
+    ///
+    /// Inherits the group's authorization — **any authenticated user** can
+    /// call it. This is not gated behind an admin role today; every OvčinaHra
+    /// user is an organizer. If a finer gate is needed later, add a policy
+    /// here via <c>.RequireAuthorization(policy)</c>.
+    ///
+    /// Runs **synchronously** (the whole sweep awaits before returning) and
+    /// can take minutes for a large catalogue, so call it from a tool that
+    /// tolerates long response times. Returns <c>{ processed: N }</c> — the
+    /// number of (entity, preset) pairs the service walked (already-cached
+    /// thumbs short-circuit inside <c>GetOrCreateAsync</c> and still count
+    /// toward the total).
+    /// </summary>
+    private static async Task<Ok<object>> BackfillThumbs(
+        IThumbnailService thumbnailService, WorldDbContext db,
+        ILogger<ThumbnailService> logger, CancellationToken ct)
+    {
+        var processed = await BackfillAllThumbsAsync(db, thumbnailService, logger, ct);
+        return TypedResults.Ok<object>(new { processed });
+    }
+
+    /// <summary>
+    /// Walks every entity table with an image column, and for every row with
+    /// a non-empty image path, calls <see cref="IThumbnailService.GetOrCreateAsync"/>
+    /// for every <see cref="ThumbnailPreset"/>. The service short-circuits
+    /// when the thumb already exists (ExistsAsync HEAD probe), so re-running
+    /// this is idempotent and cheap. Returns the number of (entity, preset)
+    /// pairs attempted. Shared between the hosted service and the admin
+    /// endpoint to avoid duplicate logic.
+    /// </summary>
+    internal static async Task<int> BackfillAllThumbsAsync(
+        WorldDbContext db, IThumbnailService thumbnailService,
+        ILogger logger, CancellationToken ct)
+    {
+        // (entityType, id, blobKey) triples — pulled up front so we're not
+        // holding a long-lived DB cursor across network-bound thumbnail work.
+        var targets = new List<(string EntityType, int Id, string BlobKey)>();
+
+        foreach (var (entityType, id, blobKey) in await db.Locations
+            .Where(l => l.ImagePath != null && l.ImagePath != "")
+            .Select(l => ValueTuple.Create("locations", l.Id, l.ImagePath!))
+            .ToListAsync(ct))
+            targets.Add((entityType, id, blobKey));
+
+        foreach (var (entityType, id, blobKey) in await db.Items
+            .Where(i => i.ImagePath != null && i.ImagePath != "")
+            .Select(i => ValueTuple.Create("items", i.Id, i.ImagePath!))
+            .ToListAsync(ct))
+            targets.Add((entityType, id, blobKey));
+
+        foreach (var (entityType, id, blobKey) in await db.Monsters
+            .Where(m => m.ImagePath != null && m.ImagePath != "")
+            .Select(m => ValueTuple.Create("monsters", m.Id, m.ImagePath!))
+            .ToListAsync(ct))
+            targets.Add((entityType, id, blobKey));
+
+        foreach (var (entityType, id, blobKey) in await db.SecretStashes
+            .Where(s => s.ImagePath != null && s.ImagePath != "")
+            .Select(s => ValueTuple.Create("secretstashes", s.Id, s.ImagePath!))
+            .ToListAsync(ct))
+            targets.Add((entityType, id, blobKey));
+
+        foreach (var (entityType, id, blobKey) in await db.Npcs
+            .Where(n => n.ImagePath != null && n.ImagePath != "")
+            .Select(n => ValueTuple.Create("npcs", n.Id, n.ImagePath!))
+            .ToListAsync(ct))
+            targets.Add((entityType, id, blobKey));
+
+        foreach (var (entityType, id, blobKey) in await db.Buildings
+            .Where(b => b.ImagePath != null && b.ImagePath != "")
+            .Select(b => ValueTuple.Create("buildings", b.Id, b.ImagePath!))
+            .ToListAsync(ct))
+            targets.Add((entityType, id, blobKey));
+
+        foreach (var (entityType, id, blobKey) in await db.Characters
+            .Where(c => c.ImagePath != null && c.ImagePath != "")
+            .Select(c => ValueTuple.Create("characters", c.Id, c.ImagePath!))
+            .ToListAsync(ct))
+            targets.Add((entityType, id, blobKey));
+
+        // Kingdom.BadgeImageUrl is the blob-key field — the column name is
+        // legacy tech debt (see MEMORY feedback_ovcinahra_kingdom_badgeimageurl_is_blob_key).
+        foreach (var (entityType, id, blobKey) in await db.Kingdoms
+            .Where(k => k.BadgeImageUrl != null && k.BadgeImageUrl != "")
+            .Select(k => ValueTuple.Create("kingdoms", k.Id, k.BadgeImageUrl!))
+            .ToListAsync(ct))
+            targets.Add((entityType, id, blobKey));
+
+        foreach (var (entityType, id, blobKey) in await db.Spells
+            .Where(s => s.ImagePath != null && s.ImagePath != "")
+            .Select(s => ValueTuple.Create("spells", s.Id, s.ImagePath!))
+            .ToListAsync(ct))
+            targets.Add((entityType, id, blobKey));
+
+        var presets = Enum.GetValues<ThumbnailPreset>();
+        var attempted = 0;
+        var done = 0;
+        // Entity-type count is derived from the actual targets so the log stays
+        // accurate if ValidEntityTypes grows or a table happens to be empty.
+        var entityTypeCount = targets.Select(t => t.EntityType).Distinct().Count();
+        logger.LogInformation(
+            "Thumbnail backfill starting: {RowCount} entities across {EntityTypeCount} types, {PresetCount} presets each",
+            targets.Count, entityTypeCount, presets.Length);
+
+        foreach (var (entityType, id, blobKey) in targets)
+        {
+            if (ct.IsCancellationRequested)
+            {
+                logger.LogInformation("Thumbnail backfill cancelled at {Done}/{Total} rows", done, targets.Count);
+                break;
+            }
+
+            foreach (var preset in presets)
+            {
+                try
+                {
+                    await thumbnailService.GetOrCreateAsync(entityType, id, blobKey, preset, ct);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex,
+                        "Thumbnail backfill failed for {EntityType}/{EntityId} preset {Preset}",
+                        entityType, id, preset);
+                }
+                attempted++;
+            }
+            done++;
+
+            // Log every 50 rows so a fresh-deploy backfill (~200+ rows) shows
+            // visible progress in the container logs.
+            if (done % 50 == 0)
+            {
+                logger.LogInformation("Thumbnail backfill progress: {Done}/{Total} rows", done, targets.Count);
+            }
+        }
+
+        logger.LogInformation(
+            "Thumbnail backfill complete: {Attempted} (entity, preset) pairs attempted across {Done}/{Total} rows",
+            attempted, done, targets.Count);
+        return attempted;
     }
 
     private static async Task<Results<Ok<ImageUrlsDto>, NotFound, BadRequest<string>>> GetUrls(
