@@ -91,6 +91,10 @@ try
     builder.Services.AddHttpClient();
     builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
     builder.Services.AddSingleton<IThumbnailService, ThumbnailService>();
+    // Walks every image-bearing entity on startup and pre-generates all
+    // thumbnail presets so list pages never pay the cold-resize cost at
+    // runtime. Runs in the background — does not block startup.
+    builder.Services.AddHostedService<ThumbnailBackfillHostedService>();
 
     // In-memory log ring buffer for production debugging
     var logBuffer = new LogRingBuffer();
