@@ -1,6 +1,7 @@
 @page "/p/{PersonId:int}"
 @attribute [Authorize]
 @inject ApiClient Api
+@using OvcinaHra.Shared.Extensions
 
 @if (loading)
 {
@@ -41,7 +42,7 @@ else if (character is not null)
                 }
                 @if (character.Race is not null)
                 {
-                    <span class="badge bg-info text-dark fs-6">@character.Race</span>
+                    <span class="badge bg-info text-dark fs-6">@character.Race.Value.GetDisplayName()</span>
                 }
             </div>
         </div>

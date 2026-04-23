@@ -2,6 +2,10 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject GameContextService GameContext
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Dtos
+@using OvcinaHra.Shared.Extensions
+@using OvcinaHra.Client.Components
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="mb-0">Postavy</h1>
@@ -34,20 +38,40 @@
 else if (characters.Count == 0)
 {
     <div class="text-center text-muted py-5">
-        <i class="bi bi-people fs-1 d-block mb-2"></i>
-        <p>Žádné postavy. Importujte z registrace nebo vytvořte novou.</p>
+        <i class="bi bi-feather fs-1 d-block mb-2"></i>
+        <p>Zatím tu nikdo nepřebývá.</p>
         <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nová postava</button>
     </div>
 }
 else
 {
-    <OvcinaGrid Data="@characters" KeyFieldName="Id" LayoutKey="grid-layout-characters"
+    <OvcinaGrid Data="@characters" KeyFieldName="Id" LayoutKey="grid-layout-characters-v2"
                 RowClick="@(e => OpenModal((CharacterListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             <DxGridDataColumn FieldName="Name" Caption="Název" />
+            <DxGridDataColumn FieldName="Race" Caption="Rasa" Width="120px">
+                <CellDisplayTemplate>
+                    @{ var r = (Race?)context.Value; }
+                    @if (r is not null)
+                    {
+                        <span class="oh-racechip">@r.Value.GetDisplayName()</span>
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="KingdomName" Caption="Království" Width="180px">
+                <CellDisplayTemplate>
+                    @{ var row = (CharacterListDto)context.DataItem; }
+                    @if (row.KingdomName is not null)
+                    {
+                        <div class="oh-kcell">
+                            <span class="oh-kbadge" style="background:@row.KingdomHexColor"></span>
+                            <span>@row.KingdomName</span>
+                        </div>
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
             <DxGridDataColumn FieldName="PlayerFullName" Caption="Hráč" Width="180px" />
-            <DxGridDataColumn FieldName="Race" Caption="Rasa" Width="120px" />
-            <DxGridDataColumn FieldName="IsPlayedCharacter" Caption="Hráčská" Width="80px">
+            <DxGridDataColumn FieldName="IsPlayedCharacter" Caption="Hráčská" Width="90px">
                 <CellDisplayTemplate>@((bool)context.Value ? "Ano" : "Ne")</CellDisplayTemplate>
             </DxGridDataColumn>
             <DxGridDataColumn FieldName="ExternalPersonId" Caption="ID v registraci" Width="140px" />
@@ -55,63 +79,181 @@ else
     </OvcinaGrid>
 }
 
-<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="600px">
+@* Edit / create dialog *@
+<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle"
+         CssClass="oh-char-dialog-popup" Width="960px">
     <BodyContentTemplate Context="popupContext">
-        <DxFormLayout>
-            <DxFormLayoutItem Caption="Název postavy" ColSpanMd="8">
-                <DxTextBox @bind-Text="@name" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Hráčská postava" ColSpanMd="4">
-                <DxCheckBox @bind-Checked="@isPlayedCharacter" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Jméno hráče" ColSpanMd="6">
-                <DxTextBox @bind-Text="@playerFirstName" NullText="(nezadáno)" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Příjmení hráče" ColSpanMd="6">
-                <DxTextBox @bind-Text="@playerLastName" NullText="(nezadáno)" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Rasa" ColSpanMd="6">
-                <DxTextBox @bind-Text="@race" NullText="(nezadáno)" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Rok narození" ColSpanMd="6">
-                <DxSpinEdit @bind-Value="@birthYear" />
-            </DxFormLayoutItem>
+        <div class="oh-char-dialog">
+
+            @* --- Identity section (fields + portrait) --- *@
+            <div class="oh-identity">
+                <div class="oh-identity-fields">
+                    <DxFormLayout CssClass="mb-0">
+                        <DxFormLayoutItem Caption="Název postavy" ColSpanMd="12">
+                            <DxTextBox @bind-Text="@name" />
+                        </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="Rasa" ColSpanMd="12">
+                            <RaceChipPicker @bind-Value="@race" />
+                        </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="Království (v aktuální hře)" ColSpanMd="12">
+                            @if (editingId.HasValue && activeAssignmentId.HasValue)
+                            {
+                                <DxComboBox TData="KingdomDto" TValue="int?"
+                                            Data="@kingdoms" @bind-Value="@kingdomId"
+                                            TextFieldName="Name" ValueFieldName="Id"
+                                            NullText="(žádné)" CssClass="oh-kcombo">
+                                    <ItemDisplayTemplate Context="kctx">
+                                        @{ var k = (KingdomDto)kctx.DataItem; }
+                                        <div class="oh-kcell">
+                                            <span class="oh-kbadge oh-kbadge-lg" style="background:@k.HexColor"></span>
+                                            <span>@k.Name</span>
+                                        </div>
+                                    </ItemDisplayTemplate>
+                                    <EditBoxDisplayTemplate Context="kbox">
+                                        @{ var k = kingdoms.FirstOrDefault(x => x.Id == kingdomId); }
+                                        @if (k is not null)
+                                        {
+                                            <div class="oh-kcell">
+                                                <span class="oh-kbadge" style="background:@k.HexColor"></span>
+                                                <span>@k.Name</span>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">(žádné)</span>
+                                        }
+                                    </EditBoxDisplayTemplate>
+                                </DxComboBox>
+                            }
+                            else
+                            {
+                                <div class="oh-kingdom-unavailable">
+                                    <i class="bi bi-info-circle me-1"></i>
+                                    @(editingId.HasValue
+                                        ? "Postava nemá přiřazení k aktuální hře — království nelze nastavit zde."
+                                        : "Království lze nastavit po uložení postavy a přiřazení ke hře.")
+                                </div>
+                            }
+                        </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="Hráčská postava" ColSpanMd="12">
+                            <DxCheckBox @bind-Checked="@isPlayedCharacter" />
+                        </DxFormLayoutItem>
+                    </DxFormLayout>
+                </div>
+
+                <div class="oh-identity-portrait">
+                    @if (editingId.HasValue)
+                    {
+                        <ImagePicker EntityType="characters" EntityId="@editingId.Value"
+                                     AspectRatio="4:5" Width="240px" Alt="Portrét" />
+                    }
+                    else
+                    {
+                        <div class="oh-portrait-placeholder">
+                            <i class="bi bi-image fs-3 d-block mb-2"></i>
+                            <small>Portrét lze nahrát po uložení</small>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @* --- Player panel (only when Hráčská = Ano) --- *@
             @if (isPlayedCharacter)
             {
-                <DxFormLayoutItem Caption="ID v registraci" ColSpanMd="4">
-                    <DxSpinEdit @bind-Value="@externalPersonId" />
-                </DxFormLayoutItem>
+                <div class="oh-section-block">
+                    <div class="oh-section-label">Hráč</div>
+                    <DxFormLayout>
+                        <DxFormLayoutItem Caption="Jméno hráče" ColSpanMd="6">
+                            <DxTextBox @bind-Text="@playerFirstName" NullText="(nezadáno)" />
+                        </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="Příjmení hráče" ColSpanMd="6">
+                            <DxTextBox @bind-Text="@playerLastName" NullText="(nezadáno)" />
+                        </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="ID v registraci" ColSpanMd="12">
+                            <div class="d-flex gap-2 align-items-center">
+                                <DxSpinEdit @bind-Value="@externalPersonId" CssClass="flex-grow-1" />
+                                @if (editingId.HasValue && externalPersonId.HasValue)
+                                {
+                                    <a href="https://registrace.ovcina.cz/person/@externalPersonId" target="_blank"
+                                       class="btn btn-sm btn-outline-secondary">
+                                        <i class="bi bi-box-arrow-up-right me-1"></i>Otevřít v registraci
+                                    </a>
+                                }
+                            </div>
+                        </DxFormLayoutItem>
+                    </DxFormLayout>
+                </div>
             }
-            <DxFormLayoutItem Caption="Rodič" ColSpanMd="12">
-                <DxComboBox Data="@allCharacters" @bind-Value="@parentCharacterId"
-                            TextFieldName="Name" ValueFieldName="Id"
-                            NullText="(žádný)" SearchMode="ListSearchMode.AutoSearch" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Poznámky" ColSpanMd="12">
-                <DxMemo @bind-Text="@notes" Rows="3" />
-            </DxFormLayoutItem>
-        </DxFormLayout>
 
-        @if (editingId.HasValue && externalPersonId.HasValue)
-        {
-            <div class="mt-2">
-                <a href="https://registrace.ovcina.cz/person/@externalPersonId" target="_blank" class="btn btn-sm btn-outline-secondary">
-                    <i class="bi bi-box-arrow-up-right me-1"></i> Registrace
-                </a>
+            @* --- Lineage section --- *@
+            <div class="oh-section-block">
+                <div class="oh-section-label">Rodokmen</div>
+                <DxFormLayout>
+                    <DxFormLayoutItem Caption="Rodič" ColSpanMd="12">
+                        <DxComboBox TData="CharacterListDto" TValue="int?"
+                                    Data="@ParentCandidates" @bind-Value="@parentCharacterId"
+                                    TextFieldName="Name" ValueFieldName="Id"
+                                    NullText="(žádný)" SearchMode="ListSearchMode.AutoSearch"
+                                    CssClass="oh-parent-combo">
+                            <ItemDisplayTemplate Context="pctx">
+                                @{ var p = (CharacterListDto)pctx.DataItem; }
+                                <div class="oh-parent-row">
+                                    <span class="oh-parent-thumb"></span>
+                                    <span>
+                                        <span class="oh-parent-name">@p.Name</span>
+                                        @if (p.Race is not null)
+                                        {
+                                            <span class="oh-racechip ms-1">@p.Race.Value.GetDisplayName()</span>
+                                        }
+                                    </span>
+                                </div>
+                            </ItemDisplayTemplate>
+                        </DxComboBox>
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Rok narození" ColSpanMd="12">
+                        <div class="d-flex gap-2 align-items-center">
+                            <DxSpinEdit @bind-Value="@birthYear" CssClass="flex-grow-1" />
+                            @if (birthYear.HasValue)
+                            {
+                                <span class="text-muted">@(DateTime.UtcNow.Year - birthYear.Value) let</span>
+                            }
+                        </div>
+                    </DxFormLayoutItem>
+                </DxFormLayout>
             </div>
-        }
 
-        @if (error is not null) { <div class="alert alert-danger mt-2">@error</div> }
+            @* --- Notes section --- *@
+            <div class="oh-section-block">
+                <div class="oh-section-label">Poznámky</div>
+                <DxMemo @bind-Text="@notes" Rows="6"
+                        NullText="Deník kronikáře — příběh postavy, vztahy, zvyky, poznámky z her…" />
+            </div>
 
-        <div class="d-flex gap-2 mt-3">
-            @if (editingId.HasValue) { <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true" disabled="@isSaving">Smazat</button> }
-            <div style="flex: 1"></div>
-            <button class="btn btn-secondary" @onclick="() => isModalVisible = false" disabled="@isSaving">Zrušit</button>
-            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving">Uložit</button>
+            @if (error is not null)
+            {
+                <div class="oh-drozd-val">
+                    <i class="bi bi-exclamation-circle oh-drozd-val-icon"></i>
+                    <div>
+                        <div class="oh-drozd-val-title">Něco se pokazilo</div>
+                        <div class="oh-drozd-val-msg">@error</div>
+                    </div>
+                </div>
+            }
+
+            <div class="oh-footer">
+                @if (editingId.HasValue)
+                {
+                    <button class="btn oh-btn-ghost-bordeaux" @onclick="() => isDeleteVisible = true" disabled="@isSaving">Smazat</button>
+                }
+                <div class="flex-grow-1"></div>
+                <button class="btn btn-secondary" @onclick="() => isModalVisible = false" disabled="@isSaving">Zrušit</button>
+                <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(isSaving || string.IsNullOrWhiteSpace(name))">Uložit</button>
+            </div>
         </div>
     </BodyContentTemplate>
 </DxPopup>
 
+@* Delete confirmation — MEMORY §D *@
 <DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
     <BodyContentTemplate Context="popupContext">
         <p>Opravdu chcete smazat postavu <strong>@name</strong>?</p>
@@ -125,32 +267,55 @@ else
 @code {
     private List<CharacterListDto> characters = [];
     private List<CharacterListDto> allCharacters = [];
+    private List<KingdomDto> kingdoms = [];
     private bool loading = true, isModalVisible, isDeleteVisible, isSaving, isImporting;
     private string modalTitle = "", name = "";
-    private string? error, notes, race, playerFirstName, playerLastName;
+    private string? error, notes, playerFirstName, playerLastName;
+    private Race? race;
     private int? editingId;
     private int? externalPersonId;
     private int? parentCharacterId;
     private int? birthYear;
+    private int? kingdomId;
+    private int? originalKingdomId;
+    private int? activeAssignmentId;
     private bool isPlayedCharacter;
     private string searchText = "";
     private ImportResultDto? importResult;
+
+    private IEnumerable<CharacterListDto> ParentCandidates =>
+        allCharacters.Where(c => editingId is null || c.Id != editingId);
 
     protected override async Task OnInitializedAsync()
     {
         await GameContext.InitializeAsync();
         await LoadAsync();
-        allCharacters = await Api.GetListAsync<CharacterListDto>("/api/characters");
+        await LoadParentSourceAsync();
+        kingdoms = await Api.GetListAsync<KingdomDto>("/api/kingdoms");
     }
 
     private async Task LoadAsync()
     {
         loading = true;
-        var url = string.IsNullOrWhiteSpace(searchText)
-            ? "/api/characters"
-            : $"/api/characters?search={Uri.EscapeDataString(searchText)}";
-        characters = await Api.GetListAsync<CharacterListDto>(url);
+        characters = await Api.GetListAsync<CharacterListDto>(BuildListUrl(searchText));
         loading = false;
+    }
+
+    private async Task LoadParentSourceAsync()
+    {
+        // Parent-of candidates: full roster (for the dropdown), same gameId so
+        // the per-game kingdom badge shows on option rows too.
+        allCharacters = await Api.GetListAsync<CharacterListDto>(BuildListUrl(null));
+    }
+
+    private string BuildListUrl(string? search)
+    {
+        var parts = new List<string>();
+        if (GameContext.SelectedGameId.HasValue)
+            parts.Add($"gameId={GameContext.SelectedGameId.Value}");
+        if (!string.IsNullOrWhiteSpace(search))
+            parts.Add($"search={Uri.EscapeDataString(search)}");
+        return parts.Count == 0 ? "/api/characters" : $"/api/characters?{string.Join('&', parts)}";
     }
 
     private void OpenModal(CharacterListDto? c)
@@ -161,6 +326,7 @@ else
             editingId = null; name = ""; isPlayedCharacter = false; externalPersonId = null;
             parentCharacterId = null; notes = null; race = null; birthYear = null;
             playerFirstName = null; playerLastName = null;
+            kingdomId = null; originalKingdomId = null; activeAssignmentId = null;
             modalTitle = "Nová postava";
         }
         else
@@ -169,6 +335,9 @@ else
             race = c.Race;
             isPlayedCharacter = c.IsPlayedCharacter;
             externalPersonId = c.ExternalPersonId;
+            kingdomId = c.KingdomId;
+            originalKingdomId = c.KingdomId;
+            activeAssignmentId = null; // resolved by LoadDetailAsync
             modalTitle = $"Upravit: {c.Name}";
             _ = LoadDetailAsync(c.Id);
         }
@@ -177,7 +346,10 @@ else
 
     private async Task LoadDetailAsync(int id)
     {
-        var d = await Api.GetAsync<CharacterDetailDto>($"/api/characters/{id}");
+        var url = GameContext.SelectedGameId.HasValue
+            ? $"/api/characters/{id}?gameId={GameContext.SelectedGameId.Value}"
+            : $"/api/characters/{id}";
+        var d = await Api.GetAsync<CharacterDetailDto>(url);
         if (d is not null)
         {
             notes = d.Notes;
@@ -186,6 +358,9 @@ else
             parentCharacterId = d.ParentCharacterId;
             playerFirstName = d.PlayerFirstName;
             playerLastName = d.PlayerLastName;
+            kingdomId = d.KingdomId;
+            originalKingdomId = d.KingdomId;
+            activeAssignmentId = d.ActiveAssignmentId;
         }
         StateHasChanged();
     }
@@ -196,14 +371,32 @@ else
         try
         {
             if (editingId.HasValue)
+            {
                 await Api.PutAsync($"/api/characters/{editingId}",
-                    new UpdateCharacterDto(name, playerFirstName, playerLastName, race, birthYear, notes, isPlayedCharacter, externalPersonId, parentCharacterId));
+                    new UpdateCharacterDto(name, playerFirstName, playerLastName, race,
+                        birthYear, notes, isPlayedCharacter, externalPersonId, parentCharacterId));
+            }
             else
+            {
                 await Api.PostAsync<CreateCharacterDto, CharacterDetailDto>("/api/characters",
-                    new CreateCharacterDto(name, playerFirstName, playerLastName, race, birthYear, notes, isPlayedCharacter, externalPersonId, parentCharacterId));
+                    new CreateCharacterDto(name, playerFirstName, playerLastName, race,
+                        birthYear, notes, isPlayedCharacter, externalPersonId, parentCharacterId));
+            }
+
+            // Per-game kingdom lives on the active CharacterAssignment, not on
+            // Character itself — push separately when the picker is enabled.
+            if (editingId.HasValue
+                && activeAssignmentId.HasValue
+                && GameContext.SelectedGameId.HasValue
+                && kingdomId != originalKingdomId)
+            {
+                await Api.PutAsync($"/api/characters/{editingId}/assignment/kingdom",
+                    new SetAssignmentKingdomDto(GameContext.SelectedGameId.Value, kingdomId));
+            }
+
             isModalVisible = false;
             await LoadAsync();
-            allCharacters = await Api.GetListAsync<CharacterListDto>("/api/characters");
+            await LoadParentSourceAsync();
         }
         catch (Exception ex) { error = ex.Message; }
         finally { isSaving = false; }
@@ -216,7 +409,7 @@ else
             await Api.DeleteAsync($"/api/characters/{editingId}");
             isDeleteVisible = false; isModalVisible = false;
             await LoadAsync();
-            allCharacters = await Api.GetListAsync<CharacterListDto>("/api/characters");
+            await LoadParentSourceAsync();
         }
         catch (Exception ex) { error = ex.Message; }
     }
@@ -230,7 +423,7 @@ else
             importResult = await Api.PostAsync<object, ImportResultDto>(
                 $"/api/characters/import/{GameContext.SelectedGameId}", new { });
             await LoadAsync();
-            allCharacters = await Api.GetListAsync<CharacterListDto>("/api/characters");
+            await LoadParentSourceAsync();
         }
         catch (Exception ex) { error = ex.Message; }
         finally { isImporting = false; }
