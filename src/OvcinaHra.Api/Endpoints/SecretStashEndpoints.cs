@@ -34,7 +34,10 @@ public static class SecretStashEndpoints
     {
         var stashes = await db.SecretStashes
             .OrderBy(s => s.Name)
-            .Select(s => new SecretStashListDto(s.Id, s.Name, s.Description))
+            .Select(s => new SecretStashListDto(
+                s.Id, s.Name, s.Description,
+                s.TreasureQuests.Count,
+                s.GameSecretStashes.Count))
             .ToListAsync();
         return TypedResults.Ok(stashes);
     }
@@ -83,7 +86,10 @@ public static class SecretStashEndpoints
             .Include(gs => gs.SecretStash)
             .Include(gs => gs.Location)
             .OrderBy(gs => gs.SecretStash.Name)
-            .Select(gs => new GameSecretStashDto(gs.GameId, gs.SecretStashId, gs.SecretStash.Name, gs.LocationId, gs.Location.Name))
+            .Select(gs => new GameSecretStashDto(
+                gs.GameId, gs.SecretStashId, gs.SecretStash.Name,
+                gs.LocationId, gs.Location.Name,
+                gs.SecretStash.TreasureQuests.Count(tq => tq.GameId == gameId)))
             .ToListAsync();
         return TypedResults.Ok(stashes);
     }
@@ -115,7 +121,7 @@ public static class SecretStashEndpoints
         var stashName = (await db.SecretStashes.FindAsync(dto.SecretStashId))?.Name ?? "";
         var locName = (await db.Locations.FindAsync(dto.LocationId))?.Name ?? "";
         return TypedResults.Created($"/api/secret-stashes/game-stash/{dto.GameId}/{dto.SecretStashId}",
-            new GameSecretStashDto(dto.GameId, dto.SecretStashId, stashName, dto.LocationId, locName));
+            new GameSecretStashDto(dto.GameId, dto.SecretStashId, stashName, dto.LocationId, locName, TreasureCount: 0));
     }
 
     private static async Task<Results<NoContent, NotFound>> UpdateGameStash(

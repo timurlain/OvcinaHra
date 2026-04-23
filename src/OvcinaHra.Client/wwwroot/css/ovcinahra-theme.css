@@ -1663,3 +1663,132 @@
 .oh-lg-note .oh-lg-sw{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;vertical-align:middle;box-shadow:0 0 0 1px rgba(0,0,0,.1)}
 
 .oh-lg-foot{max-width:1280px;margin:0 auto 40px;padding:12px 40px;color:var(--oh-text-secondary);font-size:.75rem;text-align:right}
+
+
+/* ============================================================
+   Secret Stash gallery (/secret-stashes) — .oh-ssg-*
+   Ported from docs/design/dialogs/secret-stash-list.mockup.unbundled.html
+   MTG 5:7 tiles (120px wide), two micro-chips, catalog overlay pills.
+   ============================================================ */
+.oh-ssg-frame{position:relative;border:1px solid var(--oh-border);border-radius:var(--oh-radius-lg);overflow:hidden;background:var(--oh-surface);box-shadow:var(--oh-shadow)}
+.oh-ssg-page-head{display:flex;align-items:center;gap:12px;padding:20px 28px 6px;flex-wrap:wrap}
+.oh-ssg-page-head h3{margin:0;font-family:var(--oh-font-heading);font-size:1.25rem;color:var(--oh-text);flex:0 0 auto}
+.oh-ssg-page-head i.oh-ssg-pg{font-size:1.5rem;color:var(--oh-primary)}
+.oh-ssg-count{margin-left:auto;font-size:.8125rem;color:var(--oh-text-secondary);font-family:var(--oh-font-mono)}
+
+/* segmented mode toggle */
+.oh-ssg-mode{display:inline-flex;align-items:center;gap:2px;background:var(--oh-surface-alt);border:1px solid var(--oh-border);border-radius:99px;padding:3px;margin-left:8px}
+.oh-ssg-mode button{border:none;background:transparent;padding:5px 12px;border-radius:99px;font:600 .75rem var(--oh-font-body);color:var(--oh-text-secondary);cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+.oh-ssg-mode button i{font-size:.75rem}
+.oh-ssg-mode button.oh-ssg-on{background:var(--oh-primary);color:#fff;box-shadow:0 1px 3px rgba(45,80,22,.25)}
+
+/* + Nová skrýš */
+.oh-ssg-newbtn{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:var(--oh-radius-sm);font:600 .8125rem var(--oh-font-body);background:var(--oh-primary);color:#fff;border:1px solid var(--oh-primary);margin-left:12px;cursor:pointer;transition:.2s}
+.oh-ssg-newbtn:hover{background:var(--oh-primary-light)}
+
+/* toolbar: search + toggles */
+.oh-ssg-toolbar{display:flex;align-items:center;gap:10px;padding:14px 28px 6px;flex-wrap:wrap}
+.oh-ssg-tb-search{flex:0 0 280px;padding:8px 10px 8px 32px;background:var(--oh-surface);border:1px solid var(--oh-border);border-radius:var(--oh-radius-sm);font:400 .875rem var(--oh-font-body);color:var(--oh-text);background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 16 16'><path fill='%238B4513' d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z'/></svg>");background-repeat:no-repeat;background-position:10px 50%}
+.oh-ssg-tb-search:focus{outline:none;border-color:var(--oh-primary-light);box-shadow:0 0 0 3px rgba(74,124,52,.15);background-color:#fff}
+.oh-ssg-tb-toggle{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;background:var(--oh-surface);border:1px solid var(--oh-border);border-radius:99px;font:500 .8125rem var(--oh-font-body);color:var(--oh-text-secondary);cursor:pointer;user-select:none}
+.oh-ssg-tb-toggle .oh-ssg-sw{width:26px;height:14px;border-radius:99px;background:var(--oh-border);position:relative;transition:.2s}
+.oh-ssg-tb-toggle .oh-ssg-sw::before{content:"";position:absolute;top:1px;left:1px;width:12px;height:12px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.oh-ssg-tb-toggle.oh-ssg-on{color:var(--oh-primary);border-color:rgba(74,124,52,.35);background:var(--oh-primary-surface)}
+.oh-ssg-tb-toggle.oh-ssg-on .oh-ssg-sw{background:var(--oh-primary)}
+.oh-ssg-tb-toggle.oh-ssg-on .oh-ssg-sw::before{left:13px}
+
+/* tile grid */
+.oh-ssg-wrap{padding:14px 28px 28px}
+.oh-ssg-grid{display:grid;grid-template-columns:repeat(8, minmax(0,120px));gap:20px;justify-content:start}
+@media (max-width:1400px){.oh-ssg-grid{grid-template-columns:repeat(6, minmax(0,110px));gap:16px}}
+@media (max-width:1024px){.oh-ssg-grid{grid-template-columns:repeat(3, minmax(0,120px));gap:14px}}
+@media (max-width:640px){.oh-ssg-grid{grid-template-columns:repeat(2, minmax(0,120px));gap:12px}}
+
+/* 5:7 tile */
+.oh-ssg-tile{
+  width:100%;aspect-ratio:5/7;
+  border:1px solid #7a5a3d;border-radius:6px;
+  background:linear-gradient(145deg,#c8d4a8 0%,#8fab6a 60%,#5a7a3d 100%);
+  box-shadow:0 1px 3px rgba(45,80,22,.18), inset 0 0 0 1px rgba(255,248,230,.18);
+  position:relative;overflow:hidden;cursor:pointer;
+  transition:transform .18s ease, box-shadow .18s ease, background .18s ease;
+  display:block;text-decoration:none;color:inherit;
+}
+.oh-ssg-tile:hover{transform:translateY(-3px);box-shadow:0 6px 18px rgba(45,80,22,.28);z-index:5}
+.oh-ssg-tile:focus-visible{outline:2px solid var(--oh-primary);outline-offset:2px}
+.oh-ssg-tile.oh-ssg-dim{opacity:.62}
+.oh-ssg-tile.oh-ssg-dim:hover{opacity:.95}
+
+/* image layer fills the tile (keeps 5:7 aspect via object-fit:cover) */
+.oh-ssg-tile-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;display:block}
+.oh-ssg-tile-img-veil{position:absolute;inset:0;z-index:0;background:linear-gradient(180deg, rgba(0,0,0,.05) 0%, rgba(0,0,0,.55) 100%);pointer-events:none}
+
+/* paper fallback (no image) */
+.oh-ssg-tile.oh-ssg-paper{background:linear-gradient(145deg,#f5ecdb 0%,#e8d8b8 50%,#d4c096 100%)}
+.oh-ssg-tile.oh-ssg-paper > i.oh-ssg-glyph{color:rgba(139,90,43,.55);text-shadow:none}
+.oh-ssg-tile.oh-ssg-paper .oh-ssg-nm{color:#3a2e1e;text-shadow:0 1px 0 rgba(255,248,230,.5)}
+
+/* fallback glyph (shown only when no image) */
+.oh-ssg-glyph{position:absolute;left:50%;top:32%;transform:translate(-50%,-50%);color:rgba(255,248,230,.88);font-size:1.75rem;z-index:1;text-shadow:0 1px 4px rgba(0,0,0,.55)}
+
+/* name label */
+.oh-ssg-nm{position:absolute;left:0;right:0;bottom:24px;z-index:3;padding:0 8px;font:700 .8125rem/1.15 var(--oh-font-heading);color:#fff8ec;letter-spacing:.005em;text-shadow:0 1px 2px rgba(0,0,0,.8);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-align:center}
+
+/* micro-chips */
+.oh-ssg-chips{position:absolute;left:6px;right:6px;bottom:5px;z-index:3;display:flex;align-items:center;gap:4px;justify-content:center}
+.oh-ssg-chip{display:inline-flex;align-items:center;gap:3px;padding:1px 5px;border-radius:3px;font:600 .625rem/1 var(--oh-font-mono);letter-spacing:.02em;border:1px solid;white-space:nowrap}
+.oh-ssg-chip i{font-size:.6875rem}
+.oh-ssg-chip.oh-ssg-treasures{background:rgba(249,168,37,.92);color:#3a2612;border-color:rgba(58,38,18,.35)}
+.oh-ssg-chip.oh-ssg-treasures.oh-ssg-muted{background:rgba(255,248,230,.55);color:#6b5a3a;border-color:rgba(107,90,58,.35)}
+.oh-ssg-chip.oh-ssg-locations,
+.oh-ssg-chip.oh-ssg-games{background:rgba(232,240,228,.92);color:#2D5016;border-color:rgba(45,80,22,.35)}
+.oh-ssg-chip.oh-ssg-locations.oh-ssg-muted{background:rgba(255,248,230,.55);color:#6b5a3a;border-color:rgba(107,90,58,.35)}
+
+/* catalog overlay pills */
+.oh-ssg-pill-assigned{position:absolute;top:6px;right:6px;z-index:4;display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:99px;background:rgba(255,248,230,.88);color:#5a4f3f;border:1px solid rgba(107,90,58,.4);font:600 .625rem/1 var(--oh-font-body);letter-spacing:.02em;text-transform:uppercase;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.oh-ssg-pill-assigned i{font-size:.75rem}
+.oh-ssg-pill-assign{position:absolute;left:6px;right:6px;bottom:26px;z-index:4;display:flex;align-items:center;justify-content:center;gap:4px;padding:5px 6px;border-radius:var(--oh-radius-sm);background:var(--oh-primary);color:#fff;border:1px solid rgba(0,0,0,.2);font:700 .6875rem var(--oh-font-body);letter-spacing:.01em;opacity:0;transform:translateY(4px);transition:.18s ease;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer}
+.oh-ssg-pill-assign i{font-size:.75rem}
+.oh-ssg-tile:hover .oh-ssg-pill-assign,
+.oh-ssg-tile:focus-visible .oh-ssg-pill-assign,
+.oh-ssg-pill-assign:hover{opacity:1;transform:translateY(0)}
+.oh-ssg-tile.oh-ssg-in-game::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:2;background:linear-gradient(180deg,rgba(74,124,52,.08) 0%, transparent 50%);border-radius:inherit}
+
+/* empty state */
+.oh-ssg-empty-state{padding:72px 40px 80px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px}
+.oh-ssg-drozd-box{width:120px;height:120px;display:flex;align-items:center;justify-content:center;background:var(--oh-surface-alt);border:1px solid var(--oh-border);border-radius:50%;margin-bottom:6px;position:relative;overflow:hidden}
+.oh-ssg-drozd-box svg,.oh-ssg-drozd-box img{width:86px;height:86px;object-fit:contain}
+.oh-ssg-drozd-box i{font-size:3rem;color:var(--oh-primary-light)}
+.oh-ssg-empty-state h3{margin:0;font-size:1.25rem;color:var(--oh-primary);font-family:var(--oh-font-heading)}
+.oh-ssg-empty-state p{margin:0;color:var(--oh-text-secondary);font-size:.9375rem;max-width:440px}
+.oh-ssg-actions-row{display:flex;gap:10px;margin-top:6px;flex-wrap:wrap;justify-content:center}
+
+/* scoped buttons inside the .oh-ssg-* area so bare .btn rules don't leak */
+:where([class^="oh-ssg-"], [class*=" oh-ssg-"]) .oh-ssg-btn,
+:where([class^="oh-ssg-"], [class*=" oh-ssg-"]).oh-ssg-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--oh-radius-sm);font:600 .875rem var(--oh-font-body);cursor:pointer;border:1px solid transparent;transition:.2s;text-decoration:none;line-height:1.2}
+:where([class^="oh-ssg-"], [class*=" oh-ssg-"]) .oh-ssg-btn-primary,
+:where([class^="oh-ssg-"], [class*=" oh-ssg-"]).oh-ssg-btn-primary{background:var(--oh-primary);color:#fff;border-color:var(--oh-primary)}
+:where([class^="oh-ssg-"], [class*=" oh-ssg-"]) .oh-ssg-btn-primary:hover,
+:where([class^="oh-ssg-"], [class*=" oh-ssg-"]).oh-ssg-btn-primary:hover{background:var(--oh-primary-light);border-color:var(--oh-primary-light);box-shadow:0 2px 8px rgba(45,80,22,.25)}
+:where([class^="oh-ssg-"], [class*=" oh-ssg-"]) .oh-ssg-btn-secondary,
+:where([class^="oh-ssg-"], [class*=" oh-ssg-"]).oh-ssg-btn-secondary{color:var(--oh-text);border-color:var(--oh-border);background:var(--oh-surface)}
+:where([class^="oh-ssg-"], [class*=" oh-ssg-"]) .oh-ssg-btn-secondary:hover,
+:where([class^="oh-ssg-"], [class*=" oh-ssg-"]).oh-ssg-btn-secondary:hover{border-color:var(--oh-primary-light);color:var(--oh-primary);background:var(--oh-primary-surface)}
+:where([class^="oh-ssg-"], [class*=" oh-ssg-"]) .oh-ssg-btn-ghost-link,
+:where([class^="oh-ssg-"], [class*=" oh-ssg-"]).oh-ssg-btn-ghost-link{color:var(--oh-primary-light);border-color:transparent;background:transparent;text-decoration:underline;text-underline-offset:3px}
+:where([class^="oh-ssg-"], [class*=" oh-ssg-"]) .oh-ssg-btn-ghost-link:hover,
+:where([class^="oh-ssg-"], [class*=" oh-ssg-"]).oh-ssg-btn-ghost-link:hover{color:var(--oh-primary);background:var(--oh-primary-surface);text-decoration:none}
+
+/* popup form (inside DxPopup) */
+.oh-ssg-popup-body{padding:22px 24px;display:flex;flex-direction:column;gap:14px}
+.oh-ssg-field{display:flex;flex-direction:column;gap:5px}
+.oh-ssg-field .oh-ssg-lab{font:600 .75rem var(--oh-font-body);color:var(--oh-text-secondary);letter-spacing:.02em;text-transform:uppercase}
+.oh-ssg-field .oh-ssg-lab .oh-ssg-req{color:var(--oh-error);margin-left:2px}
+.oh-ssg-field .oh-ssg-hint{font:400 .75rem var(--oh-font-body);color:var(--oh-text-secondary);font-style:italic}
+.oh-ssg-inp,.oh-ssg-memo{width:100%;padding:8px 10px;background:var(--oh-surface);border:1px solid var(--oh-border);border-radius:var(--oh-radius-sm);font:400 .875rem var(--oh-font-body);color:var(--oh-text);transition:.15s}
+.oh-ssg-inp:focus,.oh-ssg-memo:focus{outline:none;border-color:var(--oh-primary-light);box-shadow:0 0 0 3px rgba(74,124,52,.15);background:#fff}
+.oh-ssg-memo{resize:vertical;min-height:78px;font-family:var(--oh-font-body)}
+.oh-ssg-popup-foot{display:flex;align-items:center;gap:8px;padding:12px 24px;border-top:1px solid var(--oh-border);background:var(--oh-surface-alt)}
+.oh-ssg-popup-foot .oh-ssg-foot-note{font-size:.75rem;color:var(--oh-text-secondary);font-style:italic;margin-right:auto}
+.oh-ssg-popup-pic{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap}
+.oh-ssg-popup-err{margin:0 0 8px;padding:8px 10px;border-radius:var(--oh-radius-sm);background:rgba(211,47,47,.08);border:1px solid rgba(211,47,47,.3);color:var(--oh-error);font-size:.8125rem}
