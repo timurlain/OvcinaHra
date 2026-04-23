@@ -18,11 +18,20 @@ public static class ImageEndpoints
 
         group.MapPost("/{entityType}/{entityId:int}", Upload).DisableAntiforgery();
         group.MapGet("/{entityType}/{entityId:int}", GetUrls);
-        group.MapGet("/{entityType}/{entityId:int}/thumb", GetThumbnail);
+        group.MapGet("/{entityType}/{entityId:int}/thumb", GetThumbnail).AllowAnonymous();
         group.MapDelete("/{entityType}/{entityId:int}", Delete);
 
         return group;
     }
+
+    /// <summary>
+    /// Builds an absolute URL to the thumbnail endpoint for a given entity.
+    /// Needed because the frontend (hra.ovcina.cz) and API (api.hra.ovcina.cz)
+    /// live on different origins — a relative "/api/images/..." URL would be
+    /// resolved by the browser against the frontend host and 404.
+    /// </summary>
+    public static string ThumbUrl(HttpContext http, string entityType, int entityId, string size) =>
+        $"{http.Request.Scheme}://{http.Request.Host}/api/images/{entityType}/{entityId}/thumb?size={size}";
 
     private static async Task<IResult> GetThumbnail(
         string entityType, int entityId,
