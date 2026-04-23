@@ -6,8 +6,8 @@
 
 <div class="sb-brand">
     <i class="bi bi-feather"></i><span>OvčinaHra</span>
-    <button title="Navigační menu" class="sb-brand-toggler" @onclick="ToggleNavMenu">
-        <span class="navbar-toggler-icon"></span>
+    <button title="Navigační menu" class="sb-brand-toggler" @onclick="ToggleNavMenu" aria-label="Navigační menu">
+        <i class="bi bi-list"></i>
     </button>
 </div>
 
@@ -24,13 +24,18 @@
         </NavLink>
     </div>
 
-    @* Tabs — the two modes *@
-    <div class="oh-nav-tabs" role="tablist" aria-label="Režim">
+    @* Mode switch — two toggle buttons. Uses aria-pressed rather than the
+       tablist/tab/tabpanel triad (we don't implement full ARIA tabs with
+       roving tabindex + arrow-key handling; a button group is the honest
+       representation). @onclick:stopPropagation keeps tab clicks from
+       bubbling to the outer CollapseOnMobile handler, which would close
+       the menu immediately after a mode switch on touch devices. *@
+    <div class="oh-nav-tabs" aria-label="Režim">
         <button type="button"
                 class="oh-nav-tab @(mode == "hra" ? "on" : "")"
-                role="tab"
-                aria-selected="@(mode == "hra" ? "true" : "false")"
-                @onclick='() => SwitchMode("hra")'>
+                aria-pressed="@(mode == "hra" ? "true" : "false")"
+                @onclick='() => SwitchMode("hra")'
+                @onclick:stopPropagation="true">
             <i class="bi bi-calendar-event-fill"></i>
             <div class="oh-nav-tab-body">
                 <div class="oh-nav-tab-name">Tato hra</div>
@@ -39,9 +44,9 @@
         </button>
         <button type="button"
                 class="oh-nav-tab @(mode == "katalog" ? "on" : "")"
-                role="tab"
-                aria-selected="@(mode == "katalog" ? "true" : "false")"
-                @onclick='() => SwitchMode("katalog")'>
+                aria-pressed="@(mode == "katalog" ? "true" : "false")"
+                @onclick='() => SwitchMode("katalog")'
+                @onclick:stopPropagation="true">
             <i class="bi bi-collection-fill"></i>
             <div class="oh-nav-tab-body">
                 <div class="oh-nav-tab-name">Katalog</div>
@@ -233,7 +238,7 @@
     // We bind this to the whole nav container; tab buttons stop propagation via their click handlers being separate.
     private void CollapseOnMobile() => collapseNavMenu = true;
 
-    private string HraTabHint => GameContext.GameName ?? "žádná hra";
+    private string HraTabHint => GameContext.GameName ?? "Žádná hra";
 
     protected override void OnInitialized()
     {
