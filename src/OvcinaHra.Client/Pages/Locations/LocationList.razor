@@ -14,11 +14,51 @@
             <button class="btn btn-sm @(Catalog ? "btn-primary" : "btn-outline-primary")"
                     @onclick='() => Nav.NavigateTo("/locations?catalog=true")'>Katalog</button>
         </div>
-        @if (!Catalog)
-        {
-            <button class="btn btn-primary" data-testid="create-location" @onclick="() => locationPopup.OpenNew()">+ Nová lokace</button>
-        }
+        <button class="btn btn-primary" data-testid="create-location" @onclick="() => locationPopup.OpenNew()">+ Nová lokace</button>
     </div>
+</div>
+
+@* Toolbar: Hledat, Druh, Oblast, jen s poklady, jen s questy, (catalog) jen nepřiřazené *@
+<div class="oh-lg-toolbar mb-2">
+    <DxTextBox Text="@searchText"
+               TextChanged="@(v => { searchText = v; StateHasChanged(); })"
+               NullText="Hledat název, oblast, quest…"
+               BindValueMode="BindValueMode.OnDelayedInput"
+               InputDelay="250"
+               CssClass="oh-lg-tb-search flex-grow-0" />
+
+    <DxComboBox Data="@kindFilterOptions"
+                @bind-Value="@filterKind"
+                TextFieldName="Label"
+                ValueFieldName="Value"
+                NullText="Všechny druhy"
+                ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
+                CssClass="oh-lg-tb-dd" />
+
+    <DxComboBox Data="@regionOptions"
+                @bind-Value="@filterRegion"
+                NullText="Všechny oblasti"
+                ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
+                CssClass="oh-lg-tb-dd" />
+
+    <button type="button"
+            class="oh-lg-tb-toggle @(filterOnlyWithStashes ? "oh-lg-on" : "")"
+            @onclick="() => { filterOnlyWithStashes = !filterOnlyWithStashes; StateHasChanged(); }">
+        <span class="oh-lg-sw"></span>jen s poklady
+    </button>
+    <button type="button"
+            class="oh-lg-tb-toggle @(filterOnlyWithQuests ? "oh-lg-on" : "")"
+            @onclick="() => { filterOnlyWithQuests = !filterOnlyWithQuests; StateHasChanged(); }">
+        <span class="oh-lg-sw"></span>jen s questy
+    </button>
+    @if (Catalog)
+    {
+        <button type="button"
+                class="oh-lg-tb-toggle @(filterOnlyUnassigned ? "oh-lg-on" : "")"
+                @onclick="() => { filterOnlyUnassigned = !filterOnlyUnassigned; StateHasChanged(); }">
+            <span class="oh-lg-sw"></span>jen nepřiřazené
+        </button>
+    }
 </div>
 
 @if (loading)
@@ -27,143 +67,215 @@
 }
 else if (!Catalog && locations.Count == 0)
 {
-    <div class="text-center text-muted py-5">
-        <i class="bi bi-geo-alt fs-1 d-block mb-2"></i>
-        <p>Žádné lokace přiřazeny k této hře.</p>
-        <button class="btn btn-outline-primary" @onclick='() => Nav.NavigateTo("/locations?catalog=true")'>Otevřít katalog</button>
+    @* Empty state — Drozd 120x120 + Nová lokace CTA *@
+    <div class="oh-lg-empty-state text-center py-5">
+        <div class="oh-lg-drozd-box mb-3">
+            @* TODO: drop in drozd.png *@
+            <i class="bi bi-feather" style="font-size:120px; color: var(--oh-primary, #2d5016);"></i>
+        </div>
+        <h3 class="mb-2">Zatím tu není žádná lokace.</h3>
+        <p class="text-muted mb-3">Drozd prolétl celý les a žádný záznam nenašel. Začněte první lokací — i kus pole nebo studna v ní stojí za zapsání.</p>
+        <button class="btn btn-primary" data-testid="create-location-empty" @onclick="() => locationPopup.OpenNew()">
+            <i class="bi bi-plus-lg me-1"></i>Nová lokace
+        </button>
     </div>
 }
 else
 {
-    <OvcinaGrid Data="@locations" KeyFieldName="Id" LayoutKey="grid-layout-locations-v2"
-                RowClick="@(e => Nav.NavigateTo($"/locations/{((LocationListDto)e.Grid.GetDataItem(e.VisibleIndex)).Id}"))">
+    <OvcinaGrid Data="@visibleRows"
+                KeyFieldName="Id"
+                LayoutKey="grid-layout-locations-v3"
+                RowClick="@OnGridRowClick">
         <Columns>
-            <DxGridDataColumn FieldName="" Caption="" Width="40px" AllowSort="false" FixedPosition="GridColumnFixedPosition.Left">
+            @* Marker dot — 40px, fixed left *@
+            <DxGridDataColumn FieldName="LocationKind" Caption="" Width="40px"
+                              AllowSort="false" AllowGroup="false"
+                              FixedPosition="GridColumnFixedPosition.Left">
                 <CellDisplayTemplate>
                     @{
                         var loc = (LocationListDto)context.DataItem;
+                        var isVariant = loc.ParentLocationId.HasValue;
                     }
-                    <button class="btn btn-sm btn-link p-0 text-muted" @onclick="async e => await ShowContextMenu(e, loc)" @onclick:stopPropagation="true">
-                        <i class="bi bi-three-dots-vertical"></i>
-                    </button>
+                    @if (!isVariant)
+                    {
+                        <span class="oh-lg-dot @LocationKindCssClass(loc.LocationKind)"
+                              title="@loc.LocationKindDisplay"></span>
+                    }
                 </CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="Id" Caption="#" Width="50px" />
-            <DxGridDataColumn FieldName="Name" Caption="Název" />
-            <DxGridDataColumn FieldName="LocationKindDisplay" Caption="Typ" Width="160px" />
-            <DxGridDataColumn FieldName="Region" Caption="Oblast" Width="140px" />
-            <DxGridDataColumn FieldName="ParentLocationId" Caption="Rodič / Varianty" Width="250px">
+
+            @* Name column with chevron for parents with variants *@
+            <DxGridDataColumn FieldName="Name" Caption="Název" MinWidth="260">
                 <CellDisplayTemplate>
                     @{
                         var loc = (LocationListDto)context.DataItem;
-                        if (loc.ParentLocationId.HasValue)
+                        var isVariant = loc.ParentLocationId.HasValue;
+                        var variantCount = isVariant ? 0 : locations.Count(l => l.ParentLocationId == loc.Id);
+                        var isOpen = expandedParentIds.Contains(loc.Id);
+                    }
+                    <div class="oh-lg-name-col @(isVariant ? "oh-lg-variant-row" : "")">
+                        @if (!isVariant && variantCount > 0)
                         {
-                            var parent = locations.FirstOrDefault(l => l.Id == loc.ParentLocationId.Value);
-                            <a href="/locations/@loc.ParentLocationId.Value" class="text-muted" @onclick:stopPropagation>↳ @(parent?.Name ?? $"#{loc.ParentLocationId}")</a>
+                            <i class="bi bi-chevron-right oh-lg-chev @(isOpen ? "oh-lg-open" : "")"
+                               @onclick="e => ToggleExpand(loc.Id)"
+                               @onclick:stopPropagation="true"
+                               role="button"
+                               aria-label="Rozbalit varianty"></i>
                         }
                         else
                         {
-                            var variants = locations.Where(l => l.ParentLocationId == loc.Id).ToList();
-                            @foreach (var v in variants)
+                            <i class="bi bi-chevron-right oh-lg-chev oh-lg-spacer"></i>
+                        }
+                        <div class="oh-lg-nm-wrap">
+                            <span class="oh-lg-nm">@(isVariant ? $"· {loc.Name}" : loc.Name)</span>
+                            @if (variantCount > 0)
                             {
-                                <a href="/locations/@v.Id" class="badge bg-secondary text-decoration-none me-1" @onclick:stopPropagation>@v.Name</a>
+                                <span class="oh-lg-vcap">
+                                    <i class="bi bi-diagram-3"></i>@variantCount @PluralCz(variantCount, "varianta", "varianty", "variant") · pin jen na rodiči
+                                </span>
                             }
+                        </div>
+                        @if (!isVariant && loc.Latitude.HasValue && loc.Longitude.HasValue)
+                        {
+                            <i class="bi bi-geo-alt-fill oh-lg-pin-hint" title="Zobrazeno na mapě"></i>
+                        }
+                    </div>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            @* Kind chip *@
+            <DxGridDataColumn FieldName="LocationKindDisplay" Caption="Druh" Width="140px">
+                <CellDisplayTemplate>
+                    @{
+                        var loc = (LocationListDto)context.DataItem;
+                    }
+                    <span class="oh-lg-kindchip @LocationKindCssClass(loc.LocationKind)">
+                        <span class="oh-lg-k"></span>@loc.LocationKindDisplay
+                    </span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            @* Region *@
+            <DxGridDataColumn FieldName="Region" Caption="Oblast" Width="160px">
+                <CellDisplayTemplate>
+                    @{
+                        var loc = (LocationListDto)context.DataItem;
+                    }
+                    @if (!string.IsNullOrWhiteSpace(loc.Region))
+                    {
+                        <div class="oh-lg-region"><i class="bi bi-compass"></i>@loc.Region</div>
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            @* Parent / Varianty *@
+            <DxGridDataColumn FieldName="ParentLocationId" Caption="Rodič / Varianty" Width="180px" AllowSort="false">
+                <CellDisplayTemplate>
+                    @{
+                        var loc = (LocationListDto)context.DataItem;
+                    }
+                    @if (loc.ParentLocationId.HasValue)
+                    {
+                        var parent = locations.FirstOrDefault(l => l.Id == loc.ParentLocationId.Value);
+                        <span class="oh-lg-parent-ref">
+                            <i class="bi bi-arrow-return-right"></i>@(parent?.Name ?? $"#{loc.ParentLocationId}")
+                        </span>
+                    }
+                    else
+                    {
+                        var variantCount = locations.Count(l => l.ParentLocationId == loc.Id);
+                        if (variantCount > 0)
+                        {
+                            <span class="oh-lg-parent-ref">
+                                <span class="oh-lg-vcount">@variantCount @PluralCz(variantCount, "varianta", "varianty", "variant")</span>
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="oh-lg-parent-ref text-muted">—</span>
                         }
                     }
                 </CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="GamePotential" Caption="Herní potenciál" Width="260px" />
-            <DxGridDataColumn FieldName="SetupNotes" Caption="Přípravné poznámky" Width="220px" />
+
             @if (!Catalog)
             {
-                <DxGridDataColumn FieldName="Stashes" Caption="Skrýše" Width="500px" AllowSort="false" AllowGroup="false">
+                @* Inline stash tile column (by-game only) — 3-col MTG grid *@
+                <DxGridDataColumn FieldName="Stashes" Caption="Skrýše" Width="340px"
+                                  AllowSort="false" AllowGroup="false">
                     <CellDisplayTemplate>
                         @{
-                            var loc = context.DataItem as LocationListDto;
+                            var loc = (LocationListDto)context.DataItem;
+                            var stashes = loc.Stashes ?? [];
+                            var isVariant = loc.ParentLocationId.HasValue;
                         }
-                        @if (loc is not null)
+                        @if (isVariant)
                         {
-                            @foreach (var stash in loc.Stashes ?? [])
-                            {
-                                <div class="location-stash-card mb-2">
-                                    <div><strong>@stash.Name</strong></div>
-                                    @* Stash description deliberately hidden in the grid —
-                                       it's low-level flavor text. Full description shows in the
-                                       Skrýše tab of the location detail popup. *@
-                                    @foreach (var tq in stash.TreasureQuests ?? [])
+                            <div class="oh-lg-stash-cell oh-lg-none">
+                                <span>— skrýše se dědí z rodiče</span>
+                            </div>
+                        }
+                        else if (stashes.Count == 0)
+                        {
+                            <div class="oh-lg-stash-cell oh-lg-none"><span>—</span></div>
+                        }
+                        else
+                        {
+                            var visible = stashes.Take(3).ToList();
+                            var overflow = stashes.Count - visible.Count;
+                            <div class="oh-lg-stash-cell">
+                                <div class="oh-lg-stash-wrap @(overflow > 0 ? "oh-lg-overflow" : "")"
+                                     data-over="@overflow">
+                                    @foreach (var stash in visible)
                                     {
-                                        <div class="ps-2 mt-1 small">
-                                            <span class="badge bg-warning text-dark me-1">Poklad</span><strong>@tq.Title</strong>
-                                            @if (!string.IsNullOrWhiteSpace(tq.Clue))
+                                        <div class="oh-lg-stash-tile @StashTileTheme(stash.Id)"
+                                             @onclick="e => OnStashTileClick(stash.Id)"
+                                             @onclick:stopPropagation="true">
+                                            <i class="oh-lg-glyph bi @StashTileGlyph(stash.Id)"></i>
+                                            <span class="oh-lg-qcount @(stash.TreasureQuests.Count == 0 ? "oh-lg-zero" : "")">
+                                                <i class="bi bi-journal-text"></i>@stash.TreasureQuests.Count
+                                            </span>
+                                            <div class="oh-lg-nm">@stash.Name</div>
+                                            @if (stash.TreasureQuests.Count > 0)
                                             {
-                                                <span class="text-muted"> — @tq.Clue</span>
+                                                <div class="oh-lg-flyout">
+                                                    <div class="oh-lg-fh">Treasure Quests</div>
+                                                    @foreach (var tq in stash.TreasureQuests.Take(5))
+                                                    {
+                                                        <div class="oh-lg-q">
+                                                            <span class="oh-lg-dot-q"></span>
+                                                            <span class="oh-lg-qn">@tq.Title</span>
+                                                            <span class="oh-lg-pill">Poklad</span>
+                                                        </div>
+                                                    }
+                                                </div>
                                             }
                                         </div>
                                     }
                                 </div>
-                            }
+                            </div>
                         }
                     </CellDisplayTemplate>
                 </DxGridDataColumn>
-                <DxGridDataColumn FieldName="Quests" Caption="Questy" Width="600px" AllowSort="false" AllowGroup="false">
+
+                @* Quest count badge *@
+                <DxGridDataColumn Caption="Questy" Width="100px" AllowSort="false">
                     <CellDisplayTemplate>
                         @{
-                            var loc = context.DataItem as LocationListDto;
+                            var loc = (LocationListDto)context.DataItem;
+                            var qCount = (loc.Quests?.Count ?? 0) + (loc.LocationTreasureQuests?.Count ?? 0);
                         }
-                        @if (loc is not null)
-                        {
-                            @foreach (var quest in loc.Quests ?? [])
-                            {
-                                <div class="location-quest-card mb-2">
-                                    <div>
-                                        <strong>@quest.Name</strong>
-                                        <span class="badge bg-info text-dark ms-1">@quest.QuestTypeDisplay</span>
-                                    </div>
-                                    @{
-                                        var body = !string.IsNullOrWhiteSpace(quest.FullText) ? quest.FullText : quest.Description;
-                                    }
-                                    @if (!string.IsNullOrWhiteSpace(body))
-                                    {
-                                        <div class="small" style="white-space: pre-wrap">@body</div>
-                                    }
-                                    @{
-                                        var parts = new List<string>();
-                                        if (quest.RewardXp.HasValue) parts.Add($"{quest.RewardXp} XP");
-                                        if (quest.RewardMoney.HasValue) parts.Add($"{quest.RewardMoney} grošů");
-                                        foreach (var itm in quest.ItemRewards ?? []) parts.Add($"{itm.ItemName} ×{itm.Quantity}");
-                                        if (!string.IsNullOrWhiteSpace(quest.RewardNotes)) parts.Add(quest.RewardNotes!);
-                                    }
-                                    @if (parts.Count > 0)
-                                    {
-                                        <div class="text-muted small"><em>Odměna:</em> @string.Join(", ", parts)</div>
-                                    }
-                                </div>
-                            }
-                            @foreach (var tq in loc.LocationTreasureQuests ?? [])
-                            {
-                                <div class="location-quest-card mb-2">
-                                    <div>
-                                        <strong>@tq.Title</strong>
-                                        <span class="badge bg-warning text-dark ms-1">Poklad</span>
-                                    </div>
-                                    @if (!string.IsNullOrWhiteSpace(tq.Clue))
-                                    {
-                                        <div class="small" style="white-space: pre-wrap">@tq.Clue</div>
-                                    }
-                                </div>
-                            }
-                        }
+                        <span class="oh-lg-qbadge @(qCount == 0 ? "oh-lg-zero" : "")">
+                            <i class="bi bi-journal-text"></i>@qCount
+                        </span>
                     </CellDisplayTemplate>
                 </DxGridDataColumn>
             }
-            <DxGridDataColumn FieldName="Description" Caption="Popis" Width="300px" Visible="false" />
-            <DxGridDataColumn FieldName="Details" Caption="Podrobnosti" Width="300px" Visible="false" />
-            <DxGridDataColumn FieldName="NpcInfo" Caption="NPC" Width="220px" Visible="false" />
-            <DxGridDataColumn FieldName="Latitude" Caption="Šířka" Width="120px" DisplayFormat="F5" Visible="false" />
-            <DxGridDataColumn FieldName="Longitude" Caption="Délka" Width="120px" DisplayFormat="F5" Visible="false" />
+
             @if (Catalog)
             {
-                <DxGridDataColumn Caption="" Width="120px" TextAlignment="GridTextAlignment.Center">
+                @* Catalog: Přiřadit toggle column *@
+                <DxGridDataColumn Caption="Přiřazeno" Width="160px" AllowSort="false" AllowGroup="false">
                     <CellDisplayTemplate>
                         @{
                             var loc = (LocationListDto)context.DataItem;
@@ -171,15 +283,102 @@ else
                         }
                         @if (isAssigned)
                         {
-                            <button class="btn btn-sm btn-outline-danger" @onclick="() => UnassignLocationAsync(loc.Id)" @onclick:stopPropagation="true">Odebrat</button>
+                            <span class="oh-lg-assigned"><i class="bi bi-check-lg"></i>Ano</span>
+                            <button class="oh-lg-assign-btn"
+                                    @onclick="() => UnassignLocationAsync(loc.Id)"
+                                    @onclick:stopPropagation="true"
+                                    title="Odebrat z aktuální hry">
+                                <i class="bi bi-dash-lg"></i>Odebrat
+                            </button>
                         }
                         else
                         {
-                            <button class="btn btn-sm btn-outline-success" @onclick="() => AssignLocationAsync(loc.Id)" @onclick:stopPropagation="true">Přiřadit</button>
+                            <span class="oh-lg-notassigned">Ne</span>
+                            <button class="oh-lg-assign-btn"
+                                    @onclick="() => AssignLocationAsync(loc.Id)"
+                                    @onclick:stopPropagation="true"
+                                    title="Přiřadit k aktuální hře">
+                                <i class="bi bi-plus-lg"></i>Přiřadit
+                            </button>
                         }
                     </CellDisplayTemplate>
                 </DxGridDataColumn>
             }
+
+            @* Game potential muted *@
+            <DxGridDataColumn FieldName="GamePotential" Caption="Potenciál" Width="180px">
+                <CellDisplayTemplate>
+                    @{
+                        var loc = (LocationListDto)context.DataItem;
+                    }
+                    @if (!string.IsNullOrWhiteSpace(loc.GamePotential))
+                    {
+                        <div class="oh-lg-muted">@loc.GamePotential</div>
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            @* Setup notes muted *@
+            <DxGridDataColumn FieldName="SetupNotes" Caption="Příprava" Width="180px">
+                <CellDisplayTemplate>
+                    @{
+                        var loc = (LocationListDto)context.DataItem;
+                    }
+                    @if (!string.IsNullOrWhiteSpace(loc.SetupNotes))
+                    {
+                        <div class="oh-lg-muted">@loc.SetupNotes</div>
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            @* Hover-reveal action icons (replaces 3-dot menu) *@
+            <DxGridDataColumn Caption="Akce" Width="150px"
+                              AllowSort="false" AllowGroup="false"
+                              TextAlignment="GridTextAlignment.Right"
+                              FixedPosition="GridColumnFixedPosition.Right">
+                <CellDisplayTemplate>
+                    @{
+                        var loc = (LocationListDto)context.DataItem;
+                    }
+                    <div class="oh-lg-actions-cell">
+                        <div class="oh-lg-actions">
+                            <button type="button"
+                                    title="Nastavit GPS"
+                                    @onclick="() => OpenGpsDialog(loc)"
+                                    @onclick:stopPropagation="true">
+                                <i class="bi bi-geo-alt-fill"></i>
+                            </button>
+                            <button type="button"
+                                    title="Přiřadit quest (propojit)"
+                                    @onclick="() => OpenLinkDialog(loc)"
+                                    @onclick:stopPropagation="true">
+                                <i class="bi bi-link-45deg"></i>
+                            </button>
+                            <button type="button"
+                                    title="Otevřít na mapě"
+                                    @onclick="() => OpenOnMap(loc)"
+                                    @onclick:stopPropagation="true">
+                                <i class="bi bi-map-fill"></i>
+                            </button>
+                            <button type="button"
+                                    class="oh-lg-danger"
+                                    title="Smazat"
+                                    @onclick="() => RequestDelete(loc)"
+                                    @onclick:stopPropagation="true">
+                                <i class="bi bi-trash-fill"></i>
+                            </button>
+                        </div>
+                    </div>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            @* Hidden-by-default columns (preserved for column chooser) *@
+            <DxGridDataColumn FieldName="Id" Caption="#" Width="50px" Visible="false" />
+            <DxGridDataColumn FieldName="Description" Caption="Popis" Width="300px" Visible="false" />
+            <DxGridDataColumn FieldName="Details" Caption="Podrobnosti" Width="300px" Visible="false" />
+            <DxGridDataColumn FieldName="NpcInfo" Caption="NPC" Width="220px" Visible="false" />
+            <DxGridDataColumn FieldName="Latitude" Caption="Šířka" Width="120px" DisplayFormat="F5" Visible="false" />
+            <DxGridDataColumn FieldName="Longitude" Caption="Délka" Width="120px" DisplayFormat="F5" Visible="false" />
         </Columns>
     </OvcinaGrid>
 }
@@ -189,23 +388,14 @@ else
     GameId="@(Catalog ? null : gameId)"
     OnSaved="LoadDataAsync" />
 
-<DxContextMenu @ref="contextMenu" ItemClick="OnContextMenuItemClick">
-    <Items>
-        <DxContextMenuItem Text="Upravit" IconCssClass="bi bi-pencil-fill" Name="edit" />
-        <DxContextMenuItem Text="Zadat GPS (z odkazu)" IconCssClass="bi bi-crosshair" Name="gps" />
-        <DxContextMenuItem Text="Propojit jako variantu" IconCssClass="bi bi-link-45deg" Name="link" />
-        <DxContextMenuItem Text="Zobrazit na mapě" IconCssClass="bi bi-geo-alt-fill" Name="map" />
-        <DxContextMenuItem BeginGroup="true" Text="Smazat" IconCssClass="bi bi-trash-fill" CssClass="text-danger" Name="delete" />
-    </Items>
-</DxContextMenu>
-
+@* GPS paste dialog *@
 <DxPopup @bind-Visible="@isGpsVisible" HeaderText="@($"Zadat GPS: {gpsTarget?.Name}")" Width="550px">
     <BodyContentTemplate Context="popupContext">
         <p class="text-muted small mb-2">
             Vložte odkaz z Google Maps, Mapy.cz nebo souřadnice (49.4532, 18.0203)
             @if (gpsTarget is not null)
             {
-                <br/><strong>Aktuální:</strong> <span>@($"{gpsTarget.Latitude:F7}, {gpsTarget.Longitude:F7}")</span>
+                <br /><strong>Aktuální:</strong> <span>@($"{gpsTarget.Latitude:F7}, {gpsTarget.Longitude:F7}")</span>
             }
         </p>
         <DxTextBox Text="@gpsInput" TextChanged="@(v => { gpsInput = v; gpsParsed = TryParseGps(v); })"
@@ -231,13 +421,17 @@ else
         <div class="d-flex gap-2 justify-content-end mt-3">
             <button class="btn btn-secondary" @onclick="() => isGpsVisible = false">Zrušit</button>
             <button class="btn btn-primary" disabled="@(gpsParsed is null || isSaving)" @onclick="ApplyGpsAsync">
-                @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                @if (isSaving)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
                 Uložit GPS
             </button>
         </div>
     </BodyContentTemplate>
 </DxPopup>
 
+@* Propojit (Link) variant dialog *@
 <DxPopup @bind-Visible="@isLinkVisible" HeaderText="@($"Propojit: {linkTarget?.Name}")" Width="500px">
     <BodyContentTemplate Context="popupContext">
         <p class="text-muted small mb-2">Vyberte rodičovskou lokaci (tato bude variantou):</p>
@@ -258,8 +452,35 @@ else
             }
             <button class="btn btn-secondary" @onclick="() => isLinkVisible = false">Zrušit</button>
             <button class="btn btn-primary" disabled="@(linkParentId is null || isSaving)" @onclick="ApplyLinkAsync">
-                @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                @if (isSaving)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
                 Propojit
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@* Smazat — destructive action confirmation popup (required per MEMORY) *@
+<DxPopup @bind-Visible="@isDeleteConfirmVisible" HeaderText="Smazat lokaci?" Width="420px">
+    <BodyContentTemplate Context="popupContext">
+        <p class="mb-3">
+            Opravdu chcete smazat lokaci <strong>@deleteTarget?.Name</strong>?
+            Tento krok nelze vrátit zpět.
+        </p>
+        @if (deleteError is not null)
+        {
+            <div class="alert alert-danger py-2">@deleteError</div>
+        }
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isDeleteConfirmVisible = false" disabled="@isSaving">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync" disabled="@isSaving">
+                @if (isSaving)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                Smazat
             </button>
         </div>
     </BodyContentTemplate>
@@ -272,31 +493,205 @@ else
     private int gameId => GameContext.SelectedGameId ?? 1;
 
     private LocationEditPopup locationPopup = null!;
-    private DxContextMenu? contextMenu;
-    private LocationListDto? contextMenuTarget;
     private List<LocationListDto> locations = [];
     private HashSet<int> assignedLocationIds = [];
     private bool loading = true;
     private bool isGpsVisible;
     private bool isLinkVisible;
+    private bool isDeleteConfirmVisible;
     private bool isSaving;
 
-    // GPS paste dialog state
+    // Toolbar filter state
+    private string? searchText;
+    private LocationKind? filterKind;
+    private string? filterRegion;
+    private bool filterOnlyWithStashes;
+    private bool filterOnlyWithQuests;
+    private bool filterOnlyUnassigned;
+
+    // Variant expansion
+    private readonly HashSet<int> expandedParentIds = [];
+
+    // Delete target
+    private LocationListDto? deleteTarget;
+    private string? deleteError;
+
+    // GPS dialog state
     private LocationListDto? gpsTarget;
     private string? gpsInput;
     private (decimal lat, decimal lon)? gpsParsed;
     private string? gpsError;
     private int gpsLinkedCount;
 
+    // Link dialog state
+    private LocationListDto? linkTarget;
+    private int? linkParentId;
+    private List<LocationListDto> linkCandidates = [];
+    private string? linkError;
+
+    private record KindFilterOption(LocationKind Value, string Label);
+
+    private List<KindFilterOption> kindFilterOptions =>
+        Enum.GetValues<LocationKind>()
+            .Select(k => new KindFilterOption(k, k.GetDisplayName()))
+            .ToList();
+
+    private List<string> regionOptions =>
+        locations.Select(l => l.Region)
+                 .Where(r => !string.IsNullOrWhiteSpace(r))
+                 .Select(r => r!)
+                 .Distinct(StringComparer.OrdinalIgnoreCase)
+                 .OrderBy(r => r)
+                 .ToList();
+
+    // Flattened, filtered row set bound to the grid.
+    // Parent rows are always present; variant rows appear only when parent is expanded.
+    private List<LocationListDto> visibleRows
+    {
+        get
+        {
+            bool Matches(LocationListDto l)
+            {
+                if (filterKind.HasValue && l.LocationKind != filterKind.Value) return false;
+                if (!string.IsNullOrWhiteSpace(filterRegion)
+                    && !string.Equals(l.Region, filterRegion, StringComparison.OrdinalIgnoreCase)) return false;
+                if (filterOnlyWithStashes && (l.Stashes is null || l.Stashes.Count == 0)) return false;
+                if (filterOnlyWithQuests
+                    && (l.Quests is null || l.Quests.Count == 0)
+                    && (l.LocationTreasureQuests is null || l.LocationTreasureQuests.Count == 0)) return false;
+                if (Catalog && filterOnlyUnassigned && assignedLocationIds.Contains(l.Id)) return false;
+                if (!string.IsNullOrWhiteSpace(searchText))
+                {
+                    var needle = searchText.Trim();
+                    var nameMatch = l.Name?.Contains(needle, StringComparison.OrdinalIgnoreCase) == true;
+                    var regionMatch = l.Region?.Contains(needle, StringComparison.OrdinalIgnoreCase) == true;
+                    var questMatch = (l.Quests ?? []).Any(q => q.Name.Contains(needle, StringComparison.OrdinalIgnoreCase));
+                    var tqMatch = (l.LocationTreasureQuests ?? []).Any(t => t.Title.Contains(needle, StringComparison.OrdinalIgnoreCase));
+                    if (!nameMatch && !regionMatch && !questMatch && !tqMatch) return false;
+                }
+                return true;
+            }
+
+            var result = new List<LocationListDto>(locations.Count);
+            foreach (var l in locations.Where(l => !l.ParentLocationId.HasValue).OrderBy(l => l.Name))
+            {
+                if (!Matches(l)) continue;
+                result.Add(l);
+                if (expandedParentIds.Contains(l.Id))
+                {
+                    foreach (var v in locations
+                        .Where(x => x.ParentLocationId == l.Id)
+                        .OrderBy(x => x.Name))
+                    {
+                        result.Add(v);
+                    }
+                }
+            }
+            return result;
+        }
+    }
+
+    private void ToggleExpand(int parentId)
+    {
+        if (!expandedParentIds.Add(parentId))
+            expandedParentIds.Remove(parentId);
+        StateHasChanged();
+    }
+
+    private void OnGridRowClick(GridRowClickEventArgs e)
+    {
+        var loc = e.Grid.GetDataItem(e.VisibleIndex) as LocationListDto;
+        if (loc is null) return;
+        Nav.NavigateTo($"/locations/{loc.Id}");
+    }
+
+    // Delete flow — confirmation popup first, then Api.DeleteAsync with bool-return check.
+    private void RequestDelete(LocationListDto loc)
+    {
+        deleteTarget = loc;
+        deleteError = null;
+        isDeleteConfirmVisible = true;
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (deleteTarget is null) return;
+        deleteError = null;
+        isSaving = true;
+        try
+        {
+            var ok = await Api.DeleteAsync($"/api/locations/{deleteTarget.Id}");
+            if (!ok)
+            {
+                deleteError = "Nepodařilo se smazat lokaci. Možná je použita v některé hře.";
+                return;
+            }
+            isDeleteConfirmVisible = false;
+            deleteTarget = null;
+            await LoadDataAsync();
+        }
+        finally { isSaving = false; }
+    }
+
+    private void OpenOnMap(LocationListDto loc)
+    {
+        Nav.NavigateTo($"/map?location={loc.Id}");
+    }
+
+    private void OnStashTileClick(int stashId)
+    {
+        Nav.NavigateTo($"/secret-stashes/{stashId}");
+    }
+
+    // --- CSS helpers ---
+    private static string LocationKindCssClass(LocationKind kind) => kind switch
+    {
+        LocationKind.Town => "oh-lg-town",
+        LocationKind.Village => "oh-lg-village",
+        LocationKind.Magical => "oh-lg-magical",
+        LocationKind.Hobbit => "oh-lg-hobbit",
+        LocationKind.Wilderness => "oh-lg-wilderness",
+        _ => "oh-lg-wilderness",
+    };
+
+    private static string StashTileTheme(int stashId)
+    {
+        // Rotate through the 5 themed backgrounds defined in the ported CSS.
+        return (stashId % 5) switch
+        {
+            0 => "oh-lg-chest",
+            1 => "oh-lg-hollow",
+            2 => "oh-lg-stone",
+            3 => "oh-lg-creek",
+            _ => "oh-lg-cave",
+        };
+    }
+
+    private static string StashTileGlyph(int stashId) => (stashId % 5) switch
+    {
+        0 => "bi-box2-heart-fill",
+        1 => "bi-archive-fill",
+        2 => "bi-gem",
+        3 => "bi-tree-fill",
+        _ => "bi-moon-stars-fill",
+    };
+
+    private static string PluralCz(int n, string one, string few, string many)
+    {
+        if (n == 1) return one;
+        if (n >= 2 && n <= 4) return few;
+        return many;
+    }
+
+    // --- GPS dialog ---
     private void OpenGpsDialog(LocationListDto loc)
     {
         gpsTarget = loc;
         gpsInput = null;
         gpsParsed = null;
         gpsError = null;
-        // Count linked locations (parent + variants share GPS)
         var linked = GetLinkedLocationIds(loc);
-        gpsLinkedCount = linked.Count - 1; // minus self
+        gpsLinkedCount = linked.Count - 1;
         isGpsVisible = true;
     }
 
@@ -305,13 +700,11 @@ else
         var ids = new List<int> { loc.Id };
         if (loc.ParentLocationId.HasValue)
         {
-            // This is a variant — include parent and all siblings
             ids.Add(loc.ParentLocationId.Value);
             ids.AddRange(locations.Where(l => l.ParentLocationId == loc.ParentLocationId && l.Id != loc.Id).Select(l => l.Id));
         }
         else
         {
-            // This is a parent — include all variants
             ids.AddRange(locations.Where(l => l.ParentLocationId == loc.Id).Select(l => l.Id));
         }
         return ids;
@@ -322,7 +715,6 @@ else
         if (string.IsNullOrWhiteSpace(input)) return null;
         input = input.Trim();
 
-        // Plain coordinates: "49.4532, 18.0203" or "49.4532 18.0203"
         var plainMatch = System.Text.RegularExpressions.Regex.Match(input,
             @"(-?\d{1,3}\.\d+)[,\s]+(-?\d{1,3}\.\d+)");
         if (plainMatch.Success
@@ -333,7 +725,6 @@ else
             return (lat1, lon1);
         }
 
-        // Google Maps URL: @49.4532,18.0203 or ?q=49.4532,18.0203 or /place/49.4532,18.0203
         var googleMatch = System.Text.RegularExpressions.Regex.Match(input,
             @"[@?/](-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)");
         if (googleMatch.Success
@@ -344,7 +735,6 @@ else
             return (lat2, lon2);
         }
 
-        // Mapy.cz URL: x=18.0203&y=49.4532 (x=lon, y=lat)
         var mapyCzMatch = System.Text.RegularExpressions.Regex.Match(input,
             @"[?&]x=(-?\d{1,3}\.\d+).*[?&]y=(-?\d{1,3}\.\d+)");
         if (mapyCzMatch.Success
@@ -355,7 +745,6 @@ else
             return (latM, lonM);
         }
 
-        // Mapy.cz new URL: /zakladni/49.4532,18.0203 (lat,lon in path)
         var mapyCzNewMatch = System.Text.RegularExpressions.Regex.Match(input,
             @"mapy\.cz/[^?]*?(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)");
         if (mapyCzNewMatch.Success
@@ -366,7 +755,6 @@ else
             return (lat3, lon3);
         }
 
-        // Decimal with NSEW: 49.4527033N, 18.0204492E
         var decNsewMatch = System.Text.RegularExpressions.Regex.Match(input,
             @"(\d{1,3}\.\d+)\s*([NSns])[,\s]+(\d{1,3}\.\d+)\s*([EWew])");
         if (decNsewMatch.Success
@@ -379,7 +767,6 @@ else
                 return (latN, lonN);
         }
 
-        // DMS: 49°27'05.9"N 18°01'13.5"E
         var dmsMatch = System.Text.RegularExpressions.Regex.Match(input,
             @"(\d{1,3})°(\d{1,2})'([\d.]+)""?\s*([NSns])\s*(\d{1,3})°(\d{1,2})'([\d.]+)""?\s*([EWew])");
         if (dmsMatch.Success)
@@ -426,18 +813,12 @@ else
         finally { isSaving = false; }
     }
 
-    // Link variant dialog state
-    private LocationListDto? linkTarget;
-    private int? linkParentId;
-    private List<LocationListDto> linkCandidates = [];
-    private string? linkError;
-
+    // --- Link (propojit) dialog ---
     private void OpenLinkDialog(LocationListDto loc)
     {
         linkTarget = loc;
         linkParentId = loc.ParentLocationId;
         linkError = null;
-        // Candidates: all locations except self and its own variants
         linkCandidates = locations
             .Where(l => l.Id != loc.Id && l.ParentLocationId != loc.Id)
             .OrderBy(l => l.Name)
@@ -491,35 +872,7 @@ else
         finally { isSaving = false; }
     }
 
-    private async Task ShowContextMenu(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, LocationListDto loc)
-    {
-        contextMenuTarget = loc;
-        await contextMenu!.ShowAsync(e);
-    }
-
-    private async Task OnContextMenuItemClick(ContextMenuItemClickEventArgs e)
-    {
-        if (contextMenuTarget is null) return;
-        switch (e.ItemInfo.Name)
-        {
-            case "edit":
-                await locationPopup.OpenAsync(contextMenuTarget.Id);
-                break;
-            case "gps":
-                OpenGpsDialog(contextMenuTarget);
-                break;
-            case "link":
-                OpenLinkDialog(contextMenuTarget);
-                break;
-            case "map":
-                // TODO: navigate to map with location focus
-                break;
-            case "delete":
-                await locationPopup.OpenAsync(contextMenuTarget.Id);
-                break;
-        }
-    }
-
+    // --- Lifecycle ---
     protected override async Task OnInitializedAsync()
     {
         await GameContext.InitializeAsync();
@@ -562,5 +915,4 @@ else
         assignedLocationIds.Remove(locationId);
         StateHasChanged();
     }
-
 }
