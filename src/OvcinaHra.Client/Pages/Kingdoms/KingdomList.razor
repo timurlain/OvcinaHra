@@ -219,9 +219,16 @@ else
 
     private async Task ConfirmDeleteAsync()
     {
+        error = null;
         try
         {
-            await Api.DeleteAsync($"/api/kingdoms/{editingId}");
+            var deleted = await Api.DeleteAsync($"/api/kingdoms/{editingId}");
+            if (!deleted)
+            {
+                error = "Smazání království selhalo.";
+                return;
+            }
+
             isDeleteVisible = false;
             isModalVisible = false;
             await LoadAsync();

@@ -318,7 +318,7 @@ else
         return parts.Count == 0 ? "/api/characters" : $"/api/characters?{string.Join('&', parts)}";
     }
 
-    private void OpenModal(CharacterListDto? c)
+    private async Task OpenModal(CharacterListDto? c)
     {
         error = null;
         if (c is null)
@@ -328,20 +328,28 @@ else
             playerFirstName = null; playerLastName = null;
             kingdomId = null; originalKingdomId = null; activeAssignmentId = null;
             modalTitle = "Nová postava";
+            isModalVisible = true;
+            return;
         }
-        else
-        {
-            editingId = c.Id; name = c.Name;
-            race = c.Race;
-            isPlayedCharacter = c.IsPlayedCharacter;
-            externalPersonId = c.ExternalPersonId;
-            kingdomId = c.KingdomId;
-            originalKingdomId = c.KingdomId;
-            activeAssignmentId = null; // resolved by LoadDetailAsync
-            modalTitle = $"Upravit: {c.Name}";
-            _ = LoadDetailAsync(c.Id);
-        }
+
+        editingId = c.Id; name = c.Name;
+        race = c.Race;
+        isPlayedCharacter = c.IsPlayedCharacter;
+        externalPersonId = c.ExternalPersonId;
+        kingdomId = c.KingdomId;
+        originalKingdomId = c.KingdomId;
+        activeAssignmentId = null; // resolved by LoadDetailAsync
+        modalTitle = $"Upravit: {c.Name}";
         isModalVisible = true;
+
+        try
+        {
+            await LoadDetailAsync(c.Id);
+        }
+        catch (Exception ex)
+        {
+            error = $"Nepodařilo se načíst detail postavy: {ex.Message}";
+        }
     }
 
     private async Task LoadDetailAsync(int id)
@@ -404,9 +412,16 @@ else
 
     private async Task ConfirmDeleteAsync()
     {
+        error = null;
         try
         {
-            await Api.DeleteAsync($"/api/characters/{editingId}");
+            var deleted = await Api.DeleteAsync($"/api/characters/{editingId}");
+            if (!deleted)
+            {
+                error = "Smazání postavy selhalo.";
+                return;
+            }
+
             isDeleteVisible = false; isModalVisible = false;
             await LoadAsync();
             await LoadParentSourceAsync();

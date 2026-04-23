@@ -39,6 +39,16 @@ public abstract class IntegrationTestBase : IAsyncLifetime
         var truncateSql = string.Join("; ", tableNames.Select(t => $"TRUNCATE TABLE \"{t}\" CASCADE"));
         if (truncateSql.Length > 0)
             await db.Database.ExecuteSqlRawAsync(truncateSql);
+
+        // Re-seed the canonical Kingdom lookup rows the 20260422221753 migration
+        // inserts at apply-time (TRUNCATE CASCADE wipes them between test classes).
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO "Kingdoms" ("Name", "HexColor", "SortOrder") VALUES
+              ('Aradhryand',      '#2E7D32', 1),
+              ('Azanulinbar-Dum', '#C62828', 2),
+              ('Esgaroth',        '#1565C0', 3),
+              ('Nový Arnor',      '#F9A825', 4)
+            """);
     }
 
     public async Task DisposeAsync()

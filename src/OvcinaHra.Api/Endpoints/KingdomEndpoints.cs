@@ -39,13 +39,15 @@ public static class KingdomEndpoints
         if (string.IsNullOrWhiteSpace(dto.Name))
             return TypedResults.BadRequest("Název království je povinný.");
 
-        var exists = await db.Kingdoms.AnyAsync(k => k.Name == dto.Name);
+        var normalizedName = dto.Name.Trim();
+
+        var exists = await db.Kingdoms.AnyAsync(k => k.Name == normalizedName);
         if (exists)
-            return TypedResults.Conflict($"Království s názvem '{dto.Name}' už existuje.");
+            return TypedResults.Conflict($"Království s názvem '{normalizedName}' už existuje.");
 
         var k = new Kingdom
         {
-            Name = dto.Name.Trim(),
+            Name = normalizedName,
             HexColor = dto.HexColor,
             BadgeImageUrl = dto.BadgeImageUrl,
             Description = dto.Description,
@@ -67,21 +69,23 @@ public static class KingdomEndpoints
         if (string.IsNullOrWhiteSpace(dto.Name))
             return TypedResults.BadRequest("Název království je povinný.");
 
+        var normalizedName = dto.Name.Trim();
+
         var k = await db.Kingdoms.FindAsync(id);
         if (k is null) return TypedResults.NotFound();
 
-        if (!string.Equals(k.Name, dto.Name, StringComparison.Ordinal))
+        if (!string.Equals(k.Name, normalizedName, StringComparison.Ordinal))
         {
             var inUse = await db.CharacterAssignments.AnyAsync(a => a.KingdomId == id);
             if (inUse)
                 return TypedResults.Conflict(
                     "Toto království je přiřazeno postavám — název nelze přejmenovat. Ostatní údaje můžete upravit.");
 
-            var nameClash = await db.Kingdoms.AnyAsync(x => x.Id != id && x.Name == dto.Name);
+            var nameClash = await db.Kingdoms.AnyAsync(x => x.Id != id && x.Name == normalizedName);
             if (nameClash)
-                return TypedResults.Conflict($"Království s názvem '{dto.Name}' už existuje.");
+                return TypedResults.Conflict($"Království s názvem '{normalizedName}' už existuje.");
 
-            k.Name = dto.Name.Trim();
+            k.Name = normalizedName;
         }
 
         k.HexColor = dto.HexColor;
