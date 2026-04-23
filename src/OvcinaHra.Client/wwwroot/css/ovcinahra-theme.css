@@ -1960,6 +1960,8 @@
 /* Upravit — sticky form footer */
 .oh-mon-d-edit-footer{position:sticky;bottom:0;display:flex;align-items:center;gap:8px;padding:14px 28px;background:var(--oh-surface);border-top:1px solid var(--oh-border);box-shadow:0 -2px 8px rgba(45,80,22,.06);margin:24px -28px -24px;z-index:3}
 .oh-mon-d-edit-footer .oh-mon-d-spacer{flex:1}
+
+/* ============================================================
    Monster bestiary list (/monsters) — .oh-mon-*
    Card-row hybrid: thumb · name · chips · stat pills · hover icons
    Ported from docs/design/dialogs/monster-list.mockup.unbundled.html

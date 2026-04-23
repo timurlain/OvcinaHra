@@ -48,21 +48,22 @@ else
                 <option value="@t">@t</option>
             }
         </select>
-        <span class="oh-mon-tb-toggle @(filterWithLoot ? "oh-mon-on" : null)"
-              role="button" @onclick="() => filterWithLoot = !filterWithLoot">
-            <i class="bi @(filterWithLoot ? "bi-check2-square" : "bi-square")"></i> jen s kořistí
-        </span>
+        @* "jen s kořistí" toggle removed for v1 — relies on monstersWithLoot which is
+           only populated when an edit modal opens, so it can't filter the list correctly.
+           Re-enable once an /api/monsters/loot/by-game/{gameId} aggregate exists. *@
         @if (Catalog)
         {
-            <span class="oh-mon-tb-toggle @(filterUnassigned ? "oh-mon-on" : null)"
-                  role="button" @onclick="() => filterUnassigned = !filterUnassigned">
+            <button type="button"
+                    class="oh-mon-tb-toggle @(filterUnassigned ? "oh-mon-on" : null)"
+                    @onclick="() => filterUnassigned = !filterUnassigned">
                 <i class="bi @(filterUnassigned ? "bi-check2-square" : "bi-square")"></i> jen nepřiřazené
-            </span>
+            </button>
         }
-        <span class="oh-mon-count">@FilteredMonsters.Count příšer</span>
+        @{ var filtered = FilteredMonsters; }
+        <span class="oh-mon-count">@filtered.Count příšer</span>
     </div>
 
-    @if (FilteredMonsters.Count == 0 && monsters.Count == 0 && !Catalog)
+    @if (filtered.Count == 0 && monsters.Count == 0 && !Catalog)
     {
         <div class="oh-mon-empty">
             <div class="oh-mon-empty-icon"><i class="bi bi-bug-fill"></i></div>
@@ -74,7 +75,7 @@ else
             </div>
         </div>
     }
-    else if (FilteredMonsters.Count == 0)
+    else if (filtered.Count == 0)
     {
         <div class="oh-mon-empty">
             <div class="oh-mon-empty-icon"><i class="bi bi-funnel"></i></div>
@@ -84,7 +85,7 @@ else
     else
     {
         <div class="oh-mon-list">
-            @foreach (var m in FilteredMonsters)
+            @foreach (var m in filtered)
             {
                 var captured = m;
                 <MonsterRow @key="captured.Id"
@@ -315,7 +316,6 @@ else
     private string filterType = "";
     private int filterCategory;
     private string filterTag = "";
-    private bool filterWithLoot;
     private bool filterUnassigned;
 
     private bool isQuickPeekVisible;
@@ -347,10 +347,6 @@ else
             if (!string.IsNullOrEmpty(filterTag))
             {
                 q = q.Where(m => m.TagNames.Contains(filterTag));
-            }
-            if (filterWithLoot)
-            {
-                q = q.Where(m => monstersWithLoot.Contains(m.Id));
             }
             if (Catalog && filterUnassigned)
             {
@@ -516,9 +512,16 @@ else
         quickPeekDetail = null;
         quickPeekImageUrl = null;
         isQuickPeekVisible = true;
-        var detail = await Api.GetAsync<MonsterDetailDto>($"/api/monsters/{m.Id}");
-        if (detail is not null)
+        try
         {
+            var detail = await Api.GetAsync<MonsterDetailDto>($"/api/monsters/{m.Id}");
+            if (detail is null)
+            {
+                // 404 — close the popup so user isn't stuck on "Načítám…".
+                isQuickPeekVisible = false;
+                error = $"Detail příšery „{m.Name}\u201c se nepodařilo načíst (možná byla smazána).";
+                return;
+            }
             quickPeekDetail = detail;
             if (!string.IsNullOrWhiteSpace(detail.ImagePath))
             {
@@ -529,6 +532,12 @@ else
             {
                 quickPeekImageUrl = m.ImageUrl;
             }
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            isQuickPeekVisible = false;
+            error = $"Chyba při načítání detailu: {ex.Message}";
             StateHasChanged();
         }
     }
