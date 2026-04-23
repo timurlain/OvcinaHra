@@ -55,6 +55,8 @@ public class InMemoryBlobService : IBlobStorageService
     public Task<string?> GetSasUrlAsync(string blobKey, CancellationToken ct = default)
         => Task.FromResult(_blobs.ContainsKey(blobKey) ? $"https://fake/{blobKey}" : null);
 
+    public string? GetSasUrl(string blobKey) => $"https://fake/{blobKey}";
+
     public Task DeleteAsync(string blobKey, CancellationToken ct = default)
     {
         _blobs.Remove(blobKey);

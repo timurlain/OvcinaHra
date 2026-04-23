@@ -1,11 +1,15 @@
 @using OvcinaHra.Shared.Dtos
-@inject ApiClient Api
 
 <a class="oh-lc-tile" href="/secret-stashes/@Stash.Id">
     <div class="oh-lc-tile-img">
-        @if (imageUrl is not null)
+        @* Blazor @onerror state so a broken img (stale key, deleted blob, SAS
+           failure) reveals the "bez obrázku" placeholder. State-based rather
+           than DOM-mutation so it survives component reuse across list updates. *@
+        @if (!string.IsNullOrEmpty(Stash.ImageUrl) && !imageFailed)
         {
-            <img src="@imageUrl" alt="@Stash.Name" />
+            <img src="@Stash.ImageUrl"
+                 alt="@Stash.Name"
+                 @onerror="() => imageFailed = true" />
         }
         else
         {
@@ -35,33 +39,24 @@
     [Parameter, EditorRequired] public LocationStashDto Stash { get; set; } = null!;
     [Parameter] public int MaxVisibleQuests { get; set; } = 5;
 
-    private string? imageUrl;
     private List<LocationTreasureQuestDto> visibleQuests = [];
     private int overflowCount;
+    private bool imageFailed;
+    private string? _lastImageUrl;
 
-    private int? _loadedForStashId;
-
-    protected override async Task OnParametersSetAsync()
+    protected override void OnParametersSet()
     {
-        if (_loadedForStashId != Stash.Id)
-        {
-            _loadedForStashId = Stash.Id;
-            await LoadImageAsync();
-        }
-
         var all = Stash.TreasureQuests ?? [];
         visibleQuests = all.Take(MaxVisibleQuests).ToList();
         overflowCount = Math.Max(0, all.Count - MaxVisibleQuests);
-    }
 
-    private async Task LoadImageAsync()
-    {
-        try
+        // Reset img error state when the URL changes — matters when a reused
+        // component shifts to a different Stash across a list re-render.
+        if (_lastImageUrl != Stash.ImageUrl)
         {
-            var urls = await Api.GetAsync<ImageUrlsDto>($"/api/images/secretstashes/{Stash.Id}");
-            imageUrl = urls?.ImageUrl;
+            _lastImageUrl = Stash.ImageUrl;
+            imageFailed = false;
         }
-        catch { imageUrl = null; }
     }
 
     // Czech plural for count: 1 → "další", 2-4 → "další", 5+ → "dalších"

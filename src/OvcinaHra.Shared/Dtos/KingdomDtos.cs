@@ -1,5 +1,8 @@
 namespace OvcinaHra.Shared.Dtos;
 
+// BadgeImageUrl is historically the stored blob key (misnamed — kept for wire
+// compatibility). BadgeImageSasUrl is the resolved, short-lived SAS URL
+// suitable for <img src=…> binding.
 public record KingdomDto(
     int Id,
     string Name,
@@ -7,7 +10,8 @@ public record KingdomDto(
     string? BadgeImageUrl,
     string? Description,
     int SortOrder,
-    int AssignmentCount = 0);
+    int AssignmentCount = 0,
+    string? BadgeImageSasUrl = null);
 
 public record CreateKingdomDto(
     string Name,

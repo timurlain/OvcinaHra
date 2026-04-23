@@ -10,7 +10,8 @@ namespace OvcinaHra.Shared.Dtos;
 public record CharacterListDto(
     int Id, string Name, string? PlayerFullName, Race? Race,
     bool IsPlayedCharacter, int? ExternalPersonId,
-    int? KingdomId = null, string? KingdomName = null, string? KingdomHexColor = null);
+    int? KingdomId = null, string? KingdomName = null, string? KingdomHexColor = null,
+    string? ImagePath = null, string? ImageUrl = null);
 
 public record CharacterDetailDto(
     int Id, string Name, string? PlayerFirstName, string? PlayerLastName,

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
+using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.ValueObjects;
 using OvcinaHra.Shared.Dtos;
@@ -38,17 +39,37 @@ public static class MonsterEndpoints
         return group;
     }
 
-    private static async Task<Ok<List<MonsterListDto>>> GetAll(WorldDbContext db)
+    private static async Task<Ok<List<MonsterListDto>>> GetAll(WorldDbContext db, IBlobStorageService blob)
     {
-        var monsters = await db.Monsters
+        var rows = await db.Monsters
             .OrderBy(m => m.Name)
-            .Select(m => new MonsterListDto(
-                m.Id, m.Name, m.MonsterType, m.Category,
-                m.Stats.Attack, m.Stats.Defense, m.Stats.Health,
-                m.RewardXp, m.RewardMoney,
-                m.Abilities, m.AiBehavior, m.RewardNotes, m.Notes,
-                m.MonsterTags.OrderBy(mt => mt.Tag.Name).Select(mt => mt.Tag.Name).ToList()))
+            .Select(m => new
+            {
+                m.Id,
+                m.Name,
+                m.MonsterType,
+                m.Category,
+                m.Stats.Attack,
+                m.Stats.Defense,
+                m.Stats.Health,
+                m.RewardXp,
+                m.RewardMoney,
+                m.Abilities,
+                m.AiBehavior,
+                m.RewardNotes,
+                m.Notes,
+                TagNames = m.MonsterTags.OrderBy(mt => mt.Tag.Name).Select(mt => mt.Tag.Name).ToList(),
+                m.ImagePath
+            })
             .ToListAsync();
+        var monsters = rows.Select(r => new MonsterListDto(
+            r.Id, r.Name, r.MonsterType, r.Category,
+            r.Attack, r.Defense, r.Health,
+            r.RewardXp, r.RewardMoney,
+            r.Abilities, r.AiBehavior, r.RewardNotes, r.Notes,
+            r.TagNames,
+            ImagePath: r.ImagePath,
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : blob.GetSasUrl(r.ImagePath))).ToList();
         return TypedResults.Ok(monsters);
     }
 

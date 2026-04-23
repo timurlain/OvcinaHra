@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
+using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Dtos;
 
@@ -30,12 +31,25 @@ public static class SecretStashEndpoints
 
     // --- Catalog ---
 
-    private static async Task<Ok<List<SecretStashListDto>>> GetAll(WorldDbContext db)
+    private static async Task<Ok<List<SecretStashListDto>>> GetAll(WorldDbContext db, IBlobStorageService blob)
     {
-        var stashes = await db.SecretStashes
+        var rows = await db.SecretStashes
             .OrderBy(s => s.Name)
-            .Select(s => new SecretStashListDto(s.Id, s.Name, s.Description))
+            .Select(s => new
+            {
+                s.Id,
+                s.Name,
+                s.Description,
+                TreasureCount = s.TreasureQuests.Count,
+                GameCount = s.GameSecretStashes.Count,
+                s.ImagePath
+            })
             .ToListAsync();
+        var stashes = rows.Select(r => new SecretStashListDto(
+            r.Id, r.Name, r.Description,
+            r.TreasureCount, r.GameCount,
+            ImagePath: r.ImagePath,
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : blob.GetSasUrl(r.ImagePath))).ToList();
         return TypedResults.Ok(stashes);
     }
 
@@ -76,20 +90,33 @@ public static class SecretStashEndpoints
 
     // --- Per-game assignment ---
 
-    private static async Task<Ok<List<GameSecretStashDto>>> GetByGame(int gameId, WorldDbContext db)
+    private static async Task<Ok<List<GameSecretStashDto>>> GetByGame(int gameId, WorldDbContext db, IBlobStorageService blob)
     {
-        var stashes = await db.GameSecretStashes
+        var rows = await db.GameSecretStashes
             .Where(gs => gs.GameId == gameId)
-            .Include(gs => gs.SecretStash)
-            .Include(gs => gs.Location)
             .OrderBy(gs => gs.SecretStash.Name)
-            .Select(gs => new GameSecretStashDto(gs.GameId, gs.SecretStashId, gs.SecretStash.Name, gs.LocationId, gs.Location.Name))
+            .Select(gs => new
+            {
+                gs.GameId,
+                gs.SecretStashId,
+                StashName = gs.SecretStash.Name,
+                gs.LocationId,
+                LocationName = gs.Location.Name,
+                TreasureCount = gs.SecretStash.TreasureQuests.Count(tq => tq.GameId == gameId),
+                StashImagePath = gs.SecretStash.ImagePath
+            })
             .ToListAsync();
+        var stashes = rows.Select(r => new GameSecretStashDto(
+            r.GameId, r.SecretStashId, r.StashName,
+            r.LocationId, r.LocationName,
+            r.TreasureCount,
+            ImagePath: r.StashImagePath,
+            ImageUrl: string.IsNullOrWhiteSpace(r.StashImagePath) ? null : blob.GetSasUrl(r.StashImagePath))).ToList();
         return TypedResults.Ok(stashes);
     }
 
     private static async Task<Results<Created<GameSecretStashDto>, Conflict, ValidationProblem>> CreateGameStash(
-        CreateGameSecretStashDto dto, WorldDbContext db)
+        CreateGameSecretStashDto dto, WorldDbContext db, IBlobStorageService blob)
     {
         if (await db.GameSecretStashes.AnyAsync(gs => gs.GameId == dto.GameId && gs.SecretStashId == dto.SecretStashId))
             return TypedResults.Conflict();
@@ -112,10 +139,17 @@ public static class SecretStashEndpoints
         });
         await db.SaveChangesAsync();
 
-        var stashName = (await db.SecretStashes.FindAsync(dto.SecretStashId))?.Name ?? "";
+        var stash = await db.SecretStashes.FindAsync(dto.SecretStashId);
+        var stashName = stash?.Name ?? "";
+        var stashImagePath = stash?.ImagePath;
         var locName = (await db.Locations.FindAsync(dto.LocationId))?.Name ?? "";
         return TypedResults.Created($"/api/secret-stashes/game-stash/{dto.GameId}/{dto.SecretStashId}",
-            new GameSecretStashDto(dto.GameId, dto.SecretStashId, stashName, dto.LocationId, locName));
+            new GameSecretStashDto(
+                dto.GameId, dto.SecretStashId, stashName,
+                dto.LocationId, locName,
+                TreasureCount: 0,
+                ImagePath: stashImagePath,
+                ImageUrl: string.IsNullOrWhiteSpace(stashImagePath) ? null : blob.GetSasUrl(stashImagePath)));
     }
 
     private static async Task<Results<NoContent, NotFound>> UpdateGameStash(

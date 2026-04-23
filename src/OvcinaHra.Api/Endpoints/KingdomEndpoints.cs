@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
+using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Dtos;
 
@@ -20,15 +21,27 @@ public static class KingdomEndpoints
         return group;
     }
 
-    private static async Task<Ok<List<KingdomDto>>> GetAll(WorldDbContext db)
+    private static async Task<Ok<List<KingdomDto>>> GetAll(WorldDbContext db, IBlobStorageService blob)
     {
-        var kingdoms = await db.Kingdoms
+        var rows = await db.Kingdoms
             .OrderBy(k => k.SortOrder)
             .ThenBy(k => k.Name)
-            .Select(k => new KingdomDto(
-                k.Id, k.Name, k.HexColor, k.BadgeImageUrl, k.Description, k.SortOrder,
-                k.Assignments.Count))
+            .Select(k => new
+            {
+                k.Id,
+                k.Name,
+                k.HexColor,
+                k.BadgeImageUrl,
+                k.Description,
+                k.SortOrder,
+                AssignmentCount = k.Assignments.Count
+            })
             .ToListAsync();
+
+        var kingdoms = rows.Select(r => new KingdomDto(
+            r.Id, r.Name, r.HexColor, r.BadgeImageUrl, r.Description, r.SortOrder,
+            r.AssignmentCount,
+            BadgeImageSasUrl: string.IsNullOrWhiteSpace(r.BadgeImageUrl) ? null : blob.GetSasUrl(r.BadgeImageUrl))).ToList();
 
         return TypedResults.Ok(kingdoms);
     }
