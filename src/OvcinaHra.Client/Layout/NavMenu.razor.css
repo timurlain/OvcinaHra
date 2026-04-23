@@ -220,7 +220,7 @@
 }
 
 /* ═══════════ Nav item — shared look across pinned + list + tools ═══════════ */
-.oh-nav-item {
+.oh-nav ::deep .oh-nav-item {
     position: relative;
     display: flex;
     align-items: center;
@@ -233,7 +233,7 @@
     transition: background 0.15s, color 0.15s;
 }
 
-    .oh-nav-item .ni {
+    .oh-nav ::deep .oh-nav-item .ni {
         width: 18px;
         text-align: center;
         font-size: 0.95rem;
@@ -242,7 +242,7 @@
         transition: opacity 0.15s, color 0.15s;
     }
 
-    .oh-nav-item img.ni {
+    .oh-nav ::deep .oh-nav-item img.ni {
         height: 16px;
         filter: brightness(0) invert(1);
         opacity: 0.75;
@@ -259,42 +259,42 @@
     transition: background 0.15s, box-shadow 0.15s;
 }
 
-.oh-nav-item:hover {
+.oh-nav ::deep .oh-nav-item:hover {
     background: rgba(255, 255, 255, 0.07);
     color: #fff;
 }
 
-    .oh-nav-item:hover .ni {
+    .oh-nav ::deep .oh-nav-item:hover .ni {
         opacity: 0.95;
     }
 
-    .oh-nav-item:hover .oh-nav-rail {
+    .oh-nav ::deep .oh-nav-item:hover .oh-nav-rail {
         background: rgba(107, 155, 55, 0.4);
     }
 
 /* Active state — NavLink emits .active on the anchor */
-.oh-nav-item.active {
+.oh-nav ::deep .oh-nav-item.active {
     background: linear-gradient(90deg, rgba(107, 155, 55, 0.32) 0%, rgba(107, 155, 55, 0.05) 100%);
     color: #fff;
     font-weight: 600;
 }
 
-    .oh-nav-item.active .ni {
+    .oh-nav ::deep .oh-nav-item.active .ni {
         opacity: 1;
         color: #B8D48C;
     }
 
-    .oh-nav-item.active img.ni {
+    .oh-nav ::deep .oh-nav-item.active img.ni {
         filter: brightness(0) invert(1);
         opacity: 1;
     }
 
-    .oh-nav-item.active .oh-nav-rail {
+    .oh-nav ::deep .oh-nav-item.active .oh-nav-rail {
         background: var(--oh-primary-lighter);
         box-shadow: 0 0 8px rgba(107, 155, 55, 0.6);
     }
 
-    .oh-nav-item.active::after {
+    .oh-nav ::deep .oh-nav-item.active::after {
         content: "";
         position: absolute;
         right: 12px;
