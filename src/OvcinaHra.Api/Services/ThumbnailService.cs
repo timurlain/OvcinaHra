@@ -20,6 +20,14 @@ public interface IThumbnailService
     /// </summary>
     Task<ThumbnailResult?> GetOrCreateAsync(
         string entityType, int entityId, string sourceBlobKey, ThumbnailPreset preset, CancellationToken ct = default);
+
+    /// <summary>
+    /// Fast cache probe — returns a SAS URL to the cached thumbnail blob if it exists,
+    /// or <c>null</c> if the thumbnail has not been generated yet. Used by the endpoint
+    /// to short-circuit hot-cache lookups into a 302 redirect (no bytes through the API).
+    /// </summary>
+    Task<string?> TryGetCachedSasUrlAsync(
+        string entityType, int entityId, ThumbnailPreset preset, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -45,10 +53,31 @@ public class ThumbnailService : IThumbnailService
     private readonly IBlobStorageService _blob;
     private readonly ILogger<ThumbnailService> _logger;
 
+    // Cap concurrent resizes across the whole process. A list page fires ~50
+    // thumbnail requests in parallel; 50 simultaneous ImageSharp decode+resize+
+    // encode cycles tank a small Container App (503s from the platform). The
+    // limit lets early requests finish while later ones queue briefly. Static
+    // because ThumbnailService is DI-registered as singleton.
+    private static readonly SemaphoreSlim _resizeGate = new(4, 4);
+
     public ThumbnailService(IBlobStorageService blob, ILogger<ThumbnailService> logger)
     {
         _blob = blob;
         _logger = logger;
+    }
+
+    public async Task<string?> TryGetCachedSasUrlAsync(
+        string entityType, int entityId, ThumbnailPreset preset, CancellationToken ct = default)
+    {
+        var (width, height) = DimensionsFor(preset);
+        var cacheKey = $"{entityType}-thumbs/{entityId}-{width}x{height}.webp";
+        // ExistsAsync is a single HEAD request — cheap compared to DownloadAsync
+        // or a full resize. When the thumb is cached (the common case after the
+        // first visitor), the caller redirects to this SAS URL and the browser
+        // fetches the bytes straight from Azure Blob. Zero bytes through the API.
+        if (!await _blob.ExistsAsync(cacheKey, ct))
+            return null;
+        return _blob.GetSasUrl(cacheKey);
     }
 
     public async Task<ThumbnailResult?> GetOrCreateAsync(
@@ -57,12 +86,16 @@ public class ThumbnailService : IThumbnailService
         var (width, height) = DimensionsFor(preset);
         var cacheKey = $"{entityType}-thumbs/{entityId}-{width}x{height}.webp";
 
-        // Cache hit? Return cached bytes directly.
+        // Cache hit? Return cached bytes directly. (Endpoint should have short-
+        // circuited via TryGetCachedSasUrlAsync, but double-check in case the
+        // cache populated after that probe.)
         var cached = await _blob.DownloadAsync(cacheKey, ct);
         if (cached is not null)
             return new ThumbnailResult(cached, "image/webp");
 
-        // Cache miss — fetch source, resize, encode, cache.
+        // Cache miss — fetch source, resize, encode, cache. The resize block runs
+        // under a concurrency gate so a thumbnail stampede on a cold page doesn't
+        // overwhelm the container.
         var source = await _blob.DownloadAsync(sourceBlobKey, ct);
         if (source is null)
         {
@@ -70,8 +103,15 @@ public class ThumbnailService : IThumbnailService
             return null;
         }
 
+        await _resizeGate.WaitAsync(ct);
         try
         {
+            // Re-check after acquiring the gate — another request may have populated
+            // the cache while we were waiting. Avoids duplicate work.
+            cached = await _blob.DownloadAsync(cacheKey, ct);
+            if (cached is not null)
+                return new ThumbnailResult(cached, "image/webp");
+
             byte[] resized;
             using (var image = Image.Load(source))
             {
@@ -86,9 +126,6 @@ public class ThumbnailService : IThumbnailService
                 resized = ms.ToArray();
             }
 
-            // Write to cache (fire-and-forget style would be nicer but we want the
-            // write to complete so a concurrent second request picks it up; the
-            // extra ~20 ms is negligible).
             using (var uploadStream = new MemoryStream(resized))
             {
                 await _blob.UploadAsync(cacheKey, uploadStream, "image/webp", ct);
@@ -100,6 +137,10 @@ public class ThumbnailService : IThumbnailService
         {
             _logger.LogWarning(ex, "Thumbnail resize failed for {SourceKey} at preset {Preset}", sourceBlobKey, preset);
             return null;
+        }
+        finally
+        {
+            _resizeGate.Release();
         }
     }
 
