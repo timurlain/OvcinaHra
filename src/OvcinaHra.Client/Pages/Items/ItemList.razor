@@ -703,11 +703,17 @@ else
     private async Task RemoveGameItemAsync()
     {
         if (editingId is null || GameContext.SelectedGameId is null) return;
-        isSaving = true;
+        error = null; isSaving = true;
         try
         {
-            await Api.DeleteAsync($"/api/items/game-item/{GameContext.SelectedGameId}/{editingId}");
+            var deleted = await Api.DeleteAsync($"/api/items/game-item/{GameContext.SelectedGameId}/{editingId}");
+            if (!deleted)
+            {
+                error = "Odebrání předmětu ze hry se nezdařilo.";
+                return;
+            }
             gameItemExists = false;
+            await LoadAsync();
         }
         catch (Exception ex) { error = ex.Message; }
         finally { isSaving = false; StateHasChanged(); }
@@ -716,12 +722,14 @@ else
     private async Task AssignItemAsync(int itemId)
     {
         if (GameContext.SelectedGameId is null) return;
+        error = null;
         try
         {
             await Api.PostAsync<CreateGameItemDto, GameItemDto>("/api/items/game-item",
                 new CreateGameItemDto(GameContext.SelectedGameId.Value, itemId));
-            assignedItemIds.Add(itemId);
-            StateHasChanged();
+            // Reload so gameItems + assignedItemIds reflect the new link — local
+            // Add(itemId) alone wasn't enough because the main grid binds to gameItems.
+            await LoadAsync();
         }
         catch (Exception ex) { error = ex.Message; StateHasChanged(); }
     }
@@ -729,11 +737,20 @@ else
     private async Task UnassignItemAsync(int itemId)
     {
         if (GameContext.SelectedGameId is null) return;
+        error = null;
         try
         {
-            await Api.DeleteAsync($"/api/items/game-item/{GameContext.SelectedGameId}/{itemId}");
-            assignedItemIds.Remove(itemId);
-            StateHasChanged();
+            var deleted = await Api.DeleteAsync($"/api/items/game-item/{GameContext.SelectedGameId}/{itemId}");
+            if (!deleted)
+            {
+                error = "Odebrání předmětu ze hry se nezdařilo.";
+                StateHasChanged();
+                return;
+            }
+            // Reload so both gameItems (main grid) and assignedItemIds (catalog
+            // Přidat/Odebrat flip) reflect the server state — local mutation of
+            // assignedItemIds alone left stale rows in the main-view grid.
+            await LoadAsync();
         }
         catch (Exception ex) { error = ex.Message; StateHasChanged(); }
     }
