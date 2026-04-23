@@ -161,50 +161,64 @@ public static class ImageEndpoints
     /// the fallback. Wraps the whole body in try/catch so an unobserved
     /// exception can't crash the host.
     /// </summary>
-    private static Task PreGenerateAllPresetsAsync(
+    private static async Task PreGenerateAllPresetsAsync(
         IThumbnailService thumbnailService, ILogger logger,
         string entityType, int entityId, string sourceBlobKey)
     {
-        return Task.Run(async () =>
+        // No Task.Run — the work is I/O-bound (blob download/upload around a
+        // short CPU resize burst that already runs inside a SemaphoreSlim(4)
+        // in ThumbnailService). Wrapping in Task.Run would burn a thread-pool
+        // thread per upload and let a burst of uploads spawn unbounded work.
+        // Fire-and-forget via `_ =` at the caller means this Task runs on the
+        // current sync context, yielding to the pool only on await.
+        try
         {
-            try
+            foreach (var preset in Enum.GetValues<ThumbnailPreset>())
             {
-                foreach (var preset in Enum.GetValues<ThumbnailPreset>())
+                try
                 {
-                    try
-                    {
-                        await thumbnailService.GetOrCreateAsync(entityType, entityId, sourceBlobKey, preset);
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogWarning(ex,
-                            "Thumbnail pre-generation failed for {EntityType}/{EntityId} preset {Preset}",
-                            entityType, entityId, preset);
-                    }
+                    await thumbnailService.GetOrCreateAsync(entityType, entityId, sourceBlobKey, preset);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex,
+                        "Thumbnail pre-generation failed for {EntityType}/{EntityId} preset {Preset}",
+                        entityType, entityId, preset);
                 }
             }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex,
-                    "Thumbnail pre-generation task failed for {EntityType}/{EntityId}",
-                    entityType, entityId);
-            }
-        });
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "Thumbnail pre-generation task failed for {EntityType}/{EntityId}",
+                entityType, entityId);
+        }
     }
 
     /// <summary>
-    /// Admin-only manual trigger: re-runs the same backfill sweep the
-    /// <c>ThumbnailBackfillHostedService</c> performs on startup. Useful after
-    /// bulk imports or when the hosted service can't keep up. Runs
-    /// synchronously and returns the number of (entity, preset) pairs processed.
-    /// Inherits the group's auth — not anonymous.
+    /// Manual trigger to re-run the same backfill sweep the
+    /// <c>ThumbnailBackfillHostedService</c> performs on container startup.
+    /// Useful after bulk imports or whenever the hosted service didn't cover
+    /// an entity.
+    ///
+    /// Inherits the group's authorization — **any authenticated user** can
+    /// call it. This is not gated behind an admin role today; every OvčinaHra
+    /// user is an organizer. If a finer gate is needed later, add a policy
+    /// here via <c>.RequireAuthorization(policy)</c>.
+    ///
+    /// Runs **synchronously** (the whole sweep awaits before returning) and
+    /// can take minutes for a large catalogue, so call it from a tool that
+    /// tolerates long response times. Returns <c>{ processed: N }</c> — the
+    /// number of (entity, preset) pairs the service walked (already-cached
+    /// thumbs short-circuit inside <c>GetOrCreateAsync</c> and still count
+    /// toward the total).
     /// </summary>
     private static async Task<Ok<object>> BackfillThumbs(
         IThumbnailService thumbnailService, WorldDbContext db,
         ILogger<ThumbnailService> logger, CancellationToken ct)
     {
-        var queued = await BackfillAllThumbsAsync(db, thumbnailService, logger, ct);
-        return TypedResults.Ok<object>(new { queued });
+        var processed = await BackfillAllThumbsAsync(db, thumbnailService, logger, ct);
+        return TypedResults.Ok<object>(new { processed });
     }
 
     /// <summary>
@@ -283,9 +297,12 @@ public static class ImageEndpoints
         var presets = Enum.GetValues<ThumbnailPreset>();
         var attempted = 0;
         var done = 0;
+        // Entity-type count is derived from the actual targets so the log stays
+        // accurate if ValidEntityTypes grows or a table happens to be empty.
+        var entityTypeCount = targets.Select(t => t.EntityType).Distinct().Count();
         logger.LogInformation(
             "Thumbnail backfill starting: {RowCount} entities across {EntityTypeCount} types, {PresetCount} presets each",
-            targets.Count, 9, presets.Length);
+            targets.Count, entityTypeCount, presets.Length);
 
         foreach (var (entityType, id, blobKey) in targets)
         {
