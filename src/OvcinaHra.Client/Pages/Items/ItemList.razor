@@ -713,10 +713,10 @@ else
                 return;
             }
             gameItemExists = false;
-            await LoadAsync();
+            await ReloadGameLinkAsync();
         }
         catch (Exception ex) { error = ex.Message; }
-        finally { isSaving = false; StateHasChanged(); }
+        finally { isSaving = false; }
     }
 
     private async Task AssignItemAsync(int itemId)
@@ -727,11 +727,9 @@ else
         {
             await Api.PostAsync<CreateGameItemDto, GameItemDto>("/api/items/game-item",
                 new CreateGameItemDto(GameContext.SelectedGameId.Value, itemId));
-            // Reload so gameItems + assignedItemIds reflect the new link — local
-            // Add(itemId) alone wasn't enough because the main grid binds to gameItems.
-            await LoadAsync();
+            await ReloadGameLinkAsync();
         }
-        catch (Exception ex) { error = ex.Message; StateHasChanged(); }
+        catch (Exception ex) { error = ex.Message; }
     }
 
     private async Task UnassignItemAsync(int itemId)
@@ -744,15 +742,25 @@ else
             if (!deleted)
             {
                 error = "Odebrání předmětu ze hry se nezdařilo.";
-                StateHasChanged();
                 return;
             }
-            // Reload so both gameItems (main grid) and assignedItemIds (catalog
-            // Přidat/Odebrat flip) reflect the server state — local mutation of
-            // assignedItemIds alone left stale rows in the main-view grid.
-            await LoadAsync();
+            await ReloadGameLinkAsync();
         }
-        catch (Exception ex) { error = ex.Message; StateHasChanged(); }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    // Targeted refresh after assign/unassign operations. In main ("Jen tato hra")
+    // mode the grid binds to gameItems, so we re-pull the per-game list and
+    // derive assignedItemIds from it. In catalog mode the catalog itself hasn't
+    // changed — only the set of linked ids — so we skip re-fetching /api/items
+    // and only refresh assignedItemIds. Avoids reloading the full ~180-item
+    // catalog on every Přidat/Odebrat click.
+    private async Task ReloadGameLinkAsync()
+    {
+        if (GameContext.SelectedGameId is not int gid) return;
+        var linked = await Api.GetListAsync<GameItemListDto>($"/api/items/by-game/{gid}");
+        assignedItemIds = linked.Select(gi => gi.Id).ToHashSet();
+        if (!Catalog) gameItems = linked;
     }
 
     private async Task SaveAsync()
