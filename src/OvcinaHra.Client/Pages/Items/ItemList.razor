@@ -40,7 +40,7 @@ else if (!Catalog && gameItems.Count == 0)
 }
 else if (Catalog)
 {
-    <OvcinaGrid Data="@catalogItems" KeyFieldName="Id" LayoutKey="grid-layout-items-catalog"
+    <OvcinaGrid Data="@catalogItems" KeyFieldName="Id" LayoutKey="grid-layout-items-catalog-v2"
                 RowClick="@(e => OpenModal((ItemListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             <DxGridDataColumn FieldName="Id" Caption="#" Width="60px" Visible="false" />
@@ -61,7 +61,7 @@ else if (Catalog)
             <DxGridDataColumn FieldName="IsLimited" Caption="Limitovaný" Width="110px" Visible="false">
                 <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="HasImage" Caption="Obrázek" Width="100px" Visible="false">
+            <DxGridDataColumn FieldName="HasImage" Caption="Obrázek" Width="100px">
                 <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
             </DxGridDataColumn>
             <DxGridDataColumn FieldName="Id" Caption="Hra" Width="130px" AllowSort="false" AllowGroup="false">
@@ -86,7 +86,7 @@ else if (Catalog)
 }
 else
 {
-    <OvcinaGrid Data="@gameItems" KeyFieldName="Id" LayoutKey="grid-layout-items-game"
+    <OvcinaGrid Data="@gameItems" KeyFieldName="Id" LayoutKey="grid-layout-items-game-v2"
                 RowClick="@(e => OpenModal((GameItemListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             <DxGridDataColumn FieldName="" Caption="" Width="40px" AllowSort="false" AllowGroup="false" FixedPosition="GridColumnFixedPosition.Left">
@@ -127,7 +127,7 @@ else
             <DxGridDataColumn FieldName="IsLimited" Caption="Limitovaný" Width="110px" Visible="false">
                 <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="HasImage" Caption="Obrázek" Width="100px" Visible="false">
+            <DxGridDataColumn FieldName="HasImage" Caption="Obrázek" Width="100px">
                 <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
             </DxGridDataColumn>
         </Columns>
