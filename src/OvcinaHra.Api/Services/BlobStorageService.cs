@@ -14,9 +14,11 @@ public interface IBlobStorageService
     /// check performed by <see cref="GetSasUrlAsync"/>. A list page with 50 rows would
     /// otherwise do 50 blob existence round trips to Azure. Callers pass a blob key
     /// stored on the entity and trust it; a stale key just produces a broken image
-    /// at the client, identical to the prior behavior when GetSasUrlAsync raced deletion.
+    /// at the client (handled by an <c>onerror</c> fallback in the tile components).
+    /// Returns <c>null</c> if SAS generation throws (e.g., misconfigured credentials) so
+    /// a single bad key or transient SDK error cannot 500 a whole list page.
     /// </summary>
-    string GetSasUrl(string blobKey);
+    string? GetSasUrl(string blobKey);
 
     Task DeleteAsync(string blobKey, CancellationToken ct = default);
 }
@@ -49,10 +51,19 @@ public class BlobStorageService : IBlobStorageService
         return BuildSasUrl(blob);
     }
 
-    public string GetSasUrl(string blobKey)
+    public string? GetSasUrl(string blobKey)
     {
-        var blob = _container.GetBlobClient(blobKey);
-        return BuildSasUrl(blob);
+        try
+        {
+            var blob = _container.GetBlobClient(blobKey);
+            return BuildSasUrl(blob);
+        }
+        catch
+        {
+            // Never let a single row's SAS generation failure 500 a whole list page.
+            // The tile components render a glyph fallback when ImageUrl is null.
+            return null;
+        }
     }
 
     private string BuildSasUrl(BlobClient blob)
