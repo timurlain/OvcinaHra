@@ -1,0 +1,511 @@
+@* QuestWizard.razor — "Create a new personal quest" smart wizard popup.
+
+   Wraps Phase 1's multi-call reward wiring into a single form + sequential-save
+   flow, with inline creation of Skills/Items/Spells directly from the combobox
+   row. Reuses Phase 1 DTOs (CreatePersonalQuestDto, AddSkillRewardDto,
+   AddItemRewardDto, AddSpellRewardDto, CreateGamePersonalQuestDto). No new DTOs
+   introduced in OvcinaHra.Shared.
+
+   Spell quantity spinner is only shown for scrolls (IsScroll == true), matching
+   the Phase 1 rewards UI in PersonalQuestList.razor. *@
+
+@inject ApiClient Api
+
+<DxPopup @bind-Visible="@Visible" HeaderText="Vytvořit nový personal quest"
+         Width="900px" AllowResize="true">
+    <BodyContentTemplate Context="ctx">
+        <DxFormLayout>
+
+            @* --- 1) Základ --- *@
+            <DxFormLayoutGroup Caption="Základ" ColSpanMd="12">
+                <DxFormLayoutItem Caption="Název *" ColSpanMd="12">
+                    <DxTextBox @bind-Text="@model.Name" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Obtížnost" ColSpanMd="6">
+                    <DxComboBox Data="@difficultyValues" @bind-Value="@model.Difficulty"
+                                TextFieldName="Display" ValueFieldName="Value" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="XP cena" ColSpanMd="6">
+                    <DxSpinEdit @bind-Value="@model.XpCost" MinValue="0" MaxValue="999" />
+                </DxFormLayoutItem>
+            </DxFormLayoutGroup>
+
+            @* --- 2) Pravidla --- *@
+            <DxFormLayoutGroup Caption="Pravidla" ColSpanMd="12">
+                <DxFormLayoutItem Caption="Povolání" ColSpanMd="12">
+                    <div class="d-flex gap-3 flex-wrap">
+                        <DxCheckBox @bind-Checked="@model.AllowWarrior">Válečník</DxCheckBox>
+                        <DxCheckBox @bind-Checked="@model.AllowArcher">Lučištník</DxCheckBox>
+                        <DxCheckBox @bind-Checked="@model.AllowMage">Mág</DxCheckBox>
+                        <DxCheckBox @bind-Checked="@model.AllowThief">Zloděj</DxCheckBox>
+                    </div>
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Popis (interní)" ColSpanMd="12">
+                    <DxMemo @bind-Text="@model.Description" Rows="3" />
+                </DxFormLayoutItem>
+            </DxFormLayoutGroup>
+
+            @* --- 3) Texty --- *@
+            <DxFormLayoutGroup Caption="Texty" ColSpanMd="12">
+                <DxFormLayoutItem Caption="Text karty questu" ColSpanMd="12">
+                    <DxMemo @bind-Text="@model.QuestCardText" Rows="4" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Text karty odměny" ColSpanMd="12">
+                    <DxMemo @bind-Text="@model.RewardCardText" Rows="4" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Poznámka k odměně" ColSpanMd="12">
+                    <DxTextBox @bind-Text="@model.RewardNote" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Poznámky (interní)" ColSpanMd="12">
+                    <DxMemo @bind-Text="@model.Notes" Rows="3" />
+                </DxFormLayoutItem>
+            </DxFormLayoutGroup>
+
+            @* --- 4) Odměny --- *@
+            <DxFormLayoutGroup Caption="Odměny" ColSpanMd="12">
+                <DxFormLayoutItem ColSpanMd="12">
+                    <div class="p-2 border rounded" style="background: var(--oh-surface, #fafafa);">
+
+                        @* Skill rewards *@
+                        <div class="mb-3">
+                            <strong class="small">Dovednosti:</strong>
+                            @if (model.SkillRewardIds.Any())
+                            {
+                                <div class="mt-1 mb-2">
+                                    @foreach (var sid in model.SkillRewardIds.ToList())
+                                    {
+                                        var s = allSkills.FirstOrDefault(x => x.Id == sid);
+                                        <span class="badge bg-secondary me-1">
+                                            @(s?.Name ?? $"#{sid}")
+                                            <button class="btn btn-sm btn-link text-white p-0 ms-1"
+                                                    @onclick="() => model.SkillRewardIds.Remove(sid)">
+                                                <i class="bi bi-x"></i>
+                                            </button>
+                                        </span>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <span class="text-muted small ms-2">Žádné dovednosti.</span>
+                            }
+                            <div class="d-flex gap-2 align-items-end mt-1">
+                                <div style="flex:1">
+                                    <DxComboBox Data="@SkillsNotYetAdded" @bind-Value="@newSkillId"
+                                                TextFieldName="Name" ValueFieldName="Id"
+                                                NullText="(přidat dovednost)"
+                                                SearchMode="ListSearchMode.AutoSearch" />
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary" style="height:34px"
+                                        disabled="@(newSkillId is null)"
+                                        @onclick="AddSkillRewardLocal">
+                                    <i class="bi bi-plus me-1"></i>Přidat
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" style="height:34px"
+                                        @onclick="() => skillCreatorVisible = true">
+                                    <i class="bi bi-plus-circle me-1"></i>Vytvořit novou…
+                                </button>
+                            </div>
+                        </div>
+
+                        @* Item rewards *@
+                        <div class="mb-3">
+                            <strong class="small">Předměty:</strong>
+                            @if (model.ItemRewards.Any())
+                            {
+                                <div class="mt-1 mb-2">
+                                    @foreach (var (iid, qty) in model.ItemRewards.ToList())
+                                    {
+                                        var it = allItems.FirstOrDefault(x => x.Id == iid);
+                                        <span class="badge bg-secondary me-1">
+                                            @(it?.Name ?? $"#{iid}") ×@qty
+                                            <button class="btn btn-sm btn-link text-white p-0 ms-1"
+                                                    @onclick="() => RemoveItemLocal(iid)">
+                                                <i class="bi bi-x"></i>
+                                            </button>
+                                        </span>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <span class="text-muted small ms-2">Žádné předměty.</span>
+                            }
+                            <div class="d-flex gap-2 align-items-end mt-1">
+                                <div style="flex:1">
+                                    <DxComboBox Data="@ItemsNotYetAdded" @bind-Value="@newItemId"
+                                                TextFieldName="Name" ValueFieldName="Id"
+                                                NullText="(přidat předmět)"
+                                                SearchMode="ListSearchMode.AutoSearch" />
+                                </div>
+                                <div style="width:70px">
+                                    <DxSpinEdit @bind-Value="@newItemQuantity" MinValue="1" />
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary" style="height:34px"
+                                        disabled="@(newItemId is null)"
+                                        @onclick="AddItemRewardLocal">
+                                    <i class="bi bi-plus me-1"></i>Přidat
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" style="height:34px"
+                                        @onclick="() => itemCreatorVisible = true">
+                                    <i class="bi bi-plus-circle me-1"></i>Vytvořit nový…
+                                </button>
+                            </div>
+                        </div>
+
+                        @* Spell rewards *@
+                        <div class="mb-1">
+                            <strong class="small">Kouzla:</strong>
+                            @if (model.SpellRewards.Any())
+                            {
+                                <div class="mt-1 mb-2">
+                                    @foreach (var (sid, qty) in model.SpellRewards.ToList())
+                                    {
+                                        var sp = allSpells.FirstOrDefault(x => x.Id == sid);
+                                        <span class="badge bg-secondary me-1">
+                                            @(sp?.Name ?? $"#{sid}")@(qty > 1 ? $" ×{qty}" : "")
+                                            <button class="btn btn-sm btn-link text-white p-0 ms-1"
+                                                    @onclick="() => RemoveSpellLocal(sid)">
+                                                <i class="bi bi-x"></i>
+                                            </button>
+                                        </span>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <span class="text-muted small ms-2">Žádná kouzla.</span>
+                            }
+                            <div class="d-flex gap-2 align-items-end mt-1">
+                                <div style="flex:1">
+                                    <DxComboBox Data="@SpellsNotYetAdded" @bind-Value="@newSpellId"
+                                                TextFieldName="Name" ValueFieldName="Id"
+                                                NullText="(přidat kouzlo)"
+                                                SearchMode="ListSearchMode.AutoSearch" />
+                                </div>
+                                @if (SelectedSpellIsScroll)
+                                {
+                                    <div style="width:70px">
+                                        <DxSpinEdit @bind-Value="@newSpellQuantity" MinValue="1" />
+                                    </div>
+                                }
+                                <button class="btn btn-sm btn-outline-primary" style="height:34px"
+                                        disabled="@(newSpellId is null)"
+                                        @onclick="AddSpellRewardLocal">
+                                    <i class="bi bi-plus me-1"></i>Přidat
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" style="height:34px"
+                                        @onclick="() => spellCreatorVisible = true">
+                                    <i class="bi bi-plus-circle me-1"></i>Vytvořit nové…
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </DxFormLayoutItem>
+            </DxFormLayoutGroup>
+
+            @* --- 5) Nastavení pro hru --- *@
+            <DxFormLayoutGroup Caption="Nastavení pro hru" ColSpanMd="12">
+                <DxFormLayoutItem Caption="XP override (pro tuto hru)" ColSpanMd="6">
+                    <DxSpinEdit Value="@model.GameXpOverride"
+                                ValueExpression="@(() => model.GameXpOverride)"
+                                ValueChanged="@((int? v) => model.GameXpOverride = v)"
+                                MinValue="0" MaxValue="999"
+                                NullText="@($"výchozí: {model.XpCost}")"
+                                ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Limit na království" ColSpanMd="6">
+                    <DxSpinEdit Value="@model.PerKingdomLimit"
+                                ValueExpression="@(() => model.PerKingdomLimit)"
+                                ValueChanged="@((int? v) => model.PerKingdomLimit = v)"
+                                MinValue="0" MaxValue="99"
+                                NullText="(bez omezení)"
+                                ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                </DxFormLayoutItem>
+            </DxFormLayoutGroup>
+        </DxFormLayout>
+
+        @if (error is not null)
+        {
+            <div class="alert alert-danger mt-2">@error</div>
+        }
+
+        @if (isSaving && !string.IsNullOrEmpty(progressLabel))
+        {
+            <div class="alert alert-info mt-2 d-flex align-items-center gap-2">
+                <span class="spinner-border spinner-border-sm"></span>
+                <span>@progressLabel</span>
+            </div>
+        }
+
+        <div class="d-flex gap-2 justify-content-end mt-3">
+            <button class="btn btn-secondary" @onclick="Cancel" disabled="@isSaving">Zrušit</button>
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving">
+                @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Uložit a přidat do hry
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+<SkillInlineCreator @bind-Visible="@skillCreatorVisible" GameId="@GameId"
+                    Created="@OnSkillCreated" />
+<ItemInlineCreator  @bind-Visible="@itemCreatorVisible"  GameId="@GameId"
+                    Created="@OnItemCreated" />
+<SpellInlineCreator @bind-Visible="@spellCreatorVisible" GameId="@GameId"
+                    Created="@OnSpellCreated" />
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public int GameId { get; set; }
+    [Parameter] public EventCallback Saved { get; set; }
+
+    private WizardModel model = new();
+    private bool loaded;
+    private bool wasVisible;
+
+    // Catalog reference lists.
+    private List<SkillDto> allSkills = new();
+    private List<ItemListDto> allItems = new();
+    private List<SpellListDto> allSpells = new();
+
+    // Picker transient values.
+    private int? newSkillId;
+    private int? newItemId;
+    private int newItemQuantity = 1;
+    private int? newSpellId;
+    private int newSpellQuantity = 1;
+
+    // Inline creator popup flags.
+    private bool skillCreatorVisible;
+    private bool itemCreatorVisible;
+    private bool spellCreatorVisible;
+
+    // Save flow state.
+    private string? error;
+    private string progressLabel = "";
+    private bool isSaving;
+
+    private static readonly List<EnumItem<TreasureQuestDifficulty>> difficultyValues =
+        Enum.GetValues<TreasureQuestDifficulty>()
+            .Select(v => new EnumItem<TreasureQuestDifficulty>(v, v.GetDisplayName()))
+            .ToList();
+
+    private record EnumItem<T>(T Value, string Display);
+
+    // Derived pickers (exclude already-added).
+    private IEnumerable<SkillDto> SkillsNotYetAdded =>
+        allSkills.Where(s => !model.SkillRewardIds.Contains(s.Id));
+    private IEnumerable<ItemListDto> ItemsNotYetAdded =>
+        allItems.Where(i => !model.ItemRewards.Any(r => r.ItemId == i.Id));
+    private IEnumerable<SpellListDto> SpellsNotYetAdded =>
+        allSpells.Where(sp => !model.SpellRewards.Any(r => r.SpellId == sp.Id));
+
+    // Scroll detection for optional quantity spinner.
+    private bool SelectedSpellIsScroll =>
+        newSpellId is int id && allSpells.FirstOrDefault(s => s.Id == id)?.IsScroll == true;
+
+    public override async Task SetParametersAsync(ParameterView parameters)
+    {
+        await base.SetParametersAsync(parameters);
+        if (Visible && !wasVisible)
+        {
+            // Closed → open transition. Reset form state so a reopened wizard is pristine.
+            model = new();
+            newSkillId = null;
+            newItemId = null;
+            newSpellId = null;
+            newItemQuantity = 1;
+            newSpellQuantity = 1;
+            error = null;
+            progressLabel = "";
+            skillCreatorVisible = false;
+            itemCreatorVisible = false;
+            spellCreatorVisible = false;
+        }
+        wasVisible = Visible;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Visible && !loaded)
+        {
+            allSkills = await Api.GetListAsync<SkillDto>("/api/skills");
+            allItems = await Api.GetListAsync<ItemListDto>("/api/items");
+            var spells = await Api.GetListAsync<SpellListDto>("/api/spells");
+            // Phase 1 spell-reward endpoint rejects IsLearnable=true spells with 400.
+            allSpells = spells.Where(s => !s.IsLearnable).ToList();
+            loaded = true;
+        }
+    }
+
+    private void AddSkillRewardLocal()
+    {
+        if (newSkillId is int id && !model.SkillRewardIds.Contains(id))
+        {
+            model.SkillRewardIds.Add(id);
+        }
+        newSkillId = null;
+    }
+
+    private void AddItemRewardLocal()
+    {
+        if (newItemId is int id && !model.ItemRewards.Any(r => r.ItemId == id))
+        {
+            model.ItemRewards.Add((id, Math.Max(1, newItemQuantity)));
+        }
+        newItemId = null;
+        newItemQuantity = 1;
+    }
+
+    private void AddSpellRewardLocal()
+    {
+        if (newSpellId is int id && !model.SpellRewards.Any(r => r.SpellId == id))
+        {
+            var qty = SelectedSpellIsScroll ? Math.Max(1, newSpellQuantity) : 1;
+            model.SpellRewards.Add((id, qty));
+        }
+        newSpellId = null;
+        newSpellQuantity = 1;
+    }
+
+    private void RemoveItemLocal(int itemId)
+    {
+        var existing = model.ItemRewards.FirstOrDefault(r => r.ItemId == itemId);
+        if (existing != default) model.ItemRewards.Remove(existing);
+    }
+
+    private void RemoveSpellLocal(int spellId)
+    {
+        var existing = model.SpellRewards.FirstOrDefault(r => r.SpellId == spellId);
+        if (existing != default) model.SpellRewards.Remove(existing);
+    }
+
+    private void OnSkillCreated(SkillDto s)
+    {
+        if (!allSkills.Any(x => x.Id == s.Id)) allSkills.Add(s);
+        if (!model.SkillRewardIds.Contains(s.Id)) model.SkillRewardIds.Add(s.Id);
+        skillCreatorVisible = false;
+    }
+
+    private void OnItemCreated(ItemListDto i)
+    {
+        if (!allItems.Any(x => x.Id == i.Id)) allItems.Add(i);
+        if (!model.ItemRewards.Any(r => r.ItemId == i.Id))
+            model.ItemRewards.Add((i.Id, 1));
+        itemCreatorVisible = false;
+    }
+
+    private void OnSpellCreated(SpellListDto s)
+    {
+        if (!allSpells.Any(x => x.Id == s.Id)) allSpells.Add(s);
+        if (!model.SpellRewards.Any(r => r.SpellId == s.Id))
+            model.SpellRewards.Add((s.Id, 1));
+        spellCreatorVisible = false;
+    }
+
+    private async Task Cancel()
+    {
+        await VisibleChanged.InvokeAsync(false);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(model.Name)) { error = "Název je povinný."; return; }
+        if (model.XpCost < 0) { error = "XP cena nesmí být záporná."; return; }
+
+        error = null;
+        isSaving = true;
+        try
+        {
+            progressLabel = "Vytvářím quest…";
+            var detail = await Api.PostAsync<CreatePersonalQuestDto, PersonalQuestDetailDto>(
+                "/api/personal-quests",
+                new CreatePersonalQuestDto(
+                    Name: model.Name,
+                    Difficulty: model.Difficulty,
+                    Description: model.Description,
+                    AllowWarrior: model.AllowWarrior,
+                    AllowArcher: model.AllowArcher,
+                    AllowMage: model.AllowMage,
+                    AllowThief: model.AllowThief,
+                    QuestCardText: model.QuestCardText,
+                    RewardCardText: model.RewardCardText,
+                    RewardNote: model.RewardNote,
+                    Notes: model.Notes,
+                    XpCost: model.XpCost));
+
+            if (detail is null)
+            {
+                error = "Server nevrátil vytvořený quest.";
+                return;
+            }
+
+            progressLabel = "Přidávám odměny…";
+            foreach (var id in model.SkillRewardIds)
+            {
+                await Api.PostAsync<AddSkillRewardDto, object?>(
+                    $"/api/personal-quests/{detail.Id}/skill-rewards",
+                    new AddSkillRewardDto(id));
+            }
+
+            foreach (var (itemId, qty) in model.ItemRewards)
+            {
+                await Api.PostAsync<AddItemRewardDto, object?>(
+                    $"/api/personal-quests/{detail.Id}/item-rewards",
+                    new AddItemRewardDto(itemId, qty));
+            }
+
+            foreach (var (spellId, qty) in model.SpellRewards)
+            {
+                await Api.PostAsync<AddSpellRewardDto, object?>(
+                    $"/api/personal-quests/{detail.Id}/spell-rewards",
+                    new AddSpellRewardDto(spellId, qty));
+            }
+
+            progressLabel = "Přidávám do hry…";
+            await Api.PostAsync<CreateGamePersonalQuestDto, object?>(
+                "/api/personal-quests/game-link",
+                new CreateGamePersonalQuestDto(
+                    GameId: GameId,
+                    PersonalQuestId: detail.Id,
+                    XpCost: model.GameXpOverride,
+                    PerKingdomLimit: model.PerKingdomLimit));
+
+            progressLabel = "Hotovo.";
+            await Saved.InvokeAsync();
+            await VisibleChanged.InvokeAsync(false);
+            // Form reset now centralized in SetParametersAsync on closed → open transition.
+        }
+        catch (Exception ex)
+        {
+            error = $"{progressLabel} Chyba: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private sealed class WizardModel
+    {
+        public string Name { get; set; } = "";
+        public TreasureQuestDifficulty Difficulty { get; set; } = TreasureQuestDifficulty.Early;
+        public int XpCost { get; set; }
+        public bool AllowWarrior { get; set; }
+        public bool AllowArcher { get; set; }
+        public bool AllowMage { get; set; }
+        public bool AllowThief { get; set; }
+        public string? Description { get; set; }
+        public string? QuestCardText { get; set; }
+        public string? RewardCardText { get; set; }
+        public string? RewardNote { get; set; }
+        public string? Notes { get; set; }
+        public List<int> SkillRewardIds { get; } = new();
+        public List<(int ItemId, int Qty)> ItemRewards { get; } = new();
+        public List<(int SpellId, int Qty)> SpellRewards { get; } = new();
+        public int? GameXpOverride { get; set; }
+        public int? PerKingdomLimit { get; set; }
+    }
+}
