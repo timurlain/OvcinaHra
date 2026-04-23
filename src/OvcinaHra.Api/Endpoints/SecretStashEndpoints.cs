@@ -26,6 +26,9 @@ public static class SecretStashEndpoints
         group.MapPut("/game-stash/{gameId:int}/{stashId:int}", UpdateGameStash);
         group.MapDelete("/game-stash/{gameId:int}/{stashId:int}", DeleteGameStash);
 
+        // Detail page: stash + per-game placement + treasures
+        group.MapGet("/{id:int}/in-game/{gameId:int}", GetInGame);
+
         return group;
     }
 
@@ -53,11 +56,14 @@ public static class SecretStashEndpoints
         return TypedResults.Ok(stashes);
     }
 
-    private static async Task<Results<Ok<SecretStashDetailDto>, NotFound>> GetById(int id, WorldDbContext db)
+    private static async Task<Results<Ok<SecretStashDetailDto>, NotFound>> GetById(int id, WorldDbContext db, HttpContext http)
     {
         var s = await db.SecretStashes.FindAsync(id);
         if (s is null) return TypedResults.NotFound();
-        return TypedResults.Ok(new SecretStashDetailDto(s.Id, s.Name, s.Description, s.ImagePath));
+        var imageUrl = string.IsNullOrWhiteSpace(s.ImagePath)
+            ? null
+            : ImageEndpoints.ThumbUrl(http, "secretstashes", s.Id, "medium");
+        return TypedResults.Ok(new SecretStashDetailDto(s.Id, s.Name, s.Description, s.ImagePath, imageUrl));
     }
 
     private static async Task<Created<SecretStashDetailDto>> Create(CreateSecretStashDto dto, WorldDbContext db)
@@ -169,5 +175,43 @@ public static class SecretStashEndpoints
         db.GameSecretStashes.Remove(gs);
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
+    }
+
+    // Detail-page aggregate: stash + this-game placement (Location) + this-game treasures.
+    // Issue #77: previous click on a stash tile 404'd because no /secret-stashes/{id} route existed.
+    private static async Task<Results<Ok<SecretStashGameDetailDto>, NotFound>> GetInGame(
+        int id, int gameId, WorldDbContext db, HttpContext http)
+    {
+        var stash = await db.SecretStashes.FindAsync(id);
+        if (stash is null) return TypedResults.NotFound();
+
+        var game = await db.Games.FindAsync(gameId);
+        if (game is null) return TypedResults.NotFound();
+
+        var placement = await db.GameSecretStashes
+            .Where(gs => gs.SecretStashId == id && gs.GameId == gameId)
+            .Select(gs => new { gs.LocationId, LocationName = gs.Location.Name })
+            .FirstOrDefaultAsync();
+
+        var treasures = await db.TreasureQuests
+            .Where(tq => tq.SecretStashId == id && tq.GameId == gameId)
+            .OrderBy(tq => tq.Difficulty).ThenBy(tq => tq.Title)
+            .Select(tq => new StashTreasureDto(
+                tq.Id, tq.Title, tq.Clue, tq.Difficulty,
+                tq.TreasureItems
+                    .OrderBy(ti => ti.Item.Name)
+                    .Select(ti => new StashTreasureItemDto(ti.ItemId, ti.Item.Name, ti.Count))
+                    .ToList()))
+            .ToListAsync();
+
+        var imageUrl = string.IsNullOrWhiteSpace(stash.ImagePath)
+            ? null
+            : ImageEndpoints.ThumbUrl(http, "secretstashes", stash.Id, "medium");
+
+        return TypedResults.Ok(new SecretStashGameDetailDto(
+            stash.Id, stash.Name, stash.Description, stash.ImagePath, imageUrl,
+            game.Id, game.Name, game.Edition,
+            placement?.LocationId, placement?.LocationName,
+            treasures));
     }
 }

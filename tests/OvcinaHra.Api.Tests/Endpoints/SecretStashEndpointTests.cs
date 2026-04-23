@@ -183,6 +183,92 @@ public class SecretStashEndpointTests(PostgresFixture postgres) : IntegrationTes
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
 
+    // --- Detail page (issue #77) ---
+
+    [Fact]
+    public async Task GetInGame_StashNotFound_ReturnsNotFound()
+    {
+        var gameResp = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Hra", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var game = (await gameResp.Content.ReadFromJsonAsync<GameDetailDto>())!;
+
+        var resp = await Client.GetAsync($"/api/secret-stashes/9999/in-game/{game.Id}");
+
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetInGame_GameNotFound_ReturnsNotFound()
+    {
+        var stashResp = await Client.PostAsJsonAsync("/api/secret-stashes",
+            new CreateSecretStashDto("Skrýš"));
+        var stash = (await stashResp.Content.ReadFromJsonAsync<SecretStashDetailDto>())!;
+
+        var resp = await Client.GetAsync($"/api/secret-stashes/{stash.Id}/in-game/9999");
+
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetInGame_StashExistsButUnplaced_ReturnsStashWithNullLocationAndEmptyTreasures()
+    {
+        var (game, _, stash) = await CreateGameLocationStash();
+
+        var detail = await Client.GetFromJsonAsync<SecretStashGameDetailDto>(
+            $"/api/secret-stashes/{stash.Id}/in-game/{game.Id}");
+
+        Assert.NotNull(detail);
+        Assert.Equal(stash.Id, detail.StashId);
+        Assert.Equal("Tajná skrýš u dubu", detail.StashName);
+        Assert.Equal(game.Id, detail.GameId);
+        Assert.Equal("Test Hra", detail.GameName);
+        Assert.Null(detail.LocationId);
+        Assert.Null(detail.LocationName);
+        Assert.Empty(detail.Treasures);
+    }
+
+    [Fact]
+    public async Task GetInGame_PlacedStashWithTreasures_ReturnsAll()
+    {
+        var (game, location, stash) = await CreateGameLocationStash();
+
+        // Place stash at location for this game
+        await Client.PostAsJsonAsync("/api/secret-stashes/game-stash",
+            new CreateGameSecretStashDto(game.Id, stash.Id, location.Id));
+
+        // Two items + a treasure quest holding them
+        var item1 = await (await Client.PostAsJsonAsync("/api/items",
+            new CreateItemDto("Stříbrný klíč", ItemType.Scroll))).Content.ReadFromJsonAsync<ItemDetailDto>();
+        var item2 = await (await Client.PostAsJsonAsync("/api/items",
+            new CreateItemDto("Mapa", ItemType.Scroll))).Content.ReadFromJsonAsync<ItemDetailDto>();
+
+        var tqResp = await Client.PostAsJsonAsync("/api/treasure-quests",
+            new CreateTreasureQuestDto("Hledání mapy", TreasureQuestDifficulty.Early, game.Id,
+                Clue: "Pod mechovým kamenem", SecretStashId: stash.Id));
+        var tq = (await tqResp.Content.ReadFromJsonAsync<TreasureQuestDetailDto>())!;
+
+        await Client.PostAsJsonAsync($"/api/treasure-quests/{tq.Id}/items",
+            new AddTreasureItemDto(item1!.Id, 1));
+        await Client.PostAsJsonAsync($"/api/treasure-quests/{tq.Id}/items",
+            new AddTreasureItemDto(item2!.Id, 3));
+
+        var detail = await Client.GetFromJsonAsync<SecretStashGameDetailDto>(
+            $"/api/secret-stashes/{stash.Id}/in-game/{game.Id}");
+
+        Assert.NotNull(detail);
+        Assert.Equal(location.Id, detail.LocationId);
+        Assert.Equal("Hora", detail.LocationName);
+        Assert.Single(detail.Treasures);
+
+        var t = detail.Treasures[0];
+        Assert.Equal("Hledání mapy", t.Title);
+        Assert.Equal("Pod mechovým kamenem", t.Clue);
+        Assert.Equal(TreasureQuestDifficulty.Early, t.Difficulty);
+        Assert.Equal(2, t.Items.Count);
+        Assert.Contains(t.Items, ti => ti.ItemName == "Stříbrný klíč" && ti.Count == 1);
+        Assert.Contains(t.Items, ti => ti.ItemName == "Mapa" && ti.Count == 3);
+    }
+
     // --- Helper ---
 
     private async Task<(GameDetailDto Game, LocationDetailDto Location, SecretStashDetailDto Stash)> CreateGameLocationStash()
