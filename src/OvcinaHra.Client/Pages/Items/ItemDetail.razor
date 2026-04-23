@@ -503,16 +503,19 @@ else
     private int VyskytCount => (usage?.MonsterLoot.Count ?? 0) + (usage?.QuestRewards.Count ?? 0) + (usage?.Treasures.Count ?? 0);
     private int ObchodCount => usage?.Shops.Count ?? 0;
 
-    private int _lastId;
-
-    protected override async Task OnInitializedAsync()
-    {
-        await GameContext.InitializeAsync();
-        await LoadAsync();
-    }
+    private int _lastId = -1;
+    private bool _gameContextInited;
 
     protected override async Task OnParametersSetAsync()
     {
+        // Initialize GameContext once, then route every [Parameter] Id change
+        // through one load path. Avoids the duplicate-fetch race that happens
+        // when OnInitializedAsync also calls LoadAsync (per Copilot review on PR #90).
+        if (!_gameContextInited)
+        {
+            await GameContext.InitializeAsync();
+            _gameContextInited = true;
+        }
         if (_lastId != Id)
         {
             await LoadAsync();
@@ -538,12 +541,19 @@ else
                     var urls = await Api.GetAsync<ImageUrlsDto>($"/api/images/items/{Id}");
                     heroImageUrl = urls?.ImageUrl;
                 }
-                // Eagerly load usage for tab badges.
+                // Eagerly load usage for tab badges. On failure fall back to an
+                // empty sentinel so the Tvorba/Výskyt/Obchod tabs render their
+                // own empty states instead of staying stuck on "Načítám…"
+                // (per Copilot review on PR #90).
                 try
                 {
                     usage = await Api.GetAsync<ItemUsageDto>($"/api/items/{Id}/usage");
                 }
-                catch (Exception uex) { error = $"Nepodařilo se načíst usage: {uex.Message}"; }
+                catch (Exception uex)
+                {
+                    error = $"Nepodařilo se načíst doplňková data: {uex.Message}";
+                    usage = new ItemUsageDto(item.Id, item.Name, [], [], [], [], [], []);
+                }
             }
         }
         catch (Exception ex) { error = ex.Message; item = null; }

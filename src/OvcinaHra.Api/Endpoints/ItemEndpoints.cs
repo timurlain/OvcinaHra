@@ -67,12 +67,18 @@ public static class ItemEndpoints
         return TypedResults.Ok(items);
     }
 
-    private static async Task<Results<Ok<ItemDetailDto>, NotFound>> GetById(int id, WorldDbContext db)
+    private static async Task<Results<Ok<ItemDetailDto>, NotFound>> GetById(int id, WorldDbContext db, HttpContext http)
     {
         var item = await db.Items.FindAsync(id);
         if (item is null) return TypedResults.NotFound();
 
-        return TypedResults.Ok(ToDetailDto(item));
+        // Populate ImageUrl on the detail DTO so the new ItemDetail page (and any
+        // future caller) doesn't have to make a second /api/images/items/{id}
+        // round-trip just to render the hero (per Copilot review on PR #90).
+        var imageUrl = string.IsNullOrWhiteSpace(item.ImagePath)
+            ? null
+            : ImageEndpoints.ThumbUrl(http, "items", item.Id, "small");
+        return TypedResults.Ok(ToDetailDto(item) with { ImageUrl = imageUrl });
     }
 
     private static async Task<Created<ItemDetailDto>> Create(CreateItemDto dto, WorldDbContext db)
