@@ -28,7 +28,7 @@ public static class LocationEndpoints
         return group;
     }
 
-    private static async Task<Ok<List<LocationListDto>>> GetAll(WorldDbContext db, IBlobStorageService blob)
+    private static async Task<Ok<List<LocationListDto>>> GetAll(WorldDbContext db)
     {
         var rows = await db.Locations
             .OrderBy(l => l.Name)
@@ -61,7 +61,7 @@ public static class LocationEndpoints
             Array.Empty<LocationQuestDto>(),
             Array.Empty<LocationTreasureQuestDto>(),
             ImagePath: r.ImagePath,
-            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : blob.GetSasUrl(r.ImagePath))).ToList();
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : $"/api/images/locations/{r.Id}/thumb?size=small")).ToList();
 
         return TypedResults.Ok(locations);
     }
@@ -146,7 +146,7 @@ public static class LocationEndpoints
         return TypedResults.NoContent();
     }
 
-    private static async Task<Ok<List<LocationListDto>>> GetByGame(int gameId, WorldDbContext db, IBlobStorageService blob)
+    private static async Task<Ok<List<LocationListDto>>> GetByGame(int gameId, WorldDbContext db)
     {
         var rows = await db.Locations
             .Where(l => l.GameLocations.Any(gl => gl.GameId == gameId))
@@ -220,11 +220,11 @@ public static class LocationEndpoints
                 s.StashName,
                 s.TreasureQuests,
                 ImagePath: s.StashImagePath,
-                ImageUrl: string.IsNullOrWhiteSpace(s.StashImagePath) ? null : blob.GetSasUrl(s.StashImagePath))).ToList(),
+                ImageUrl: string.IsNullOrWhiteSpace(s.StashImagePath) ? null : $"/api/images/secretstashes/{s.SecretStashId}/thumb?size=medium")).ToList(),
             Quests: r.Quests,
             LocationTreasureQuests: r.LocationTreasureQuests,
             ImagePath: r.ImagePath,
-            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : blob.GetSasUrl(r.ImagePath))).ToList();
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : $"/api/images/locations/{r.Id}/thumb?size=small")).ToList();
 
         return TypedResults.Ok(dtos);
     }

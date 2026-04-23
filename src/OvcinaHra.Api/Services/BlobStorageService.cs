@@ -21,6 +21,28 @@ public interface IBlobStorageService
     string? GetSasUrl(string blobKey);
 
     Task DeleteAsync(string blobKey, CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes every blob whose key starts with <paramref name="prefix"/>.
+    /// Used by the thumbnail cache invalidation path: when a new source image is
+    /// uploaded for an entity, all previously cached resized variants under
+    /// <c>{entity}-thumbs/{id}-</c> must be wiped so the next thumb request
+    /// regenerates from the fresh source. No-op if no blobs match.
+    /// </summary>
+    Task DeletePrefixAsync(string prefix, CancellationToken ct = default);
+
+    /// <summary>
+    /// Downloads a blob's content as a byte array. Returns <c>null</c> if the blob
+    /// does not exist. Used by the thumbnail service to read source images for
+    /// resizing.
+    /// </summary>
+    Task<byte[]?> DownloadAsync(string blobKey, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns <c>true</c> iff a blob exists at the given key. Used by the
+    /// thumbnail service for fast cache-hit checks.
+    /// </summary>
+    Task<bool> ExistsAsync(string blobKey, CancellationToken ct = default);
 }
 
 public class BlobStorageService : IBlobStorageService
@@ -94,5 +116,42 @@ public class BlobStorageService : IBlobStorageService
     {
         var blob = _container.GetBlobClient(blobKey);
         await blob.DeleteIfExistsAsync(cancellationToken: ct);
+    }
+
+    public async Task DeletePrefixAsync(string prefix, CancellationToken ct)
+    {
+        // Iterate pages of blob items matching the prefix and delete each. Under
+        // normal use this hits a handful of blobs (one per preset per entity),
+        // so a simple sequential delete is fine. We swallow per-blob delete
+        // failures with a warning — a stale cached thumbnail is harmless
+        // compared to failing the user's upload.
+        await foreach (var item in _container.GetBlobsAsync(BlobTraits.None, BlobStates.None, prefix, ct))
+        {
+            try
+            {
+                await _container.GetBlobClient(item.Name).DeleteIfExistsAsync(cancellationToken: ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete cached thumbnail {BlobName} during prefix invalidation", item.Name);
+            }
+        }
+    }
+
+    public async Task<byte[]?> DownloadAsync(string blobKey, CancellationToken ct)
+    {
+        var blob = _container.GetBlobClient(blobKey);
+        if (!await blob.ExistsAsync(ct))
+            return null;
+
+        await using var ms = new MemoryStream();
+        await blob.DownloadToAsync(ms, ct);
+        return ms.ToArray();
+    }
+
+    public async Task<bool> ExistsAsync(string blobKey, CancellationToken ct)
+    {
+        var blob = _container.GetBlobClient(blobKey);
+        return await blob.ExistsAsync(ct);
     }
 }

@@ -27,7 +27,7 @@ public static class BuildingEndpoints
         return group;
     }
 
-    private static async Task<Ok<List<BuildingListDto>>> GetAll(WorldDbContext db, IBlobStorageService blob)
+    private static async Task<Ok<List<BuildingListDto>>> GetAll(WorldDbContext db)
     {
         var rows = await db.Buildings
             .OrderBy(b => b.Name)
@@ -47,11 +47,11 @@ public static class BuildingEndpoints
             r.Id, r.Name, r.Description, r.Notes,
             r.LocationId, r.LocationName, r.IsPrebuilt,
             ImagePath: r.ImagePath,
-            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : blob.GetSasUrl(r.ImagePath))).ToList();
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : $"/api/images/buildings/{r.Id}/thumb?size=small")).ToList();
         return TypedResults.Ok(buildings);
     }
 
-    private static async Task<Ok<List<BuildingListDto>>> GetByGame(int gameId, WorldDbContext db, IBlobStorageService blob)
+    private static async Task<Ok<List<BuildingListDto>>> GetByGame(int gameId, WorldDbContext db)
     {
         var rows = await db.GameBuildings
             .Where(gb => gb.GameId == gameId)
@@ -72,7 +72,7 @@ public static class BuildingEndpoints
             r.Id, r.Name, r.Description, r.Notes,
             r.LocationId, r.LocationName, r.IsPrebuilt,
             ImagePath: r.ImagePath,
-            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : blob.GetSasUrl(r.ImagePath))).ToList();
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : $"/api/images/buildings/{r.Id}/thumb?size=small")).ToList();
         return TypedResults.Ok(buildings);
     }
 

@@ -35,7 +35,7 @@ public static class ItemEndpoints
         return group;
     }
 
-    private static async Task<Ok<List<ItemListDto>>> GetAll(WorldDbContext db, IBlobStorageService blob)
+    private static async Task<Ok<List<ItemListDto>>> GetAll(WorldDbContext db)
     {
         var rows = await db.Items
             .OrderBy(i => i.Name)
@@ -60,7 +60,7 @@ public static class ItemEndpoints
             r.Id, r.Name, r.ItemType, r.Effect, r.PhysicalForm, r.IsCraftable,
             r.ReqWarrior, r.ReqArcher, r.ReqMage, r.ReqThief,
             r.IsUnique, r.IsLimited, r.ImagePath,
-            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : blob.GetSasUrl(r.ImagePath))).ToList();
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : $"/api/images/items/{r.Id}/thumb?size=small")).ToList();
         return TypedResults.Ok(items);
     }
 
@@ -117,7 +117,7 @@ public static class ItemEndpoints
         return TypedResults.NoContent();
     }
 
-    private static async Task<Ok<List<GameItemListDto>>> GetByGame(int gameId, WorldDbContext db, IBlobStorageService blob)
+    private static async Task<Ok<List<GameItemListDto>>> GetByGame(int gameId, WorldDbContext db)
     {
         var gameItems = await db.GameItems
             .Where(gi => gi.GameId == gameId)
@@ -147,7 +147,7 @@ public static class ItemEndpoints
                 gi.Item.IsUnique, gi.Item.IsLimited, gi.Item.ImagePath,
                 gi.GameId, gi.Price, gi.StockCount, gi.IsSold, gi.SaleCondition, gi.IsFindable,
                 summaryByItemId.GetValueOrDefault(gi.ItemId),
-                ImageUrl: string.IsNullOrWhiteSpace(gi.Item.ImagePath) ? null : blob.GetSasUrl(gi.Item.ImagePath)))
+                ImageUrl: string.IsNullOrWhiteSpace(gi.Item.ImagePath) ? null : $"/api/images/items/{gi.Item.Id}/thumb?size=small"))
             .ToList();
 
         return TypedResults.Ok(result);
