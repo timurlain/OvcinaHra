@@ -197,19 +197,30 @@ else
             </div>
 
             <div class="oh-lc-sect">
-                <div class="oh-lc-sect-label"><i class="bi bi-geo-alt"></i> GPS</div>
-                <div class="oh-lc-gps-block">
-                    <div class="oh-lc-gps-row">
-                        <DxFormLayout>
-                            <DxFormLayoutItem Caption="Latitude" ColSpanMd="12">
-                                <DxTextBox @bind-Text="@latitudeStr" NullText="např. 49,4543192" />
-                            </DxFormLayoutItem>
-                            <DxFormLayoutItem Caption="Longitude" ColSpanMd="12">
-                                <DxTextBox @bind-Text="@longitudeStr" NullText="např. 18,0203280" />
-                            </DxFormLayoutItem>
-                        </DxFormLayout>
-                    </div>
-                    <div>
+                <div class="oh-lc-sect-label"><i class="bi bi-card-text"></i> Obsah</div>
+                <DxFormLayout>
+                    <DxFormLayoutItem Caption="Popis (pro kartu)" ColSpanMd="12">
+                        <DxMemo @bind-Text="@description" Rows="4" NullText="Čtenářský popis lokace…" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Detaily (pravidlové poznámky)" ColSpanMd="12">
+                        <DxMemo @bind-Text="@details" Rows="5" NullText="Pravidlové poznámky, vazby…" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Herní potenciál" ColSpanMd="12">
+                        <DxMemo @bind-Text="@gamePotential" Rows="3" NullText="Co lokace nabízí hrám…" />
+                    </DxFormLayoutItem>
+                </DxFormLayout>
+            </div>
+
+            <div class="oh-lc-sect">
+                <div class="oh-lc-sect-label"><i class="bi bi-geo-alt"></i> Mapa a vizuál</div>
+                <div class="oh-lc-mv-gps">
+                    <label>Lat</label>
+                    <DxTextBox @bind-Text="@latitudeStr" NullText="49,4543192" CssClass="oh-lc-mv-gps-input" />
+                    <label>Lon</label>
+                    <DxTextBox @bind-Text="@longitudeStr" NullText="18,0203280" CssClass="oh-lc-mv-gps-input" />
+                </div>
+                <div class="oh-lc-mv-row">
+                    <div class="oh-lc-mv-col oh-lc-mv-map-col">
                         @if (HasGps)
                         {
                             <div class="oh-lc-gps-map" id="oh-lc-gps-map-@Id"
@@ -223,42 +234,21 @@ else
                         else
                         {
                             <div class="oh-lc-gps-map-empty">
-                                <span><i class="bi bi-geo"></i> Nastav souřadnice vlevo, mini-mapa se objeví.</span>
+                                <span><i class="bi bi-geo"></i> Nastav souřadnice nahoře, mini-mapa se objeví.</span>
                             </div>
                         }
                     </div>
-                </div>
-            </div>
-
-            <div class="oh-lc-sect">
-                <div class="oh-lc-sect-label"><i class="bi bi-image"></i> Vizuál</div>
-                <div class="oh-lc-visual-slots">
-                    <div>
+                    <div class="oh-lc-mv-col">
                         <small class="text-muted d-block mb-1">Hlavní obrázek (1:1)</small>
                         <ImagePicker EntityType="locations" EntityId="@Id"
-                                     AspectRatio="1:1" Width="280px" Alt="Hlavní obrázek" />
+                                     AspectRatio="1:1" Width="240px" Alt="Hlavní obrázek" />
                     </div>
-                    <div>
+                    <div class="oh-lc-mv-col">
                         <small class="text-muted d-block mb-1">Fotka umístění (4:3)</small>
                         <ImagePicker EntityType="locations" EntityId="@Id" Field="placement"
-                                     AspectRatio="4:3" Width="360px" Alt="Fotka umístění" />
+                                     AspectRatio="4:3" Width="280px" Alt="Fotka umístění" />
                     </div>
                 </div>
-            </div>
-
-            <div class="oh-lc-sect">
-                <div class="oh-lc-sect-label"><i class="bi bi-card-text"></i> Obsah</div>
-                <DxFormLayout>
-                    <DxFormLayoutItem Caption="Popis (pro kartu)" ColSpanMd="12">
-                        <DxMemo @bind-Text="@description" Rows="4" NullText="Čtenářský popis lokace…" />
-                    </DxFormLayoutItem>
-                    <DxFormLayoutItem Caption="Detaily (pravidlové poznámky)" ColSpanMd="12">
-                        <DxMemo @bind-Text="@details" Rows="5" NullText="Pravidlové poznámky, vazby…" />
-                    </DxFormLayoutItem>
-                    <DxFormLayoutItem Caption="Herní potenciál" ColSpanMd="12">
-                        <DxMemo @bind-Text="@gamePotential" Rows="3" NullText="Co lokace nabízí hrám…" />
-                    </DxFormLayoutItem>
-                </DxFormLayout>
             </div>
 
             <div class="oh-lc-sect">

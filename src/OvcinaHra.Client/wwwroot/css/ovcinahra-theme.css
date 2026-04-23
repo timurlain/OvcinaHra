@@ -1056,7 +1056,43 @@
 }
 .oh-lc-gps-map-footer .oh-lc-gps-coords { font-family: var(--oh-font-mono); }
 
-/* --- Upravit: image slot pair (main 1:1, placement 4:3) --- */
+/* --- Upravit: Mapa a vizuál — compact GPS row above 3-column map+images row --- */
+.oh-lc-mv-gps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    align-items: center;
+    margin-bottom: 14px;
+    font-size: 0.8125rem;
+}
+.oh-lc-mv-gps > label {
+    color: var(--oh-text-secondary);
+    margin-bottom: 0;
+    min-width: 24px;
+    font-weight: 500;
+}
+.oh-lc-mv-gps .oh-lc-mv-gps-input { width: 170px; }
+.oh-lc-mv-gps .oh-lc-mv-gps-input input {
+    font-family: var(--oh-font-mono);
+    font-size: 0.8125rem;
+}
+.oh-lc-mv-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: flex-start;
+}
+.oh-lc-mv-col { flex: 0 0 auto; }
+.oh-lc-mv-map-col {
+    flex: 1 1 240px;
+    min-width: 240px;
+    max-width: 280px;
+}
+@media (max-width: 820px) {
+    .oh-lc-mv-map-col { max-width: none; }
+}
+
+/* --- Upravit: image slot pair (main 1:1, placement 4:3) — legacy, kept for any callers --- */
 .oh-lc-visual-slots {
     display: grid;
     grid-template-columns: auto auto;
