@@ -40,30 +40,66 @@ else if (!Catalog && gameItems.Count == 0)
 }
 else if (Catalog)
 {
-    <OvcinaGrid Data="@catalogItems" KeyFieldName="Id" LayoutKey="grid-layout-items-catalog-v2"
-                RowClick="@(e => OpenModal((ItemListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+    <OvcinaGrid Data="@catalogItems" KeyFieldName="Id" LayoutKey="grid-layout-items-v3"
+                RowClick="@(e => OpenQuickPeek((ItemListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             <DxGridDataColumn FieldName="Id" Caption="#" Width="60px" Visible="false" />
-            <DxGridDataColumn FieldName="Name" Caption="Název" />
-            <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="Typ" Width="150px" />
-            <DxGridDataColumn FieldName="Effect" Caption="Efekt" />
-            <DxGridDataColumn FieldName="PhysicalFormDisplay" Caption="Fyzická forma" Width="150px" Visible="false" />
-            <DxGridDataColumn FieldName="ReqWarrior" Caption="Váleč." Width="80px" Visible="false" />
-            <DxGridDataColumn FieldName="ReqArcher" Caption="Střelec" Width="80px" Visible="false" />
-            <DxGridDataColumn FieldName="ReqMage" Caption="Mág" Width="80px" Visible="false" />
-            <DxGridDataColumn FieldName="ReqThief" Caption="Zloděj" Width="80px" Visible="false" />
-            <DxGridDataColumn FieldName="IsCraftable" Caption="Vyrobitelný" Width="120px">
-                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+
+            @* Foto — 78px column, 64x48 4:3 photo inside (issue #74-style: photo IS the artifact) *@
+            <DxGridDataColumn Caption="Foto" Width="78px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{ var it = (ItemListDto)context.DataItem; }
+                    <span class="oh-it-photo">
+                        @if (!string.IsNullOrEmpty(it.ImageUrl))
+                        {
+                            <img src="@it.ImageUrl" alt="@it.Name" />
+                        }
+                        else
+                        {
+                            <i class="bi bi-image oh-it-photo-empty" aria-hidden="true"></i>
+                        }
+                    </span>
+                </CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="IsUnique" Caption="Unikátní" Width="100px" Visible="false">
-                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+
+            @* Type-dot 24px — neutral palette per ItemType (NOT kingdom colors) *@
+            <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="•" Width="24px" AllowGroup="true">
+                <CellDisplayTemplate>
+                    @{ var it = (ItemListDto)context.DataItem; }
+                    <span class="oh-it-tdot @TdotClass(it.ItemType)" title="@it.ItemTypeDisplay"></span>
+                </CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="IsLimited" Caption="Limitovaný" Width="110px" Visible="false">
-                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+
+            <DxGridDataColumn FieldName="Name" Caption="Název" MinWidth="220" />
+            <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="Typ" Width="130px" />
+            <DxGridDataColumn FieldName="PhysicalFormDisplay" Caption="Podoba" Width="150px" />
+
+            @* 4 class pip cols 64/64/64/88 *@
+            <DxGridDataColumn FieldName="ReqWarrior" Caption="Vál." Width="64px">
+                <CellDisplayTemplate><span class="oh-it-pip @PipClass((int)context.Value)" title="Válečník: @context.Value"><i class="bi bi-shield-shaded"></i></span></CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="HasImage" Caption="Obrázek" Width="100px">
-                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+            <DxGridDataColumn FieldName="ReqArcher" Caption="Luč." Width="64px">
+                <CellDisplayTemplate><span class="oh-it-pip @PipClass((int)context.Value)" title="Lučištník: @context.Value"><i class="bi bi-bullseye"></i></span></CellDisplayTemplate>
             </DxGridDataColumn>
+            <DxGridDataColumn FieldName="ReqMage" Caption="Mág" Width="64px">
+                <CellDisplayTemplate><span class="oh-it-pip @PipClass((int)context.Value)" title="Mág: @context.Value"><i class="bi bi-magic"></i></span></CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="ReqThief" Caption="Zlo." Width="88px">
+                <CellDisplayTemplate><span class="oh-it-pip @PipClass((int)context.Value)" title="Zloděj: @context.Value"><i class="bi bi-incognito"></i></span></CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            @* Cena + Sklad columns — hidden in catalog (no GameItem data; brief acceptance §4) *@
+            <DxGridDataColumn FieldName="Effect" Caption="Efekt" Width="240px" Visible="false" />
+
+            @* Flagy 3-cell box — Unikát/Limit/Craftable in catalog *@
+            <DxGridDataColumn Caption="Flagy" Width="96px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{ var it = (ItemListDto)context.DataItem; }
+                    <ItemFlagsBox PerGame="false" IsUnique="it.IsUnique" IsLimited="it.IsLimited" IsCraftable="it.IsCraftable" />
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            @* Catalog-only assign-to-current-game pill *@
             <DxGridDataColumn FieldName="Id" Caption="Hra" Width="130px" AllowSort="false" AllowGroup="false">
                 <CellDisplayTemplate>
                     @{
@@ -86,50 +122,107 @@ else if (Catalog)
 }
 else
 {
-    <OvcinaGrid Data="@gameItems" KeyFieldName="Id" LayoutKey="grid-layout-items-game-v2"
-                RowClick="@(e => OpenModal((GameItemListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+    <OvcinaGrid Data="@gameItems" KeyFieldName="Id" LayoutKey="grid-layout-items-game-v3"
+                RowClick="@(e => OpenQuickPeek((GameItemListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
+            @* Context-menu column at fixed left edge — preserves Upravit / Odebrat / Smazat / Recept actions *@
             <DxGridDataColumn FieldName="" Caption="" Width="40px" AllowSort="false" AllowGroup="false" FixedPosition="GridColumnFixedPosition.Left">
                 <CellDisplayTemplate>
-                    @{
-                        var gi = (GameItemListDto)context.DataItem;
-                    }
+                    @{ var gi = (GameItemListDto)context.DataItem; }
                     <button class="btn btn-sm btn-link p-0 text-muted" @onclick="async e => await ShowContextMenu(e, gi)" @onclick:stopPropagation="true">
                         <i class="bi bi-three-dots-vertical"></i>
                     </button>
                 </CellDisplayTemplate>
             </DxGridDataColumn>
+
             <DxGridDataColumn FieldName="Id" Caption="#" Width="60px" Visible="false" />
-            <DxGridDataColumn FieldName="Name" Caption="Název" />
-            <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="Typ" Width="150px" />
-            <DxGridDataColumn FieldName="Effect" Caption="Efekt" />
-            <DxGridDataColumn FieldName="RecipeSummary" Caption="Recept" Width="340px" />
-            <DxGridDataColumn FieldName="Price" Caption="Cena" Width="90px" />
-            <DxGridDataColumn FieldName="StockCount" Caption="Skladem" Width="110px" />
-            <DxGridDataColumn FieldName="IsSold" Caption="Prodávaný" Width="110px">
-                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+
+            @* Foto 78px column, 64x48 4:3 photo *@
+            <DxGridDataColumn Caption="Foto" Width="78px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{ var gi = (GameItemListDto)context.DataItem; }
+                    <span class="oh-it-photo">
+                        @if (!string.IsNullOrEmpty(gi.ImageUrl))
+                        {
+                            <img src="@gi.ImageUrl" alt="@gi.Name" />
+                        }
+                        else
+                        {
+                            <i class="bi bi-image oh-it-photo-empty" aria-hidden="true"></i>
+                        }
+                    </span>
+                </CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="IsFindable" Caption="Nalezitelný" Width="110px">
-                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
+
+            @* Type-dot 24px *@
+            <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="•" Width="24px" AllowGroup="true">
+                <CellDisplayTemplate>
+                    @{ var gi = (GameItemListDto)context.DataItem; }
+                    <span class="oh-it-tdot @TdotClass(gi.ItemType)" title="@gi.ItemTypeDisplay"></span>
+                </CellDisplayTemplate>
             </DxGridDataColumn>
+
+            <DxGridDataColumn FieldName="Name" Caption="Název" MinWidth="220" />
+            <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="Typ" Width="130px" />
+            <DxGridDataColumn FieldName="PhysicalFormDisplay" Caption="Podoba" Width="150px" />
+
+            @* 4 class pip cols *@
+            <DxGridDataColumn FieldName="ReqWarrior" Caption="Vál." Width="64px">
+                <CellDisplayTemplate><span class="oh-it-pip @PipClass((int)context.Value)" title="Válečník: @context.Value"><i class="bi bi-shield-shaded"></i></span></CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="ReqArcher" Caption="Luč." Width="64px">
+                <CellDisplayTemplate><span class="oh-it-pip @PipClass((int)context.Value)" title="Lučištník: @context.Value"><i class="bi bi-bullseye"></i></span></CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="ReqMage" Caption="Mág" Width="64px">
+                <CellDisplayTemplate><span class="oh-it-pip @PipClass((int)context.Value)" title="Mág: @context.Value"><i class="bi bi-magic"></i></span></CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="ReqThief" Caption="Zlo." Width="88px">
+                <CellDisplayTemplate><span class="oh-it-pip @PipClass((int)context.Value)" title="Zloděj: @context.Value"><i class="bi bi-incognito"></i></span></CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            @* Cena coin gold accent — strikethrough when IsSold=false *@
+            <DxGridDataColumn FieldName="Price" Caption="Cena" Width="92px">
+                <CellDisplayTemplate>
+                    @{ var gi = (GameItemListDto)context.DataItem; }
+                    @if (gi.Price.HasValue && gi.Price.Value > 0)
+                    {
+                        <span class="oh-it-coin @(!gi.IsSold ? "oh-it-coin--struck" : "")">
+                            <i class="bi bi-coin"></i>@gi.Price.Value
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="oh-it-coin oh-it-coin--empty">—</span>
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            @* Sklad — count or ∞ for nil; meter-style is a follow-up (no max field on DTO) *@
+            <DxGridDataColumn FieldName="StockCount" Caption="Sklad" Width="132px">
+                <CellDisplayTemplate>
+                    @{ var gi = (GameItemListDto)context.DataItem; }
+                    @if (gi.StockCount.HasValue)
+                    {
+                        <span class="oh-it-sklad">@gi.StockCount.Value</span>
+                    }
+                    else
+                    {
+                        <span class="oh-it-sklad oh-it-sklad--inf" title="Neomezený sklad">∞</span>
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            @* Flagy — per-hra meaning: Prodává/Nalezitelný/Craftable *@
+            <DxGridDataColumn Caption="Flagy" Width="96px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{ var gi = (GameItemListDto)context.DataItem; }
+                    <ItemFlagsBox PerGame="true" IsSold="gi.IsSold" IsFindable="gi.IsFindable" IsCraftable="gi.IsCraftable" />
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            <DxGridDataColumn FieldName="Effect" Caption="Efekt" Width="240px" Visible="false" />
+            <DxGridDataColumn FieldName="RecipeSummary" Caption="Recept" Width="340px" Visible="false" />
             <DxGridDataColumn FieldName="SaleCondition" Caption="Podmínka prodeje" Width="240px" Visible="false" />
-            <DxGridDataColumn FieldName="PhysicalFormDisplay" Caption="Fyzická forma" Width="150px" Visible="false" />
-            <DxGridDataColumn FieldName="ReqWarrior" Caption="Váleč." Width="80px" Visible="false" />
-            <DxGridDataColumn FieldName="ReqArcher" Caption="Střelec" Width="80px" Visible="false" />
-            <DxGridDataColumn FieldName="ReqMage" Caption="Mág" Width="80px" Visible="false" />
-            <DxGridDataColumn FieldName="ReqThief" Caption="Zloděj" Width="80px" Visible="false" />
-            <DxGridDataColumn FieldName="IsCraftable" Caption="Vyrobitelný" Width="120px" Visible="false">
-                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
-            </DxGridDataColumn>
-            <DxGridDataColumn FieldName="IsUnique" Caption="Unikátní" Width="100px" Visible="false">
-                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
-            </DxGridDataColumn>
-            <DxGridDataColumn FieldName="IsLimited" Caption="Limitovaný" Width="110px" Visible="false">
-                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
-            </DxGridDataColumn>
-            <DxGridDataColumn FieldName="HasImage" Caption="Obrázek" Width="100px">
-                <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
-            </DxGridDataColumn>
         </Columns>
     </OvcinaGrid>
 
@@ -142,6 +235,81 @@ else
         </Items>
     </DxContextMenu>
 }
+
+@* Quick-peek popup — 720x480, 360px hero photo left + fields right.
+   Opens on row click; "Otevřít detail →" navigates to /items/{id} (will 404
+   until the detail page ships in a follow-up — flagged in the PR body). *@
+<DxPopup @bind-Visible="@isQuickPeekVisible" HeaderText="@(quickPeekItem?.Name ?? "Předmět")" Width="720px">
+    <BodyContentTemplate Context="qpCtx">
+        @if (quickPeekItem is null)
+        {
+            <p>Načítám…</p>
+        }
+        else
+        {
+            <div class="oh-it-qp-grid">
+                <div class="oh-it-qp-hero">
+                    @if (!string.IsNullOrEmpty(quickPeekItem.ImageUrl))
+                    {
+                        <img src="@quickPeekItem.ImageUrl" alt="@quickPeekItem.Name" />
+                    }
+                    else
+                    {
+                        <i class="bi bi-image oh-it-photo-empty" aria-hidden="true"></i>
+                    }
+                </div>
+                <div class="oh-it-qp-fields">
+                    <h3 class="oh-it-qp-name">@quickPeekItem.Name</h3>
+                    <div class="oh-it-qp-meta">
+                        <span class="oh-it-tdot @TdotClass(quickPeekItem.ItemType)" title="@quickPeekItem.ItemTypeDisplay"></span>
+                        <span class="oh-it-ichip">@quickPeekItem.ItemTypeDisplay</span>
+                        @if (!string.IsNullOrWhiteSpace(quickPeekItem.PhysicalFormDisplay))
+                        {
+                            <span class="oh-it-ichip">@quickPeekItem.PhysicalFormDisplay</span>
+                        }
+                    </div>
+                    <ItemClassPips Warrior="quickPeekItem.ReqWarrior"
+                                   Archer="quickPeekItem.ReqArcher"
+                                   Mage="quickPeekItem.ReqMage"
+                                   Thief="quickPeekItem.ReqThief" />
+                    @if (!string.IsNullOrWhiteSpace(quickPeekItem.Effect))
+                    {
+                        <div class="oh-it-qp-section">
+                            <div class="oh-it-qp-section-title">Efekt</div>
+                            <div class="oh-it-qp-section-body">@quickPeekItem.Effect</div>
+                        </div>
+                    }
+                    <ItemFlagsBox PerGame="quickPeekIsPerGame"
+                                  IsUnique="quickPeekItem.IsUnique"
+                                  IsLimited="quickPeekItem.IsLimited"
+                                  IsCraftable="quickPeekItem.IsCraftable"
+                                  IsSold="quickPeekIsSold"
+                                  IsFindable="quickPeekIsFindable" />
+                    @if (quickPeekIsPerGame && quickPeekPrice.HasValue)
+                    {
+                        <div>
+                            <span class="oh-it-coin @(!quickPeekIsSold ? "oh-it-coin--struck" : "")">
+                                <i class="bi bi-coin"></i>@quickPeekPrice.Value Groše
+                            </span>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="oh-it-qp-foot">
+                <button class="btn btn-secondary" @onclick="() => isQuickPeekVisible = false">Zavřít</button>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-primary" @onclick="OpenEditFromQuickPeek">
+                        <i class="bi bi-pencil"></i> Upravit
+                    </button>
+                    <button class="btn btn-primary"
+                            @onclick="@(() => Nav.NavigateTo($"/items/{quickPeekItem!.Id}"))">
+                        Otevřít detail <i class="bi bi-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+        }
+    </BodyContentTemplate>
+</DxPopup>
 
 <DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="900px">
     <BodyContentTemplate Context="popupContext">
@@ -360,6 +528,14 @@ else
     private List<ItemListDto> catalogItems = [];
     private List<GameItemListDto> gameItems = [];
     private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
+
+    // Quick-peek popup state (issue: replaces edit-modal-on-row-click per the brief).
+    private bool isQuickPeekVisible;
+    private ItemListDto? quickPeekItem;
+    private bool quickPeekIsPerGame;
+    private bool quickPeekIsSold;
+    private bool quickPeekIsFindable;
+    private int? quickPeekPrice;
 
     // Context menu state (in-game view only)
     private DxContextMenu? contextMenu;
@@ -787,5 +963,55 @@ else
     {
         try { await Api.DeleteAsync($"/api/items/{editingId}"); isDeleteVisible = false; isModalVisible = false; await LoadAsync(); }
         catch (Exception ex) { error = ex.Message; }
+    }
+
+    // ---- Visual helpers (issue: items-list-port) ----
+
+    // CSS suffix for the .oh-it-tdot--xxx neutral palette per ItemType.
+    private static string TdotClass(ItemType t) => "oh-it-tdot--" + t.ToString().ToLowerInvariant();
+
+    // CSS class for a single class-pip cell — lit + intensity ramp by req level.
+    private static string PipClass(int req) => req switch
+    {
+        <= 0 => "",
+        1 => "oh-it-pip--lit",
+        2 => "oh-it-pip--lit oh-it-pip--lit-r2",
+        3 => "oh-it-pip--lit oh-it-pip--lit-r3",
+        4 => "oh-it-pip--lit oh-it-pip--lit-r4",
+        _ => "oh-it-pip--lit oh-it-pip--lit-r5",
+    };
+
+    // ---- Quick-peek popup ----
+
+    private void OpenQuickPeek(ItemListDto item)
+    {
+        quickPeekItem = item;
+        quickPeekIsPerGame = false;
+        quickPeekIsSold = false;
+        quickPeekIsFindable = false;
+        quickPeekPrice = null;
+        isQuickPeekVisible = true;
+    }
+
+    private void OpenQuickPeek(GameItemListDto gi)
+    {
+        // Reuse ItemListDto shape for the popup body — they share all the catalog fields.
+        quickPeekItem = new ItemListDto(
+            gi.Id, gi.Name, gi.ItemType, gi.Effect, gi.PhysicalForm, gi.IsCraftable,
+            gi.ReqWarrior, gi.ReqArcher, gi.ReqMage, gi.ReqThief,
+            gi.IsUnique, gi.IsLimited, gi.ImagePath, gi.ImageUrl);
+        quickPeekIsPerGame = true;
+        quickPeekIsSold = gi.IsSold;
+        quickPeekIsFindable = gi.IsFindable;
+        quickPeekPrice = gi.Price;
+        isQuickPeekVisible = true;
+    }
+
+    private void OpenEditFromQuickPeek()
+    {
+        if (quickPeekItem is null) return;
+        isQuickPeekVisible = false;
+        // Reuse the existing edit-modal entry that already knows how to map ItemListDto.
+        OpenModal(quickPeekItem);
     }
 }

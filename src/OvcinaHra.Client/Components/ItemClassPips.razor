@@ -1,0 +1,42 @@
+@* Four-mono-pip row — lights up Válečník/Lučištník/Mág/Zloděj when their Req >= 1.
+   Intensity rises with Req (r1 baseline, r2/r3/r4+ darker). Tooltip shows exact level.
+   Brief hint: extract as .oh-class-pips-* later if reused on Quest rewards. *@
+
+<div class="oh-it-pips" title="@TitleSummary()">
+    <span class="oh-it-pip @PipClass(Warrior)" title="Válečník: @Warrior">
+        <i class="bi bi-shield-shaded"></i>
+        @if (Warrior > 1) { <span class="oh-it-pip-n">@Warrior</span> }
+    </span>
+    <span class="oh-it-pip @PipClass(Archer)" title="Lučištník: @Archer">
+        <i class="bi bi-bullseye"></i>
+        @if (Archer > 1) { <span class="oh-it-pip-n">@Archer</span> }
+    </span>
+    <span class="oh-it-pip @PipClass(Mage)" title="Mág: @Mage">
+        <i class="bi bi-magic"></i>
+        @if (Mage > 1) { <span class="oh-it-pip-n">@Mage</span> }
+    </span>
+    <span class="oh-it-pip @PipClass(Thief)" title="Zloděj: @Thief">
+        <i class="bi bi-incognito"></i>
+        @if (Thief > 1) { <span class="oh-it-pip-n">@Thief</span> }
+    </span>
+</div>
+
+@code {
+    [Parameter] public int Warrior { get; set; }
+    [Parameter] public int Archer { get; set; }
+    [Parameter] public int Mage { get; set; }
+    [Parameter] public int Thief { get; set; }
+
+    private static string PipClass(int req) => req switch
+    {
+        <= 0 => "",
+        1 => "oh-it-pip--lit",
+        2 => "oh-it-pip--lit oh-it-pip--lit-r2",
+        3 => "oh-it-pip--lit oh-it-pip--lit-r3",
+        4 => "oh-it-pip--lit oh-it-pip--lit-r4",
+        _ => "oh-it-pip--lit oh-it-pip--lit-r5",
+    };
+
+    private string TitleSummary() =>
+        $"Válečník {Warrior} · Lučištník {Archer} · Mág {Mage} · Zloděj {Thief}";
+}
