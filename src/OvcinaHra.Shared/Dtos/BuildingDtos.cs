@@ -2,7 +2,8 @@ namespace OvcinaHra.Shared.Dtos;
 
 public record BuildingListDto(
     int Id, string Name, string? Description, string? Notes,
-    int? LocationId, string? LocationName, bool IsPrebuilt);
+    int? LocationId, string? LocationName, bool IsPrebuilt,
+    string? ImagePath = null, string? ImageUrl = null);
 
 public record BuildingDetailDto(
     int Id, string Name, string? Description, string? Notes, string? ImagePath,

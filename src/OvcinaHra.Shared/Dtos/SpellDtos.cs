@@ -18,7 +18,9 @@ public record SpellListDto(
     int MinMageLevel,
     int? Price,
     string Effect,
-    string? Description)
+    string? Description,
+    string? ImagePath = null,
+    string? ImageUrl = null)
 {
     [JsonIgnore] public string SchoolDisplay => School.GetDisplayName();
 }
@@ -79,7 +81,9 @@ public record GameSpellDto(
     int? Price,
     bool IsFindable,
     string? AvailabilityNotes,
-    int? CatalogPrice = null)
+    int? CatalogPrice = null,
+    string? ImagePath = null,
+    string? ImageUrl = null)
 {
     [JsonIgnore] public string SchoolDisplay => School.GetDisplayName();
 

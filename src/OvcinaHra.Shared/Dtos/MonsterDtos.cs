@@ -9,7 +9,8 @@ public record MonsterListDto(
     int Attack, int Defense, int Health,
     int? RewardXp, int? RewardMoney,
     string? Abilities, string? AiBehavior, string? RewardNotes, string? Notes,
-    List<string> TagNames)
+    List<string> TagNames,
+    string? ImagePath = null, string? ImageUrl = null)
 {
     [JsonIgnore]
     public string MonsterTypeDisplay => MonsterType.GetDisplayName();

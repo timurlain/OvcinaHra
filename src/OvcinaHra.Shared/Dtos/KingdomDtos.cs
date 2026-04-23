@@ -7,7 +7,8 @@ public record KingdomDto(
     string? BadgeImageUrl,
     string? Description,
     int SortOrder,
-    int AssignmentCount = 0);
+    int AssignmentCount = 0,
+    string? ImageUrl = null);
 
 public record CreateKingdomDto(
     string Name,

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
+using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Dtos;
 
@@ -29,17 +30,35 @@ public static class SpellEndpoints
 
     // ── Catalog ────────────────────────────────────────────────────────
 
-    private static async Task<Ok<List<SpellListDto>>> GetAll(WorldDbContext db)
+    private static async Task<Ok<List<SpellListDto>>> GetAll(WorldDbContext db, IBlobStorageService blob)
     {
-        var spells = await db.Spells
+        var rows = await db.Spells
             .OrderBy(s => s.Level)
             .ThenBy(s => s.Name)
-            .Select(s => new SpellListDto(
-                s.Id, s.Name, s.Level, s.School,
-                s.IsScroll, s.IsReaction, s.IsLearnable,
-                s.ManaCost, s.MinMageLevel, s.Price,
-                s.Effect, s.Description))
+            .Select(s => new
+            {
+                s.Id,
+                s.Name,
+                s.Level,
+                s.School,
+                s.IsScroll,
+                s.IsReaction,
+                s.IsLearnable,
+                s.ManaCost,
+                s.MinMageLevel,
+                s.Price,
+                s.Effect,
+                s.Description,
+                s.ImagePath
+            })
             .ToListAsync();
+        var spells = rows.Select(r => new SpellListDto(
+            r.Id, r.Name, r.Level, r.School,
+            r.IsScroll, r.IsReaction, r.IsLearnable,
+            r.ManaCost, r.MinMageLevel, r.Price,
+            r.Effect, r.Description,
+            ImagePath: r.ImagePath,
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : blob.GetSasUrl(r.ImagePath))).ToList();
         return TypedResults.Ok(spells);
     }
 
@@ -121,22 +140,37 @@ public static class SpellEndpoints
 
     // ── Per-game ──────────────────────────────────────────────────────
 
-    private static async Task<Ok<List<GameSpellDto>>> GetByGame(int gameId, WorldDbContext db)
+    private static async Task<Ok<List<GameSpellDto>>> GetByGame(int gameId, WorldDbContext db, IBlobStorageService blob)
     {
-        var rows = await db.GameSpells
+        var raw = await db.GameSpells
             .Where(gs => gs.GameId == gameId)
-            .Include(gs => gs.Spell)
             .OrderBy(gs => gs.Spell.Level)
             .ThenBy(gs => gs.Spell.Name)
-            .Select(gs => new GameSpellDto(
-                gs.Id, gs.GameId, gs.SpellId, gs.Spell.Name, gs.Spell.Level, gs.Spell.School,
-                gs.Price, gs.IsFindable, gs.AvailabilityNotes, gs.Spell.Price))
+            .Select(gs => new
+            {
+                gs.Id,
+                gs.GameId,
+                gs.SpellId,
+                SpellName = gs.Spell.Name,
+                gs.Spell.Level,
+                gs.Spell.School,
+                gs.Price,
+                gs.IsFindable,
+                gs.AvailabilityNotes,
+                CatalogPrice = gs.Spell.Price,
+                SpellImagePath = gs.Spell.ImagePath
+            })
             .ToListAsync();
+        var rows = raw.Select(r => new GameSpellDto(
+            r.Id, r.GameId, r.SpellId, r.SpellName, r.Level, r.School,
+            r.Price, r.IsFindable, r.AvailabilityNotes, r.CatalogPrice,
+            ImagePath: r.SpellImagePath,
+            ImageUrl: string.IsNullOrWhiteSpace(r.SpellImagePath) ? null : blob.GetSasUrl(r.SpellImagePath))).ToList();
         return TypedResults.Ok(rows);
     }
 
     private static async Task<Results<Created<GameSpellDto>, Conflict<string>, NotFound<string>>> CreateGameSpell(
-        CreateGameSpellDto dto, WorldDbContext db)
+        CreateGameSpellDto dto, WorldDbContext db, IBlobStorageService blob)
     {
         // Validate FKs up front — otherwise EF surfaces FK violations as 500.
         var spell = await db.Spells.FindAsync(dto.SpellId);
@@ -162,7 +196,9 @@ public static class SpellEndpoints
         return TypedResults.Created(
             $"/api/spells/by-game/{gs.GameId}",
             new GameSpellDto(gs.Id, gs.GameId, gs.SpellId, spell.Name, spell.Level, spell.School,
-                gs.Price, gs.IsFindable, gs.AvailabilityNotes, spell.Price));
+                gs.Price, gs.IsFindable, gs.AvailabilityNotes, spell.Price,
+                ImagePath: spell.ImagePath,
+                ImageUrl: string.IsNullOrWhiteSpace(spell.ImagePath) ? null : blob.GetSasUrl(spell.ImagePath)));
     }
 
     private static async Task<Results<NoContent, NotFound>> UpdateGameSpell(

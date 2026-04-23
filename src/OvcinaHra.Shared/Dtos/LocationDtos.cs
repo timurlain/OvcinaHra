@@ -19,7 +19,9 @@ public record LocationListDto(
     string? SetupNotes,
     IReadOnlyList<LocationStashDto> Stashes,
     IReadOnlyList<LocationQuestDto> Quests,
-    IReadOnlyList<LocationTreasureQuestDto> LocationTreasureQuests)
+    IReadOnlyList<LocationTreasureQuestDto> LocationTreasureQuests,
+    string? ImagePath = null,
+    string? ImageUrl = null)
 {
     [JsonIgnore]
     public string LocationKindDisplay => LocationKind.GetDisplayName();
@@ -28,7 +30,9 @@ public record LocationListDto(
 public record LocationStashDto(
     int Id,
     string Name,
-    IReadOnlyList<LocationTreasureQuestDto> TreasureQuests);
+    IReadOnlyList<LocationTreasureQuestDto> TreasureQuests,
+    string? ImagePath = null,
+    string? ImageUrl = null);
 
 public record LocationQuestDto(
     int Id,
