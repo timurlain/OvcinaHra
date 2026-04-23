@@ -218,3 +218,85 @@ window.ovcinaMap = {
         return div.innerHTML;
     }
 };
+
+// ----------------------------------------------------------------------
+// Mini-map helper: single-pin read-only mini maps, keyed by element id.
+// Used by LocationDetail › Upravit to preview a location's GPS position
+// alongside the editable coords. Multiple instances can coexist on the
+// page without conflicting with the main ovcinaMap used on /map.
+// ----------------------------------------------------------------------
+window.ovcinaMiniMap = {
+    _instances: {},
+
+    _rasterStyle: function (apiKey) {
+        if (apiKey && apiKey.length > 5) {
+            return {
+                version: 8,
+                sources: {
+                    'mapy-cz': {
+                        type: 'raster',
+                        tiles: ['https://api.mapy.cz/v1/maptiles/outdoor/256/{z}/{x}/{y}?apikey=' + apiKey],
+                        tileSize: 256,
+                        maxzoom: 19,
+                        attribution: '&copy; Mapy.cz'
+                    }
+                },
+                layers: [{ id: 'mapy-cz-tiles', type: 'raster', source: 'mapy-cz', minzoom: 0, maxzoom: 19 }]
+            };
+        }
+        return {
+            version: 8,
+            sources: {
+                'osm': {
+                    type: 'raster',
+                    tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                    tileSize: 256,
+                    maxzoom: 19,
+                    attribution: '&copy; OpenStreetMap'
+                }
+            },
+            layers: [{ id: 'osm-tiles', type: 'raster', source: 'osm', minzoom: 0, maxzoom: 19 }]
+        };
+    },
+
+    init: function (elementId, lat, lon, zoom, kindColor, mapyCzApiKey) {
+        var el = document.getElementById(elementId);
+        if (!el || typeof maplibregl === 'undefined') return;
+        // If already initialized with same coords, no-op.
+        var existing = this._instances[elementId];
+        if (existing) {
+            this.update(elementId, lat, lon);
+            return;
+        }
+
+        var map = new maplibregl.Map({
+            container: el,
+            style: this._rasterStyle(mapyCzApiKey),
+            center: [lon, lat],
+            zoom: zoom || 12,
+            interactive: false,       // read-only mini preview
+            attributionControl: false
+        });
+
+        var el2 = document.createElement('div');
+        el2.style.cssText = 'width:16px;height:16px;border-radius:50%;background:' +
+            (kindColor || '#2D5016') + ';border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);';
+        var marker = new maplibregl.Marker({ element: el2 }).setLngLat([lon, lat]).addTo(map);
+
+        this._instances[elementId] = { map: map, marker: marker };
+    },
+
+    update: function (elementId, lat, lon) {
+        var inst = this._instances[elementId];
+        if (!inst) return;
+        inst.marker.setLngLat([lon, lat]);
+        inst.map.jumpTo({ center: [lon, lat] });
+    },
+
+    dispose: function (elementId) {
+        var inst = this._instances[elementId];
+        if (!inst) return;
+        try { inst.map.remove(); } catch (e) { /* ignore */ }
+        delete this._instances[elementId];
+    }
+};

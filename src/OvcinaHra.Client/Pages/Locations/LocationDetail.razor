@@ -3,10 +3,14 @@
 @inject ApiClient Api
 @inject GameContextService GameContext
 @inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject IConfiguration Config
+@implements IAsyncDisposable
 @using OvcinaHra.Shared.Domain.Enums
 @using OvcinaHra.Shared.Dtos
 @using OvcinaHra.Shared.Extensions
 @using OvcinaHra.Client.Components
+@using Microsoft.JSInterop
 
 @if (loading)
 {
@@ -373,9 +377,34 @@ else
 
     private static readonly LocationKind[] kindValues = Enum.GetValues<LocationKind>();
 
-    private bool HasGps =>
-        decimal.TryParse(latitudeStr?.Replace(',', '.'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _)
-        && decimal.TryParse(longitudeStr?.Replace(',', '.'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _);
+    // LocationKind marker colors — canonical, distinct from kingdom palette.
+    // Matches MapPage markerColors and Claude Design brief. Used for the
+    // inline mini-map pin color in Upravit.
+    private static readonly Dictionary<LocationKind, string> KindMarkerColors = new()
+    {
+        [LocationKind.Town] = "#2c3e50",
+        [LocationKind.Village] = "#27ae60",
+        [LocationKind.Magical] = "#8e44ad",
+        [LocationKind.Hobbit] = "#f39c12",
+        [LocationKind.Wilderness] = "#16a085"
+    };
+
+    private string MiniMapElementId => $"oh-lc-gps-map-{Id}";
+    private bool miniMapInited;
+    private decimal? lastMiniMapLat, lastMiniMapLon;
+
+    private bool HasGps => ParseGps(out _, out _);
+
+    private bool ParseGps(out decimal lat, out decimal lon)
+    {
+        lat = 0; lon = 0;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var nf = System.Globalization.NumberStyles.Float;
+        if (string.IsNullOrWhiteSpace(latitudeStr) || string.IsNullOrWhiteSpace(longitudeStr))
+            return false;
+        return decimal.TryParse(latitudeStr.Replace(',', '.'), nf, inv, out lat)
+            && decimal.TryParse(longitudeStr.Replace(',', '.'), nf, inv, out lon);
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -502,4 +531,66 @@ else
         text.Split(new[] { "\r\n\r\n", "\n\n" }, StringSplitOptions.RemoveEmptyEntries)
             .Select(p => p.Trim())
             .Where(p => p.Length > 0);
+
+    // ---- Mini-map lifecycle --------------------------------------------
+    // Initializes a single-pin read-only MapLibre instance on the Upravit
+    // tab when GPS is set. Disposes when the user switches tabs away or
+    // clears GPS. Updates pin position when coordinates change.
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await ReconcileMiniMapAsync();
+    }
+
+    private async Task ReconcileMiniMapAsync()
+    {
+        decimal lat = 0, lon = 0;
+        var shouldShow = activeTab == "upravit" && loc is not null && ParseGps(out lat, out lon);
+
+        if (!shouldShow)
+        {
+            if (miniMapInited)
+            {
+                try { await JS.InvokeVoidAsync("ovcinaMiniMap.dispose", MiniMapElementId); } catch { }
+                miniMapInited = false;
+                lastMiniMapLat = null; lastMiniMapLon = null;
+            }
+            return;
+        }
+
+        var kindColor = KindMarkerColors.GetValueOrDefault(loc!.LocationKind, "#2D5016");
+        var apiKey = Config["Maps:MapyCzApiKey"] ?? "";
+
+        if (!miniMapInited)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("ovcinaMiniMap.init",
+                    MiniMapElementId, (double)lat, (double)lon, 12, kindColor, apiKey);
+                miniMapInited = true;
+                lastMiniMapLat = lat; lastMiniMapLon = lon;
+            }
+            catch { /* element may not be in DOM yet; retried on next render */ }
+            return;
+        }
+
+        if (lastMiniMapLat != lat || lastMiniMapLon != lon)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("ovcinaMiniMap.update",
+                    MiniMapElementId, (double)lat, (double)lon);
+                lastMiniMapLat = lat; lastMiniMapLon = lon;
+            }
+            catch { /* ignore transient errors */ }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (miniMapInited)
+        {
+            try { await JS.InvokeVoidAsync("ovcinaMiniMap.dispose", MiniMapElementId); } catch { }
+        }
+    }
 }
