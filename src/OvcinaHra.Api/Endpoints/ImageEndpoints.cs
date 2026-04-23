@@ -29,9 +29,20 @@ public static class ImageEndpoints
     /// Needed because the frontend (hra.ovcina.cz) and API (api.hra.ovcina.cz)
     /// live on different origins — a relative "/api/images/..." URL would be
     /// resolved by the browser against the frontend host and 404.
+    ///
+    /// Prefers a configured <c>Api:PublicBaseUrl</c> (set in prod via the
+    /// Azure Container App env var <c>Api__PublicBaseUrl=https://api.hra.ovcina.cz</c>)
+    /// to sidestep host-header injection — <c>AllowedHosts</c> is permissive
+    /// ("*") and <c>Request.Host</c> reflects the inbound header. Falls back to
+    /// <c>Request.Scheme+Host</c> for local dev where no config is set.
     /// </summary>
-    public static string ThumbUrl(HttpContext http, string entityType, int entityId, string size) =>
-        $"{http.Request.Scheme}://{http.Request.Host}/api/images/{entityType}/{entityId}/thumb?size={size}";
+    public static string ThumbUrl(HttpContext http, string entityType, int entityId, string size)
+    {
+        var config = http.RequestServices.GetRequiredService<IConfiguration>();
+        var baseUrl = config["Api:PublicBaseUrl"]?.TrimEnd('/')
+            ?? $"{http.Request.Scheme}://{http.Request.Host}";
+        return $"{baseUrl}/api/images/{entityType}/{entityId}/thumb?size={size}";
+    }
 
     private static async Task<IResult> GetThumbnail(
         string entityType, int entityId,
