@@ -486,3 +486,6 @@ src/OvcinaHra.Client/wwwroot/appsettings.Development.json
 
 # Git worktrees (Claude Code / superpowers)
 .worktrees/
+
+# Claude Design handoff bundles (large, regenerable)
+docs/design/handoff/
