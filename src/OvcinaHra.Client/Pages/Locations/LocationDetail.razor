@@ -350,6 +350,9 @@ else
     private LocationListDto? parent;
     private List<LocationListDto> variants = [];
     private List<LocationListDto> parentCandidates = [];
+    // Cached so the mini-map can paint surrounding orientation pins (issue #74)
+    // without re-fetching the catalog on every render.
+    private List<LocationListDto> allLocations = [];
     private string? mainImageUrl;
 
     private string activeTab = "karta";
@@ -445,13 +448,13 @@ else
 
             PopulateFormFromDto(detail);
 
-            // Parent + variants
-            var all = await Api.GetListAsync<LocationListDto>("/api/locations");
-            parentCandidates = all.Where(l => l.Id != Id).ToList();
+            // Parent + variants (and cached for the mini-map orientation pins, issue #74).
+            allLocations = await Api.GetListAsync<LocationListDto>("/api/locations");
+            parentCandidates = allLocations.Where(l => l.Id != Id).ToList();
             parent = detail.ParentLocationId.HasValue
-                ? all.FirstOrDefault(l => l.Id == detail.ParentLocationId.Value)
+                ? allLocations.FirstOrDefault(l => l.Id == detail.ParentLocationId.Value)
                 : null;
-            variants = all.Where(l => l.ParentLocationId == Id).ToList();
+            variants = allLocations.Where(l => l.ParentLocationId == Id).ToList();
 
             // Main image (ImagePicker has its own fetch, but we also render img on Karta)
             try
@@ -607,11 +610,13 @@ else
         {
             try
             {
+                // Issue #74: aerial photo style + tighter zoom (16, town-scale).
                 await JS.InvokeVoidAsync("ovcinaMiniMap.init",
-                    MiniMapElementId, (double)lat, (double)lon, 12, kindColor, apiKey);
+                    MiniMapElementId, (double)lat, (double)lon, 16, kindColor, apiKey, "aerial");
                 miniMapInited = true;
                 lastMiniMapLat = lat; lastMiniMapLon = lon;
                 lastMiniMapKind = locationKind;
+                await PaintContextMarkersAsync();
             }
             catch { /* element may not be in DOM yet; retried on next render */ }
             return;
@@ -627,6 +632,28 @@ else
             }
             catch { /* ignore transient errors */ }
         }
+    }
+
+    // Paint every other location with GPS as a small kind-colored dot for
+    // orientation. Issue #74 — organizers want context, not a single isolated pin.
+    private async Task PaintContextMarkersAsync()
+    {
+        if (!miniMapInited) return;
+        var ctx = allLocations
+            .Where(l => l.Id != Id && l.Latitude.HasValue && l.Longitude.HasValue)
+            .Select(l => new
+            {
+                lat = (double)l.Latitude!.Value,
+                lon = (double)l.Longitude!.Value,
+                name = l.Name,
+                color = KindMarkerColors.GetValueOrDefault(l.LocationKind, "#666")
+            })
+            .ToArray();
+        try
+        {
+            await JS.InvokeVoidAsync("ovcinaMiniMap.setContextMarkers", MiniMapElementId, ctx);
+        }
+        catch { /* ignore — surrounding pins are nice-to-have */ }
     }
 
     public async ValueTask DisposeAsync()

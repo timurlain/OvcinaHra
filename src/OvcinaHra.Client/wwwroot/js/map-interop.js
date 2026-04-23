@@ -228,14 +228,18 @@ window.ovcinaMap = {
 window.ovcinaMiniMap = {
     _instances: {},
 
-    _rasterStyle: function (apiKey) {
-        if (apiKey && apiKey.length > 5) {
+    // styleKey:
+    //   'aerial'  → Mapy.cz aerial (photo) — default for the LocationDetail orientation map (issue #74)
+    //   'outdoor' → Mapy.cz tourist raster (previous default)
+    //   anything else (or no apiKey) → OSM raster fallback
+    _styleFor: function (styleKey, apiKey) {
+        if (apiKey && apiKey.length > 5 && (styleKey === 'aerial' || styleKey === 'outdoor' || styleKey === 'basic')) {
             return {
                 version: 8,
                 sources: {
                     'mapy-cz': {
                         type: 'raster',
-                        tiles: ['https://api.mapy.cz/v1/maptiles/outdoor/256/{z}/{x}/{y}?apikey=' + apiKey],
+                        tiles: ['https://api.mapy.cz/v1/maptiles/' + styleKey + '/256/{z}/{x}/{y}?apikey=' + apiKey],
                         tileSize: 256,
                         maxzoom: 19,
                         attribution: '&copy; Mapy.cz'
@@ -259,10 +263,12 @@ window.ovcinaMiniMap = {
         };
     },
 
-    init: function (elementId, lat, lon, zoom, kindColor, mapyCzApiKey) {
+    // styleKey is optional — defaults to 'aerial' (photo map) for the LocationDetail
+    // orientation map (issue #74). Bumped default zoom from 12 to 16 so the user lands
+    // on a town-scale view, not a continent-scale one.
+    init: function (elementId, lat, lon, zoom, kindColor, mapyCzApiKey, styleKey) {
         var el = document.getElementById(elementId);
         if (!el || typeof maplibregl === 'undefined') return;
-        // If already initialized with same coords, no-op.
         var existing = this._instances[elementId];
         if (existing) {
             this.update(elementId, lat, lon);
@@ -271,19 +277,19 @@ window.ovcinaMiniMap = {
 
         var map = new maplibregl.Map({
             container: el,
-            style: this._rasterStyle(mapyCzApiKey),
+            style: this._styleFor(styleKey || 'aerial', mapyCzApiKey),
             center: [lon, lat],
-            zoom: zoom || 12,
-            interactive: false,       // read-only mini preview
+            zoom: zoom || 16,
+            interactive: false,
             attributionControl: false
         });
 
         var el2 = document.createElement('div');
-        el2.style.cssText = 'width:16px;height:16px;border-radius:50%;background:' +
-            (kindColor || '#2D5016') + ';border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);';
+        el2.style.cssText = 'width:18px;height:18px;border-radius:50%;background:' +
+            (kindColor || '#2D5016') + ';border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5);';
         var marker = new maplibregl.Marker({ element: el2 }).setLngLat([lon, lat]).addTo(map);
 
-        this._instances[elementId] = { map: map, marker: marker };
+        this._instances[elementId] = { map: map, marker: marker, contextMarkers: [] };
     },
 
     update: function (elementId, lat, lon) {
@@ -293,9 +299,41 @@ window.ovcinaMiniMap = {
         inst.map.jumpTo({ center: [lon, lat] });
     },
 
+    // Paint a set of small dots around the current location for orientation (issue #74).
+    // Each item: { lat, lon, name, color }.
+    // Replaces the previous context markers (so caller can rebuild on game switch).
+    setContextMarkers: function (elementId, markers) {
+        var inst = this._instances[elementId];
+        if (!inst) return;
+        // Clear previous context markers
+        if (inst.contextMarkers) {
+            for (var i = 0; i < inst.contextMarkers.length; i++) {
+                try { inst.contextMarkers[i].remove(); } catch (e) { /* ignore */ }
+            }
+        }
+        inst.contextMarkers = [];
+        if (!markers || !markers.length) return;
+        for (var j = 0; j < markers.length; j++) {
+            var m = markers[j];
+            if (m.lat == null || m.lon == null) continue;
+            var dot = document.createElement('div');
+            dot.title = m.name || '';
+            dot.style.cssText = 'width:10px;height:10px;border-radius:50%;background:' +
+                (m.color || '#666') +
+                ';border:1.5px solid rgba(255,255,255,.85);box-shadow:0 1px 2px rgba(0,0,0,.4);opacity:.85;';
+            var ctx = new maplibregl.Marker({ element: dot }).setLngLat([m.lon, m.lat]).addTo(inst.map);
+            inst.contextMarkers.push(ctx);
+        }
+    },
+
     dispose: function (elementId) {
         var inst = this._instances[elementId];
         if (!inst) return;
+        if (inst.contextMarkers) {
+            for (var i = 0; i < inst.contextMarkers.length; i++) {
+                try { inst.contextMarkers[i].remove(); } catch (e) { /* ignore */ }
+            }
+        }
         try { inst.map.remove(); } catch (e) { /* ignore */ }
         delete this._instances[elementId];
     }
