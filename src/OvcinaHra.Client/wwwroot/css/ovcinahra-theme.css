@@ -727,3 +727,537 @@
     margin-top: 2px;
 }
 
+/* ============================================================
+   Location detail page — Claude Design handoff, 2026-04-23
+   Route: /locations/{id:int}
+   Scope: every selector prefixed .oh-lc-* to avoid clashing with
+   the existing .location-card-* treatment or Bootstrap classes.
+   ============================================================ */
+
+/* --- Page shell + tab strip --- */
+.oh-lc-page {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 16px 40px 48px;
+    font-family: var(--oh-font-body);
+    color: var(--oh-text);
+}
+
+.oh-lc-crumb {
+    font-size: 0.8125rem;
+    color: var(--oh-text-secondary);
+    margin-bottom: 6px;
+}
+.oh-lc-crumb a { color: var(--oh-primary-light); text-decoration: none; }
+.oh-lc-crumb a:hover { color: var(--oh-primary); text-decoration: underline; }
+
+.oh-lc-title-strip {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--oh-border);
+    margin-bottom: 0;
+}
+.oh-lc-title-strip .oh-lc-back {
+    padding: 6px 10px;
+    font-size: 0.8125rem;
+    color: var(--oh-text-secondary);
+    background: transparent;
+    border: 1px solid var(--oh-border);
+    border-radius: var(--oh-radius-sm);
+    cursor: pointer;
+    transition: var(--oh-transition);
+    text-decoration: none;
+    display: inline-flex; align-items: center; gap: 6px;
+}
+.oh-lc-title-strip .oh-lc-back:hover { color: var(--oh-primary); border-color: var(--oh-primary-light); }
+.oh-lc-title-strip h1 {
+    font-family: var(--oh-font-heading);
+    font-size: var(--oh-fs-2xl, 1.75rem);
+    color: var(--oh-primary);
+    margin: 0;
+    line-height: 1.2;
+}
+.oh-lc-title-sub {
+    font-size: 0.875rem;
+    color: var(--oh-text-secondary);
+    margin-top: 4px;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.oh-lc-title-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+.oh-lc-tabs {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    border-bottom: 1px solid var(--oh-border);
+    background: var(--oh-surface);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    margin: 0 -40px 24px;
+    padding: 0 40px;
+}
+.oh-lc-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 12px 18px;
+    min-height: 44px;
+    border: none;
+    border-bottom: 3px solid transparent;
+    background: transparent;
+    color: var(--oh-text-secondary);
+    font: 600 0.875rem var(--oh-font-body);
+    cursor: pointer;
+    transition: 0.15s;
+    margin-bottom: -1px;
+}
+.oh-lc-tab i { font-size: 0.9375rem; opacity: 0.7; }
+.oh-lc-tab:hover { color: var(--oh-primary); }
+.oh-lc-tab.active { color: var(--oh-primary); border-bottom-color: var(--oh-primary); }
+.oh-lc-tab.active i { opacity: 1; color: var(--oh-primary-light); }
+.oh-lc-tab .oh-lc-count {
+    font-family: var(--oh-font-mono);
+    font-size: 0.75rem;
+    color: var(--oh-text-secondary);
+    background: var(--oh-surface-alt);
+    border: 1px solid var(--oh-border);
+    border-radius: 99px;
+    padding: 1px 7px;
+    min-width: 22px;
+    text-align: center;
+    font-weight: 500;
+}
+.oh-lc-tab.active .oh-lc-count {
+    color: var(--oh-primary);
+    border-color: rgba(74, 124, 52, 0.3);
+    background: var(--oh-primary-surface);
+}
+
+/* --- Section labels (used in Upravit + Skrýše) --- */
+.oh-lc-sect {
+    margin-bottom: 28px;
+}
+.oh-lc-sect-label {
+    font-family: var(--oh-font-body);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--oh-text-secondary);
+    padding-bottom: 8px;
+    margin: 0 0 14px;
+    border-bottom: 1px solid var(--oh-border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.oh-lc-sect-label i { color: var(--oh-primary-light); font-size: 0.875rem; }
+
+/* --- Karta (parchment card) — fresh rules, coexist with legacy .location-card-* --- */
+.oh-lc-card {
+    position: relative;
+    background: linear-gradient(145deg, #f5f0e8 0%, #ebe4d4 40%, #e8dcc8 100%);
+    border: 1px solid #d4c5a9;
+    border-radius: 6px;
+    padding: 1.75rem 2rem 1.5rem;
+    min-height: 420px;
+    overflow: hidden;
+}
+.oh-lc-card::before {
+    content: ''; position: absolute; inset: 0;
+    background:
+        radial-gradient(ellipse at 20% 10%, rgba(139,119,80,.06) 0%, transparent 60%),
+        radial-gradient(ellipse at 85% 90%, rgba(139,119,80,.05) 0%, transparent 55%);
+    pointer-events: none;
+}
+.oh-lc-card > * { position: relative; z-index: 1; }
+.oh-lc-card-title {
+    font: 900 2.4rem var(--oh-font-heading);
+    color: #3a2e1e;
+    text-align: right;
+    margin: 0;
+    line-height: 1.1;
+}
+.oh-lc-card-region {
+    font: italic 1rem Georgia, serif;
+    color: #8b7750;
+    text-align: right;
+    margin: 4px 0 20px;
+    letter-spacing: 0.02em;
+}
+.oh-lc-card-body {
+    display: grid;
+    grid-template-columns: 42fr 58fr;
+    gap: 28px;
+    align-items: start;
+}
+@media (max-width: 820px) {
+    .oh-lc-card-body { grid-template-columns: 1fr; }
+}
+.oh-lc-card-text p {
+    font: 400 1.05rem/1.65 Georgia, serif;
+    color: #3a2e1e;
+    text-align: justify;
+    hyphens: auto;
+    margin: 0 0 0.75em;
+}
+.oh-lc-card-text p:last-child { margin-bottom: 0; }
+.oh-lc-card-right { display: flex; flex-direction: column; gap: 12px; }
+.oh-lc-card-img {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border: 2px solid #c4b494;
+    border-radius: 4px;
+    box-shadow: 2px 3px 12px rgba(58, 46, 30, 0.2);
+    overflow: hidden;
+    position: relative;
+    background: linear-gradient(145deg, #ede1c8, #c4b494);
+}
+.oh-lc-card-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.oh-lc-card-img-caption {
+    display: flex; align-items: center; justify-content: space-between;
+    font: italic 0.8125rem Georgia, serif;
+    color: #8b7750;
+    padding: 0 2px;
+}
+
+.oh-lc-card-details {
+    margin-top: 20px; padding-top: 14px;
+    border-top: 1px solid #c4b494;
+    display: flex; gap: 16px; align-items: flex-start;
+}
+.oh-lc-card-id {
+    font: 700 1.5rem var(--oh-font-mono);
+    color: #b0a48a;
+    border: 2px solid rgba(178, 98, 35, 0.35);
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: rgba(255, 248, 240, 0.35);
+    line-height: 1;
+}
+.oh-lc-card-details p {
+    font: 400 0.82rem/1.6 Georgia, serif;
+    color: #5a4f3f;
+    margin: 0;
+    text-align: justify;
+    flex: 1;
+}
+
+.oh-lc-card-potential {
+    margin-top: 18px;
+    padding: 12px 16px;
+    background: rgba(255, 248, 240, 0.55);
+    border: 1px solid rgba(178, 98, 35, 0.25);
+    border-left: 3px solid var(--oh-card-border);
+    border-radius: 4px;
+    font: 400 0.95rem/1.55 Georgia, serif;
+    color: #3a2e1e;
+}
+.oh-lc-card-potential strong {
+    color: #3a2e1e;
+    font-weight: 700;
+    font-family: var(--oh-font-heading);
+    margin-right: 4px;
+}
+
+.oh-lc-card-variants {
+    margin-top: 18px; padding-top: 12px;
+    border-top: 1px dashed #c4b494;
+    font: 400 0.875rem Georgia, serif;
+    color: #5a4f3f;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.oh-lc-card-variants .oh-lc-vlbl {
+    font-weight: 700; color: #3a2e1e;
+    font-family: var(--oh-font-heading);
+}
+.oh-lc-vchip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px;
+    border-radius: 99px;
+    background: rgba(255, 248, 240, 0.6);
+    border: 1px solid #c4b494;
+    color: var(--oh-primary);
+    text-decoration: none;
+    font: 500 0.8125rem var(--oh-font-body);
+    transition: 0.15s;
+}
+.oh-lc-vchip:hover {
+    background: #fff;
+    border-color: var(--oh-primary-light);
+    box-shadow: 0 1px 3px rgba(45, 80, 22, 0.15);
+}
+.oh-lc-vchip i { font-size: 0.75rem; opacity: 0.7; }
+
+.oh-lc-card-empty {
+    min-height: 340px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+    padding: 20px;
+    border: 1.5px dashed #c4b494;
+    border-radius: 4px;
+    color: #8b7750;
+    background: rgba(255, 248, 240, 0.3);
+}
+.oh-lc-card-empty .oh-lc-empty-title {
+    font: italic 700 1.05rem Georgia, serif;
+    color: #5a4f3f;
+    margin-bottom: 4px;
+}
+.oh-lc-card-empty .oh-lc-empty-copy {
+    font: 400 0.9rem Georgia, serif;
+    color: #8b7750;
+    max-width: 280px;
+    line-height: 1.5;
+}
+
+/* --- Upravit: inline map panel on GPS row --- */
+.oh-lc-gps-block {
+    display: grid;
+    grid-template-columns: 1fr 260px;
+    gap: 20px;
+    align-items: start;
+    margin-bottom: 18px;
+}
+@media (max-width: 900px) { .oh-lc-gps-block { grid-template-columns: 1fr; } }
+.oh-lc-gps-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.oh-lc-gps-map {
+    width: 100%;
+    height: 195px;
+    border: 1px solid var(--oh-border);
+    border-radius: var(--oh-radius);
+    overflow: hidden;
+    background: linear-gradient(135deg, #c8d4b8 0%, #9fb68a 50%, #7a9a6a 100%);
+    position: relative;
+    cursor: pointer;
+}
+.oh-lc-gps-map-empty {
+    width: 100%; height: 195px;
+    border: 1.5px dashed var(--oh-border);
+    border-radius: var(--oh-radius);
+    background: var(--oh-surface-alt);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--oh-text-secondary);
+    font-size: 0.8125rem;
+    text-align: center;
+    padding: 16px;
+}
+.oh-lc-gps-map-footer {
+    margin-top: 6px;
+    display: flex; justify-content: space-between;
+    font-size: 0.75rem; color: var(--oh-text-secondary);
+}
+.oh-lc-gps-map-footer .oh-lc-gps-coords { font-family: var(--oh-font-mono); }
+
+/* --- Upravit: image slot pair (main 1:1, placement 4:3) --- */
+.oh-lc-visual-slots {
+    display: grid;
+    grid-template-columns: auto auto;
+    gap: 28px;
+    align-items: start;
+}
+@media (max-width: 820px) {
+    .oh-lc-visual-slots { grid-template-columns: 1fr; }
+}
+
+/* --- Lore two-pane --- */
+.oh-lc-lore-cols {
+    display: grid;
+    grid-template-columns: 60fr 40fr;
+    gap: 24px;
+    align-items: start;
+}
+@media (max-width: 1024px) { .oh-lc-lore-cols { grid-template-columns: 1fr; } }
+.oh-lc-lore-preview {
+    padding: 28px 32px;
+    border: 1px solid #d4c5a9;
+    border-radius: var(--oh-radius);
+    background: linear-gradient(145deg, #f5f0e8 0%, #ebe4d4 40%, #e8dcc8 100%);
+    min-height: 520px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: inset 0 0 30px rgba(139, 119, 80, 0.08);
+}
+.oh-lc-lore-preview::before {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background:
+        radial-gradient(ellipse at 20% 10%, rgba(139,119,80,.06) 0%, transparent 60%),
+        radial-gradient(ellipse at 85% 90%, rgba(139,119,80,.05) 0%, transparent 55%);
+}
+.oh-lc-lore-preview p {
+    font: 400 1.1rem/1.75 Georgia, serif;
+    color: #3a2e1e;
+    text-align: justify;
+    hyphens: auto;
+    margin: 0 0 1em;
+    position: relative;
+}
+.oh-lc-lore-preview p:last-child { margin-bottom: 0; }
+.oh-lc-lore-memo {
+    width: 100%;
+    min-height: 520px;
+    padding: 16px 18px;
+    background: var(--oh-surface);
+    border: 1px solid var(--oh-border);
+    border-radius: var(--oh-radius);
+    font: 400 1rem/1.65 var(--oh-font-body);
+    color: var(--oh-text);
+    resize: vertical;
+    transition: 0.2s;
+}
+.oh-lc-lore-memo:focus {
+    outline: none;
+    border-color: var(--oh-primary-light);
+    box-shadow: 0 0 0 3px rgba(74, 124, 52, 0.15);
+    background: #fff;
+}
+.oh-lc-lore-edit-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+}
+.oh-lc-lore-toggle {
+    display: inline-flex;
+    background: var(--oh-surface-alt);
+    border: 1px solid var(--oh-border);
+    border-radius: 99px;
+    padding: 2px; gap: 2px;
+}
+.oh-lc-lore-toggle button {
+    border: none; background: transparent;
+    padding: 5px 11px;
+    border-radius: 99px;
+    font: 600 0.75rem var(--oh-font-body);
+    color: var(--oh-text-secondary);
+    cursor: pointer;
+    transition: 0.15s;
+}
+.oh-lc-lore-toggle button.on {
+    background: var(--oh-primary);
+    color: #fff;
+}
+
+/* --- Skrýše: MTG card-sized tiles (5:7, 2.5×3.5 in) --- */
+.oh-lc-stash-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 18px;
+}
+.oh-lc-stash-head h3 {
+    margin: 0;
+    font-size: 1.15rem;
+    display: flex; align-items: center; gap: 8px;
+}
+.oh-lc-stash-head h3 .oh-lc-stash-count {
+    font-family: var(--oh-font-mono);
+    color: var(--oh-text-secondary);
+    font-weight: 500;
+    font-size: 0.9375rem;
+}
+.oh-lc-stash-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px 20px;
+}
+@media (max-width: 1024px) { .oh-lc-stash-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px)  { .oh-lc-stash-grid { grid-template-columns: 1fr; } }
+
+.oh-lc-tile {
+    background: var(--oh-surface);
+    border: 1px solid var(--oh-border);
+    border-radius: var(--oh-radius);
+    overflow: hidden;
+    cursor: pointer;
+    transition: 0.2s;
+    display: flex; flex-direction: column;
+    box-shadow: var(--oh-shadow);
+    text-decoration: none;
+    color: inherit;
+}
+.oh-lc-tile:hover {
+    transform: translateY(-2px);
+    background: var(--oh-primary-surface);
+    border-color: var(--oh-primary-light);
+    box-shadow: 0 4px 12px rgba(45, 80, 22, 0.14);
+}
+.oh-lc-tile-img {
+    width: 100%;
+    aspect-ratio: 5 / 7;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(145deg, #3a3226 0%, #2c1810 100%);
+}
+.oh-lc-tile-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.oh-lc-tile-img-empty {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: rgba(255, 248, 240, 0.4);
+    font: italic 500 0.75rem Georgia, serif;
+}
+.oh-lc-tile-mtgtag {
+    position: absolute; bottom: 8px; right: 8px;
+    font-family: var(--oh-font-mono);
+    font-size: 0.625rem;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: rgba(255, 248, 240, 0.85);
+    color: var(--oh-text-secondary);
+    letter-spacing: 0.04em;
+}
+.oh-lc-tile-body {
+    padding: 12px 14px;
+    flex: 1;
+    display: flex; flex-direction: column; gap: 8px;
+}
+.oh-lc-tile-name {
+    font: 700 1rem var(--oh-font-heading);
+    color: var(--oh-primary);
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.oh-lc-tile-sep { height: 1px; background: rgba(178, 98, 35, 0.3); }
+.oh-lc-tile-quests {
+    display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none;
+}
+.oh-lc-tile-quest {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.8125rem;
+    color: var(--oh-text);
+    line-height: 1.3;
+}
+.oh-lc-tile-quest::before {
+    content: "";
+    width: 3px; height: 3px;
+    border-radius: 50%;
+    background: var(--oh-text-secondary);
+    flex-shrink: 0;
+}
+.oh-lc-tile-quest-name {
+    flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.oh-lc-tile-quest-pill {
+    flex-shrink: 0;
+    padding: 1px 7px;
+    border-radius: 99px;
+    background: rgba(249, 168, 37, 0.2);
+    border: 1px solid rgba(200, 135, 30, 0.4);
+    color: #7a5210;
+    font: 600 0.625rem var(--oh-font-body);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+.oh-lc-tile-more {
+    margin-top: auto;
+    font: italic 500 0.75rem var(--oh-font-body);
+    color: var(--oh-text-secondary);
+}
+

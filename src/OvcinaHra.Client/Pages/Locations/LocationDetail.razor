@@ -1,0 +1,505 @@
+@page "/locations/{Id:int}"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject GameContextService GameContext
+@inject NavigationManager Nav
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Dtos
+@using OvcinaHra.Shared.Extensions
+@using OvcinaHra.Client.Components
+
+@if (loading)
+{
+    <div class="oh-lc-page"><p>Načítám…</p></div>
+}
+else if (loc is null)
+{
+    <div class="oh-lc-page">
+        <p class="text-muted">Lokace nenalezena.</p>
+        <a class="btn btn-secondary" href="/locations">← zpět na seznam</a>
+    </div>
+}
+else
+{
+    <div class="oh-lc-page">
+
+        <div class="oh-lc-crumb">
+            <a href="/locations">Lokace</a> / <span>@loc.Name</span>
+        </div>
+
+        <div class="oh-lc-title-strip">
+            <a class="oh-lc-back" href="/locations"><i class="bi bi-arrow-left"></i> zpět</a>
+            <div>
+                <h1>@loc.Name</h1>
+                <div class="oh-lc-title-sub">
+                    @if (!string.IsNullOrWhiteSpace(loc.Region))
+                    {
+                        <span class="region">@loc.Region</span>
+                        <span>·</span>
+                    }
+                    <span>@loc.LocationKind.GetDisplayName()</span>
+                    @if (parent is not null)
+                    {
+                        <span>·</span>
+                        <a href="/locations/@parent.Id" class="oh-link"><i class="bi bi-arrow-up-short"></i> @parent.Name</a>
+                    }
+                </div>
+            </div>
+            <div class="oh-lc-title-actions">
+                @if (activeTab == "upravit")
+                {
+                    <button class="btn btn-secondary" @onclick='() => SwitchTab("karta")' disabled="@isSaving">Zrušit</button>
+                    <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(isSaving || string.IsNullOrWhiteSpace(name))">Uložit</button>
+                }
+                else
+                {
+                    <button class="btn btn-secondary" @onclick='() => SwitchTab("upravit")'>
+                        <i class="bi bi-pencil me-1"></i> Upravit
+                    </button>
+                    <button class="btn oh-btn-ghost-bordeaux" @onclick="() => isDeleteVisible = true">
+                        <i class="bi bi-trash me-1"></i> Smazat
+                    </button>
+                }
+            </div>
+        </div>
+
+        <div class="oh-lc-tabs" role="tablist">
+            <button class="oh-lc-tab @(activeTab == "karta" ? "active" : "")" @onclick='() => SwitchTab("karta")'>
+                <i class="bi bi-card-text"></i> Karta
+            </button>
+            <button class="oh-lc-tab @(activeTab == "upravit" ? "active" : "")" @onclick='() => SwitchTab("upravit")'>
+                <i class="bi bi-pencil"></i> Upravit
+            </button>
+            <button class="oh-lc-tab @(activeTab == "lore" ? "active" : "")" @onclick='() => SwitchTab("lore")'>
+                <i class="bi bi-book"></i> Lore
+            </button>
+            <button class="oh-lc-tab @(activeTab == "skryse" ? "active" : "")" @onclick='() => SwitchTab("skryse")'>
+                <i class="bi bi-safe"></i> Skrýše
+                @if ((loc.Stashes?.Count ?? 0) > 0)
+                {
+                    <span class="oh-lc-count">@loc.Stashes!.Count</span>
+                }
+            </button>
+        </div>
+
+        @if (error is not null)
+        {
+            <div class="oh-drozd-val mb-3">
+                <i class="bi bi-exclamation-circle oh-drozd-val-icon"></i>
+                <div>
+                    <div class="oh-drozd-val-title">Něco se pokazilo</div>
+                    <div class="oh-drozd-val-msg">@error</div>
+                </div>
+            </div>
+        }
+
+        @* ── Tab: Karta (read parchment card) ── *@
+        @if (activeTab == "karta")
+        {
+            if (string.IsNullOrWhiteSpace(loc.Description) && mainImageUrl is null)
+            {
+                <div class="oh-lc-card">
+                    <h1 class="oh-lc-card-title">@loc.Name</h1>
+                    @if (!string.IsNullOrWhiteSpace(loc.Region))
+                    {
+                        <div class="oh-lc-card-region">@loc.Region — @loc.LocationKind.GetDisplayName()</div>
+                    }
+                    <div class="oh-lc-card-empty">
+                        <div class="oh-lc-empty-title">Tato lokace ještě čeká na popis</div>
+                        <div class="oh-lc-empty-copy">Napiš první popis a nahraj obrázek na záložce <strong>Upravit</strong>.</div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="oh-lc-card">
+                    <h1 class="oh-lc-card-title">@loc.Name</h1>
+                    <div class="oh-lc-card-region">
+                        @if (!string.IsNullOrWhiteSpace(loc.Region)) { @loc.Region <text> — </text> }
+                        @loc.LocationKind.GetDisplayName()
+                    </div>
+                    <div class="oh-lc-card-body">
+                        <div class="oh-lc-card-text">
+                            @if (!string.IsNullOrWhiteSpace(loc.Description))
+                            {
+                                <p>@loc.Description</p>
+                            }
+                        </div>
+                        <div class="oh-lc-card-right">
+                            <div class="oh-lc-card-img">
+                                @if (mainImageUrl is not null)
+                                {
+                                    <img src="@mainImageUrl" alt="@loc.Name" />
+                                }
+                            </div>
+                            <div class="oh-lc-card-img-caption">
+                                <span>Znak lokace</span>
+                                <span>1:1</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(loc.Details))
+                    {
+                        <div class="oh-lc-card-details">
+                            <span class="oh-lc-card-id">@loc.Id.ToString("D2")</span>
+                            <p>@loc.Details</p>
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(loc.GamePotential))
+                    {
+                        <div class="oh-lc-card-potential">
+                            <strong>Herní potenciál:</strong> @loc.GamePotential
+                        </div>
+                    }
+
+                    @if (variants.Count > 0)
+                    {
+                        <div class="oh-lc-card-variants">
+                            <span class="oh-lc-vlbl">Varianty (@variants.Count):</span>
+                            @foreach (var v in variants)
+                            {
+                                <a class="oh-lc-vchip" href="/locations/@v.Id">
+                                    <i class="bi bi-arrow-right-short"></i> @v.Name
+                                </a>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        }
+
+        @* ── Tab: Upravit (form with inline map panel) ── *@
+        @if (activeTab == "upravit")
+        {
+            <div class="oh-lc-sect">
+                <div class="oh-lc-sect-label"><i class="bi bi-card-heading"></i> Identita</div>
+                <DxFormLayout>
+                    <DxFormLayoutItem Caption="Název" ColSpanMd="8">
+                        <DxTextBox @bind-Text="@name" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Druh" ColSpanMd="4">
+                        <DxComboBox TData="LocationKind" TValue="LocationKind"
+                                    Data="@kindValues" @bind-Value="@locationKind"
+                                    NullText="-- vyber --" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Oblast" ColSpanMd="6">
+                        <DxTextBox @bind-Text="@region" NullText="(volitelné)" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Rodič" ColSpanMd="6">
+                        <DxComboBox TData="LocationListDto" TValue="int?"
+                                    Data="@parentCandidates" @bind-Value="@parentLocationId"
+                                    TextFieldName="Name" ValueFieldName="Id"
+                                    NullText="(žádný)" SearchMode="ListSearchMode.AutoSearch" />
+                    </DxFormLayoutItem>
+                </DxFormLayout>
+            </div>
+
+            <div class="oh-lc-sect">
+                <div class="oh-lc-sect-label"><i class="bi bi-geo-alt"></i> GPS</div>
+                <div class="oh-lc-gps-block">
+                    <div class="oh-lc-gps-row">
+                        <DxFormLayoutItem Caption="Latitude" ColSpanMd="12">
+                            <DxTextBox @bind-Text="@latitudeStr" NullText="např. 49,4543192" />
+                        </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="Longitude" ColSpanMd="12">
+                            <DxTextBox @bind-Text="@longitudeStr" NullText="např. 18,0203280" />
+                        </DxFormLayoutItem>
+                    </div>
+                    <div>
+                        @if (HasGps)
+                        {
+                            <div class="oh-lc-gps-map" id="oh-lc-gps-map-@Id"
+                                 title="Klik otevře plnou mapu"
+                                 @onclick="OpenFullMap"></div>
+                            <div class="oh-lc-gps-map-footer">
+                                <span class="oh-lc-gps-coords">@latitudeStr, @longitudeStr</span>
+                                <a href="/map?focus=@Id">otevřít v plné mapě →</a>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="oh-lc-gps-map-empty">
+                                <span><i class="bi bi-geo"></i> Nastav souřadnice vlevo, mini-mapa se objeví.</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="oh-lc-sect">
+                <div class="oh-lc-sect-label"><i class="bi bi-image"></i> Vizuál</div>
+                <div class="oh-lc-visual-slots">
+                    <div>
+                        <small class="text-muted d-block mb-1">Hlavní obrázek (1:1)</small>
+                        <ImagePicker EntityType="locations" EntityId="@Id"
+                                     AspectRatio="1:1" Width="280px" Alt="Hlavní obrázek" />
+                    </div>
+                    <div>
+                        <small class="text-muted d-block mb-1">Fotka umístění (4:3)</small>
+                        <ImagePicker EntityType="locations" EntityId="@Id" Field="placement"
+                                     AspectRatio="4:3" Width="360px" Alt="Fotka umístění" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="oh-lc-sect">
+                <div class="oh-lc-sect-label"><i class="bi bi-card-text"></i> Obsah</div>
+                <DxFormLayout>
+                    <DxFormLayoutItem Caption="Popis (pro kartu)" ColSpanMd="12">
+                        <DxMemo @bind-Text="@description" Rows="4" NullText="Čtenářský popis lokace…" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Detaily (pravidlové poznámky)" ColSpanMd="12">
+                        <DxMemo @bind-Text="@details" Rows="5" NullText="Pravidlové poznámky, vazby…" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Herní potenciál" ColSpanMd="12">
+                        <DxMemo @bind-Text="@gamePotential" Rows="3" NullText="Co lokace nabízí hrám…" />
+                    </DxFormLayoutItem>
+                </DxFormLayout>
+            </div>
+
+            <div class="oh-lc-sect">
+                <div class="oh-lc-sect-label"><i class="bi bi-clipboard"></i> Organizační</div>
+                <DxFormLayout>
+                    <DxFormLayoutItem Caption="Info pro CP (NPC)" ColSpanMd="12">
+                        <DxMemo @bind-Text="@npcInfo" Rows="3" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Co nachystat na lokaci" ColSpanMd="12">
+                        <DxMemo @bind-Text="@setupNotes" Rows="3" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Prompt (generátor)" ColSpanMd="12">
+                        <DxTextBox @bind-Text="@prompt" NullText="volitelné — generátor scén" />
+                    </DxFormLayoutItem>
+                </DxFormLayout>
+            </div>
+        }
+
+        @* ── Tab: Lore (preview vs editor) ── *@
+        @if (activeTab == "lore")
+        {
+            <div class="oh-lc-lore-cols">
+                <div class="oh-lc-lore-preview">
+                    @if (!string.IsNullOrWhiteSpace(loc.Description))
+                    {
+                        foreach (var para in SplitParagraphs(loc.Description))
+                        {
+                            <p>@para</p>
+                        }
+                    }
+                    else
+                    {
+                        <p class="text-muted"><em>Žádný popis — napiš první řádky příběhu lokace vpravo.</em></p>
+                    }
+                </div>
+                <div>
+                    <div class="oh-lc-lore-edit-head">
+                        <div class="oh-lc-sect-label" style="border:none;padding:0;margin:0"><i class="bi bi-pencil"></i> Editor</div>
+                    </div>
+                    <textarea class="oh-lc-lore-memo"
+                              placeholder="Napiš lore textů lokace — čtenářský, ne pravidlový…"
+                              @bind="loreText" @bind:event="oninput"></textarea>
+                    <div class="d-flex justify-content-end mt-2">
+                        <button class="btn btn-primary" @onclick="SaveLoreAsync" disabled="@isSaving">Uložit lore</button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* ── Tab: Skrýše (MTG tiles) ── *@
+        @if (activeTab == "skryse")
+        {
+            <div class="oh-lc-stash-head">
+                <h3>
+                    <i class="bi bi-safe"></i>
+                    Skrýše v této lokaci
+                    <span class="oh-lc-stash-count">(@(loc.Stashes?.Count ?? 0))</span>
+                </h3>
+                <a class="btn btn-outline-secondary" href="/secret-stashes">
+                    <i class="bi bi-plus-lg me-1"></i> Spravovat skrýše
+                </a>
+            </div>
+
+            @if ((loc.Stashes?.Count ?? 0) == 0)
+            {
+                <div class="oh-lc-card-empty">
+                    <div class="oh-lc-empty-title">Žádné skrýše zatím nejsou přiřazené</div>
+                    <div class="oh-lc-empty-copy">Přiřaď skrýš k této lokaci přes stránku <strong>Tajné skrýše</strong>.</div>
+                </div>
+            }
+            else
+            {
+                <div class="oh-lc-stash-grid">
+                    @foreach (var stash in loc.Stashes!)
+                    {
+                        <LocationStashTile Stash="stash" />
+                    }
+                </div>
+            }
+        }
+    </div>
+}
+
+@* Delete confirmation popup — MEMORY §D *@
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="420px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Opravdu chcete smazat lokaci <strong>@loc?.Name</strong>?</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private LocationListDto? loc;
+    private LocationListDto? parent;
+    private List<LocationListDto> variants = [];
+    private List<LocationListDto> parentCandidates = [];
+    private string? mainImageUrl;
+
+    private string activeTab = "karta";
+    private bool loading = true, isSaving, isDeleteVisible;
+    private string? error;
+
+    // Form state (duplicate of loc for edit mode)
+    private string name = "";
+    private LocationKind locationKind;
+    private string? region, description, details, gamePotential, npcInfo, setupNotes, prompt, loreText;
+    private string latitudeStr = "", longitudeStr = "";
+    private int? parentLocationId;
+
+    private static readonly LocationKind[] kindValues = Enum.GetValues<LocationKind>();
+
+    private bool HasGps =>
+        decimal.TryParse(latitudeStr?.Replace(',', '.'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _)
+        && decimal.TryParse(longitudeStr?.Replace(',', '.'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await GameContext.InitializeAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true; error = null;
+        try
+        {
+            loc = await Api.GetAsync<LocationListDto>($"/api/locations/{Id}");
+            if (loc is null) { loading = false; return; }
+
+            PopulateFormFromDto(loc);
+
+            // Parent + variants
+            var all = await Api.GetListAsync<LocationListDto>("/api/locations");
+            parentCandidates = all.Where(l => l.Id != Id).ToList();
+            parent = loc.ParentLocationId.HasValue
+                ? all.FirstOrDefault(l => l.Id == loc.ParentLocationId.Value)
+                : null;
+            variants = all.Where(l => l.ParentLocationId == Id).ToList();
+
+            // Main image (ImagePicker has its own fetch, but we also render img on Karta)
+            try
+            {
+                var urls = await Api.GetAsync<ImageUrlsDto>($"/api/images/locations/{Id}");
+                mainImageUrl = urls?.ImageUrl;
+            }
+            catch { mainImageUrl = null; }
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { loading = false; }
+    }
+
+    private void PopulateFormFromDto(LocationListDto d)
+    {
+        name = d.Name;
+        locationKind = d.LocationKind;
+        region = d.Region;
+        description = d.Description;
+        details = d.Details;
+        gamePotential = d.GamePotential;
+        npcInfo = d.NpcInfo;
+        setupNotes = d.SetupNotes;
+        prompt = null; // Prompt not on ListDto; future: fetch from dedicated detail endpoint
+        parentLocationId = d.ParentLocationId;
+        latitudeStr = d.Latitude?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "";
+        longitudeStr = d.Longitude?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "";
+        loreText = d.Description;
+    }
+
+    private void SwitchTab(string tab) => activeTab = tab;
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(name)) return;
+        error = null; isSaving = true;
+        try
+        {
+            await Api.PutAsync($"/api/locations/{Id}", BuildUpdateDto());
+            await LoadAsync();
+            activeTab = "karta";
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task SaveLoreAsync()
+    {
+        if (loc is null) return;
+        error = null; isSaving = true;
+        try
+        {
+            description = loreText;
+            await Api.PutAsync($"/api/locations/{Id}", BuildUpdateDto());
+            await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private UpdateLocationDto BuildUpdateDto()
+    {
+        decimal? lat = null, lon = null;
+        if (decimal.TryParse(latitudeStr?.Replace(',', '.'), System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var la))
+            lat = la;
+        if (decimal.TryParse(longitudeStr?.Replace(',', '.'), System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var lo))
+            lon = lo;
+
+        return new UpdateLocationDto(
+            Name: name,
+            LocationKind: locationKind,
+            Latitude: lat,
+            Longitude: lon,
+            Description: description,
+            Details: details,
+            GamePotential: gamePotential,
+            Prompt: prompt,
+            Region: region,
+            NpcInfo: npcInfo,
+            SetupNotes: setupNotes,
+            ParentLocationId: parentLocationId);
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        try
+        {
+            await Api.DeleteAsync($"/api/locations/{Id}");
+            isDeleteVisible = false;
+            Nav.NavigateTo("/locations");
+        }
+        catch (Exception ex) { error = ex.Message; isDeleteVisible = false; }
+    }
+
+    private void OpenFullMap() => Nav.NavigateTo($"/map?focus={Id}");
+
+    private static IEnumerable<string> SplitParagraphs(string text) =>
+        text.Split(new[] { "\r\n\r\n", "\n\n" }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(p => p.Trim())
+            .Where(p => p.Length > 0);
+}
