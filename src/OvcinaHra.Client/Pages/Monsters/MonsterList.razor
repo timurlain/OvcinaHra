@@ -13,7 +13,7 @@
             <button class="btn btn-sm @(Catalog ? "btn-primary" : "btn-outline-primary")"
                     @onclick='() => Nav.NavigateTo("/monsters?catalog=true")'>Katalog</button>
         </div>
-        <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nová příšera</button>
+        <button class="btn btn-primary" @onclick="() => OpenEditModal(null)">+ Nová příšera</button>
     </div>
 </div>
 
@@ -21,56 +21,156 @@
 {
     <p>Načítám...</p>
 }
-else if (!Catalog && monsters.Count == 0)
-{
-    <div class="text-center text-muted py-5">
-        <i class="bi bi-emoji-neutral fs-1 d-block mb-2"></i>
-        <p>Žádné příšery přiřazeny k této hře.</p>
-        <button class="btn btn-outline-primary" @onclick='() => Nav.NavigateTo("/monsters?catalog=true")'>Otevřít katalog</button>
-    </div>
-}
 else
 {
-    <OvcinaGrid Data="@monsters" KeyFieldName="Id" LayoutKey="grid-layout-monsters-v2"
-                RowClick="@(e => OpenModal((MonsterListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
-        <Columns>
-            <DxGridDataColumn FieldName="Name" Caption="Název" />
-            <DxGridDataColumn FieldName="MonsterTypeDisplay" Caption="Typ" Width="130px" />
-            <DxGridDataColumn FieldName="Category" Caption="Kategorie" Width="110px" />
-            <DxGridDataColumn FieldName="Attack" Caption="Útok" Width="80px" />
-            <DxGridDataColumn FieldName="Defense" Caption="Obrana" Width="80px" />
-            <DxGridDataColumn FieldName="Health" Caption="Životy" Width="80px" />
-            <DxGridDataColumn FieldName="RewardXp" Caption="XP" Width="80px" />
-            <DxGridDataColumn FieldName="RewardMoney" Caption="Groše" Width="90px" />
-            <DxGridDataColumn FieldName="TagsDisplay" Caption="Tagy" Width="180px" />
-            <DxGridDataColumn FieldName="Abilities" Caption="Schopnosti" Width="240px" Visible="false" />
-            <DxGridDataColumn FieldName="AiBehavior" Caption="AI chování" Width="240px" Visible="false" />
-            <DxGridDataColumn FieldName="RewardNotes" Caption="Odměna pozn." Width="200px" Visible="false" />
-            <DxGridDataColumn FieldName="Notes" Caption="Poznámky" Width="240px" Visible="false" />
-            @if (Catalog)
+    <div class="oh-mon-toolbar">
+        <input type="text" class="oh-mon-tb-search" placeholder="Hledat…"
+               @bind="searchText" @bind:event="oninput" />
+        <select class="oh-mon-tb-select" @bind="filterType">
+            <option value="">Druh: vše</option>
+            @foreach (var mt in monsterTypeValues)
             {
-                <DxGridDataColumn FieldName="Id" Caption="Hra" Width="130px" AllowSort="false" AllowGroup="false">
-                    <CellDisplayTemplate>
-                        @{
-                            var monsterId = (int)context.Value;
-                            if (assignedMonsterIds.Contains(monsterId))
-                            {
-                                <button class="btn btn-sm btn-outline-danger" @onclick:stopPropagation="true"
-                                        @onclick="() => UnassignMonsterAsync(monsterId)">Odebrat</button>
-                            }
-                            else
-                            {
-                                <button class="btn btn-sm btn-outline-success" @onclick:stopPropagation="true"
-                                        @onclick="() => AssignMonsterAsync(monsterId)">Přidat</button>
-                            }
-                        }
-                    </CellDisplayTemplate>
-                </DxGridDataColumn>
+                <option value="@mt.Value.ToString()">@mt.Display</option>
             }
-        </Columns>
-    </OvcinaGrid>
+        </select>
+        <select class="oh-mon-tb-select" @bind="filterCategory">
+            <option value="0">Kategorie: vše</option>
+            <option value="1">K1</option>
+            <option value="2">K2</option>
+            <option value="3">K3</option>
+            <option value="4">K4</option>
+            <option value="5">K5</option>
+        </select>
+        <select class="oh-mon-tb-select" @bind="filterTag">
+            <option value="">Tagy: vše</option>
+            @foreach (var t in availableTags)
+            {
+                <option value="@t">@t</option>
+            }
+        </select>
+        @* "jen s kořistí" toggle removed for v1 — relies on monstersWithLoot which is
+           only populated when an edit modal opens, so it can't filter the list correctly.
+           Re-enable once an /api/monsters/loot/by-game/{gameId} aggregate exists. *@
+        @if (Catalog)
+        {
+            <button type="button"
+                    class="oh-mon-tb-toggle @(filterUnassigned ? "oh-mon-on" : null)"
+                    @onclick="() => filterUnassigned = !filterUnassigned">
+                <i class="bi @(filterUnassigned ? "bi-check2-square" : "bi-square")"></i> jen nepřiřazené
+            </button>
+        }
+        @{ var filtered = FilteredMonsters; }
+        <span class="oh-mon-count">@filtered.Count příšer</span>
+    </div>
+
+    @if (filtered.Count == 0 && monsters.Count == 0 && !Catalog)
+    {
+        <div class="oh-mon-empty">
+            <div class="oh-mon-empty-icon"><i class="bi bi-bug-fill"></i></div>
+            <div class="oh-mon-empty-msg">Žádné příšery přiřazeny k této hře.</div>
+            <div class="oh-mon-empty-actions">
+                <button class="btn btn-outline-primary"
+                        @onclick='() => Nav.NavigateTo("/monsters?catalog=true")'>Otevřít katalog</button>
+                <button class="btn btn-primary" @onclick="() => OpenEditModal(null)">+ Nová příšera</button>
+            </div>
+        </div>
+    }
+    else if (filtered.Count == 0)
+    {
+        <div class="oh-mon-empty">
+            <div class="oh-mon-empty-icon"><i class="bi bi-funnel"></i></div>
+            <div class="oh-mon-empty-msg">Žádné příšery neodpovídají filtrům.</div>
+        </div>
+    }
+    else
+    {
+        <div class="oh-mon-list">
+            @foreach (var m in filtered)
+            {
+                var captured = m;
+                <MonsterRow @key="captured.Id"
+                            Monster="@captured"
+                            Catalog="@Catalog"
+                            IsAssigned="@assignedMonsterIds.Contains(captured.Id)"
+                            OnRowClick="@(() => OpenQuickPeekAsync(captured))"
+                            OnEdit="@(() => OpenEditModal(captured))"
+                            OnAddLoot="@(() => OpenEditModal(captured))"
+                            OnBattle="@(() => Nav.NavigateTo($"/monsters/{captured.Id}?tab=bojovka"))"
+                            OnDelete="@(() => RequestDeleteFromRow(captured))"
+                            OnAssign="@(() => AssignMonsterAsync(captured.Id))" />
+            }
+        </div>
+    }
 }
 
+@* Quick-peek popup — Karta view *@
+<DxPopup @bind-Visible="@isQuickPeekVisible"
+         HeaderText="@(quickPeekDetail?.Name ?? "Příšera")"
+         Width="720px">
+    <BodyContentTemplate Context="qpCtx">
+        @if (quickPeekDetail is null)
+        {
+            <p>Načítám…</p>
+        }
+        else
+        {
+            <div class="oh-mon-karta-grid">
+                <div class="oh-mon-karta-img">
+                    @if (!string.IsNullOrEmpty(quickPeekImageUrl))
+                    {
+                        <img src="@quickPeekImageUrl" alt="@quickPeekDetail.Name" />
+                    }
+                    else
+                    {
+                        <i class="bi bi-bug-fill oh-mon-thumb-fallback" aria-hidden="true"></i>
+                    }
+                </div>
+                <div class="oh-mon-karta-stats">
+                    <div class="oh-mon-karta-meta">
+                        <span class="oh-mon-mtype">
+                            <i class="bi @MonsterRow.MonsterTypeIcon(quickPeekDetail.MonsterType)"></i>@quickPeekDetail.MonsterType.GetDisplayName()
+                        </span>
+                        <span class="oh-mon-kbadge"><i class="bi bi-bar-chart-steps"></i>K@quickPeekDetail.Category</span>
+                        @foreach (var t in quickPeekDetail.Tags)
+                        {
+                            <span class="oh-mon-tag">@t.Name</span>
+                        }
+                    </div>
+                    <div class="oh-mon-karta-pills">
+                        <span class="oh-mon-pill"><span class="oh-mon-pill-lbl">ÚT</span><span class="oh-mon-pill-val">@quickPeekDetail.Attack</span></span>
+                        <span class="oh-mon-pill"><span class="oh-mon-pill-lbl">OBR</span><span class="oh-mon-pill-val">@quickPeekDetail.Defense</span></span>
+                        <span class="oh-mon-pill"><span class="oh-mon-pill-lbl">ŽIV</span><span class="oh-mon-pill-val">@quickPeekDetail.Health</span></span>
+                        <span class="oh-mon-pill"><span class="oh-mon-pill-lbl">XP</span><span class="oh-mon-pill-val">@(quickPeekDetail.RewardXp ?? 0)</span></span>
+                        <span class="oh-mon-pill oh-mon-gold"><span class="oh-mon-pill-lbl">GR</span><span class="oh-mon-pill-val">@(quickPeekDetail.RewardMoney ?? 0)</span></span>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(quickPeekDetail.Abilities))
+                    {
+                        <div class="oh-mon-karta-block">
+                            <div class="oh-mon-karta-block-title">Schopnosti</div>
+                            <div class="oh-mon-karta-block-body">@quickPeekDetail.Abilities</div>
+                        </div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(quickPeekDetail.AiBehavior))
+                    {
+                        <div class="oh-mon-karta-block">
+                            <div class="oh-mon-karta-block-title">AI chování</div>
+                            <div class="oh-mon-karta-block-body">@quickPeekDetail.AiBehavior</div>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="oh-mon-karta-foot">
+                <button class="btn btn-secondary" @onclick="() => isQuickPeekVisible = false">Zavřít</button>
+                <button class="btn btn-primary"
+                        @onclick="@(() => Nav.NavigateTo($"/monsters/{quickPeekDetail!.Id}"))">
+                    Otevřít detail <i class="bi bi-arrow-right"></i>
+                </button>
+            </div>
+        }
+    </BodyContentTemplate>
+</DxPopup>
+
+@* Edit modal (preserved with loot block) *@
 <DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="900px">
     <BodyContentTemplate Context="popupContext">
         <DxFormLayout>
@@ -123,7 +223,6 @@ else
             }
         </DxFormLayout>
 
-        @* Per-game monster loot *@
         @if (editingId.HasValue && GameContext.SelectedGameId.HasValue)
         {
             <div class="mt-3 p-3 border rounded" style="background: var(--oh-primary-surface);">
@@ -177,6 +276,7 @@ else
     </BodyContentTemplate>
 </DxPopup>
 
+@* Delete confirm *@
 <DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
     <BodyContentTemplate Context="popupContext">
         <p>Opravdu chcete smazat příšeru <strong>@name</strong>?</p>
@@ -204,16 +304,57 @@ else
         .Select(v => new EnumItem<MonsterType>(v, v.GetDisplayName())).ToList();
     record EnumItem<T>(T Value, string Display);
 
-    // Loot state
     private List<MonsterLootDto> lootItems = [];
     private List<ItemListDto> allItems = [];
     private int? newLootItemId;
     private int newLootQuantity = 1;
 
-    // Catalog assign state
     private HashSet<int> assignedMonsterIds = [];
-
     private bool _previousCatalog;
+
+    private string searchText = "";
+    private string filterType = "";
+    private int filterCategory;
+    private string filterTag = "";
+    private bool filterUnassigned;
+
+    private bool isQuickPeekVisible;
+    private MonsterDetailDto? quickPeekDetail;
+    private string? quickPeekImageUrl;
+
+    private HashSet<int> monstersWithLoot = [];
+    private List<string> availableTags = [];
+
+    private List<MonsterListDto> FilteredMonsters
+    {
+        get
+        {
+            IEnumerable<MonsterListDto> q = monsters;
+
+            if (!string.IsNullOrWhiteSpace(searchText))
+            {
+                var needle = searchText.Trim();
+                q = q.Where(m => m.Name.Contains(needle, StringComparison.CurrentCultureIgnoreCase));
+            }
+            if (!string.IsNullOrEmpty(filterType) && Enum.TryParse<MonsterType>(filterType, out var mt))
+            {
+                q = q.Where(m => m.MonsterType == mt);
+            }
+            if (filterCategory > 0)
+            {
+                q = q.Where(m => m.Category == filterCategory);
+            }
+            if (!string.IsNullOrEmpty(filterTag))
+            {
+                q = q.Where(m => m.TagNames.Contains(filterTag));
+            }
+            if (Catalog && filterUnassigned)
+            {
+                q = q.Where(m => !assignedMonsterIds.Contains(m.Id));
+            }
+            return q.ToList();
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -253,6 +394,7 @@ else
             }
         }
 
+        availableTags = monsters.SelectMany(m => m.TagNames).Distinct().OrderBy(t => t).ToList();
         loading = false;
     }
 
@@ -269,19 +411,7 @@ else
         catch (Exception ex) { error = ex.Message; StateHasChanged(); }
     }
 
-    private async Task UnassignMonsterAsync(int monsterId)
-    {
-        if (GameContext.SelectedGameId is null) return;
-        try
-        {
-            await Api.DeleteAsync($"/api/monsters/game-monster/{GameContext.SelectedGameId}/{monsterId}");
-            assignedMonsterIds.Remove(monsterId);
-            StateHasChanged();
-        }
-        catch (Exception ex) { error = ex.Message; StateHasChanged(); }
-    }
-
-    private void OpenModal(MonsterListDto? m)
+    private void OpenEditModal(MonsterListDto? m)
     {
         error = null;
         if (m is null)
@@ -319,6 +449,8 @@ else
         var gameId = GameContext.SelectedGameId;
         if (gameId is null) return;
         lootItems = await Api.GetListAsync<MonsterLootDto>($"/api/monsters/{monsterId}/loot/{gameId}");
+        if (lootItems.Count > 0) monstersWithLoot.Add(monsterId);
+        else monstersWithLoot.Remove(monsterId);
     }
 
     private async Task AddLootAsync()
@@ -340,6 +472,7 @@ else
         {
             await Api.DeleteAsync($"/api/monsters/loot/{loot.MonsterId}/{loot.ItemId}/{loot.GameId}");
             lootItems.Remove(loot);
+            if (lootItems.Count == 0) monstersWithLoot.Remove(loot.MonsterId);
         }
         catch (Exception ex) { error = ex.Message; }
     }
@@ -361,9 +494,51 @@ else
         finally { isSaving = false; }
     }
 
+    private void RequestDeleteFromRow(MonsterListDto m)
+    {
+        editingId = m.Id;
+        name = m.Name;
+        isDeleteVisible = true;
+    }
+
     private async Task ConfirmDeleteAsync()
     {
         try { await Api.DeleteAsync($"/api/monsters/{editingId}"); isDeleteVisible = false; isModalVisible = false; await LoadAsync(); }
         catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task OpenQuickPeekAsync(MonsterListDto m)
+    {
+        quickPeekDetail = null;
+        quickPeekImageUrl = null;
+        isQuickPeekVisible = true;
+        try
+        {
+            var detail = await Api.GetAsync<MonsterDetailDto>($"/api/monsters/{m.Id}");
+            if (detail is null)
+            {
+                // 404 — close the popup so user isn't stuck on "Načítám…".
+                isQuickPeekVisible = false;
+                error = $"Detail příšery „{m.Name}\u201c se nepodařilo načíst (možná byla smazána).";
+                return;
+            }
+            quickPeekDetail = detail;
+            if (!string.IsNullOrWhiteSpace(detail.ImagePath))
+            {
+                var urls = await Api.GetAsync<ImageUrlsDto>($"/api/images/monsters/{m.Id}");
+                quickPeekImageUrl = urls?.ImageUrl ?? m.ImageUrl;
+            }
+            else
+            {
+                quickPeekImageUrl = m.ImageUrl;
+            }
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            isQuickPeekVisible = false;
+            error = $"Chyba při načítání detailu: {ex.Message}";
+            StateHasChanged();
+        }
     }
 }
