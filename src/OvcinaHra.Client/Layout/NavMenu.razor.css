@@ -1,134 +1,392 @@
-.navbar-toggler {
-    background-color: rgba(255, 255, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0.2);
-}
+/* ═══════════ Sidebar (Variant C — tabs) ═══════════
+   Ported from docs/design/dialogs/sidebar.mockup.unbundled.html.
+   Scoped to NavMenu.razor — all rules use .oh-nav-* or .sb-brand*.
+   The dark sidebar gradient itself is applied by MainLayout on
+   .sidebar via var(--oh-sidebar). */
 
-.top-row {
-    min-height: 3.5rem;
-    background-color: rgba(0, 0, 0, 0.25);
-    padding: 0 1rem;
-}
-
-.navbar-brand {
-    font-family: var(--oh-font-heading);
-    font-size: 1.15rem;
-    font-weight: 700;
+/* Brand row — replaces the old .top-row */
+.sb-brand {
+    height: 3.5rem;
+    padding: 0 18px;
+    background: rgba(0, 0, 0, 0.28);
     color: var(--oh-header-text);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--oh-font-heading);
+    font-weight: 700;
+    font-size: 1.05rem;
     letter-spacing: 0.01em;
+    flex-shrink: 0;
 }
 
-.oh-nav-section-label {
+    .sb-brand .bi-feather {
+        font-size: 1.1rem;
+        opacity: 0.92;
+    }
+
+.sb-brand-toggler {
+    margin-left: auto;
+    background-color: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: var(--oh-header-text);
+    border-radius: var(--oh-radius-sm);
+    padding: 0.25rem 0.5rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+/* Main nav container — replaces .nav-scrollable */
+.oh-nav {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    color: var(--oh-header-text);
+    font-family: var(--oh-font-body);
+    font-size: 0.875rem;
+}
+
+/* Always-visible pinned row (Přehled, Mapa) */
+.oh-nav-fixed-top {
+    padding: 8px 0 6px;
+    flex-shrink: 0;
+}
+
+/* ═══════════ Tabs — paper "jazyčky" sticking up out of the folder ═══════════ */
+.oh-nav-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    padding: 10px 10px 0;
+    background: transparent;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.oh-nav-tab {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 10px 11px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-bottom: none;
+    border-radius: 7px 7px 0 0;
+    color: rgba(255, 255, 255, 0.92);
+    text-align: left;
+    cursor: pointer;
+    font-family: var(--oh-font-body);
+    transition: background 0.15s, color 0.15s, transform 0.15s;
+}
+
+    .oh-nav-tab .bi {
+        font-size: 1rem;
+        opacity: 0.9;
+        transition: opacity 0.15s, color 0.15s;
+    }
+
+    .oh-nav-tab:hover {
+        background: rgba(255, 255, 255, 0.14);
+        color: #fff;
+    }
+
+        .oh-nav-tab:hover .bi {
+            opacity: 1;
+        }
+
+    .oh-nav-tab.on {
+        /* Parchment raising above the dark sidebar — the "wrapped paper-tab" effect */
+        background: linear-gradient(180deg, #E8F0E4 0%, #D6E4CC 100%);
+        color: var(--oh-primary);
+        border-color: rgba(0, 0, 0, 0.18);
+        box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.25) inset, 0 2px 6px rgba(0, 0, 0, 0.12);
+        z-index: 2;
+    }
+
+        .oh-nav-tab.on .bi {
+            opacity: 1;
+            color: var(--oh-primary);
+        }
+
+.oh-nav-tab-body {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.05;
+    min-width: 0;
+    flex: 1;
+}
+
+.oh-nav-tab-name {
+    font-size: 0.8125rem;
+    font-weight: 700;
+}
+
+.oh-nav-tab-hint {
+    font-size: 0.625rem;
+    opacity: 0.85;
+    font-family: var(--oh-font-mono);
+    margin-top: 3px;
+    letter-spacing: 0.02em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.oh-nav-tab.on .oh-nav-tab-hint {
+    opacity: 0.85;
+    color: var(--oh-primary-light);
+}
+
+/* ═══════════ Folder — parchment panel behind the active section ═══════════ */
+.oh-nav-folder {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(180deg, #E8F0E4 0%, #D6E4CC 6%, rgba(214, 228, 204, 0) 14%);
+    border-top: 1px solid rgba(0, 0, 0, 0.18);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    position: relative;
+    margin-top: -1px;
+}
+
+/* Meta line — just under tabs, explains the active mode */
+.oh-nav-meta {
+    padding: 10px 16px 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
     font-size: 0.6875rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: rgba(255, 255, 255, 0.4);
-    padding: 0.75rem 1rem 0.25rem 1rem;
+    color: rgba(255, 255, 255, 0.78);
+    font-family: var(--oh-font-mono);
+    background: rgba(0, 0, 0, 0.06);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    flex-shrink: 0;
+}
+
+    .oh-nav-meta .dot {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--oh-primary-lighter);
+        box-shadow: 0 0 4px rgba(107, 155, 55, 0.6);
+        flex-shrink: 0;
+    }
+
+    .oh-nav-meta b {
+        color: #fff;
+        font-family: var(--oh-font-heading);
+        font-weight: 700;
+        font-size: 0.8125rem;
+        letter-spacing: 0;
+    }
+
+    .oh-nav-meta .sep {
+        opacity: 0.4;
+    }
+
+/* Scrolling middle list */
+.oh-nav-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 0 10px;
+    min-height: 0;
+}
+
+    .oh-nav-list::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    .oh-nav-list::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.12);
+        border-radius: 2px;
+    }
+
+/* Crossfade on mode switch — animate transform only, keep opacity safe */
+.oh-nav-list > .pane {
+    animation: oh-nav-panefade 0.22s ease both;
+}
+
+@keyframes oh-nav-panefade {
+    from {
+        transform: translateX(4px);
+    }
+
+    to {
+        transform: none;
+    }
+}
+
+/* ═══════════ Nav item — shared look across pinned + list + tools ═══════════ */
+.oh-nav-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    height: 38px;
+    padding: 0 14px 0 18px;
+    color: rgba(255, 255, 255, 0.8);
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+    .oh-nav-item .ni {
+        width: 18px;
+        text-align: center;
+        font-size: 0.95rem;
+        opacity: 0.7;
+        flex-shrink: 0;
+        transition: opacity 0.15s, color 0.15s;
+    }
+
+    .oh-nav-item img.ni {
+        height: 16px;
+        filter: brightness(0) invert(1);
+        opacity: 0.75;
+    }
+
+.oh-nav-rail {
+    position: absolute;
+    left: 0;
+    top: 6px;
+    bottom: 6px;
+    width: 3px;
+    background: transparent;
+    border-radius: 0 2px 2px 0;
+    transition: background 0.15s, box-shadow 0.15s;
+}
+
+.oh-nav-item:hover {
+    background: rgba(255, 255, 255, 0.07);
+    color: #fff;
+}
+
+    .oh-nav-item:hover .ni {
+        opacity: 0.95;
+    }
+
+    .oh-nav-item:hover .oh-nav-rail {
+        background: rgba(107, 155, 55, 0.4);
+    }
+
+/* Active state — NavLink emits .active on the anchor */
+.oh-nav-item.active {
+    background: linear-gradient(90deg, rgba(107, 155, 55, 0.32) 0%, rgba(107, 155, 55, 0.05) 100%);
+    color: #fff;
     font-weight: 600;
 }
 
-.nav-item {
-    font-size: 0.875rem;
-    padding-bottom: 0.125rem;
-}
-
-    .nav-item:first-of-type {
-        padding-top: 0.5rem;
+    .oh-nav-item.active .ni {
+        opacity: 1;
+        color: #B8D48C;
     }
 
-    .nav-item:last-of-type {
-        padding-bottom: 0.5rem;
-    }
-
-    .nav-item ::deep a {
-        color: rgba(255, 255, 255, 0.75);
-        border-radius: var(--oh-radius-sm);
-        height: 2.5rem;
-        display: flex;
-        align-items: center;
-        line-height: 2.5rem;
-        gap: 0.625rem;
-        transition: all 0.15s ease;
-    }
-
-    .nav-item ::deep a .bi {
-        font-size: 1rem;
-        opacity: 0.7;
-        width: 1.25rem;
-        text-align: center;
-    }
-
-.nav-item ::deep a.active {
-    background-color: rgba(255, 255, 255, 0.15);
-    color: white;
-}
-
-    .nav-item ::deep a.active .bi {
+    .oh-nav-item.active img.ni {
+        filter: brightness(0) invert(1);
         opacity: 1;
     }
 
-.nav-item ::deep a:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-    color: white;
+    .oh-nav-item.active .oh-nav-rail {
+        background: var(--oh-primary-lighter);
+        box-shadow: 0 0 8px rgba(107, 155, 55, 0.6);
+    }
+
+    .oh-nav-item.active::after {
+        content: "";
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: #F5EDE3;
+        transform: translateY(-50%);
+        opacity: 0.75;
+    }
+
+.oh-nav-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.nav-footer {
-    padding: 0.5rem 0.75rem;
+.oh-nav-icon-svg {
+    /* img variant — already handled by img.ni, but keep a stable class for Razor */
+    height: 16px;
+}
+
+/* ═══════════ Bottom tools drawer — darker bg, pinned ═══════════ */
+.oh-nav-tools {
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(0, 0, 0, 0.22);
+    padding: 4px 0 0;
+    flex-shrink: 0;
+    position: sticky;
+    bottom: 0;
+}
+
+.oh-nav-tools-head {
+    padding: 9px 18px 3px;
+    font-size: 0.625rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: rgba(255, 255, 255, 0.5);
+    font-family: var(--oh-font-body);
+}
+
+/* ═══════════ Footer ═══════════ */
+.oh-nav-foot {
+    padding: 8px 12px;
     font-size: 0.6875rem;
-    color: rgba(255, 255, 255, 0.35);
+    font-family: var(--oh-font-mono);
+    color: rgba(255, 255, 255, 0.38);
     text-align: center;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.2);
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
+    justify-content: space-between;
+    gap: 6px;
+    flex-shrink: 0;
 }
 
-.nav-icon-svg {
-    width: 1rem;
-    height: 1rem;
-    min-width: 1rem;
-    opacity: 0.7;
-    filter: brightness(0) invert(1);
-}
-
-::deep a.active .nav-icon-svg {
-    opacity: 1;
-}
-
-.collapse-toggle {
+.oh-nav-collapse {
     background: none;
     border: none;
     color: rgba(255, 255, 255, 0.4);
-    cursor: pointer;
-    padding: 0.25rem;
     font-size: 0.875rem;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 3px;
     line-height: 1;
-    border-radius: var(--oh-radius-sm);
-    transition: all 0.15s ease;
+    transition: 0.15s;
 }
 
-.collapse-toggle:hover {
-    color: white;
-    background-color: rgba(255, 255, 255, 0.1);
+    .oh-nav-collapse:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.08);
+    }
+
+/* ═══════════ Mobile vs desktop ═══════════
+   < 641px: .collapse hides the nav until the toggler opens it.
+   641px+: always show the nav and hide the mobile toggler. */
+@media (max-width: 640.98px) {
+    .oh-nav.collapse {
+        display: none;
+    }
 }
 
 @media (min-width: 641px) {
-    .navbar-toggler {
+    .sb-brand-toggler {
         display: none;
     }
 
-    .collapse {
-        display: block;
-    }
-
-    .nav-scrollable {
-        height: calc(100vh - 3.5rem);
-        overflow-y: auto;
+    .oh-nav.collapse {
         display: flex;
-        flex-direction: column;
-    }
-
-    .nav-scrollable nav {
-        flex: 1;
     }
 }
