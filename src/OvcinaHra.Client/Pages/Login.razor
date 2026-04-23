@@ -26,18 +26,32 @@
             @* Production: OIDC login via registrace *@
             @if (!string.IsNullOrEmpty(oidcAuthority))
             {
-                <div class="card mb-4">
-                    <div class="card-header text-center">
-                        <h4 class="mb-0">OvčinaHra — Přihlášení</h4>
+                @if (Error is null)
+                {
+                    @* Auto-redirect path — no button, just a reassuring spinner. *@
+                    <div class="card mb-4">
+                        <div class="card-body d-flex flex-column align-items-center py-4">
+                            <div class="spinner-border text-primary mb-3" role="status"></div>
+                            <p class="text-muted mb-0">Přesměrování na přihlášení…</p>
+                        </div>
                     </div>
-                    <div class="card-body d-flex flex-column align-items-center">
-                        <p class="text-muted mb-3">Přihlásit se pomocí Ovčina účtu</p>
-                        <button class="btn btn-primary btn-lg w-100" style="max-width: 320px;" @onclick="async () => await LoginOidc()" disabled="@loading">
-                            @if (loading) { <span class="spinner-border spinner-border-sm me-2"></span> }
-                            <i class="bi bi-shield-lock me-2"></i>Přihlásit přes registrace.ovcina.cz
-                        </button>
+                }
+                else
+                {
+                    @* Error path — user needs to see the message and retry manually. *@
+                    <div class="card mb-4">
+                        <div class="card-header text-center">
+                            <h4 class="mb-0">OvčinaHra — Přihlášení</h4>
+                        </div>
+                        <div class="card-body d-flex flex-column align-items-center">
+                            <p class="text-muted mb-3">Přihlásit se pomocí Ovčina účtu</p>
+                            <button class="btn btn-primary btn-lg w-100" style="max-width: 320px;" @onclick="async () => await LoginOidc()" disabled="@loading">
+                                @if (loading) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                                <i class="bi bi-shield-lock me-2"></i>Přihlásit přes registrace.ovcina.cz
+                            </button>
+                        </div>
                     </div>
-                </div>
+                }
             }
 
             @* Development: dev-token login (hidden in production when OIDC is configured) *@
@@ -84,6 +98,17 @@
     private string email = "org@ovcina.cz";
     private string? errorMessage;
     private bool loading;
+    private bool autoFired;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        if (autoFired) return;
+        if (Error is not null) return;                    // let the user see the message first
+        if (string.IsNullOrEmpty(oidcAuthority)) return;  // dev mode — keep manual form
+        autoFired = true;
+        await LoginOidc();
+    }
 
     private async Task LoginOidc()
     {

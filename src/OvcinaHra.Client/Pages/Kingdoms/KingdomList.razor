@@ -11,8 +11,7 @@
 </div>
 
 <p class="text-muted mb-3" style="max-width: 60ch;">
-    Lookup tabulka s kanonickými královstvími světa. Přiřazení ke hrám se řídí per-game přes <em>CharacterAssignment</em>.
-    Království s přiřazenými postavami nelze přejmenovat ani smazat — taková změna patří do kódu a migrace.
+    Tabulka s královstvími pro přehled.
 </p>
 
 @if (loading)
@@ -30,6 +29,7 @@ else if (kingdoms.Count == 0)
 else
 {
     <OvcinaGrid Data="@kingdoms" KeyFieldName="Id" LayoutKey="grid-layout-kingdoms"
+                ShowSearchBox="false"
                 RowClick="@(e => OpenModal((KingdomDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             <DxGridDataColumn FieldName="HexColor" Caption="" Width="54px" AllowSort="false">

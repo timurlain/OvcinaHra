@@ -78,9 +78,16 @@ public record GameSpellDto(
     SpellSchool School,
     int? Price,
     bool IsFindable,
-    string? AvailabilityNotes)
+    string? AvailabilityNotes,
+    int? CatalogPrice = null)
 {
     [JsonIgnore] public string SchoolDisplay => School.GetDisplayName();
+
+    /// <summary>Price to learn this spell in this game: per-game override when set, otherwise catalog price.</summary>
+    [JsonIgnore] public int? EffectivePrice => Price ?? CatalogPrice;
+
+    /// <summary>True when no per-game Price override is set — we're showing the catalog value.</summary>
+    [JsonIgnore] public bool PriceInherited => Price is null;
 }
 
 public record CreateGameSpellDto(

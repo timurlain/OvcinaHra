@@ -30,13 +30,30 @@ else if (gameSpells.Count == 0)
 }
 else
 {
-    <OvcinaGrid Data="@gameSpells" KeyFieldName="Id" LayoutKey="grid-layout-game-spells"
+    <OvcinaGrid Data="@gameSpells" KeyFieldName="Id" LayoutKey="grid-layout-game-spells-v2"
                 RowClick="@(e => OpenEditPopup((GameSpellDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             <DxGridDataColumn FieldName="SpellName" Caption="Název" />
             <DxGridDataColumn FieldName="Level" Caption="Úroveň" Width="90px" />
             <DxGridDataColumn FieldName="SchoolDisplay" Caption="Typ" Width="130px" />
-            <DxGridDataColumn FieldName="Price" Caption="Cena (gr)" Width="110px" />
+            <DxGridDataColumn FieldName="EffectivePrice" Caption="Cena (gr)" Width="110px">
+                <CellDisplayTemplate>
+                    @{
+                        var row = (GameSpellDto)context.DataItem;
+                    }
+                    @if (row.EffectivePrice.HasValue)
+                    {
+                        @if (row.PriceInherited)
+                        {
+                            <span class="text-muted fst-italic" title="Převzato z katalogu — ve hře není přepsáno">@row.EffectivePrice</span>
+                        }
+                        else
+                        {
+                            @row.EffectivePrice
+                        }
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
             <DxGridDataColumn FieldName="IsFindable" Caption="K nalezení" Width="120px" />
             <DxGridDataColumn FieldName="AvailabilityNotes" Caption="Poznámky k dostupnosti" />
             <DxGridDataColumn Caption="" Width="60px" AllowSort="false" AllowGroup="false">
