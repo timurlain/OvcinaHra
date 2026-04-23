@@ -124,6 +124,13 @@
                     <DxFormLayoutItem Caption="Foto umístění" ColSpanMd="12">
                         <ImagePicker EntityType="locations" EntityId="editingId.Value" Field="placement" Alt="Foto umístění" AspectRatio="3:2" />
                     </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Razítko" ColSpanMd="12">
+                        @* Separate entity-type alias (locationstamps) so the stamp's
+                           thumbnail cache, pre-gen, and backfill don't collide with
+                           the main location image. Same Location.Id, different blob
+                           path + DB column (Location.StampImagePath). *@
+                        <ImagePicker EntityType="locationstamps" EntityId="editingId.Value" Alt="Razítko lokace" AspectRatio="1:1" Width="180px" />
+                    </DxFormLayoutItem>
                 }
                 <DxFormLayoutItem Caption="Info pro CP (NPC)" ColSpanMd="12">
                     <DxMemo @bind-Text="@model.NpcInfo" Rows="4" data-testid="location-npc" />

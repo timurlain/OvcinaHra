@@ -21,7 +21,9 @@ public record LocationListDto(
     IReadOnlyList<LocationQuestDto> Quests,
     IReadOnlyList<LocationTreasureQuestDto> LocationTreasureQuests,
     string? ImagePath = null,
-    string? ImageUrl = null)
+    string? ImageUrl = null,
+    string? StampImagePath = null,
+    string? StampImageUrl = null)
 {
     [JsonIgnore]
     public string LocationKindDisplay => LocationKind.GetDisplayName();
@@ -77,6 +79,7 @@ public record LocationDetailDto(
     decimal? Longitude,
     string? ImagePath,
     string? PlacementPhotoPath,
+    string? StampImagePath,
     string? NpcInfo,
     string? SetupNotes,
     int? ParentLocationId,
