@@ -80,7 +80,8 @@ public record ItemDetailDto(
     int ReqThief,
     bool IsUnique,
     bool IsLimited,
-    string? ImagePath);
+    string? ImagePath,
+    string? ImageUrl = null);
 
 public record CreateItemDto(
     string Name,
@@ -145,3 +146,55 @@ public record ItemUsabilityDto(
     int ReqArcher,
     int ReqMage,
     int ReqThief);
+
+// ---- Item detail page aggregate (fed to /items/{id}/usage) ----
+// Single round-trip powering the Tvorba / Výskyt / Obchod tabs on ItemDetail.
+
+public record ItemUsageGameRefDto(int GameId, string GameName, int Edition);
+
+public record ItemUsageRecipeDto(
+    int RecipeId,
+    ItemUsageGameRefDto Game,
+    int OutputItemId,
+    string OutputItemName,
+    int? LocationId,
+    string? LocationName,
+    List<CraftingIngredientDto> Ingredients,
+    List<CraftingBuildingReqDto> BuildingRequirements);
+
+public record ItemUsageMonsterLootDto(
+    int MonsterId,
+    string MonsterName,
+    string? MonsterImageUrl,
+    ItemUsageGameRefDto Game,
+    int Quantity);
+
+public record ItemUsageQuestRewardDto(
+    int QuestId,
+    string QuestName,
+    ItemUsageGameRefDto Game,
+    int Quantity);
+
+public record ItemUsageTreasureDto(
+    int TreasureQuestId,
+    string TreasureQuestTitle,
+    ItemUsageGameRefDto Game,
+    int Count);
+
+public record ItemUsageShopDto(
+    ItemUsageGameRefDto Game,
+    int? Price,
+    int? StockCount,
+    bool IsSold,
+    string? SaleCondition,
+    bool IsFindable);
+
+public record ItemUsageDto(
+    int ItemId,
+    string ItemName,
+    List<ItemUsageRecipeDto> CraftedBy,
+    List<ItemUsageRecipeDto> UsedIn,
+    List<ItemUsageMonsterLootDto> MonsterLoot,
+    List<ItemUsageQuestRewardDto> QuestRewards,
+    List<ItemUsageTreasureDto> Treasures,
+    List<ItemUsageShopDto> Shops);

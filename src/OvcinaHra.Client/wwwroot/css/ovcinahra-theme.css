@@ -2145,3 +2145,108 @@
 .oh-it-qp-section-title{font:700 .6875rem var(--oh-font-body);color:var(--oh-text-secondary);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
 .oh-it-qp-section-body{font:400 .875rem var(--oh-font-body);color:var(--oh-text);line-height:1.5;white-space:pre-wrap}
 .oh-it-qp-foot{display:flex;justify-content:space-between;gap:10px;padding-top:10px;border-top:1px solid var(--oh-border);margin-top:6px}
+
+/* ============================================================
+   Item detail page (/items/{id}) — .oh-it-d-*
+   Illuminated MTG-card page with 5 tabs (Karta · Upravit · Tvorba ·
+   Výskyt · Obchod). Hero is 5:7 MTG aspect (NOT 4:3 — designer pivot
+   because items are physical MTG-sized cards in the LARP).
+   Ported from docs/design/dialogs/item-detail.mockup.unbundled.html
+   ============================================================ */
+
+/* Title strip */
+.oh-it-d-ts{display:flex;align-items:flex-start;gap:18px;padding:18px 28px 12px;border-bottom:1px solid var(--oh-border);background:var(--oh-surface)}
+.oh-it-d-ts-title{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.oh-it-d-ts-title h1{margin:0;font:900 2rem var(--oh-font-heading);color:var(--oh-primary);letter-spacing:-.01em;line-height:1.1}
+.oh-it-d-ts-sub{display:flex;align-items:center;gap:10px;flex-wrap:wrap;color:var(--oh-text-secondary);font-size:.8125rem}
+.oh-it-d-dotsep{opacity:.5;font-weight:600}
+.oh-it-d-ts-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.oh-it-d-back{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:var(--oh-radius-sm);background:transparent;border:1px solid var(--oh-border);color:var(--oh-text-secondary);font:500 .8125rem var(--oh-font-body);text-decoration:none;cursor:pointer}
+.oh-it-d-back:hover{background:var(--oh-surface-alt);color:var(--oh-primary)}
+.oh-it-d-id{font:600 .75rem var(--oh-font-mono);color:var(--oh-text-secondary);letter-spacing:.04em}
+
+/* Tab strip — sticky under title */
+.oh-it-d-tabs{display:flex;align-items:center;gap:2px;padding:0 28px;border-bottom:1px solid var(--oh-border);background:var(--oh-surface);position:sticky;top:0;z-index:5;overflow-x:auto}
+.oh-it-d-tab{display:inline-flex;align-items:center;gap:7px;padding:12px 18px;min-height:44px;border:none;border-bottom:3px solid transparent;background:transparent;color:var(--oh-text-secondary);font:600 .875rem var(--oh-font-body);cursor:pointer;white-space:nowrap;transition:.15s}
+.oh-it-d-tab i{font-size:.9375rem;opacity:.7}
+.oh-it-d-tab:hover{color:var(--oh-primary)}
+.oh-it-d-tab.oh-it-d-active{color:var(--oh-primary);border-bottom-color:var(--oh-primary)}
+.oh-it-d-tab.oh-it-d-active i{opacity:1;color:var(--oh-primary-light)}
+.oh-it-d-tab-count{font-family:var(--oh-font-mono);font-size:.75rem;color:var(--oh-text-secondary);background:var(--oh-surface-alt);border:1px solid var(--oh-border);border-radius:99px;padding:1px 7px;min-width:22px;text-align:center}
+.oh-it-d-tab.oh-it-d-active .oh-it-d-tab-count{color:var(--oh-primary);border-color:rgba(74,124,52,.3);background:var(--oh-primary-surface)}
+
+/* Body container */
+.oh-it-d-body{padding:24px 28px}
+
+/* Bestiary parchment card frame (Karta) */
+.oh-it-d-card{background:linear-gradient(145deg,#f5f0e8 0%,#ebe4d4 40%,#e8dcc8 100%);border:1px solid #d4c5a9;border-radius:6px;padding:32px 36px 28px;box-shadow:0 2px 8px rgba(45,80,22,.10)}
+
+/* Karta layout — 60fr (hero) / 40fr (stat sidebar) */
+.oh-it-d-karta{display:grid;grid-template-columns:60fr 40fr;gap:28px;align-items:start}
+@media (max-width:900px){.oh-it-d-karta{grid-template-columns:1fr}}
+
+/* 5:7 MTG hero (NOT 4:3) */
+.oh-it-d-hero{position:relative;width:100%;aspect-ratio:5/7;border:2px solid #c4b494;border-radius:4px;overflow:hidden;background:var(--oh-surface-alt);box-shadow:0 3px 14px rgba(45,80,22,.18),inset 0 0 0 1px rgba(255,248,230,.4)}
+.oh-it-d-hero img{width:100%;height:100%;object-fit:cover;display:block}
+.oh-it-d-hero-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;color:rgba(139,90,43,.5);font:italic 700 .95rem Georgia,serif;text-align:center;padding:0 18px}
+.oh-it-d-hero-empty i{font-size:3.5rem;opacity:.55}
+.oh-it-d-hero-cap{display:flex;align-items:center;justify-content:space-between;font-family:Georgia,serif;font-size:.8125rem;color:#8b7750;font-style:italic;padding:8px 4px 0;gap:12px}
+
+/* Stat block — book-leger style */
+.oh-it-d-stats{display:flex;flex-direction:column;background:rgba(255,248,240,.45);box-shadow:inset 0 1px 0 rgba(178,98,35,.18);border-radius:4px;padding:6px 12px}
+.oh-it-d-statrow{display:grid;grid-template-columns:22px 1fr auto;align-items:center;gap:10px;padding:10px 0;border-bottom:1px dotted rgba(178,98,35,.30)}
+.oh-it-d-statrow:last-child{border-bottom:none}
+.oh-it-d-stat-icon{color:var(--oh-primary-light);font-size:1rem;text-align:center}
+.oh-it-d-stat-lbl{font-family:Georgia,serif;font-style:italic;color:#5a4f3f;font-size:.875rem;letter-spacing:.02em}
+.oh-it-d-stat-val{font-family:var(--oh-font-mono);font-weight:700;font-size:1rem;color:var(--oh-primary);font-variant-numeric:tabular-nums;text-align:right}
+.oh-it-d-stat-val--off{color:var(--oh-text-secondary);opacity:.6}
+
+/* Section heading + body */
+.oh-it-d-sect{margin-top:24px}
+.oh-it-d-sect-label{font-family:var(--oh-font-body);font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--oh-text-secondary);padding-bottom:6px;margin:0 0 12px;border-bottom:1px solid rgba(178,98,35,.22)}
+.oh-it-d-sect-label i{color:var(--oh-primary-light);font-size:.875rem;margin-right:6px}
+.oh-it-d-sect-body{font:400 .9375rem/1.55 Georgia,serif;color:var(--oh-text)}
+.oh-it-d-sect-empty{font-style:italic;color:var(--oh-text-secondary);font-size:.875rem}
+
+/* Mini-cards — 5:7 grid for Výskyt sub-sections */
+.oh-it-d-minis{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
+.oh-it-d-mini{display:flex;flex-direction:column;border:1px solid var(--oh-border);border-radius:var(--oh-radius-sm);overflow:hidden;background:var(--oh-surface);box-shadow:0 1px 3px rgba(45,80,22,.08);transition:.15s;position:relative}
+.oh-it-d-mini:hover{border-color:var(--oh-primary-light);box-shadow:0 3px 10px rgba(45,80,22,.14);transform:translateY(-1px)}
+.oh-it-d-mini-img{width:100%;aspect-ratio:5/7;background:var(--oh-surface-alt);position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.oh-it-d-mini-img img{width:100%;height:100%;object-fit:cover;display:block}
+.oh-it-d-mini-img-empty{font-size:1.5rem;color:rgba(139,90,43,.5)}
+.oh-it-d-mini-qty{position:absolute;right:6px;bottom:6px;font:700 .75rem var(--oh-font-mono);background:rgba(44,24,16,.78);color:#fff;padding:2px 7px;border-radius:99px;letter-spacing:.04em}
+.oh-it-d-mini-body{padding:8px 10px;display:flex;flex-direction:column;gap:4px}
+.oh-it-d-mini-name{font:600 .8125rem var(--oh-font-heading);color:var(--oh-text);line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.oh-it-d-mini-game{font:500 .6875rem var(--oh-font-mono);color:var(--oh-text-secondary)}
+
+/* Tvorba — recipe cards */
+.oh-it-d-recipes{display:flex;flex-direction:column;gap:14px}
+.oh-it-d-recipe{padding:14px 18px;background:var(--oh-surface);border:1px solid var(--oh-border);border-radius:var(--oh-radius-sm);box-shadow:0 1px 3px rgba(45,80,22,.06)}
+.oh-it-d-recipe-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.oh-it-d-recipe-head h5{margin:0;font:700 .9375rem var(--oh-font-heading);color:var(--oh-primary)}
+.oh-it-d-recipe-game{font:600 .6875rem var(--oh-font-mono);color:var(--oh-text-secondary);background:var(--oh-surface-alt);border:1px solid var(--oh-border);border-radius:99px;padding:1px 7px;letter-spacing:.04em}
+.oh-it-d-recipe-loc{font:500 .75rem var(--oh-font-body);color:var(--oh-text-secondary);font-style:italic}
+.oh-it-d-ingredients{display:grid;grid-template-columns:48px 1fr auto auto;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dotted rgba(178,98,35,.20)}
+.oh-it-d-ingredients:last-child{border-bottom:none}
+.oh-it-d-ing-name{font:500 .875rem var(--oh-font-body);color:var(--oh-text)}
+.oh-it-d-ing-qty{font:700 .8125rem var(--oh-font-mono);color:var(--oh-primary);background:rgba(74,124,52,.10);border:1px solid rgba(74,124,52,.35);border-radius:99px;padding:2px 8px}
+.oh-it-d-recipe-bldgs{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid rgba(178,98,35,.18)}
+.oh-it-d-recipe-bldg-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;background:rgba(74,124,52,.08);border:1px solid rgba(74,124,52,.30);color:var(--oh-primary);font:500 .6875rem var(--oh-font-body)}
+
+/* Obchod — compact table */
+.oh-it-d-shop{width:100%;border-collapse:collapse}
+.oh-it-d-shop th{text-align:left;font:700 .6875rem var(--oh-font-body);text-transform:uppercase;letter-spacing:.08em;color:var(--oh-text-secondary);padding:8px 12px;border-bottom:1px solid var(--oh-border)}
+.oh-it-d-shop th.oh-it-d-num,.oh-it-d-shop td.oh-it-d-num{text-align:right;font-family:var(--oh-font-mono);font-variant-numeric:tabular-nums}
+.oh-it-d-shop tbody tr{border-bottom:1px solid var(--oh-border)}
+.oh-it-d-shop td{padding:10px 12px;font-size:.875rem;color:var(--oh-text)}
+.oh-it-d-shop-cond{font-style:italic;color:var(--oh-text-secondary);font-size:.8125rem}
+
+/* Upravit — sticky form footer */
+.oh-it-d-edit-footer{position:sticky;bottom:0;display:flex;align-items:center;gap:8px;padding:14px 28px;background:var(--oh-surface);border-top:1px solid var(--oh-border);box-shadow:0 -2px 8px rgba(45,80,22,.06);margin:24px -28px -24px;z-index:3}
+.oh-it-d-edit-footer .oh-it-d-spacer{flex:1}
+
+/* Empty / loading */
+.oh-it-d-loading{padding:48px 16px;text-align:center;color:var(--oh-text-secondary);font-style:italic}
+.oh-it-d-empty{padding:48px 16px;text-align:center;color:var(--oh-text-secondary)}
+.oh-it-d-empty i{font-size:3rem;color:var(--oh-primary-light);opacity:.6;display:block;margin-bottom:10px}

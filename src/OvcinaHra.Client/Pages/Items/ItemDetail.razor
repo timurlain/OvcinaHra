@@ -1,0 +1,667 @@
+@page "/items/{Id:int}"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject GameContextService GameContext
+@inject NavigationManager Nav
+
+@if (loading)
+{
+    <p class="oh-it-d-loading">Načítám…</p>
+}
+else if (item is null && error is not null)
+{
+    <div class="oh-it-d-empty">
+        <i class="bi bi-wifi-off"></i>
+        <p>Nepodařilo se načíst předmět.</p>
+        <p class="text-danger small">@error</p>
+        <button class="btn btn-outline-primary" @onclick="LoadAsync">Zkusit znovu</button>
+    </div>
+}
+else if (item is null)
+{
+    <div class="oh-it-d-empty">
+        <i class="bi bi-exclamation-circle"></i>
+        <p>Předmět nenalezen.</p>
+        <button class="btn btn-outline-primary" @onclick='() => Nav.NavigateTo("/items")'>← Zpět na seznam</button>
+    </div>
+}
+else
+{
+    <div class="oh-it-d-ts">
+        <button class="oh-it-d-back" type="button" @onclick='() => Nav.NavigateTo("/items")'>
+            <i class="bi bi-arrow-left"></i> Zpět
+        </button>
+        <div class="oh-it-d-ts-title">
+            <h1>@item.Name</h1>
+            <div class="oh-it-d-ts-sub">
+                <span class="oh-it-ichip">@item.ItemType.GetDisplayName()</span>
+                @if (item.PhysicalForm.HasValue)
+                {
+                    <span class="oh-it-d-dotsep">·</span>
+                    <span class="oh-it-ichip">@item.PhysicalForm.Value.GetDisplayName()</span>
+                }
+                <span class="oh-it-d-dotsep">·</span>
+                <span class="oh-it-d-id">#I@item.Id.ToString("D3")</span>
+            </div>
+        </div>
+        <div class="oh-it-d-ts-actions">
+            @if (activeTab == "upravit")
+            {
+                <button class="btn btn-secondary" @onclick="CancelEdit" disabled="@isSaving">Zrušit</button>
+                <button class="btn btn-primary" @onclick="SaveAsync"
+                        disabled="@(isSaving || string.IsNullOrWhiteSpace(editName))">Uložit</button>
+            }
+            else
+            {
+                <button class="btn btn-outline-primary" @onclick='() => SetTab("upravit")'><i class="bi bi-pencil"></i> Upravit</button>
+                <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true"><i class="bi bi-trash"></i> Smazat</button>
+            }
+        </div>
+    </div>
+
+    <div class="oh-it-d-tabs">
+        <button class="oh-it-d-tab @(activeTab == "karta" ? "oh-it-d-active" : null)" @onclick='() => SetTab("karta")'>
+            <i class="bi bi-bookmark-fill"></i> Karta
+        </button>
+        <button class="oh-it-d-tab @(activeTab == "upravit" ? "oh-it-d-active" : null)" @onclick='() => SetTab("upravit")'>
+            <i class="bi bi-pencil"></i> Upravit
+        </button>
+        <button class="oh-it-d-tab @(activeTab == "tvorba" ? "oh-it-d-active" : null)" @onclick='() => SetTab("tvorba")'>
+            <i class="bi bi-tools"></i> Tvorba
+            @if (TvorbaCount > 0)
+            {
+                <span class="oh-it-d-tab-count">@TvorbaCount</span>
+            }
+        </button>
+        <button class="oh-it-d-tab @(activeTab == "vyskyt" ? "oh-it-d-active" : null)" @onclick='() => SetTab("vyskyt")'>
+            <i class="bi bi-geo-alt"></i> Výskyt
+            @if (VyskytCount > 0)
+            {
+                <span class="oh-it-d-tab-count">@VyskytCount</span>
+            }
+        </button>
+        <button class="oh-it-d-tab @(activeTab == "obchod" ? "oh-it-d-active" : null)" @onclick='() => SetTab("obchod")'>
+            <i class="bi bi-shop"></i> Obchod
+            @if (ObchodCount > 0)
+            {
+                <span class="oh-it-d-tab-count">@ObchodCount</span>
+            }
+        </button>
+    </div>
+
+    <div class="oh-it-d-body">
+        @if (activeTab == "karta")
+        {
+            <div class="oh-it-d-card">
+                <div class="oh-it-d-karta">
+                    <div>
+                        <div class="oh-it-d-hero">
+                            @if (!string.IsNullOrEmpty(heroImageUrl) && !heroImageFailed)
+                            {
+                                <img src="@heroImageUrl" alt="@item.Name"
+                                     @onerror="() => heroImageFailed = true" />
+                            }
+                            else
+                            {
+                                <div class="oh-it-d-hero-empty">
+                                    <i class="bi bi-image"></i>
+                                    <span>Tato karta zatím čeká na fotku</span>
+                                </div>
+                            }
+                        </div>
+                        <div class="oh-it-d-hero-cap">
+                            <span>@item.ItemType.GetDisplayName()@(item.PhysicalForm.HasValue ? $" · {item.PhysicalForm.Value.GetDisplayName()}" : "")</span>
+                        </div>
+                    </div>
+                    <div class="oh-it-d-stats">
+                        <div class="oh-it-d-statrow">
+                            <i class="oh-it-d-stat-icon bi bi-shield-shaded"></i>
+                            <span class="oh-it-d-stat-lbl">Válečník</span>
+                            <span class="oh-it-d-stat-val @(item.ReqWarrior == 0 ? "oh-it-d-stat-val--off" : "")">@(item.ReqWarrior == 0 ? "—" : $"≥ {item.ReqWarrior}")</span>
+                        </div>
+                        <div class="oh-it-d-statrow">
+                            <i class="oh-it-d-stat-icon bi bi-bullseye"></i>
+                            <span class="oh-it-d-stat-lbl">Lučištník</span>
+                            <span class="oh-it-d-stat-val @(item.ReqArcher == 0 ? "oh-it-d-stat-val--off" : "")">@(item.ReqArcher == 0 ? "—" : $"≥ {item.ReqArcher}")</span>
+                        </div>
+                        <div class="oh-it-d-statrow">
+                            <i class="oh-it-d-stat-icon bi bi-magic"></i>
+                            <span class="oh-it-d-stat-lbl">Mág</span>
+                            <span class="oh-it-d-stat-val @(item.ReqMage == 0 ? "oh-it-d-stat-val--off" : "")">@(item.ReqMage == 0 ? "—" : $"≥ {item.ReqMage}")</span>
+                        </div>
+                        <div class="oh-it-d-statrow">
+                            <i class="oh-it-d-stat-icon bi bi-incognito"></i>
+                            <span class="oh-it-d-stat-lbl">Zloděj</span>
+                            <span class="oh-it-d-stat-val @(item.ReqThief == 0 ? "oh-it-d-stat-val--off" : "")">@(item.ReqThief == 0 ? "—" : $"≥ {item.ReqThief}")</span>
+                        </div>
+                        <div class="oh-it-d-statrow">
+                            <i class="oh-it-d-stat-icon bi bi-gem"></i>
+                            <span class="oh-it-d-stat-lbl">Unikát</span>
+                            <span class="oh-it-d-stat-val @(item.IsUnique ? "" : "oh-it-d-stat-val--off")">@(item.IsUnique ? "Ano" : "Ne")</span>
+                        </div>
+                        <div class="oh-it-d-statrow">
+                            <i class="oh-it-d-stat-icon bi bi-hourglass-split"></i>
+                            <span class="oh-it-d-stat-lbl">Limit</span>
+                            <span class="oh-it-d-stat-val @(item.IsLimited ? "" : "oh-it-d-stat-val--off")">@(item.IsLimited ? "Ano" : "Ne")</span>
+                        </div>
+                        <div class="oh-it-d-statrow">
+                            <i class="oh-it-d-stat-icon bi bi-tools"></i>
+                            <span class="oh-it-d-stat-lbl">Vyrobitelný</span>
+                            <span class="oh-it-d-stat-val @(item.IsCraftable ? "" : "oh-it-d-stat-val--off")">@(item.IsCraftable ? "Ano" : "Ne")</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="oh-it-d-sect">
+                    <div class="oh-it-d-sect-label"><i class="bi bi-magic"></i>Efekt</div>
+                    <div class="oh-it-d-sect-body">
+                        @if (string.IsNullOrWhiteSpace(item.Effect))
+                        {
+                            <span class="oh-it-d-sect-empty">Bez popisu efektu.</span>
+                        }
+                        else
+                        {
+                            @item.Effect
+                        }
+                    </div>
+                </div>
+                <div class="oh-it-d-sect">
+                    <div class="oh-it-d-sect-label"><i class="bi bi-box-seam"></i>Fyzická podoba</div>
+                    <div class="oh-it-d-sect-body">
+                        @if (item.PhysicalForm.HasValue)
+                        {
+                            @item.PhysicalForm.Value.GetDisplayName()
+                        }
+                        else
+                        {
+                            <span class="oh-it-d-sect-empty">Podoba nezvolena.</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+        else if (activeTab == "upravit")
+        {
+            <DxFormLayout>
+                <DxFormLayoutGroup Caption="Identita" ColSpanMd="12">
+                    <DxFormLayoutItem Caption="Název" ColSpanMd="8">
+                        <DxTextBox @bind-Text="@editName" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Typ" ColSpanMd="4">
+                        <DxComboBox Data="@itemTypeValues" @bind-Value="@editType"
+                                    TextFieldName="Display" ValueFieldName="Value" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Fyzická podoba" ColSpanMd="6">
+                        <DxComboBox Data="@physicalFormValues" @bind-Value="@editPhysicalForm"
+                                    TextFieldName="Display" ValueFieldName="Value" />
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+                <DxFormLayoutGroup Caption="Vizuál" ColSpanMd="12">
+                    <DxFormLayoutItem Caption="Obrázek" ColSpanMd="12">
+                        <ImagePicker EntityType="items" EntityId="item.Id" Alt="Obrázek předmětu" AspectRatio="5:7" />
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+                <DxFormLayoutGroup Caption="Vlastnosti" ColSpanMd="12">
+                    <DxFormLayoutItem Caption="Efekt" ColSpanMd="12">
+                        <DxMemo @bind-Text="@editEffect" Rows="3" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem ColSpanMd="4">
+                        <DxCheckBox @bind-Checked="@editIsUnique">Unikátní</DxCheckBox>
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem ColSpanMd="4">
+                        <DxCheckBox @bind-Checked="@editIsLimited">Limitovaný</DxCheckBox>
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem ColSpanMd="4">
+                        <DxCheckBox @bind-Checked="@editIsCraftable">Vyrobitelný</DxCheckBox>
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+                <DxFormLayoutGroup Caption="Požadavky" ColSpanMd="12">
+                    <DxFormLayoutItem Caption="Válečník" ColSpanMd="3">
+                        <DxSpinEdit @bind-Value="@editReqWarrior" MinValue="0" MaxValue="10" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Lučištník" ColSpanMd="3">
+                        <DxSpinEdit @bind-Value="@editReqArcher" MinValue="0" MaxValue="10" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Mág" ColSpanMd="3">
+                        <DxSpinEdit @bind-Value="@editReqMage" MinValue="0" MaxValue="10" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Zloděj" ColSpanMd="3">
+                        <DxSpinEdit @bind-Value="@editReqThief" MinValue="0" MaxValue="10" />
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+                <DxFormLayoutGroup Caption="Obsah" ColSpanMd="12">
+                    @* Reserved for future per-game content (price/stock from /items grid edit popup) *@
+                    <DxFormLayoutItem ColSpanMd="12">
+                        <p class="text-muted small mb-0">Per-game konfigurace (Cena, Sklad, Prodává, Nalezitelný) se upravuje v záložce <strong>Obchod</strong> nebo přes <a href="/items">/items</a> seznam.</p>
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+            </DxFormLayout>
+            @if (error is not null) { <div class="alert alert-danger mt-2">@error</div> }
+            <div class="oh-it-d-edit-footer">
+                <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true" disabled="@isSaving">
+                    <i class="bi bi-trash"></i> Smazat
+                </button>
+                <div class="oh-it-d-spacer"></div>
+                <button class="btn btn-secondary" @onclick="CancelEdit" disabled="@isSaving">Zrušit</button>
+                <button class="btn btn-primary" @onclick="SaveAsync"
+                        disabled="@(isSaving || string.IsNullOrWhiteSpace(editName))">Uložit</button>
+            </div>
+        }
+        else if (activeTab == "tvorba")
+        {
+            @if (usage is null)
+            {
+                <p class="oh-it-d-loading">Načítám tvorbu…</p>
+            }
+            else
+            {
+                <div class="oh-it-d-sect">
+                    <div class="oh-it-d-sect-label"><i class="bi bi-tools"></i>Vyrábí se z (@usage.CraftedBy.Count @PluralForm(usage.CraftedBy.Count, "recept", "recepty", "receptů"))</div>
+                    @if (usage.CraftedBy.Count == 0)
+                    {
+                        <span class="oh-it-d-sect-empty">Žádný recept tento předmět nevyrábí.</span>
+                    }
+                    else
+                    {
+                        <div class="oh-it-d-recipes">
+                            @foreach (var r in usage.CraftedBy)
+                            {
+                                @RecipeCard(r)
+                            }
+                        </div>
+                    }
+                </div>
+                <div class="oh-it-d-sect">
+                    <div class="oh-it-d-sect-label"><i class="bi bi-arrow-right-circle"></i>Používá se v (@usage.UsedIn.Count @PluralForm(usage.UsedIn.Count, "receptu", "receptech", "receptech"))</div>
+                    @if (usage.UsedIn.Count == 0)
+                    {
+                        <span class="oh-it-d-sect-empty">Tento předmět není v žádném receptu jako ingredience.</span>
+                    }
+                    else
+                    {
+                        <div class="oh-it-d-recipes">
+                            @foreach (var r in usage.UsedIn)
+                            {
+                                @RecipeCard(r)
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        }
+        else if (activeTab == "vyskyt")
+        {
+            @if (usage is null)
+            {
+                <p class="oh-it-d-loading">Načítám výskyt…</p>
+            }
+            else
+            {
+                <div class="oh-it-d-sect">
+                    <div class="oh-it-d-sect-label"><i class="bi bi-bug-fill"></i>Kořist u příšer (@usage.MonsterLoot.Count)</div>
+                    @if (usage.MonsterLoot.Count == 0)
+                    {
+                        <span class="oh-it-d-sect-empty">Žádné příšery tento předmět nedávají.</span>
+                    }
+                    else
+                    {
+                        <div class="oh-it-d-minis">
+                            @foreach (var m in usage.MonsterLoot)
+                            {
+                                <a class="oh-it-d-mini" href="/monsters/@m.MonsterId" @key="@($"ml-{m.MonsterId}-{m.Game.GameId}")">
+                                    <div class="oh-it-d-mini-img">
+                                        @if (!string.IsNullOrEmpty(m.MonsterImageUrl))
+                                        {
+                                            <img src="@m.MonsterImageUrl" alt="@m.MonsterName" />
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-bug-fill oh-it-d-mini-img-empty"></i>
+                                        }
+                                        @if (m.Quantity > 1)
+                                        {
+                                            <span class="oh-it-d-mini-qty">× @m.Quantity</span>
+                                        }
+                                    </div>
+                                    <div class="oh-it-d-mini-body">
+                                        <div class="oh-it-d-mini-name" title="@m.MonsterName">@m.MonsterName</div>
+                                        <div class="oh-it-d-mini-game">@m.Game.GameName · ED. @m.Game.Edition</div>
+                                    </div>
+                                </a>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <div class="oh-it-d-sect">
+                    <div class="oh-it-d-sect-label"><i class="bi bi-trophy-fill"></i>Odměny v questech (@usage.QuestRewards.Count)</div>
+                    @if (usage.QuestRewards.Count == 0)
+                    {
+                        <span class="oh-it-d-sect-empty">V žádném questu se nedává jako odměna.</span>
+                    }
+                    else
+                    {
+                        <div class="oh-it-d-minis">
+                            @foreach (var q in usage.QuestRewards)
+                            {
+                                <div class="oh-it-d-mini" @key="@($"qr-{q.QuestId}-{q.Game.GameId}")">
+                                    <div class="oh-it-d-mini-img">
+                                        <i class="bi bi-trophy-fill oh-it-d-mini-img-empty"></i>
+                                        @if (q.Quantity > 1)
+                                        {
+                                            <span class="oh-it-d-mini-qty">× @q.Quantity</span>
+                                        }
+                                    </div>
+                                    <div class="oh-it-d-mini-body">
+                                        <div class="oh-it-d-mini-name" title="@q.QuestName">@q.QuestName</div>
+                                        <div class="oh-it-d-mini-game">@q.Game.GameName · ED. @q.Game.Edition</div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <div class="oh-it-d-sect">
+                    <div class="oh-it-d-sect-label"><i class="bi bi-gem"></i>V pokladech (@usage.Treasures.Count)</div>
+                    @if (usage.Treasures.Count == 0)
+                    {
+                        <span class="oh-it-d-sect-empty">V žádném pokladovém questu se nevyskytuje.</span>
+                    }
+                    else
+                    {
+                        <div class="oh-it-d-minis">
+                            @foreach (var t in usage.Treasures)
+                            {
+                                <div class="oh-it-d-mini" @key="@($"tr-{t.TreasureQuestId}-{t.Game.GameId}")">
+                                    <div class="oh-it-d-mini-img">
+                                        <i class="bi bi-gem oh-it-d-mini-img-empty"></i>
+                                        @if (t.Count > 1)
+                                        {
+                                            <span class="oh-it-d-mini-qty">× @t.Count</span>
+                                        }
+                                    </div>
+                                    <div class="oh-it-d-mini-body">
+                                        <div class="oh-it-d-mini-name" title="@t.TreasureQuestTitle">@t.TreasureQuestTitle</div>
+                                        <div class="oh-it-d-mini-game">@t.Game.GameName · ED. @t.Game.Edition</div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        }
+        else if (activeTab == "obchod")
+        {
+            @if (usage is null)
+            {
+                <p class="oh-it-d-loading">Načítám obchod…</p>
+            }
+            else if (usage.Shops.Count == 0)
+            {
+                <div class="oh-it-d-empty">
+                    <i class="bi bi-shop"></i>
+                    <p>Tento předmět není přiřazen v žádné hře.</p>
+                </div>
+            }
+            else
+            {
+                <table class="oh-it-d-shop">
+                    <thead>
+                        <tr>
+                            <th>Hra</th>
+                            <th class="oh-it-d-num">Cena</th>
+                            <th class="oh-it-d-num">Sklad</th>
+                            <th>Stav</th>
+                            <th>Podmínka</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var s in usage.Shops)
+                        {
+                            <tr @key="s.Game.GameId">
+                                <td>
+                                    @s.Game.GameName <span class="oh-it-d-recipe-game">ED. @s.Game.Edition</span>
+                                </td>
+                                <td class="oh-it-d-num">
+                                    @if (s.Price.HasValue && s.Price.Value > 0)
+                                    {
+                                        <span class="oh-it-coin @(!s.IsSold ? "oh-it-coin--struck" : "")">
+                                            <i class="bi bi-coin"></i>@s.Price.Value
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="oh-it-coin oh-it-coin--empty">—</span>
+                                    }
+                                </td>
+                                <td class="oh-it-d-num">
+                                    @if (s.StockCount.HasValue) { @s.StockCount.Value }
+                                    else { <span class="text-primary">∞</span> }
+                                </td>
+                                <td>
+                                    <ItemFlagsBox PerGame="true" IsSold="s.IsSold" IsFindable="s.IsFindable" IsCraftable="@(item != null && item.IsCraftable)" />
+                                </td>
+                                <td>
+                                    @if (!string.IsNullOrWhiteSpace(s.SaleCondition))
+                                    {
+                                        <span class="oh-it-d-shop-cond">@s.SaleCondition</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        }
+    </div>
+}
+
+@* Delete confirm *@
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Smazat předmět?" Width="420px">
+    <BodyContentTemplate Context="ctx">
+        <p>Opravdu chcete trvale smazat předmět <strong>@item?.Name</strong>? Smaže se z katalogu i všech přiřazení ke hrám.</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private ItemDetailDto? item;
+    private ItemUsageDto? usage;
+    private bool loading = true;
+    private string? error;
+    private string? heroImageUrl;
+    private bool heroImageFailed;
+
+    private string activeTab = "karta";
+    private bool isDeleteVisible;
+    private bool isSaving;
+
+    // Edit form state (Upravit tab)
+    private string editName = "";
+    private ItemType editType = ItemType.Weapon;
+    private PhysicalForm? editPhysicalForm;
+    private string? editEffect;
+    private bool editIsUnique, editIsLimited, editIsCraftable;
+    private int editReqWarrior, editReqArcher, editReqMage, editReqThief;
+
+    private static readonly List<EnumItem<ItemType>> itemTypeValues = Enum.GetValues<ItemType>()
+        .Select(v => new EnumItem<ItemType>(v, v.GetDisplayName())).ToList();
+    private static readonly List<EnumItem<PhysicalForm?>> physicalFormValues =
+        new[] { new EnumItem<PhysicalForm?>(null, "(nezvoleno)") }
+            .Concat(Enum.GetValues<PhysicalForm>().Select(v => new EnumItem<PhysicalForm?>((PhysicalForm?)v, v.GetDisplayName())))
+            .ToList();
+    record EnumItem<T>(T Value, string Display);
+
+    private int TvorbaCount => (usage?.CraftedBy.Count ?? 0) + (usage?.UsedIn.Count ?? 0);
+    private int VyskytCount => (usage?.MonsterLoot.Count ?? 0) + (usage?.QuestRewards.Count ?? 0) + (usage?.Treasures.Count ?? 0);
+    private int ObchodCount => usage?.Shops.Count ?? 0;
+
+    private int _lastId = -1;
+    private bool _gameContextInited;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Initialize GameContext once, then route every [Parameter] Id change
+        // through one load path. Avoids the duplicate-fetch race that happens
+        // when OnInitializedAsync also calls LoadAsync (per Copilot review on PR #90).
+        if (!_gameContextInited)
+        {
+            await GameContext.InitializeAsync();
+            _gameContextInited = true;
+        }
+        if (_lastId != Id)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        error = null;
+        heroImageFailed = false;
+        heroImageUrl = null;
+        usage = null;
+        _lastId = Id;
+        try
+        {
+            item = await Api.GetAsync<ItemDetailDto>($"/api/items/{Id}");
+            if (item is not null)
+            {
+                ResetEditFromItem();
+                if (!string.IsNullOrWhiteSpace(item.ImagePath))
+                {
+                    var urls = await Api.GetAsync<ImageUrlsDto>($"/api/images/items/{Id}");
+                    heroImageUrl = urls?.ImageUrl;
+                }
+                // Eagerly load usage for tab badges. On failure fall back to an
+                // empty sentinel so the Tvorba/Výskyt/Obchod tabs render their
+                // own empty states instead of staying stuck on "Načítám…"
+                // (per Copilot review on PR #90).
+                try
+                {
+                    usage = await Api.GetAsync<ItemUsageDto>($"/api/items/{Id}/usage");
+                }
+                catch (Exception uex)
+                {
+                    error = $"Nepodařilo se načíst doplňková data: {uex.Message}";
+                    usage = new ItemUsageDto(item.Id, item.Name, [], [], [], [], [], []);
+                }
+            }
+        }
+        catch (Exception ex) { error = ex.Message; item = null; }
+        finally { loading = false; }
+    }
+
+    private void ResetEditFromItem()
+    {
+        if (item is null) return;
+        editName = item.Name;
+        editType = item.ItemType;
+        editPhysicalForm = item.PhysicalForm;
+        editEffect = item.Effect;
+        editIsUnique = item.IsUnique;
+        editIsLimited = item.IsLimited;
+        editIsCraftable = item.IsCraftable;
+        editReqWarrior = item.ReqWarrior;
+        editReqArcher = item.ReqArcher;
+        editReqMage = item.ReqMage;
+        editReqThief = item.ReqThief;
+    }
+
+    private void SetTab(string tab) => activeTab = tab;
+
+    private void CancelEdit()
+    {
+        ResetEditFromItem();
+        activeTab = "karta";
+    }
+
+    private async Task SaveAsync()
+    {
+        if (item is null || string.IsNullOrWhiteSpace(editName)) return;
+        error = null;
+        isSaving = true;
+        try
+        {
+            await Api.PutAsync($"/api/items/{item.Id}",
+                new UpdateItemDto(editName, editType, editEffect, editPhysicalForm,
+                    editIsCraftable, editReqWarrior, editReqArcher, editReqMage, editReqThief,
+                    editIsUnique, editIsLimited));
+            await LoadAsync();
+            activeTab = "karta";
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (item is null) return;
+        try
+        {
+            var ok = await Api.DeleteAsync($"/api/items/{item.Id}");
+            if (!ok)
+            {
+                error = "Smazání předmětu selhalo.";
+                isDeleteVisible = false;
+                return;
+            }
+            isDeleteVisible = false;
+            Nav.NavigateTo("/items");
+        }
+        catch (Exception ex) { error = ex.Message; isDeleteVisible = false; }
+    }
+
+    private RenderFragment RecipeCard(ItemUsageRecipeDto r) => __builder =>
+    {
+        <div class="oh-it-d-recipe" @key="@($"r-{r.RecipeId}")">
+            <div class="oh-it-d-recipe-head">
+                <h5>@r.OutputItemName</h5>
+                <span class="oh-it-d-recipe-game">@r.Game.GameName · ED. @r.Game.Edition</span>
+                @if (!string.IsNullOrWhiteSpace(r.LocationName))
+                {
+                    <span class="oh-it-d-recipe-loc"><i class="bi bi-geo-alt me-1"></i>@r.LocationName</span>
+                }
+            </div>
+            @if (r.Ingredients.Count == 0)
+            {
+                <p class="oh-it-d-sect-empty mb-0">Bez ingrediencí.</p>
+            }
+            else
+            {
+                @foreach (var ing in r.Ingredients)
+                {
+                    <div class="oh-it-d-ingredients">
+                        <i class="bi bi-box oh-it-d-mini-img-empty"></i>
+                        <span class="oh-it-d-ing-name">@ing.ItemName</span>
+                        <span class="oh-it-d-ing-qty">× @ing.Quantity</span>
+                        <a class="btn btn-sm btn-link p-0" href="/items/@ing.ItemId" title="Otevřít @ing.ItemName">
+                            <i class="bi bi-box-arrow-up-right"></i>
+                        </a>
+                    </div>
+                }
+            }
+            @if (r.BuildingRequirements.Count > 0)
+            {
+                <div class="oh-it-d-recipe-bldgs">
+                    <span class="text-muted small">Vyžaduje:</span>
+                    @foreach (var b in r.BuildingRequirements)
+                    {
+                        <span class="oh-it-d-recipe-bldg-chip"><i class="bi bi-house-fill"></i>@b.BuildingName</span>
+                    }
+                </div>
+            }
+        </div>
+    };
+
+    private static string PluralForm(int n, string one, string few, string many)
+        => n == 1 ? one : (n >= 2 && n <= 4 ? few : many);
+}
