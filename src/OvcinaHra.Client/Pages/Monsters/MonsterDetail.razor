@@ -8,6 +8,15 @@
 {
     <p class="oh-mon-d-loading">Načítám…</p>
 }
+else if (monster is null && error is not null)
+{
+    <div class="oh-mon-d-empty">
+        <i class="bi bi-wifi-off"></i>
+        <p>Nepodařilo se načíst příšeru.</p>
+        <p class="text-danger small">@error</p>
+        <button class="btn btn-outline-primary" @onclick="LoadMonsterAsync">Zkusit znovu</button>
+    </div>
+}
 else if (monster is null)
 {
     <div class="oh-mon-d-empty">
@@ -92,7 +101,7 @@ else
                             {
                                 <div class="oh-mon-d-illust-empty">
                                     <i class="bi bi-bug-fill"></i>
-                                    <span>Iluustrace čeká</span>
+                                    <span>Ilustrace čeká</span>
                                 </div>
                             }
                         </div>
@@ -420,7 +429,7 @@ else
     <BodyContentTemplate Context="ctx">
         @if (removeFromGame is not null)
         {
-            <p>Příšera „@monster?.Name" se odstraní z přiřazení ke hře <strong>@removeFromGame.GameName</strong>.
+            <p>Příšera „@monster?.Name“ se odstraní z přiřazení ke hře <strong>@removeFromGame.GameName</strong>.
             Samotný záznam v bestiáři zůstane zachován, ale @removeFromGame.QuestCount questů a @removeFromGame.EncounterCount encounterů této hry s ní přestane počítat.</p>
         }
         <div class="d-flex gap-2 justify-content-end">
@@ -596,7 +605,13 @@ else
             }
             itemImageUrls = allItems.ToDictionary(i => i.Id, i => i.ImageUrl);
         }
-        catch (Exception ex) { error = ex.Message; }
+        catch (Exception ex)
+        {
+            // Surface the error and fall through to an empty list so the UI
+            // doesn't get stuck on the "Načítám…" branch (lootGroups is null).
+            error = $"Nepodařilo se načíst kořist: {ex.Message}";
+            lootGroups = [];
+        }
     }
 
     private async Task LoadOccurrencesAsync()
@@ -606,7 +621,11 @@ else
             occurrences = await Api.GetListAsync<MonsterOccurrenceDto>($"/api/monsters/{Id}/occurrences");
             occurrenceCount = occurrences.Count;
         }
-        catch (Exception ex) { error = ex.Message; }
+        catch (Exception ex)
+        {
+            error = $"Nepodařilo se načíst výskyty: {ex.Message}";
+            occurrences = [];
+        }
     }
 
     private void CancelEdit()
@@ -639,7 +658,13 @@ else
         if (monster is null) return;
         try
         {
-            await Api.DeleteAsync($"/api/monsters/{monster.Id}");
+            var ok = await Api.DeleteAsync($"/api/monsters/{monster.Id}");
+            if (!ok)
+            {
+                error = "Smazání příšery selhalo.";
+                isDeleteVisible = false;
+                return;
+            }
             isDeleteVisible = false;
             Nav.NavigateTo("/monsters");
         }
@@ -689,8 +714,13 @@ else
         if (removeLoot is null) return;
         try
         {
-            await Api.DeleteAsync($"/api/monsters/loot/{removeLoot.MonsterId}/{removeLoot.ItemId}/{removeLoot.GameId}");
+            var ok = await Api.DeleteAsync($"/api/monsters/loot/{removeLoot.MonsterId}/{removeLoot.ItemId}/{removeLoot.GameId}");
             isRemoveLootVisible = false;
+            if (!ok)
+            {
+                error = "Odebrání kořisti selhalo.";
+                return;
+            }
             removeLoot = null;
             await LoadLootGroupsAsync();
         }
@@ -708,8 +738,13 @@ else
         if (monster is null || removeFromGame is null) return;
         try
         {
-            await Api.DeleteAsync($"/api/monsters/game-monster/{removeFromGame.GameId}/{monster.Id}");
+            var ok = await Api.DeleteAsync($"/api/monsters/game-monster/{removeFromGame.GameId}/{monster.Id}");
             isRemoveFromGameVisible = false;
+            if (!ok)
+            {
+                error = $"Odebrání z hry {removeFromGame.GameName} selhalo.";
+                return;
+            }
             removeFromGame = null;
             await LoadOccurrencesAsync();
             await LoadLootGroupsAsync();

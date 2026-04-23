@@ -258,6 +258,10 @@ public static class MonsterEndpoints
         foreach (var a in assigned) info[a.GameId] = (a.GameName, a.Edition, a.StartDate);
         foreach (var l in lootRows) info.TryAdd(l.GameId, (l.GameName, l.Edition, l.StartDate));
 
+        // Index loot once by GameId so the per-game projection below is O(games + lootRows)
+        // instead of the O(games × lootRows) re-scan a naive .Where would do.
+        var lootByGame = lootRows.ToLookup(l => l.GameId, l => l.Loot);
+
         var result = info
             .OrderByDescending(kv => kv.Value.StartDate)
             .ThenBy(kv => kv.Value.Name)
@@ -265,10 +269,7 @@ public static class MonsterEndpoints
                 kv.Key,
                 kv.Value.Name,
                 kv.Value.Edition,
-                lootRows.Where(l => l.GameId == kv.Key)
-                        .Select(l => l.Loot)
-                        .OrderBy(d => d.ItemName)
-                        .ToList()))
+                lootByGame[kv.Key].OrderBy(d => d.ItemName).ToList()))
             .ToList();
 
         return TypedResults.Ok(result);

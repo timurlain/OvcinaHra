@@ -21,7 +21,6 @@
                     ValueFieldName="Id"
                     NullText="(vyberte tag)"
                     SearchMode="ListSearchMode.AutoSearch"
-                    CssClass="oh-mon-d-tag-combo"
                     SizeMode="SizeMode.Small" />
         <button type="button" class="btn btn-sm btn-primary"
                 disabled="@(pendingAddId is null)" @onclick="AddAsync">Přidat</button>
@@ -118,7 +117,12 @@
         error = null;
         try
         {
-            await Api.DeleteAsync($"/api/monsters/{MonsterId}/tags/{tag.Id}");
+            var ok = await Api.DeleteAsync($"/api/monsters/{MonsterId}/tags/{tag.Id}");
+            if (!ok)
+            {
+                error = $"Odebrání tagu „{tag.Name}\u201c selhalo.";
+                return;
+            }
             selectedTags.Remove(tag);
             Recompute();
             if (Changed.HasDelegate) await Changed.InvokeAsync();
