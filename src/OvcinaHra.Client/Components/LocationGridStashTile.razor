@@ -1,0 +1,86 @@
+@* LocationGridStashTile — one stash cell inside LocationList's Skrýše column.
+   Mirrors SecretStashGridTile's state pattern: render the themed gradient +
+   glyph as fallback, overlay the image when present. Blazor @onload/@onerror
+   flip imageLoaded / imageFailed so a stale key or dropped blob reveals the
+   glyph gracefully (and survives list re-renders when the component is
+   reused for a different stash). *@
+
+@using OvcinaHra.Shared.Dtos
+
+<div class="oh-lg-stash-tile @ThemeClass"
+     @onclick="OnTileClick"
+     @onclick:stopPropagation="true">
+    @if (!imageLoaded || imageFailed)
+    {
+        <i class="oh-lg-glyph bi @GlyphClass" aria-hidden="true"></i>
+    }
+    @if (!string.IsNullOrEmpty(Stash.ImageUrl) && !imageFailed)
+    {
+        <img class="oh-lg-stash-tile-img"
+             src="@Stash.ImageUrl"
+             alt="@Stash.Name"
+             @onload="() => imageLoaded = true"
+             @onerror="() => imageFailed = true" />
+        <div class="oh-lg-stash-tile-img-veil"></div>
+    }
+    <span class="oh-lg-qcount @(Stash.TreasureQuests.Count == 0 ? "oh-lg-zero" : "")">
+        <i class="bi bi-journal-text"></i>@Stash.TreasureQuests.Count
+    </span>
+    <div class="oh-lg-nm">@Stash.Name</div>
+    @if (Stash.TreasureQuests.Count > 0)
+    {
+        <div class="oh-lg-flyout">
+            <div class="oh-lg-fh">Honby za pokladem</div>
+            @foreach (var tq in Stash.TreasureQuests.Take(5))
+            {
+                <div class="oh-lg-q">
+                    <span class="oh-lg-dot-q"></span>
+                    <span class="oh-lg-qn">@tq.Title</span>
+                    <span class="oh-lg-pill">Poklad</span>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public LocationStashDto Stash { get; set; } = null!;
+    [Parameter] public EventCallback<int> OnClick { get; set; }
+
+    private bool imageLoaded;
+    private bool imageFailed;
+    private string? _lastUrl;
+
+    protected override void OnParametersSet()
+    {
+        // Reset state when the component is reused for a different stash —
+        // otherwise a "loaded" flag from the previous row would suppress the
+        // glyph while the new src is still fetching.
+        if (_lastUrl != Stash.ImageUrl)
+        {
+            _lastUrl = Stash.ImageUrl;
+            imageLoaded = false;
+            imageFailed = false;
+        }
+    }
+
+    private Task OnTileClick() => OnClick.InvokeAsync(Stash.Id);
+
+    private string ThemeClass => (Stash.Id % 5) switch
+    {
+        0 => "oh-lg-chest",
+        1 => "oh-lg-hollow",
+        2 => "oh-lg-stone",
+        3 => "oh-lg-creek",
+        _ => "oh-lg-cave",
+    };
+
+    private string GlyphClass => (Stash.Id % 5) switch
+    {
+        0 => "bi-box2-heart-fill",
+        1 => "bi-archive-fill",
+        2 => "bi-gem",
+        3 => "bi-tree-fill",
+        _ => "bi-moon-stars-fill",
+    };
+}
