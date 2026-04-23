@@ -110,10 +110,10 @@ else
                     @{
                         var loc = (LocationListDto)context.DataItem;
                         var isVariant = loc.ParentLocationId.HasValue;
-                        var variantCount = isVariant ? 0 : locations.Count(l => l.ParentLocationId == loc.Id);
+                        var variantCount = isVariant ? 0 : variantCountByParent.GetValueOrDefault(loc.Id, 0);
                         var isOpen = expandedParentIds.Contains(loc.Id);
                     }
-                    <div class="oh-lg-name-col @(isVariant ? "oh-lg-variant-row" : "")">
+                    <div class="oh-lg-name-col">
                         @if (!isVariant && variantCount > 0)
                         {
                             <i class="bi bi-chevron-right oh-lg-chev @(isOpen ? "oh-lg-open" : "")"
@@ -239,7 +239,7 @@ else
                                             @if (stash.TreasureQuests.Count > 0)
                                             {
                                                 <div class="oh-lg-flyout">
-                                                    <div class="oh-lg-fh">Treasure Quests</div>
+                                                    <div class="oh-lg-fh">Honby za pokladem</div>
                                                     @foreach (var tq in stash.TreasureQuests.Take(5))
                                                     {
                                                         <div class="oh-lg-q">
@@ -511,6 +511,9 @@ else
 
     // Variant expansion
     private readonly HashSet<int> expandedParentIds = [];
+    // Precomputed variant counts — cell template runs per rendered row, so
+    // pulling `locations.Count(...)` there was O(n²). Filled in LoadDataAsync.
+    private Dictionary<int, int> variantCountByParent = new();
 
     // Delete target
     private LocationListDto? deleteTarget;
@@ -555,8 +558,12 @@ else
                 if (filterKind.HasValue && l.LocationKind != filterKind.Value) return false;
                 if (!string.IsNullOrWhiteSpace(filterRegion)
                     && !string.Equals(l.Region, filterRegion, StringComparison.OrdinalIgnoreCase)) return false;
-                if (filterOnlyWithStashes && (l.Stashes is null || l.Stashes.Count == 0)) return false;
-                if (filterOnlyWithQuests
+                // Catalog mode returns LocationListDto with empty Stashes/Quests
+                // arrays, so the "jen s poklady" / "jen s questy" toggles are
+                // per-hra-only. Guard them here in case the toggle is on when
+                // Catalog flips.
+                if (!Catalog && filterOnlyWithStashes && (l.Stashes is null || l.Stashes.Count == 0)) return false;
+                if (!Catalog && filterOnlyWithQuests
                     && (l.Quests is null || l.Quests.Count == 0)
                     && (l.LocationTreasureQuests is null || l.LocationTreasureQuests.Count == 0)) return false;
                 if (Catalog && filterOnlyUnassigned && assignedLocationIds.Contains(l.Id)) return false;
@@ -583,7 +590,7 @@ else
                         .Where(x => x.ParentLocationId == l.Id)
                         .OrderBy(x => x.Name))
                     {
-                        result.Add(v);
+                        if (Matches(v)) result.Add(v);
                     }
                 }
             }
@@ -899,6 +906,10 @@ else
             locations = await Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gameId}");
             assignedLocationIds = [];
         }
+        variantCountByParent = locations
+            .Where(l => l.ParentLocationId.HasValue)
+            .GroupBy(l => l.ParentLocationId!.Value)
+            .ToDictionary(g => g.Key, g => g.Count());
         loading = false;
     }
 

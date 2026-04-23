@@ -1323,7 +1323,7 @@
 .oh-lg-newbtn:hover{background:var(--oh-primary-light)}
 
 .oh-lg-toolbar{display:flex;align-items:center;gap:10px;padding:14px 28px 16px;flex-wrap:wrap}
-.oh-lg-tb-search{flex:0 0 280px;padding:8px 10px 8px 32px;background:var(--oh-surface);border:1px solid var(--oh-border);border-radius:var(--oh-radius-sm);font:400 .875rem var(--oh-font-body);color:var(--oh-text);background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.oh-lg-w3.oh-lg-org/2000/svg' width='14' height='14' viewBox='0 0 16 16'><path fill='%238B4513' d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z'/></svg>");background-repeat:no-repeat;background-position:10px center}
+.oh-lg-tb-search{flex:0 0 280px;padding:8px 10px 8px 32px;background:var(--oh-surface);border:1px solid var(--oh-border);border-radius:var(--oh-radius-sm);font:400 .875rem var(--oh-font-body);color:var(--oh-text);background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 16 16'><path fill='%238B4513' d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z'/></svg>");background-repeat:no-repeat;background-position:10px center}
 .oh-lg-tb-search:focus{outline:none;border-color:var(--oh-primary-light);box-shadow:0 0 0 3px rgba(74,124,52,.15);background-color:#fff}
 .oh-lg-tb-dd{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;background:var(--oh-surface);border:1px solid var(--oh-border);border-radius:var(--oh-radius-sm);font:500 .8125rem var(--oh-font-body);color:var(--oh-text);cursor:pointer;min-height:36px}
 .oh-lg-tb-dd:hover{border-color:var(--oh-primary-light);color:var(--oh-primary);background:var(--oh-primary-surface)}
@@ -1424,11 +1424,14 @@
 .oh-lg-notassigned{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:99px;background:var(--oh-surface-alt);border:1px solid var(--oh-border);color:var(--oh-text-secondary);font:500 .75rem var(--oh-font-body)}
 .oh-lg-assign-btn{display:none;align-items:center;gap:5px;padding:4px 10px;border-radius:99px;background:var(--oh-surface);border:1px dashed rgba(74,124,52,.5);color:var(--oh-primary);font:600 .6875rem var(--oh-font-body);cursor:pointer;margin-left:6px}
 .oh-lg-assign-btn:hover{background:var(--oh-primary-surface);border-style:solid}
-.oh-lg-grow:hover .oh-lg-assign-btn{display:inline-flex}
+.oh-lg-grow:hover .oh-lg-assign-btn,
+.dxbl-grid-table tbody tr:hover .oh-lg-assign-btn{display:inline-flex}
 
-/* Hover action icons */
+/* Hover action icons — reveal on row hover (works with both a manual
+   .oh-lg-grow wrapper and the actual DevExpress grid row on /locations). */
 .oh-lg-actions{display:flex;align-items:center;gap:4px;justify-content:flex-end;opacity:.35;transition:.15s}
-.oh-lg-grow:hover .oh-lg-actions{opacity:1}
+.oh-lg-grow:hover .oh-lg-actions,
+.dxbl-grid-table tbody tr:hover .oh-lg-actions{opacity:1}
 .oh-lg-actions button{width:28px;height:28px;border-radius:var(--oh-radius-sm);border:1px solid transparent;background:transparent;color:var(--oh-text-secondary);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:.15s}
 .oh-lg-actions button:hover{background:var(--oh-surface);border-color:var(--oh-border);color:var(--oh-primary)}
 .oh-lg-actions button.oh-lg-danger:hover{color:var(--oh-accent);border-color:rgba(178,34,34,.4);background:rgba(178,34,34,.06)}
@@ -1637,12 +1640,18 @@
 .oh-lg-vlink:hover{background:var(--oh-primary);color:#fff;border-color:var(--oh-primary)}
 .oh-lg-vlink i{font-size:.6875rem}
 
-/* buttons (shared) */
-.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--oh-radius-sm);font:600 .875rem var(--oh-font-body);cursor:pointer;border:1px solid transparent;transition:.2s;text-decoration:none;line-height:1.2}
-.btn-secondary{color:var(--oh-text);border-color:var(--oh-border);background:var(--oh-surface)}
-.btn-secondary:hover{border-color:var(--oh-primary-light);color:var(--oh-primary);background:var(--oh-primary-surface)}
-.btn-primary{background:var(--oh-primary);color:#fff;border-color:var(--oh-primary)}
-.btn-primary:hover{background:var(--oh-primary-light);border-color:var(--oh-primary-light);box-shadow:0 2px 8px rgba(45,80,22,.25)}
+/* buttons (scoped to locations grid surfaces only — bare .btn rules would
+   leak into the rest of the app and clobber Bootstrap button styling). */
+:where([class^="oh-lg-"], [class*=" oh-lg-"]) .btn,
+:where([class^="oh-lg-"], [class*=" oh-lg-"]).btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--oh-radius-sm);font:600 .875rem var(--oh-font-body);cursor:pointer;border:1px solid transparent;transition:.2s;text-decoration:none;line-height:1.2}
+:where([class^="oh-lg-"], [class*=" oh-lg-"]) .btn-secondary,
+:where([class^="oh-lg-"], [class*=" oh-lg-"]).btn-secondary{color:var(--oh-text);border-color:var(--oh-border);background:var(--oh-surface)}
+:where([class^="oh-lg-"], [class*=" oh-lg-"]) .btn-secondary:hover,
+:where([class^="oh-lg-"], [class*=" oh-lg-"]).btn-secondary:hover{border-color:var(--oh-primary-light);color:var(--oh-primary);background:var(--oh-primary-surface)}
+:where([class^="oh-lg-"], [class*=" oh-lg-"]) .btn-primary,
+:where([class^="oh-lg-"], [class*=" oh-lg-"]).btn-primary{background:var(--oh-primary);color:#fff;border-color:var(--oh-primary)}
+:where([class^="oh-lg-"], [class*=" oh-lg-"]) .btn-primary:hover,
+:where([class^="oh-lg-"], [class*=" oh-lg-"]).btn-primary:hover{background:var(--oh-primary-light);border-color:var(--oh-primary-light);box-shadow:0 2px 8px rgba(45,80,22,.25)}
 
 /* design notes */
 .oh-lg-notes{max-width:1280px;margin:40px auto 64px;padding:0 40px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
