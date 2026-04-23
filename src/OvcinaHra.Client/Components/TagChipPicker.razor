@@ -1,0 +1,128 @@
+@inject ApiClient Api
+
+<div class="oh-mon-d-tags">
+    @foreach (var tag in selectedTags)
+    {
+        var captured = tag;
+        <span class="oh-mon-d-tag" @key="captured.Id">
+            @captured.Name
+            <button type="button"
+                    style="background:transparent;border:none;color:inherit;font-weight:700;margin-left:4px;cursor:pointer;padding:0 2px"
+                    title="Odebrat"
+                    @onclick="() => RemoveAsync(captured)">×</button>
+        </span>
+    }
+
+    @if (showAdd)
+    {
+        <DxComboBox Data="@unselectedTags"
+                    @bind-Value="@pendingAddId"
+                    TextFieldName="Name"
+                    ValueFieldName="Id"
+                    NullText="(vyberte tag)"
+                    SearchMode="ListSearchMode.AutoSearch"
+                    CssClass="oh-mon-d-tag-combo"
+                    SizeMode="SizeMode.Small" />
+        <button type="button" class="btn btn-sm btn-primary"
+                disabled="@(pendingAddId is null)" @onclick="AddAsync">Přidat</button>
+        <button type="button" class="btn btn-sm btn-link" @onclick="() => showAdd = false">Zrušit</button>
+    }
+    else
+    {
+        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="OpenAdd">
+            <i class="bi bi-plus-lg"></i> Přidat tag
+        </button>
+    }
+</div>
+
+@if (error is not null)
+{
+    <div class="alert alert-danger mt-2 py-1 px-2 small">@error</div>
+}
+
+@code {
+    [Parameter, EditorRequired] public int MonsterId { get; set; }
+    [Parameter] public List<TagDto> InitialTags { get; set; } = [];
+    [Parameter] public EventCallback Changed { get; set; }
+
+    private List<TagDto> selectedTags = [];
+    private List<TagDto> allTags = [];
+    private List<TagDto> unselectedTags = [];
+    private bool showAdd;
+    private int? pendingAddId;
+    private string? error;
+    private int _lastMonsterId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await SyncFromParamsAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_lastMonsterId != MonsterId)
+        {
+            await SyncFromParamsAsync();
+        }
+    }
+
+    private async Task SyncFromParamsAsync()
+    {
+        _lastMonsterId = MonsterId;
+        selectedTags = [..InitialTags];
+        if (allTags.Count == 0)
+        {
+            allTags = await Api.GetListAsync<TagDto>("/api/tags");
+        }
+        Recompute();
+    }
+
+    private void Recompute()
+    {
+        var selectedIds = selectedTags.Select(t => t.Id).ToHashSet();
+        unselectedTags = allTags
+            .Where(t => !selectedIds.Contains(t.Id))
+            .OrderBy(t => t.Name)
+            .ToList();
+    }
+
+    private void OpenAdd()
+    {
+        pendingAddId = null;
+        error = null;
+        showAdd = true;
+    }
+
+    private async Task AddAsync()
+    {
+        if (pendingAddId is null) return;
+        error = null;
+        try
+        {
+            await Api.PostAsync($"/api/monsters/{MonsterId}/tags/{pendingAddId}");
+            var newTag = allTags.FirstOrDefault(t => t.Id == pendingAddId);
+            if (newTag is not null)
+            {
+                selectedTags.Add(newTag);
+                Recompute();
+            }
+            pendingAddId = null;
+            showAdd = false;
+            if (Changed.HasDelegate) await Changed.InvokeAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task RemoveAsync(TagDto tag)
+    {
+        error = null;
+        try
+        {
+            await Api.DeleteAsync($"/api/monsters/{MonsterId}/tags/{tag.Id}");
+            selectedTags.Remove(tag);
+            Recompute();
+            if (Changed.HasDelegate) await Changed.InvokeAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+}

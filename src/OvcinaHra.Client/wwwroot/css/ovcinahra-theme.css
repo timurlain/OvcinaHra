@@ -1828,3 +1828,135 @@
 .oh-ssg-popup-foot .oh-ssg-foot-note{font-size:.75rem;color:var(--oh-text-secondary);font-style:italic;margin-right:auto}
 .oh-ssg-popup-pic{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap}
 .oh-ssg-popup-err{margin:0 0 8px;padding:8px 10px;border-radius:var(--oh-radius-sm);background:rgba(211,47,47,.08);border:1px solid rgba(211,47,47,.3);color:var(--oh-error);font-size:.8125rem}
+
+/* ============================================================
+   Monster detail page (/monsters/{id}) — .oh-mon-d-*
+   Illuminated bestiary: title strip + sticky 5-tab strip,
+   Karta 62fr/38fr, Bojovka presenter, Kořist 5:7 MTG tiles,
+   Výskyt compact table.
+   Ported from docs/design/dialogs/monster-detail.mockup.unbundled.html
+   ============================================================ */
+
+/* Title strip */
+.oh-mon-d-ts{display:flex;align-items:flex-start;gap:18px;padding:18px 28px 12px;border-bottom:1px solid var(--oh-border);background:var(--oh-surface)}
+.oh-mon-d-ts-title{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.oh-mon-d-ts-title h1{margin:0;font:900 2rem var(--oh-font-heading);color:var(--oh-primary);letter-spacing:-.01em;line-height:1.1}
+.oh-mon-d-ts-sub{display:flex;align-items:center;gap:10px;flex-wrap:wrap;color:var(--oh-text-secondary);font-size:.8125rem}
+.oh-mon-d-ts-sub .oh-mon-d-dotsep{opacity:.5;font-weight:600}
+.oh-mon-d-ts-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.oh-mon-d-back{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:var(--oh-radius-sm);background:transparent;border:1px solid var(--oh-border);color:var(--oh-text-secondary);font:500 .8125rem var(--oh-font-body);text-decoration:none;cursor:pointer}
+.oh-mon-d-back:hover{background:var(--oh-surface-alt);color:var(--oh-primary)}
+
+/* Reuse the neutral palette MonsterType chip + Kategorie kbadge from list page */
+.oh-mon-d-mtype{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;font:600 .75rem var(--oh-font-body);letter-spacing:.02em;white-space:nowrap;background:#e9e4dc;border:1px solid #bfb4a2;color:#5a4a30}
+.oh-mon-d-mtype i{font-size:.8125rem}
+.oh-mon-d-kbadge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;background:rgba(178,98,35,.10);border:1px solid rgba(178,98,35,.32);color:#7a4315;font:600 .75rem var(--oh-font-mono)}
+.oh-mon-d-id{font:600 .75rem var(--oh-font-mono);color:var(--oh-text-secondary);letter-spacing:.04em}
+
+/* Tab strip — sticky under title */
+.oh-mon-d-tabs{display:flex;align-items:center;gap:2px;padding:0 28px;border-bottom:1px solid var(--oh-border);background:var(--oh-surface);position:sticky;top:0;z-index:5;overflow-x:auto}
+.oh-mon-d-tab{display:inline-flex;align-items:center;gap:7px;padding:12px 18px;min-height:44px;border:none;border-bottom:3px solid transparent;background:transparent;color:var(--oh-text-secondary);font:600 .875rem var(--oh-font-body);cursor:pointer;white-space:nowrap;transition:.15s}
+.oh-mon-d-tab i{font-size:.9375rem;opacity:.7}
+.oh-mon-d-tab:hover{color:var(--oh-primary)}
+.oh-mon-d-tab.oh-mon-d-active{color:var(--oh-primary);border-bottom-color:var(--oh-primary)}
+.oh-mon-d-tab.oh-mon-d-active i{opacity:1;color:var(--oh-primary-light)}
+.oh-mon-d-tab-count{font-family:var(--oh-font-mono);font-size:.75rem;color:var(--oh-text-secondary);background:var(--oh-surface-alt);border:1px solid var(--oh-border);border-radius:99px;padding:1px 7px;min-width:22px;text-align:center}
+.oh-mon-d-tab.oh-mon-d-active .oh-mon-d-tab-count{color:var(--oh-primary);border-color:rgba(74,124,52,.3);background:var(--oh-primary-surface)}
+
+/* Tab body container */
+.oh-mon-d-body{padding:24px 28px}
+
+/* Bestiary parchment card (used as Karta + Bojovka frame) */
+.oh-mon-d-bestiary{background:linear-gradient(145deg,#f5f0e8 0%,#ebe4d4 40%,#e8dcc8 100%);border:1px solid #d4c5a9;border-radius:6px;padding:32px 36px 28px;position:relative;overflow:hidden;box-shadow:0 2px 8px rgba(45,80,22,.10)}
+
+/* Karta layout — 2 columns, illustration vs stats */
+.oh-mon-d-karta{display:grid;grid-template-columns:62fr 38fr;gap:28px;align-items:start}
+@media (max-width:900px){.oh-mon-d-karta{grid-template-columns:1fr}}
+
+/* 4:3 hero illustration with parchment frame (per brief) */
+.oh-mon-d-illust{position:relative;width:100%;aspect-ratio:4/3;border:2px solid #c4b494;border-radius:4px;overflow:hidden;background:var(--oh-surface-alt);box-shadow:0 3px 14px rgba(45,80,22,.18),inset 0 0 0 1px rgba(255,248,230,.4)}
+.oh-mon-d-illust img{width:100%;height:100%;object-fit:cover;display:block}
+.oh-mon-d-illust::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 28% 30%,rgba(255,240,200,.16) 0%,transparent 55%),linear-gradient(180deg,transparent 70%,rgba(139,119,80,.18) 100%)}
+.oh-mon-d-illust-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;color:rgba(139,90,43,.5);font:italic 700 .95rem Georgia,serif}
+.oh-mon-d-illust-empty i{font-size:3.5rem;opacity:.55}
+.oh-mon-d-illust-cap{display:flex;align-items:center;justify-content:space-between;font-family:Georgia,serif;font-size:.8125rem;color:#8b7750;font-style:italic;padding:8px 4px 0;gap:12px}
+
+/* Stat block — book-leger style: icon + label + mono value */
+.oh-mon-d-stats{display:flex;flex-direction:column;background:rgba(255,248,240,.45);box-shadow:inset 0 1px 0 rgba(178,98,35,.18);border-radius:4px;padding:6px 12px}
+.oh-mon-d-statrow{display:grid;grid-template-columns:22px 1fr auto;align-items:center;gap:10px;padding:10px 0;border-bottom:1px dotted rgba(178,98,35,.30)}
+.oh-mon-d-statrow:last-child{border-bottom:none}
+.oh-mon-d-stat-icon{color:var(--oh-primary-light);font-size:1rem;text-align:center}
+.oh-mon-d-stat-lab{font-family:Georgia,serif;font-style:italic;color:#5a4f3f;font-size:.875rem;letter-spacing:.02em}
+.oh-mon-d-stat-val{font-family:var(--oh-font-mono);font-weight:700;font-size:1.125rem;color:var(--oh-primary);font-variant-numeric:tabular-nums;text-align:right}
+
+/* Section heading + body (Schopnosti, AI chování, Tagy, Poznámka) */
+.oh-mon-d-sect{margin-top:24px}
+.oh-mon-d-sect-label{font-family:var(--oh-font-body);font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--oh-text-secondary);padding-bottom:6px;margin:0 0 12px;border-bottom:1px solid rgba(178,98,35,.22)}
+.oh-mon-d-sect-label i{color:var(--oh-primary-light);font-size:.875rem;margin-right:6px}
+.oh-mon-d-sect-body{font:400 .9375rem/1.55 Georgia,serif;color:var(--oh-text)}
+.oh-mon-d-sect-empty{font-style:italic;color:var(--oh-text-secondary);font-size:.875rem}
+.oh-mon-d-tags{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.oh-mon-d-tag{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:99px;background:var(--oh-surface-alt);border:1px solid rgba(178,98,35,.32);color:#7a4315;font:500 .75rem var(--oh-font-body)}
+
+/* Notes callout (organizer-only Poznámka) */
+.oh-mon-d-notes{margin-top:24px;padding:14px 18px;background:rgba(255,248,240,.55);border:1px solid rgba(178,98,35,.22);border-left:3px solid var(--oh-card-border);border-radius:4px}
+.oh-mon-d-notes-label{font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;font-weight:700;color:var(--oh-text-secondary);margin-bottom:4px}
+.oh-mon-d-notes-body{font:italic 400 .9125rem Georgia,serif;color:#5a4f3f}
+
+/* Bojovka — presenter view with three big stat boxes */
+.oh-mon-d-bojovka{display:flex;flex-direction:column;gap:18px}
+.oh-mon-d-hp{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--oh-surface);border:1px solid var(--oh-border);border-radius:var(--oh-radius-sm);position:sticky;top:48px;z-index:4;flex-wrap:wrap}
+.oh-mon-d-hp-current{font-family:var(--oh-font-mono);font-weight:700;font-size:1.25rem;color:var(--oh-primary);font-variant-numeric:tabular-nums;margin-right:auto}
+.oh-mon-d-hp button{padding:6px 12px;border-radius:var(--oh-radius-sm);border:1px solid var(--oh-border);background:var(--oh-surface);color:var(--oh-primary);font:600 .8125rem var(--oh-font-body);cursor:pointer}
+.oh-mon-d-hp button:hover{background:var(--oh-primary-surface);border-color:var(--oh-primary-light)}
+.oh-mon-d-bigstats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.oh-mon-d-bigstat{display:flex;flex-direction:column;align-items:center;gap:6px;padding:18px 14px;background:rgba(255,248,240,.65);border:1px solid #d4c5a9;border-radius:6px;border-top:4px solid var(--oh-card-border);box-shadow:0 1px 3px rgba(45,80,22,.10)}
+.oh-mon-d-bigstat-lab{font:700 .75rem var(--oh-font-body);text-transform:uppercase;letter-spacing:.1em;color:var(--oh-text-secondary)}
+.oh-mon-d-bigstat-val{font:900 3rem/1 var(--oh-font-mono);color:var(--oh-primary);font-variant-numeric:tabular-nums}
+.oh-mon-d-abilities-list{margin:0;padding:0 0 0 22px;font:400 1.0625rem/1.5 Georgia,serif;color:var(--oh-text)}
+.oh-mon-d-abilities-list li{margin-bottom:6px}
+.oh-mon-d-ai-quote{margin:0;padding:14px 18px;border-left:4px solid var(--oh-primary-light);background:rgba(74,124,52,.05);font:italic 400 1.0625rem/1.5 Georgia,serif;color:#3d3a32}
+
+/* Kořist — per-game grouping */
+.oh-mon-d-loot{display:flex;flex-direction:column;gap:24px}
+.oh-mon-d-loot-game{padding:14px 0;border-top:1px solid var(--oh-border)}
+.oh-mon-d-loot-game:first-child{border-top:none;padding-top:0}
+.oh-mon-d-loot-game-head{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.oh-mon-d-loot-game-head h4{margin:0;font:700 1rem var(--oh-font-heading);color:var(--oh-primary)}
+.oh-mon-d-loot-game-edition{font:600 .6875rem var(--oh-font-mono);color:var(--oh-text-secondary);background:var(--oh-surface-alt);border:1px solid var(--oh-border);border-radius:99px;padding:1px 7px;letter-spacing:.04em}
+.oh-mon-d-loot-game-current{font:600 .6875rem var(--oh-font-body);text-transform:uppercase;letter-spacing:.08em;color:var(--oh-primary);background:var(--oh-primary-surface);border:1px solid rgba(74,124,52,.35);border-radius:99px;padding:2px 8px;margin-left:auto}
+.oh-mon-d-loot-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
+.oh-mon-d-loot-add{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:2px dashed var(--oh-border);background:transparent;border-radius:var(--oh-radius-sm);color:var(--oh-text-secondary);font:600 .8125rem var(--oh-font-body);cursor:pointer;padding:12px;min-height:60px;width:100%;transition:.15s}
+.oh-mon-d-loot-add:hover{border-color:var(--oh-primary-light);color:var(--oh-primary);background:var(--oh-primary-surface)}
+.oh-mon-d-loot-empty{font-style:italic;color:var(--oh-text-secondary);font-size:.875rem;padding:8px 0}
+
+/* Loot tile — 5:7 MTG */
+.oh-mon-d-loot-tile{display:flex;flex-direction:column;border:1px solid var(--oh-border);border-radius:var(--oh-radius-sm);overflow:hidden;background:var(--oh-surface);box-shadow:0 1px 3px rgba(45,80,22,.08);transition:.15s;text-decoration:none;color:inherit;position:relative;cursor:pointer}
+.oh-mon-d-loot-tile:hover{border-color:var(--oh-primary-light);box-shadow:0 3px 10px rgba(45,80,22,.14);transform:translateY(-1px)}
+.oh-mon-d-loot-tile-img{width:100%;aspect-ratio:5/7;background:var(--oh-surface-alt);position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.oh-mon-d-loot-tile-img img{width:100%;height:100%;object-fit:cover;display:block}
+.oh-mon-d-loot-tile-img-empty{font-size:1.5rem;color:rgba(139,90,43,.5)}
+.oh-mon-d-loot-tile-qty{position:absolute;right:6px;bottom:6px;font:700 .75rem var(--oh-font-mono);background:rgba(44,24,16,.78);color:#fff;padding:2px 7px;border-radius:99px;letter-spacing:.04em}
+.oh-mon-d-loot-tile-name{padding:8px 10px;font:600 .8125rem var(--oh-font-heading);color:var(--oh-text);text-align:center;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Výskyt — compact occurrences table */
+.oh-mon-d-occur-summary{display:flex;align-items:center;gap:18px;padding:12px 16px;background:var(--oh-primary-surface);border:1px solid rgba(74,124,52,.35);border-radius:var(--oh-radius-sm);margin-bottom:18px;font:600 .9375rem var(--oh-font-body);color:var(--oh-primary);flex-wrap:wrap}
+.oh-mon-d-occur-summary .oh-mon-d-dotsep{opacity:.5;font-weight:600}
+.oh-mon-d-occur-table{width:100%;border-collapse:collapse}
+.oh-mon-d-occur-table th{text-align:left;font:700 .6875rem var(--oh-font-body);text-transform:uppercase;letter-spacing:.08em;color:var(--oh-text-secondary);padding:8px 12px;border-bottom:1px solid var(--oh-border)}
+.oh-mon-d-occur-table th.oh-mon-d-num,.oh-mon-d-occur-table td.oh-mon-d-num{text-align:right;font-family:var(--oh-font-mono);font-variant-numeric:tabular-nums}
+.oh-mon-d-occur-table tbody tr{border-bottom:1px solid var(--oh-border);cursor:pointer;transition:.12s}
+.oh-mon-d-occur-table tbody tr:hover{background:var(--oh-primary-surface)}
+.oh-mon-d-occur-table tbody tr.oh-mon-d-current{border-left:3px solid var(--oh-primary)}
+.oh-mon-d-occur-table td{padding:10px 12px;font-size:.875rem;color:var(--oh-text)}
+.oh-mon-d-occur-remove{padding:4px 10px;border-radius:var(--oh-radius-sm);background:transparent;border:1px solid rgba(140,36,35,.35);color:#8c2423;font:600 .75rem var(--oh-font-body);cursor:pointer;transition:.15s}
+.oh-mon-d-occur-remove:hover{background:rgba(140,36,35,.08)}
+
+/* Empty / loading states */
+.oh-mon-d-loading{padding:48px 16px;text-align:center;color:var(--oh-text-secondary);font-style:italic}
+.oh-mon-d-empty{padding:48px 16px;text-align:center;color:var(--oh-text-secondary)}
+.oh-mon-d-empty i{font-size:3rem;color:var(--oh-primary-light);opacity:.6;display:block;margin-bottom:10px}
+
+/* Upravit — sticky form footer */
+.oh-mon-d-edit-footer{position:sticky;bottom:0;display:flex;align-items:center;gap:8px;padding:14px 28px;background:var(--oh-surface);border-top:1px solid var(--oh-border);box-shadow:0 -2px 8px rgba(45,80,22,.06);margin:24px -28px -24px;z-index:3}
+.oh-mon-d-edit-footer .oh-mon-d-spacer{flex:1}

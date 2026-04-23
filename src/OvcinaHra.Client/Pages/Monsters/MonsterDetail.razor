@@ -1,0 +1,733 @@
+@page "/monsters/{Id:int}"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject GameContextService GameContext
+@inject NavigationManager Nav
+
+@if (loading)
+{
+    <p class="oh-mon-d-loading">Načítám…</p>
+}
+else if (monster is null)
+{
+    <div class="oh-mon-d-empty">
+        <i class="bi bi-exclamation-circle"></i>
+        <p>Příšera nenalezena.</p>
+        <button class="btn btn-outline-primary" @onclick='() => Nav.NavigateTo("/monsters")'>← Zpět na seznam</button>
+    </div>
+}
+else
+{
+    <div class="oh-mon-d-ts">
+        <button class="oh-mon-d-back" type="button"
+                @onclick='() => Nav.NavigateTo("/monsters")'>
+            <i class="bi bi-arrow-left"></i> Zpět
+        </button>
+        <div class="oh-mon-d-ts-title">
+            <h1>@monster.Name</h1>
+            <div class="oh-mon-d-ts-sub">
+                <span class="oh-mon-d-mtype">
+                    <i class="bi @MonsterTypeIcon(monster.MonsterType)"></i>@monster.MonsterType.GetDisplayName()
+                </span>
+                <span class="oh-mon-d-dotsep">·</span>
+                <span class="oh-mon-d-kbadge"><i class="bi bi-bar-chart-steps"></i>K@monster.Category</span>
+                <span class="oh-mon-d-dotsep">·</span>
+                <span class="oh-mon-d-id">#M@monster.Id.ToString("D3")</span>
+            </div>
+        </div>
+        <div class="oh-mon-d-ts-actions">
+            @if (activeTab == "upravit")
+            {
+                <button class="btn btn-secondary" @onclick="CancelEdit" disabled="@isSaving">Zrušit</button>
+                <button class="btn btn-primary" @onclick="SaveAsync"
+                        disabled="@(isSaving || string.IsNullOrWhiteSpace(editName))">Uložit</button>
+            }
+            else
+            {
+                <button class="btn btn-outline-primary" @onclick='() => SetTab("upravit")'><i class="bi bi-pencil"></i> Upravit</button>
+                <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true"><i class="bi bi-trash"></i> Smazat</button>
+            }
+        </div>
+    </div>
+
+    <div class="oh-mon-d-tabs">
+        <button class="oh-mon-d-tab @(activeTab == "karta" ? "oh-mon-d-active" : null)" @onclick='() => SetTab("karta")'>
+            <i class="bi bi-bookmark-fill"></i> Karta
+        </button>
+        <button class="oh-mon-d-tab @(activeTab == "upravit" ? "oh-mon-d-active" : null)" @onclick='() => SetTab("upravit")'>
+            <i class="bi bi-pencil"></i> Upravit
+        </button>
+        <button class="oh-mon-d-tab @(activeTab == "bojovka" ? "oh-mon-d-active" : null)" @onclick='() => SetTab("bojovka")'>
+            <i class="bi bi-shield-shaded"></i> Bojovka
+        </button>
+        <button class="oh-mon-d-tab @(activeTab == "korist" ? "oh-mon-d-active" : null)" @onclick='() => SetTab("korist")'>
+            <i class="bi bi-gem"></i> Kořist
+            @if (lootCount > 0)
+            {
+                <span class="oh-mon-d-tab-count">@lootCount</span>
+            }
+        </button>
+        <button class="oh-mon-d-tab @(activeTab == "vyskyt" ? "oh-mon-d-active" : null)" @onclick='() => SetTab("vyskyt")'>
+            <i class="bi bi-geo-alt"></i> Výskyt
+            @if (occurrenceCount > 0)
+            {
+                <span class="oh-mon-d-tab-count">@occurrenceCount</span>
+            }
+        </button>
+    </div>
+
+    <div class="oh-mon-d-body">
+        @if (activeTab == "karta")
+        {
+            <div class="oh-mon-d-bestiary">
+                <div class="oh-mon-d-karta">
+                    <div>
+                        <div class="oh-mon-d-illust">
+                            @if (!string.IsNullOrEmpty(heroImageUrl) && !heroImageFailed)
+                            {
+                                <img src="@heroImageUrl" alt="@monster.Name"
+                                     @onerror="() => heroImageFailed = true" />
+                            }
+                            else
+                            {
+                                <div class="oh-mon-d-illust-empty">
+                                    <i class="bi bi-bug-fill"></i>
+                                    <span>Iluustrace čeká</span>
+                                </div>
+                            }
+                        </div>
+                        <div class="oh-mon-d-illust-cap">
+                            <span>@monster.MonsterType.GetDisplayName() · Kategorie @monster.Category</span>
+                        </div>
+                    </div>
+                    <div class="oh-mon-d-stats">
+                        <div class="oh-mon-d-statrow">
+                            <i class="oh-mon-d-stat-icon bi bi-lightning-charge"></i>
+                            <span class="oh-mon-d-stat-lab">Útok</span>
+                            <span class="oh-mon-d-stat-val">@monster.Attack</span>
+                        </div>
+                        <div class="oh-mon-d-statrow">
+                            <i class="oh-mon-d-stat-icon bi bi-shield-shaded"></i>
+                            <span class="oh-mon-d-stat-lab">Obrana</span>
+                            <span class="oh-mon-d-stat-val">@monster.Defense</span>
+                        </div>
+                        <div class="oh-mon-d-statrow">
+                            <i class="oh-mon-d-stat-icon bi bi-heart-pulse"></i>
+                            <span class="oh-mon-d-stat-lab">Životy</span>
+                            <span class="oh-mon-d-stat-val">@monster.Health</span>
+                        </div>
+                        <div class="oh-mon-d-statrow">
+                            <i class="oh-mon-d-stat-icon bi bi-star-fill"></i>
+                            <span class="oh-mon-d-stat-lab">XP</span>
+                            <span class="oh-mon-d-stat-val">@(monster.RewardXp ?? 0)</span>
+                        </div>
+                        <div class="oh-mon-d-statrow">
+                            <i class="oh-mon-d-stat-icon bi bi-coin"></i>
+                            <span class="oh-mon-d-stat-lab">Groše</span>
+                            <span class="oh-mon-d-stat-val">@(monster.RewardMoney ?? 0)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="oh-mon-d-sect">
+                    <div class="oh-mon-d-sect-label"><i class="bi bi-magic"></i>Schopnosti</div>
+                    <div class="oh-mon-d-sect-body">
+                        @if (string.IsNullOrWhiteSpace(monster.Abilities))
+                        {
+                            <span class="oh-mon-d-sect-empty">Žádné zvláštní schopnosti zaznamenány.</span>
+                        }
+                        else
+                        {
+                            @monster.Abilities
+                        }
+                    </div>
+                </div>
+                <div class="oh-mon-d-sect">
+                    <div class="oh-mon-d-sect-label"><i class="bi bi-cpu"></i>AI chování</div>
+                    <div class="oh-mon-d-sect-body">
+                        @if (string.IsNullOrWhiteSpace(monster.AiBehavior))
+                        {
+                            <span class="oh-mon-d-sect-empty">Bez popisu chování.</span>
+                        }
+                        else
+                        {
+                            @monster.AiBehavior
+                        }
+                    </div>
+                </div>
+                <div class="oh-mon-d-sect">
+                    <div class="oh-mon-d-sect-label"><i class="bi bi-tags"></i>Tagy</div>
+                    @if (monster.Tags.Count == 0)
+                    {
+                        <span class="oh-mon-d-sect-empty">Bez tagů.</span>
+                    }
+                    else
+                    {
+                        <div class="oh-mon-d-tags">
+                            @foreach (var tag in monster.Tags)
+                            {
+                                <span class="oh-mon-d-tag" @key="tag.Id">@tag.Name</span>
+                            }
+                        </div>
+                    }
+                </div>
+                @if (!string.IsNullOrWhiteSpace(monster.Notes))
+                {
+                    <div class="oh-mon-d-notes">
+                        <div class="oh-mon-d-notes-label">Poznámka organizátorů</div>
+                        <div class="oh-mon-d-notes-body">@monster.Notes</div>
+                    </div>
+                }
+            </div>
+        }
+        else if (activeTab == "upravit")
+        {
+            <DxFormLayout>
+                <DxFormLayoutGroup Caption="Identita" ColSpanMd="12">
+                    <DxFormLayoutItem Caption="Název" ColSpanMd="8">
+                        <DxTextBox @bind-Text="@editName" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Kategorie" ColSpanMd="4">
+                        <DxSpinEdit @bind-Value="@editCategory" MinValue="0" MaxValue="10" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Typ" ColSpanMd="12">
+                        <DxComboBox Data="@monsterTypeValues" @bind-Value="@editType"
+                                    TextFieldName="Display" ValueFieldName="Value" />
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+                <DxFormLayoutGroup Caption="Vizuál" ColSpanMd="12">
+                    <DxFormLayoutItem Caption="Obrázek" ColSpanMd="12">
+                        <ImagePicker EntityType="monsters" EntityId="monster.Id" Alt="Obrázek příšery" AspectRatio="4:3" />
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+                <DxFormLayoutGroup Caption="Bojovka" ColSpanMd="12">
+                    <DxFormLayoutItem Caption="Útok" ColSpanMd="4">
+                        <DxSpinEdit @bind-Value="@editAttack" MinValue="0" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Obrana" ColSpanMd="4">
+                        <DxSpinEdit @bind-Value="@editDefense" MinValue="0" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Životy" ColSpanMd="4">
+                        <DxSpinEdit @bind-Value="@editHealth" MinValue="1" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Schopnosti" ColSpanMd="12">
+                        <DxMemo @bind-Text="@editAbilities" Rows="4" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="AI chování" ColSpanMd="12">
+                        <DxMemo @bind-Text="@editAiBehavior" Rows="3" />
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+                <DxFormLayoutGroup Caption="Odměna" ColSpanMd="12">
+                    <DxFormLayoutItem Caption="XP" ColSpanMd="6">
+                        <DxSpinEdit @bind-Value="@editRewardXp" MinValue="0" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Groše" ColSpanMd="6">
+                        <DxSpinEdit @bind-Value="@editRewardMoney" MinValue="0" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Poznámky k odměně" ColSpanMd="12">
+                        <DxMemo @bind-Text="@editRewardNotes" Rows="2" />
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+                <DxFormLayoutGroup Caption="Tagy" ColSpanMd="12">
+                    <DxFormLayoutItem ColSpanMd="12">
+                        <TagChipPicker MonsterId="monster.Id" InitialTags="monster.Tags" Changed="OnTagsChangedAsync" />
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+                <DxFormLayoutGroup Caption="Poznámky" ColSpanMd="12">
+                    <DxFormLayoutItem ColSpanMd="12">
+                        <DxMemo @bind-Text="@editNotes" Rows="3" />
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+            </DxFormLayout>
+            @if (error is not null) { <div class="alert alert-danger mt-2">@error</div> }
+            <div class="oh-mon-d-edit-footer">
+                <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true" disabled="@isSaving">
+                    <i class="bi bi-trash"></i> Smazat
+                </button>
+                <div class="oh-mon-d-spacer"></div>
+                <button class="btn btn-secondary" @onclick="CancelEdit" disabled="@isSaving">Zrušit</button>
+                <button class="btn btn-primary" @onclick="SaveAsync"
+                        disabled="@(isSaving || string.IsNullOrWhiteSpace(editName))">Uložit</button>
+            </div>
+        }
+        else if (activeTab == "bojovka")
+        {
+            <div class="oh-mon-d-bestiary">
+                <div class="oh-mon-d-bojovka">
+                    <div class="oh-mon-d-hp">
+                        <span class="oh-mon-d-hp-current">Životy: @tempHp / @monster.Health</span>
+                        <button type="button" @onclick="() => tempHp -= 1">−1 Život</button>
+                        <button type="button" @onclick="() => tempHp += 1">+1 Život</button>
+                        <button type="button" @onclick="() => tempHp = monster!.Health">resetovat</button>
+                    </div>
+                    <div class="oh-mon-d-bigstats">
+                        <div class="oh-mon-d-bigstat">
+                            <span class="oh-mon-d-bigstat-lab">Útok</span>
+                            <span class="oh-mon-d-bigstat-val">@monster.Attack</span>
+                        </div>
+                        <div class="oh-mon-d-bigstat">
+                            <span class="oh-mon-d-bigstat-lab">Obrana</span>
+                            <span class="oh-mon-d-bigstat-val">@monster.Defense</span>
+                        </div>
+                        <div class="oh-mon-d-bigstat">
+                            <span class="oh-mon-d-bigstat-lab">Životy</span>
+                            <span class="oh-mon-d-bigstat-val">@monster.Health</span>
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(monster.Abilities))
+                    {
+                        <div>
+                            <div class="oh-mon-d-sect-label"><i class="bi bi-magic"></i>Schopnosti</div>
+                            <ol class="oh-mon-d-abilities-list">
+                                @foreach (var line in SplitLines(monster.Abilities))
+                                {
+                                    <li>@line</li>
+                                }
+                            </ol>
+                        </div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(monster.AiBehavior))
+                    {
+                        <div>
+                            <div class="oh-mon-d-sect-label"><i class="bi bi-cpu"></i>AI chování</div>
+                            <blockquote class="oh-mon-d-ai-quote">@monster.AiBehavior</blockquote>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+        else if (activeTab == "korist")
+        {
+            @if (lootGroups is null)
+            {
+                <p class="oh-mon-d-loading">Načítám kořist…</p>
+            }
+            else if (lootGroups.Count == 0)
+            {
+                <div class="oh-mon-d-empty">
+                    <i class="bi bi-gem"></i>
+                    <p>Tato příšera není přiřazena k žádné hře a nemá kořist.</p>
+                </div>
+            }
+            else
+            {
+                <div class="oh-mon-d-loot">
+                    @foreach (var grp in lootGroups)
+                    {
+                        var gid = grp.GameId;
+                        <div class="oh-mon-d-loot-game" @key="gid">
+                            <div class="oh-mon-d-loot-game-head">
+                                <h4>@grp.GameName</h4>
+                                <span class="oh-mon-d-loot-game-edition">ED. @grp.Edition</span>
+                                @if (GameContext.SelectedGameId == gid)
+                                {
+                                    <span class="oh-mon-d-loot-game-current">Aktuální hra</span>
+                                }
+                            </div>
+                            @if (grp.Loot.Count == 0)
+                            {
+                                <div class="oh-mon-d-loot-empty">Bez kořisti — v této hře příšera drop neměla.</div>
+                            }
+                            else
+                            {
+                                <div class="oh-mon-d-loot-tiles">
+                                    @foreach (var loot in grp.Loot)
+                                    {
+                                        var capLoot = loot;
+                                        <MonsterLootTile @key="capLoot.ItemId"
+                                                         Loot="capLoot"
+                                                         ImageUrl="@(itemImageUrls.TryGetValue(capLoot.ItemId, out var url) ? url : null)"
+                                                         OnClick="@(() => RequestRemoveLoot(capLoot))" />
+                                    }
+                                </div>
+                            }
+                            <button type="button" class="oh-mon-d-loot-add mt-2"
+                                    @onclick="@(() => OpenAddLoot(gid))">
+                                <i class="bi bi-plus-lg"></i> Přidat kořist
+                            </button>
+                        </div>
+                    }
+                </div>
+            }
+        }
+        else if (activeTab == "vyskyt")
+        {
+            @if (occurrences is null)
+            {
+                <p class="oh-mon-d-loading">Načítám výskyty…</p>
+            }
+            else if (occurrences.Count == 0)
+            {
+                <div class="oh-mon-d-empty">
+                    <i class="bi bi-geo-alt"></i>
+                    <p>Příšera se zatím v žádných questech neobjevuje.</p>
+                </div>
+            }
+            else
+            {
+                <div class="oh-mon-d-occur-summary">
+                    <span>Přiřazené hry: <strong>@occurrences.Count</strong></span>
+                    <span class="oh-mon-d-dotsep">·</span>
+                    <span><strong>@occurrences.Sum(o => o.QuestCount)</strong> questů</span>
+                    <span class="oh-mon-d-dotsep">·</span>
+                    <span><strong>@occurrences.Sum(o => o.EncounterCount)</strong> encounterů</span>
+                </div>
+                <table class="oh-mon-d-occur-table">
+                    <thead>
+                        <tr>
+                            <th>Hra</th>
+                            <th class="oh-mon-d-num">Questy</th>
+                            <th class="oh-mon-d-num">Encountery</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var o in occurrences)
+                        {
+                            var capOcc = o;
+                            <tr @key="capOcc.GameId" class="@(GameContext.SelectedGameId == capOcc.GameId ? "oh-mon-d-current" : null)">
+                                <td>@capOcc.GameName <span class="oh-mon-d-loot-game-edition">ED. @capOcc.Edition</span></td>
+                                <td class="oh-mon-d-num">@capOcc.QuestCount</td>
+                                <td class="oh-mon-d-num">@capOcc.EncounterCount</td>
+                                <td>
+                                    <button type="button" class="oh-mon-d-occur-remove"
+                                            @onclick="@(() => RequestRemoveFromGame(capOcc))">Odebrat</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        }
+    </div>
+}
+
+@* Delete-monster confirm *@
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Smazat příšeru?" Width="420px">
+    <BodyContentTemplate Context="ctx">
+        <p>Opravdu chcete trvale smazat příšeru <strong>@monster?.Name</strong>? Smaže se z bestiáře včetně všech přiřazení ke hrám, kořistí a encounterů.</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@* Remove-from-game confirm (Výskyt tab) *@
+<DxPopup @bind-Visible="@isRemoveFromGameVisible"
+         HeaderText="@($"Odebrat z hry {removeFromGame?.GameName}?")"
+         Width="500px">
+    <BodyContentTemplate Context="ctx">
+        @if (removeFromGame is not null)
+        {
+            <p>Příšera „@monster?.Name" se odstraní z přiřazení ke hře <strong>@removeFromGame.GameName</strong>.
+            Samotný záznam v bestiáři zůstane zachován, ale @removeFromGame.QuestCount questů a @removeFromGame.EncounterCount encounterů této hry s ní přestane počítat.</p>
+        }
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isRemoveFromGameVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmRemoveFromGameAsync">Odebrat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@* Remove-loot confirm (destructive — DxPopup per MEMORY rule) *@
+<DxPopup @bind-Visible="@isRemoveLootVisible" HeaderText="Smazat kořist?" Width="420px">
+    <BodyContentTemplate Context="ctx">
+        @if (removeLoot is not null)
+        {
+            <p>Opravdu chcete odebrat kořist <strong>@removeLoot.ItemName</strong> (× @removeLoot.Quantity) z této hry?</p>
+        }
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isRemoveLootVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmRemoveLootAsync">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@* Add-loot popup *@
+<DxPopup @bind-Visible="@isAddLootVisible" HeaderText="Přidat kořist" Width="500px">
+    <BodyContentTemplate Context="ctx">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Předmět" ColSpanMd="8">
+                <DxComboBox Data="@allItems" @bind-Value="@addLootItemId"
+                            TextFieldName="Name" ValueFieldName="Id"
+                            NullText="(vyberte předmět)" SearchMode="ListSearchMode.AutoSearch" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Počet" ColSpanMd="4">
+                <DxSpinEdit @bind-Value="@addLootQuantity" MinValue="1" />
+            </DxFormLayoutItem>
+        </DxFormLayout>
+        @if (addLootError is not null) { <div class="alert alert-danger mt-2 small">@addLootError</div> }
+        <div class="d-flex gap-2 justify-content-end mt-3">
+            <button class="btn btn-secondary" @onclick="() => isAddLootVisible = false">Zrušit</button>
+            <button class="btn btn-primary" disabled="@(addLootItemId is null)" @onclick="ConfirmAddLootAsync">Přidat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private MonsterDetailDto? monster;
+    private bool loading = true;
+    private string? error;
+    private string? heroImageUrl;
+    private bool heroImageFailed;
+
+    private string activeTab = "karta";
+    private bool isDeleteVisible;
+    private bool isSaving;
+
+    // Edit form state
+    private string editName = "";
+    private int editCategory = 1;
+    private MonsterType editType = MonsterType.Beast;
+    private int editAttack, editDefense, editHealth = 1;
+    private string? editAbilities, editAiBehavior, editRewardNotes, editNotes;
+    private int editRewardXp, editRewardMoney;
+
+    // Bojovka local-only HP counter
+    private int tempHp;
+
+    // Kořist tab data
+    private List<MonsterLootByGameDto>? lootGroups;
+    private Dictionary<int, string?> itemImageUrls = new();
+    private List<ItemListDto> allItems = [];
+    private bool isAddLootVisible;
+    private int? addLootGameId;
+    private int? addLootItemId;
+    private int addLootQuantity = 1;
+    private string? addLootError;
+
+    // Výskyt tab data
+    private List<MonsterOccurrenceDto>? occurrences;
+    private bool isRemoveFromGameVisible;
+    private MonsterOccurrenceDto? removeFromGame;
+
+    // Tab badge counts (loaded eagerly so badges show immediately)
+    private int lootCount;
+    private int occurrenceCount;
+
+    private static readonly List<EnumItem<MonsterType>> monsterTypeValues = Enum.GetValues<MonsterType>()
+        .Select(v => new EnumItem<MonsterType>(v, v.GetDisplayName())).ToList();
+    record EnumItem<T>(T Value, string Display);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GameContext.InitializeAsync();
+        await LoadMonsterAsync();
+        if (monster is not null)
+        {
+            // Eagerly load badge counts (single small calls)
+            await LoadLootGroupsAsync();
+            await LoadOccurrencesAsync();
+        }
+    }
+
+    private async Task LoadMonsterAsync()
+    {
+        loading = true;
+        try
+        {
+            monster = await Api.GetAsync<MonsterDetailDto>($"/api/monsters/{Id}");
+            if (monster is not null)
+            {
+                ResetEditFromMonster();
+                tempHp = monster.Health;
+                heroImageFailed = false;
+                heroImageUrl = null;
+                if (!string.IsNullOrWhiteSpace(monster.ImagePath))
+                {
+                    var urls = await Api.GetAsync<ImageUrlsDto>($"/api/images/monsters/{Id}");
+                    heroImageUrl = urls?.ImageUrl;
+                }
+            }
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { loading = false; }
+    }
+
+    private void ResetEditFromMonster()
+    {
+        if (monster is null) return;
+        editName = monster.Name;
+        editCategory = monster.Category;
+        editType = monster.MonsterType;
+        editAttack = monster.Attack;
+        editDefense = monster.Defense;
+        editHealth = monster.Health;
+        editAbilities = monster.Abilities;
+        editAiBehavior = monster.AiBehavior;
+        editRewardXp = monster.RewardXp ?? 0;
+        editRewardMoney = monster.RewardMoney ?? 0;
+        editRewardNotes = monster.RewardNotes;
+        editNotes = monster.Notes;
+    }
+
+    private async Task SetTab(string tab)
+    {
+        activeTab = tab;
+        if (tab == "bojovka" && monster is not null)
+        {
+            tempHp = monster.Health;
+        }
+        else if (tab == "korist")
+        {
+            if (lootGroups is null) await LoadLootGroupsAsync();
+            if (allItems.Count == 0) allItems = await Api.GetListAsync<ItemListDto>("/api/items");
+        }
+        else if (tab == "vyskyt")
+        {
+            if (occurrences is null) await LoadOccurrencesAsync();
+        }
+    }
+
+    private async Task LoadLootGroupsAsync()
+    {
+        try
+        {
+            lootGroups = await Api.GetListAsync<MonsterLootByGameDto>($"/api/monsters/{Id}/loot/all-games");
+            lootCount = lootGroups.Sum(g => g.Loot.Count);
+
+            // Build item->image map (one /api/items fetch covers all tiles)
+            if (lootCount > 0 && allItems.Count == 0)
+            {
+                allItems = await Api.GetListAsync<ItemListDto>("/api/items");
+            }
+            itemImageUrls = allItems.ToDictionary(i => i.Id, i => i.ImageUrl);
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task LoadOccurrencesAsync()
+    {
+        try
+        {
+            occurrences = await Api.GetListAsync<MonsterOccurrenceDto>($"/api/monsters/{Id}/occurrences");
+            occurrenceCount = occurrences.Count;
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private void CancelEdit()
+    {
+        ResetEditFromMonster();
+        activeTab = "karta";
+    }
+
+    private async Task SaveAsync()
+    {
+        if (monster is null || string.IsNullOrWhiteSpace(editName)) return;
+        error = null;
+        isSaving = true;
+        try
+        {
+            int? xp = editRewardXp > 0 ? editRewardXp : null;
+            int? money = editRewardMoney > 0 ? editRewardMoney : null;
+            await Api.PutAsync($"/api/monsters/{monster.Id}",
+                new UpdateMonsterDto(editName, editCategory, editType, editAttack, editDefense, editHealth,
+                    editAbilities, editAiBehavior, xp, money, editRewardNotes, editNotes));
+            await LoadMonsterAsync();
+            activeTab = "karta";
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (monster is null) return;
+        try
+        {
+            await Api.DeleteAsync($"/api/monsters/{monster.Id}");
+            isDeleteVisible = false;
+            Nav.NavigateTo("/monsters");
+        }
+        catch (Exception ex) { error = ex.Message; isDeleteVisible = false; }
+    }
+
+    private async Task OnTagsChangedAsync()
+    {
+        // Reload monster so the Karta tab + count badges reflect the new tag set.
+        await LoadMonsterAsync();
+    }
+
+    private void OpenAddLoot(int gameId)
+    {
+        addLootGameId = gameId;
+        addLootItemId = null;
+        addLootQuantity = 1;
+        addLootError = null;
+        isAddLootVisible = true;
+    }
+
+    private async Task ConfirmAddLootAsync()
+    {
+        if (monster is null || addLootGameId is null || addLootItemId is null) return;
+        addLootError = null;
+        try
+        {
+            await Api.PostAsync<CreateMonsterLootDto, object>("/api/monsters/loot",
+                new CreateMonsterLootDto(monster.Id, addLootItemId.Value, addLootGameId.Value, addLootQuantity));
+            isAddLootVisible = false;
+            await LoadLootGroupsAsync();
+        }
+        catch (Exception ex) { addLootError = ex.Message; }
+    }
+
+    private bool isRemoveLootVisible;
+    private MonsterLootDto? removeLoot;
+
+    private void RequestRemoveLoot(MonsterLootDto loot)
+    {
+        removeLoot = loot;
+        isRemoveLootVisible = true;
+    }
+
+    private async Task ConfirmRemoveLootAsync()
+    {
+        if (removeLoot is null) return;
+        try
+        {
+            await Api.DeleteAsync($"/api/monsters/loot/{removeLoot.MonsterId}/{removeLoot.ItemId}/{removeLoot.GameId}");
+            isRemoveLootVisible = false;
+            removeLoot = null;
+            await LoadLootGroupsAsync();
+        }
+        catch (Exception ex) { error = ex.Message; isRemoveLootVisible = false; }
+    }
+
+    private void RequestRemoveFromGame(MonsterOccurrenceDto o)
+    {
+        removeFromGame = o;
+        isRemoveFromGameVisible = true;
+    }
+
+    private async Task ConfirmRemoveFromGameAsync()
+    {
+        if (monster is null || removeFromGame is null) return;
+        try
+        {
+            await Api.DeleteAsync($"/api/monsters/game-monster/{removeFromGame.GameId}/{monster.Id}");
+            isRemoveFromGameVisible = false;
+            removeFromGame = null;
+            await LoadOccurrencesAsync();
+            await LoadLootGroupsAsync();
+        }
+        catch (Exception ex) { error = ex.Message; isRemoveFromGameVisible = false; }
+    }
+
+    private static IEnumerable<string> SplitLines(string s)
+        => s.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line => line.Trim()).Where(line => line.Length > 0);
+
+    private static string MonsterTypeIcon(MonsterType t) => t switch
+    {
+        MonsterType.Undead => "bi-x-octagon",
+        MonsterType.Beast => "bi-bug",
+        MonsterType.Goblin => "bi-person-walking",
+        MonsterType.Benevolent => "bi-heart",
+        MonsterType.Legend => "bi-stars",
+        MonsterType.Miscellaneous => "bi-question-circle",
+        _ => "bi-question-circle"
+    };
+}

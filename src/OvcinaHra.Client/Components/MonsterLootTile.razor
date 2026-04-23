@@ -1,0 +1,37 @@
+<div class="oh-mon-d-loot-tile" @onclick="HandleClick" role="button" tabindex="0">
+    <div class="oh-mon-d-loot-tile-img">
+        @if (!string.IsNullOrEmpty(ImageUrl) && !imageFailed)
+        {
+            <img src="@ImageUrl" alt="@Loot.ItemName" @onerror="() => imageFailed = true" />
+        }
+        else
+        {
+            <i class="bi bi-box-seam oh-mon-d-loot-tile-img-empty" aria-hidden="true"></i>
+        }
+        @if (Loot.Quantity > 1)
+        {
+            <span class="oh-mon-d-loot-tile-qty">× @Loot.Quantity</span>
+        }
+    </div>
+    <div class="oh-mon-d-loot-tile-name" title="@Loot.ItemName">@Loot.ItemName</div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MonsterLootDto Loot { get; set; } = null!;
+    [Parameter] public string? ImageUrl { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    private bool imageFailed;
+    private string? _lastImageUrl;
+
+    protected override void OnParametersSet()
+    {
+        if (_lastImageUrl != ImageUrl)
+        {
+            _lastImageUrl = ImageUrl;
+            imageFailed = false;
+        }
+    }
+
+    private Task HandleClick() => OnClick.HasDelegate ? OnClick.InvokeAsync() : Task.CompletedTask;
+}
