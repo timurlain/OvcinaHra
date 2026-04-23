@@ -12,12 +12,13 @@ public class CharacterAssignment
 
     // Per-game snapshot
     public PlayerClass? Class { get; set; }
-    public string? Kingdom { get; set; }
+    public int? KingdomId { get; set; }
 
     public bool IsActive { get; set; } = true;
     public DateTime StartedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime? EndedAtUtc { get; set; }
 
     public Character Character { get; set; } = null!;
+    public Kingdom? Kingdom { get; set; }
     public ICollection<CharacterEvent> Events { get; set; } = [];
 }

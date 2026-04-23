@@ -8,9 +8,15 @@ namespace OvcinaHra.Api.Tests.Endpoints;
 
 public class ScanEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
 {
+    private async Task<int> GetKingdomIdAsync(string name)
+    {
+        var kingdoms = await Client.GetFromJsonAsync<List<KingdomDto>>("/api/kingdoms");
+        return kingdoms!.First(k => k.Name == name).Id;
+    }
+
     private async Task<(CharacterDetailDto character, CharacterAssignmentDto assignment)> SeedCharacterWithAssignment(
         int externalPersonId = 100, int gameId = 1,
-        string? race = "Dwarf", string? kingdom = "Erebor")
+        Race? race = Race.Dwarf, int? kingdomId = null)
     {
         var createResponse = await Client.PostAsJsonAsync("/api/characters",
             new CreateCharacterDto("Thorin", Race: race, IsPlayedCharacter: true, ExternalPersonId: externalPersonId));
@@ -19,7 +25,7 @@ public class ScanEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
 
         var assignResponse = await Client.PostAsJsonAsync(
             $"/api/characters/{character!.Id}/assignments",
-            new CreateCharacterAssignmentDto(gameId, externalPersonId, null, kingdom));
+            new CreateCharacterAssignmentDto(gameId, externalPersonId, null, kingdomId));
         assignResponse.EnsureSuccessStatusCode();
         var assignment = await assignResponse.Content.ReadFromJsonAsync<CharacterAssignmentDto>();
 
@@ -29,7 +35,8 @@ public class ScanEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
     [Fact]
     public async Task Scan_ActiveCharacter_ReturnsProfile()
     {
-        await SeedCharacterWithAssignment(externalPersonId: 100);
+        var dwarvesKingdomId = await GetKingdomIdAsync("Azanulinbar-Dum");
+        await SeedCharacterWithAssignment(externalPersonId: 100, kingdomId: dwarvesKingdomId);
 
         var response = await Client.GetAsync("/api/scan/100");
 
@@ -38,8 +45,8 @@ public class ScanEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
         Assert.NotNull(profile);
         Assert.Equal("Thorin", profile.Name);
         Assert.Null(profile.PlayerFullName); // no player name set in seed
-        Assert.Equal("Dwarf", profile.Race);
-        Assert.Equal("Erebor", profile.Kingdom);
+        Assert.Equal(Race.Dwarf, profile.Race);
+        Assert.Equal("Azanulinbar-Dum", profile.Kingdom);
         Assert.Equal(0, profile.CurrentLevel);
         Assert.Equal(0, profile.TotalXp);
         Assert.Empty(profile.Skills);

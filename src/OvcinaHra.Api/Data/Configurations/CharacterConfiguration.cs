@@ -12,6 +12,7 @@ public class CharacterConfiguration : IEntityTypeConfiguration<Character>
         builder.Property(e => e.Name).IsRequired().HasMaxLength(200);
         builder.Property(e => e.PlayerFirstName).HasMaxLength(100);
         builder.Property(e => e.PlayerLastName).HasMaxLength(100);
+        builder.Property(e => e.Race).HasConversion<string>().HasMaxLength(20);
         builder.HasIndex(e => e.ExternalPersonId).IsUnique().HasFilter("\"ExternalPersonId\" IS NOT NULL");
         builder.HasOne(e => e.ParentCharacter).WithMany(e => e.Children).HasForeignKey(e => e.ParentCharacterId);
         builder.HasQueryFilter(e => !e.IsDeleted);
@@ -25,6 +26,7 @@ public class CharacterAssignmentConfiguration : IEntityTypeConfiguration<Charact
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Class).HasConversion<string>().HasMaxLength(20);
         builder.HasOne(e => e.Character).WithMany(c => c.Assignments).HasForeignKey(e => e.CharacterId);
+        builder.HasOne(e => e.Kingdom).WithMany(k => k.Assignments).HasForeignKey(e => e.KingdomId).OnDelete(DeleteBehavior.SetNull);
         builder.HasIndex(e => e.GameId);
         builder.HasIndex(e => e.ExternalPersonId);
         builder.HasIndex(e => e.CharacterId);

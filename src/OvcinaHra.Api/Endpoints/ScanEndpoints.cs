@@ -28,6 +28,7 @@ public static class ScanEndpoints
         var assignment = await db.CharacterAssignments
             .Include(a => a.Character)
             .Include(a => a.Events)
+            .Include(a => a.Kingdom)
             .FirstOrDefaultAsync(a => a.ExternalPersonId == personId && a.IsActive);
 
         if (assignment is null) return TypedResults.NotFound();
@@ -72,7 +73,7 @@ public static class ScanEndpoints
             ch.Id, assignment.Id, personId,
             ch.Name, playerFullName,
             ch.Race, assignment.Class,
-            assignment.Kingdom, ch.BirthYear,
+            assignment.Kingdom?.Name, ch.BirthYear,
             currentLevel, totalXp, skills, recentEvents));
     }
 

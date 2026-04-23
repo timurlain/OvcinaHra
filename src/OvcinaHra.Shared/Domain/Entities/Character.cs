@@ -1,3 +1,5 @@
+using OvcinaHra.Shared.Domain.Enums;
+
 namespace OvcinaHra.Shared.Domain.Entities;
 
 public class Character
@@ -6,12 +8,13 @@ public class Character
     public required string Name { get; set; }
     public string? PlayerFirstName { get; set; }
     public string? PlayerLastName { get; set; }
-    public string? Race { get; set; }
+    public Race? Race { get; set; }
     public int? BirthYear { get; set; }
     public string? Notes { get; set; }
     public bool IsPlayedCharacter { get; set; }
     public int? ExternalPersonId { get; set; }
     public int? ParentCharacterId { get; set; }
+    public string? ImagePath { get; set; }
     public bool IsDeleted { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
