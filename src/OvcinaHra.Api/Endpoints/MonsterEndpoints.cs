@@ -33,8 +33,12 @@ public static class MonsterEndpoints
 
         // Loot
         group.MapGet("/{id:int}/loot/{gameId:int}", GetLoot);
+        group.MapGet("/{id:int}/loot/all-games", GetLootAllGames);
         group.MapPost("/loot", CreateLoot);
         group.MapDelete("/loot/{monsterId:int}/{itemId:int}/{gameId:int}", DeleteLoot);
+
+        // Detail-page aggregates
+        group.MapGet("/{id:int}/occurrences", GetOccurrences);
 
         return group;
     }
@@ -229,5 +233,73 @@ public static class MonsterEndpoints
         db.MonsterLoots.Remove(loot);
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
+    }
+
+    private static async Task<Ok<List<MonsterLootByGameDto>>> GetLootAllGames(int id, WorldDbContext db)
+    {
+        var assigned = await db.GameMonsters
+            .Where(gm => gm.MonsterId == id)
+            .Select(gm => new { gm.GameId, GameName = gm.Game.Name, gm.Game.Edition, gm.Game.StartDate })
+            .ToListAsync();
+
+        var lootRows = await db.MonsterLoots
+            .Where(ml => ml.MonsterId == id)
+            .Select(ml => new
+            {
+                ml.GameId,
+                GameName = ml.Game.Name,
+                ml.Game.Edition,
+                ml.Game.StartDate,
+                Loot = new MonsterLootDto(ml.MonsterId, ml.ItemId, ml.Item.Name, ml.GameId, ml.Quantity)
+            })
+            .ToListAsync();
+
+        var info = new Dictionary<int, (string Name, int Edition, DateOnly StartDate)>();
+        foreach (var a in assigned) info[a.GameId] = (a.GameName, a.Edition, a.StartDate);
+        foreach (var l in lootRows) info.TryAdd(l.GameId, (l.GameName, l.Edition, l.StartDate));
+
+        // Index loot once by GameId so the per-game projection below is O(games + lootRows)
+        // instead of the O(games × lootRows) re-scan a naive .Where would do.
+        var lootByGame = lootRows.ToLookup(l => l.GameId, l => l.Loot);
+
+        var result = info
+            .OrderByDescending(kv => kv.Value.StartDate)
+            .ThenBy(kv => kv.Value.Name)
+            .Select(kv => new MonsterLootByGameDto(
+                kv.Key,
+                kv.Value.Name,
+                kv.Value.Edition,
+                lootByGame[kv.Key].OrderBy(d => d.ItemName).ToList()))
+            .ToList();
+
+        return TypedResults.Ok(result);
+    }
+
+    private static async Task<Ok<List<MonsterOccurrenceDto>>> GetOccurrences(int id, WorldDbContext db)
+    {
+        var rows = await db.QuestEncounters
+            .Where(qe => qe.MonsterId == id && qe.Quest.GameId != null)
+            .Select(qe => new
+            {
+                GameId = qe.Quest.GameId!.Value,
+                GameName = qe.Quest.Game!.Name,
+                qe.Quest.Game.Edition,
+                qe.QuestId,
+                qe.Quantity
+            })
+            .ToListAsync();
+
+        var grouped = rows
+            .GroupBy(r => new { r.GameId, r.GameName, r.Edition })
+            .Select(g => new MonsterOccurrenceDto(
+                g.Key.GameId,
+                g.Key.GameName,
+                g.Key.Edition,
+                g.Select(x => x.QuestId).Distinct().Count(),
+                g.Sum(x => x.Quantity)))
+            .OrderBy(o => o.GameName)
+            .ToList();
+
+        return TypedResults.Ok(grouped);
     }
 }

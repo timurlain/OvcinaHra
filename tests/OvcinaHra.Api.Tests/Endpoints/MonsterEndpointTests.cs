@@ -1,6 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.Extensions.DependencyInjection;
+using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Tests.Fixtures;
+using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
 
@@ -243,5 +246,129 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
         var response = await Client.DeleteAsync($"/api/monsters/loot/{monster.Id}/{item.Id}/{game.Id}");
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetLootAllGames_NoData_ReturnsEmpty()
+    {
+        var monster = await (await Client.PostAsJsonAsync("/api/monsters",
+            new CreateMonsterDto("Pavouk", 1, MonsterType.Beast, 2, 1, 4)))
+            .Content.ReadFromJsonAsync<MonsterDetailDto>();
+
+        var groups = await Client.GetFromJsonAsync<List<MonsterLootByGameDto>>(
+            $"/api/monsters/{monster!.Id}/loot/all-games");
+
+        Assert.NotNull(groups);
+        Assert.Empty(groups);
+    }
+
+    [Fact]
+    public async Task GetLootAllGames_AssignedGameWithLoot_GroupsCorrectly()
+    {
+        var game = await (await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Stíny Rhovanionu", 30, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3))))
+            .Content.ReadFromJsonAsync<GameDetailDto>();
+        var item1 = await (await Client.PostAsJsonAsync("/api/items",
+            new CreateItemDto("Stříbrný šíp", ItemType.Weapon)))
+            .Content.ReadFromJsonAsync<ItemDetailDto>();
+        var item2 = await (await Client.PostAsJsonAsync("/api/items",
+            new CreateItemDto("Bylinka", ItemType.Potion)))
+            .Content.ReadFromJsonAsync<ItemDetailDto>();
+        var monster = await (await Client.PostAsJsonAsync("/api/monsters",
+            new CreateMonsterDto("Skřetí lukostřelec", 2, MonsterType.Goblin, 12, 8, 45)))
+            .Content.ReadFromJsonAsync<MonsterDetailDto>();
+
+        await Client.PostAsJsonAsync("/api/monsters/game-monster",
+            new CreateGameMonsterDto(game!.Id, monster!.Id));
+        await Client.PostAsJsonAsync("/api/monsters/loot",
+            new CreateMonsterLootDto(monster.Id, item1!.Id, game.Id, 2));
+        await Client.PostAsJsonAsync("/api/monsters/loot",
+            new CreateMonsterLootDto(monster.Id, item2!.Id, game.Id, 1));
+
+        var groups = await Client.GetFromJsonAsync<List<MonsterLootByGameDto>>(
+            $"/api/monsters/{monster.Id}/loot/all-games");
+
+        Assert.NotNull(groups);
+        Assert.Single(groups);
+        var g = groups[0];
+        Assert.Equal(game.Id, g.GameId);
+        Assert.Equal("Stíny Rhovanionu", g.GameName);
+        Assert.Equal(30, g.Edition);
+        Assert.Equal(2, g.Loot.Count);
+        Assert.Contains(g.Loot, l => l.ItemName == "Stříbrný šíp" && l.Quantity == 2);
+        Assert.Contains(g.Loot, l => l.ItemName == "Bylinka" && l.Quantity == 1);
+    }
+
+    [Fact]
+    public async Task GetLootAllGames_AssignedWithoutLoot_StillIncludesGameWithEmptyList()
+    {
+        var game = await (await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Bez kořisti", 31, new DateOnly(2027, 5, 1), new DateOnly(2027, 5, 3))))
+            .Content.ReadFromJsonAsync<GameDetailDto>();
+        var monster = await (await Client.PostAsJsonAsync("/api/monsters",
+            new CreateMonsterDto("Krysa", 1, MonsterType.Beast, 2, 1, 4)))
+            .Content.ReadFromJsonAsync<MonsterDetailDto>();
+
+        await Client.PostAsJsonAsync("/api/monsters/game-monster",
+            new CreateGameMonsterDto(game!.Id, monster!.Id));
+
+        var groups = await Client.GetFromJsonAsync<List<MonsterLootByGameDto>>(
+            $"/api/monsters/{monster.Id}/loot/all-games");
+
+        Assert.NotNull(groups);
+        Assert.Single(groups);
+        Assert.Equal(game.Id, groups[0].GameId);
+        Assert.Empty(groups[0].Loot);
+    }
+
+    [Fact]
+    public async Task GetOccurrences_NoEncounters_ReturnsEmpty()
+    {
+        var monster = await (await Client.PostAsJsonAsync("/api/monsters",
+            new CreateMonsterDto("Stín", 4, MonsterType.Undead, 8, 6, 25)))
+            .Content.ReadFromJsonAsync<MonsterDetailDto>();
+
+        var occurrences = await Client.GetFromJsonAsync<List<MonsterOccurrenceDto>>(
+            $"/api/monsters/{monster!.Id}/occurrences");
+
+        Assert.NotNull(occurrences);
+        Assert.Empty(occurrences);
+    }
+
+    [Fact]
+    public async Task GetOccurrences_TwoQuestsInOneGame_AggregatesCounts()
+    {
+        var game = await (await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Hra s questy", 32, new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 3))))
+            .Content.ReadFromJsonAsync<GameDetailDto>();
+        var monster = await (await Client.PostAsJsonAsync("/api/monsters",
+            new CreateMonsterDto("Vlk", 2, MonsterType.Beast, 8, 4, 18)))
+            .Content.ReadFromJsonAsync<MonsterDetailDto>();
+
+        // Seed quests + encounters directly via DbContext (no public encounter endpoint).
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var q1 = new Quest { Name = "Quest A", QuestType = QuestType.General, GameId = game!.Id };
+            var q2 = new Quest { Name = "Quest B", QuestType = QuestType.General, GameId = game.Id };
+            db.Quests.AddRange(q1, q2);
+            await db.SaveChangesAsync();
+
+            db.QuestEncounters.AddRange(
+                new QuestEncounter { QuestId = q1.Id, MonsterId = monster!.Id, Quantity = 5 },
+                new QuestEncounter { QuestId = q2.Id, MonsterId = monster.Id, Quantity = 3 });
+            await db.SaveChangesAsync();
+        }
+
+        var occurrences = await Client.GetFromJsonAsync<List<MonsterOccurrenceDto>>(
+            $"/api/monsters/{monster!.Id}/occurrences");
+
+        Assert.NotNull(occurrences);
+        Assert.Single(occurrences);
+        var o = occurrences[0];
+        Assert.Equal(game!.Id, o.GameId);
+        Assert.Equal("Hra s questy", o.GameName);
+        Assert.Equal(2, o.QuestCount);          // 2 distinct quests
+        Assert.Equal(8, o.EncounterCount);      // SUM(Quantity) = 5 + 3
     }
 }
