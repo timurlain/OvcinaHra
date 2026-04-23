@@ -17,7 +17,8 @@ public record ItemListDto(
     int ReqThief,
     bool IsUnique,
     bool IsLimited,
-    string? ImagePath)
+    string? ImagePath,
+    string? ImageUrl = null)
 {
     [JsonIgnore]
     public string ItemTypeDisplay => ItemType.GetDisplayName();
@@ -53,7 +54,8 @@ public record GameItemListDto(
     bool IsSold,
     string? SaleCondition,
     bool IsFindable,
-    string? RecipeSummary)
+    string? RecipeSummary,
+    string? ImageUrl = null)
 {
     [JsonIgnore]
     public string ItemTypeDisplay => ItemType.GetDisplayName();

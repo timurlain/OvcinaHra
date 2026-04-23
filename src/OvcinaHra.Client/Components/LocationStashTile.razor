@@ -1,11 +1,10 @@
 @using OvcinaHra.Shared.Dtos
-@inject ApiClient Api
 
 <a class="oh-lc-tile" href="/secret-stashes/@Stash.Id">
     <div class="oh-lc-tile-img">
-        @if (imageUrl is not null)
+        @if (!string.IsNullOrEmpty(Stash.ImageUrl))
         {
-            <img src="@imageUrl" alt="@Stash.Name" />
+            <img src="@Stash.ImageUrl" alt="@Stash.Name" />
         }
         else
         {
@@ -35,33 +34,14 @@
     [Parameter, EditorRequired] public LocationStashDto Stash { get; set; } = null!;
     [Parameter] public int MaxVisibleQuests { get; set; } = 5;
 
-    private string? imageUrl;
     private List<LocationTreasureQuestDto> visibleQuests = [];
     private int overflowCount;
 
-    private int? _loadedForStashId;
-
-    protected override async Task OnParametersSetAsync()
+    protected override void OnParametersSet()
     {
-        if (_loadedForStashId != Stash.Id)
-        {
-            _loadedForStashId = Stash.Id;
-            await LoadImageAsync();
-        }
-
         var all = Stash.TreasureQuests ?? [];
         visibleQuests = all.Take(MaxVisibleQuests).ToList();
         overflowCount = Math.Max(0, all.Count - MaxVisibleQuests);
-    }
-
-    private async Task LoadImageAsync()
-    {
-        try
-        {
-            var urls = await Api.GetAsync<ImageUrlsDto>($"/api/images/secretstashes/{Stash.Id}");
-            imageUrl = urls?.ImageUrl;
-        }
-        catch { imageUrl = null; }
     }
 
     // Czech plural for count: 1 → "další", 2-4 → "další", 5+ → "dalších"

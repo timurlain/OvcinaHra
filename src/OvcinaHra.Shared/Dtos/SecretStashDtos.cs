@@ -3,7 +3,8 @@ namespace OvcinaHra.Shared.Dtos;
 // Catalog (master list)
 public record SecretStashListDto(
     int Id, string Name, string? Description,
-    int TreasureCount, int GameCount);
+    int TreasureCount, int GameCount,
+    string? ImagePath = null, string? ImageUrl = null);
 
 public record SecretStashDetailDto(int Id, string Name, string? Description, string? ImagePath);
 
@@ -15,7 +16,8 @@ public record UpdateSecretStashDto(string Name, string? Description);
 public record GameSecretStashDto(
     int GameId, int SecretStashId, string StashName,
     int LocationId, string LocationName,
-    int TreasureCount);
+    int TreasureCount,
+    string? ImagePath = null, string? ImageUrl = null);
 
 public record CreateGameSecretStashDto(int GameId, int SecretStashId, int LocationId);
 

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
+using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Domain.ValueObjects;
@@ -34,16 +35,32 @@ public static class ItemEndpoints
         return group;
     }
 
-    private static async Task<Ok<List<ItemListDto>>> GetAll(WorldDbContext db)
+    private static async Task<Ok<List<ItemListDto>>> GetAll(WorldDbContext db, IBlobStorageService blob)
     {
-        var items = await db.Items
+        var rows = await db.Items
             .OrderBy(i => i.Name)
-            .Select(i => new ItemListDto(
-                i.Id, i.Name, i.ItemType, i.Effect, i.PhysicalForm, i.IsCraftable,
-                i.ClassRequirements.Warrior, i.ClassRequirements.Archer,
-                i.ClassRequirements.Mage, i.ClassRequirements.Thief,
-                i.IsUnique, i.IsLimited, i.ImagePath))
+            .Select(i => new
+            {
+                i.Id,
+                i.Name,
+                i.ItemType,
+                i.Effect,
+                i.PhysicalForm,
+                i.IsCraftable,
+                ReqWarrior = i.ClassRequirements.Warrior,
+                ReqArcher = i.ClassRequirements.Archer,
+                ReqMage = i.ClassRequirements.Mage,
+                ReqThief = i.ClassRequirements.Thief,
+                i.IsUnique,
+                i.IsLimited,
+                i.ImagePath
+            })
             .ToListAsync();
+        var items = rows.Select(r => new ItemListDto(
+            r.Id, r.Name, r.ItemType, r.Effect, r.PhysicalForm, r.IsCraftable,
+            r.ReqWarrior, r.ReqArcher, r.ReqMage, r.ReqThief,
+            r.IsUnique, r.IsLimited, r.ImagePath,
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : blob.GetSasUrl(r.ImagePath))).ToList();
         return TypedResults.Ok(items);
     }
 
@@ -100,7 +117,7 @@ public static class ItemEndpoints
         return TypedResults.NoContent();
     }
 
-    private static async Task<Ok<List<GameItemListDto>>> GetByGame(int gameId, WorldDbContext db)
+    private static async Task<Ok<List<GameItemListDto>>> GetByGame(int gameId, WorldDbContext db, IBlobStorageService blob)
     {
         var gameItems = await db.GameItems
             .Where(gi => gi.GameId == gameId)
@@ -129,7 +146,8 @@ public static class ItemEndpoints
                 gi.Item.ClassRequirements.Mage, gi.Item.ClassRequirements.Thief,
                 gi.Item.IsUnique, gi.Item.IsLimited, gi.Item.ImagePath,
                 gi.GameId, gi.Price, gi.StockCount, gi.IsSold, gi.SaleCondition, gi.IsFindable,
-                summaryByItemId.GetValueOrDefault(gi.ItemId)))
+                summaryByItemId.GetValueOrDefault(gi.ItemId),
+                ImageUrl: string.IsNullOrWhiteSpace(gi.Item.ImagePath) ? null : blob.GetSasUrl(gi.Item.ImagePath)))
             .ToList();
 
         return TypedResults.Ok(result);

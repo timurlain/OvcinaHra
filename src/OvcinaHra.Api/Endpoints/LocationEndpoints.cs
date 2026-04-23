@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
+using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.ValueObjects;
 using OvcinaHra.Shared.Dtos;
@@ -27,21 +28,40 @@ public static class LocationEndpoints
         return group;
     }
 
-    private static async Task<Ok<List<LocationListDto>>> GetAll(WorldDbContext db)
+    private static async Task<Ok<List<LocationListDto>>> GetAll(WorldDbContext db, IBlobStorageService blob)
     {
-        var locations = await db.Locations
+        var rows = await db.Locations
             .OrderBy(l => l.Name)
-            .Select(l => new LocationListDto(
-                l.Id, l.Name, l.LocationKind,
+            .Select(l => new
+            {
+                l.Id,
+                l.Name,
+                l.LocationKind,
                 l.Region,
-                l.Coordinates != null ? l.Coordinates.Latitude : (decimal?)null,
-                l.Coordinates != null ? l.Coordinates.Longitude : (decimal?)null,
+                Latitude = l.Coordinates != null ? l.Coordinates.Latitude : (decimal?)null,
+                Longitude = l.Coordinates != null ? l.Coordinates.Longitude : (decimal?)null,
                 l.ParentLocationId,
-                l.Description, l.Details, l.GamePotential, l.NpcInfo, l.SetupNotes,
-                Array.Empty<LocationStashDto>(),
-                Array.Empty<LocationQuestDto>(),
-                Array.Empty<LocationTreasureQuestDto>()))
+                l.Description,
+                l.Details,
+                l.GamePotential,
+                l.NpcInfo,
+                l.SetupNotes,
+                l.ImagePath
+            })
             .ToListAsync();
+
+        var locations = rows.Select(r => new LocationListDto(
+            r.Id, r.Name, r.LocationKind,
+            r.Region,
+            r.Latitude,
+            r.Longitude,
+            r.ParentLocationId,
+            r.Description, r.Details, r.GamePotential, r.NpcInfo, r.SetupNotes,
+            Array.Empty<LocationStashDto>(),
+            Array.Empty<LocationQuestDto>(),
+            Array.Empty<LocationTreasureQuestDto>(),
+            ImagePath: r.ImagePath,
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : blob.GetSasUrl(r.ImagePath))).ToList();
 
         return TypedResults.Ok(locations);
     }
@@ -126,32 +146,43 @@ public static class LocationEndpoints
         return TypedResults.NoContent();
     }
 
-    private static async Task<Ok<List<LocationListDto>>> GetByGame(int gameId, WorldDbContext db)
+    private static async Task<Ok<List<LocationListDto>>> GetByGame(int gameId, WorldDbContext db, IBlobStorageService blob)
     {
-        var dtos = await db.Locations
+        var rows = await db.Locations
             .Where(l => l.GameLocations.Any(gl => gl.GameId == gameId))
             .OrderBy(l => l.Name)
-            .Select(l => new LocationListDto(
-                l.Id, l.Name, l.LocationKind,
+            .Select(l => new
+            {
+                l.Id,
+                l.Name,
+                l.LocationKind,
                 l.Region,
-                l.Coordinates != null ? l.Coordinates.Latitude : (decimal?)null,
-                l.Coordinates != null ? l.Coordinates.Longitude : (decimal?)null,
+                Latitude = l.Coordinates != null ? l.Coordinates.Latitude : (decimal?)null,
+                Longitude = l.Coordinates != null ? l.Coordinates.Longitude : (decimal?)null,
                 l.ParentLocationId,
-                l.Description, l.Details, l.GamePotential, l.NpcInfo, l.SetupNotes,
-                Stashes: l.GameSecretStashes
+                l.Description,
+                l.Details,
+                l.GamePotential,
+                l.NpcInfo,
+                l.SetupNotes,
+                l.ImagePath,
+                Stashes = l.GameSecretStashes
                     .Where(gss => gss.GameId == gameId)
                     .OrderBy(gss => gss.SecretStash.Name)
-                    .Select(gss => new LocationStashDto(
-                        gss.SecretStashId,
-                        gss.SecretStash.Name,
-                        gss.SecretStash.TreasureQuests
+                    .Select(gss => new
+                    {
+                        SecretStashId = gss.SecretStashId,
+                        StashName = gss.SecretStash.Name,
+                        StashImagePath = gss.SecretStash.ImagePath,
+                        TreasureQuests = gss.SecretStash.TreasureQuests
                             .Where(tq => tq.GameId == gameId)
                             .OrderBy(tq => tq.Title)
                             .ThenBy(tq => tq.Id)
                             .Select(tq => new LocationTreasureQuestDto(tq.Id, tq.Title, tq.Clue, tq.Difficulty))
-                            .ToList()))
+                            .ToList()
+                    })
                     .ToList(),
-                Quests: l.QuestLocations
+                Quests = l.QuestLocations
                     .Where(ql => ql.Quest.GameId == null || ql.Quest.GameId == gameId)
                     .OrderBy(ql => ql.Quest.Name)
                     .Select(ql => new LocationQuestDto(
@@ -168,14 +199,32 @@ public static class LocationEndpoints
                             .Select(qr => new LocationQuestRewardItemDto(qr.ItemId, qr.Item.Name, qr.Quantity))
                             .ToList()))
                     .ToList(),
-                LocationTreasureQuests: l.TreasureQuests
+                LocationTreasureQuests = l.TreasureQuests
                     .Where(tq => tq.GameId == gameId)
                     .OrderBy(tq => tq.Title)
                     .ThenBy(tq => tq.Id)
                     .Select(tq => new LocationTreasureQuestDto(tq.Id, tq.Title, tq.Clue, tq.Difficulty))
                     .ToList()
-            ))
+            })
             .ToListAsync();
+
+        var dtos = rows.Select(r => new LocationListDto(
+            r.Id, r.Name, r.LocationKind,
+            r.Region,
+            r.Latitude,
+            r.Longitude,
+            r.ParentLocationId,
+            r.Description, r.Details, r.GamePotential, r.NpcInfo, r.SetupNotes,
+            Stashes: r.Stashes.Select(s => new LocationStashDto(
+                s.SecretStashId,
+                s.StashName,
+                s.TreasureQuests,
+                ImagePath: s.StashImagePath,
+                ImageUrl: string.IsNullOrWhiteSpace(s.StashImagePath) ? null : blob.GetSasUrl(s.StashImagePath))).ToList(),
+            Quests: r.Quests,
+            LocationTreasureQuests: r.LocationTreasureQuests,
+            ImagePath: r.ImagePath,
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : blob.GetSasUrl(r.ImagePath))).ToList();
 
         return TypedResults.Ok(dtos);
     }

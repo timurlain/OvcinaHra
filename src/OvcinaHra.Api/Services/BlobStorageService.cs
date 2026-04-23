@@ -8,6 +8,16 @@ public interface IBlobStorageService
 {
     Task<string> UploadAsync(string blobKey, Stream content, string contentType, CancellationToken ct = default);
     Task<string?> GetSasUrlAsync(string blobKey, CancellationToken ct = default);
+
+    /// <summary>
+    /// Synchronous SAS URL builder for list endpoints — skips the remote existence
+    /// check performed by <see cref="GetSasUrlAsync"/>. A list page with 50 rows would
+    /// otherwise do 50 blob existence round trips to Azure. Callers pass a blob key
+    /// stored on the entity and trust it; a stale key just produces a broken image
+    /// at the client, identical to the prior behavior when GetSasUrlAsync raced deletion.
+    /// </summary>
+    string GetSasUrl(string blobKey);
+
     Task DeleteAsync(string blobKey, CancellationToken ct = default);
 }
 
@@ -36,6 +46,17 @@ public class BlobStorageService : IBlobStorageService
         if (!await blob.ExistsAsync(ct))
             return null;
 
+        return BuildSasUrl(blob);
+    }
+
+    public string GetSasUrl(string blobKey)
+    {
+        var blob = _container.GetBlobClient(blobKey);
+        return BuildSasUrl(blob);
+    }
+
+    private string BuildSasUrl(BlobClient blob)
+    {
         // For Azurite (dev), SAS doesn't work easily -- return direct URL
         // For production, generate SAS token
         if (_container.Uri.Host.Contains("127.0.0.1") || _container.Uri.Host.Contains("localhost"))
@@ -46,7 +67,7 @@ public class BlobStorageService : IBlobStorageService
         var sasBuilder = new BlobSasBuilder
         {
             BlobContainerName = _container.Name,
-            BlobName = blobKey,
+            BlobName = blob.Name,
             Resource = "b",
             ExpiresOn = DateTimeOffset.UtcNow.AddHours(1)
         };

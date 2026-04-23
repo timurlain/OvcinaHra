@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
+using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Dtos;
 
@@ -26,33 +27,52 @@ public static class BuildingEndpoints
         return group;
     }
 
-    private static async Task<Ok<List<BuildingListDto>>> GetAll(WorldDbContext db)
+    private static async Task<Ok<List<BuildingListDto>>> GetAll(WorldDbContext db, IBlobStorageService blob)
     {
-        var buildings = await db.Buildings
-            .Include(b => b.Location)
+        var rows = await db.Buildings
             .OrderBy(b => b.Name)
-            .Select(b => new BuildingListDto(
-                b.Id, b.Name, b.Description, b.Notes,
-                b.LocationId, b.Location != null ? b.Location.Name : null, b.IsPrebuilt))
+            .Select(b => new
+            {
+                b.Id,
+                b.Name,
+                b.Description,
+                b.Notes,
+                b.LocationId,
+                LocationName = b.Location != null ? b.Location.Name : null,
+                b.IsPrebuilt,
+                b.ImagePath
+            })
             .ToListAsync();
+        var buildings = rows.Select(r => new BuildingListDto(
+            r.Id, r.Name, r.Description, r.Notes,
+            r.LocationId, r.LocationName, r.IsPrebuilt,
+            ImagePath: r.ImagePath,
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : blob.GetSasUrl(r.ImagePath))).ToList();
         return TypedResults.Ok(buildings);
     }
 
-    private static async Task<Ok<List<BuildingListDto>>> GetByGame(int gameId, WorldDbContext db)
+    private static async Task<Ok<List<BuildingListDto>>> GetByGame(int gameId, WorldDbContext db, IBlobStorageService blob)
     {
-        var buildings = await db.GameBuildings
+        var rows = await db.GameBuildings
             .Where(gb => gb.GameId == gameId)
-            .Include(gb => gb.Building).ThenInclude(b => b.Location)
             .OrderBy(gb => gb.Building.Name)
-            .Select(gb => new BuildingListDto(
+            .Select(gb => new
+            {
                 gb.Building.Id,
                 gb.Building.Name,
                 gb.Building.Description,
                 gb.Building.Notes,
                 gb.Building.LocationId,
-                gb.Building.Location != null ? gb.Building.Location.Name : null,
-                gb.Building.IsPrebuilt))
+                LocationName = gb.Building.Location != null ? gb.Building.Location.Name : null,
+                gb.Building.IsPrebuilt,
+                gb.Building.ImagePath
+            })
             .ToListAsync();
+        var buildings = rows.Select(r => new BuildingListDto(
+            r.Id, r.Name, r.Description, r.Notes,
+            r.LocationId, r.LocationName, r.IsPrebuilt,
+            ImagePath: r.ImagePath,
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : blob.GetSasUrl(r.ImagePath))).ToList();
         return TypedResults.Ok(buildings);
     }
 
