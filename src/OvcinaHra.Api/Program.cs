@@ -199,6 +199,7 @@ try
     app.MapItemEndpoints().RequireAuthorization();
     app.MapSecretStashEndpoints().RequireAuthorization();
     app.MapCharacterEndpoints().RequireAuthorization();
+    app.MapKingdomEndpoints().RequireAuthorization();
     app.MapMonsterEndpoints().RequireAuthorization();
     app.MapNpcEndpoints().RequireAuthorization();
     app.MapQuestEndpoints().RequireAuthorization();

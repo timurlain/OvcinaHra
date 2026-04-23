@@ -1,0 +1,246 @@
+@page "/kingdoms"
+@attribute [Authorize]
+@inject ApiClient Api
+@using OvcinaHra.Shared.Dtos
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Království</h1>
+    <div class="d-flex gap-2">
+        <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nové království</button>
+    </div>
+</div>
+
+<p class="text-muted mb-3" style="max-width: 60ch;">
+    Lookup tabulka s kanonickými královstvími světa. Přiřazení ke hrám se řídí per-game přes <em>CharacterAssignment</em>.
+    Království s přiřazenými postavami nelze přejmenovat ani smazat — taková změna patří do kódu a migrace.
+</p>
+
+@if (loading)
+{
+    <p>Načítám...</p>
+}
+else if (kingdoms.Count == 0)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-flag fs-1 d-block mb-2"></i>
+        <p>Zatím tu není žádné království.</p>
+        <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nové království</button>
+    </div>
+}
+else
+{
+    <OvcinaGrid Data="@kingdoms" KeyFieldName="Id" LayoutKey="grid-layout-kingdoms"
+                RowClick="@(e => OpenModal((KingdomDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+        <Columns>
+            <DxGridDataColumn FieldName="HexColor" Caption="" Width="54px" AllowSort="false">
+                <CellDisplayTemplate>
+                    @{ var hex = (string?)context.Value; }
+                    @if (!string.IsNullOrWhiteSpace(hex))
+                    {
+                        <span class="oh-kbadge oh-kbadge-lg" style="background:@hex"></span>
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="Name" Caption="Název" />
+            <DxGridDataColumn FieldName="HexColor" Caption="Hex" Width="110px">
+                <CellDisplayTemplate>
+                    <span class="oh-mono">@context.Value</span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="SortOrder" Caption="Pořadí" Width="90px" />
+            <DxGridDataColumn FieldName="AssignmentCount" Caption="Přiřazení" Width="110px">
+                <CellDisplayTemplate>
+                    @{ var n = (int)context.Value; }
+                    <span class="@(n > 0 ? "oh-racechip" : "text-muted")">@n</span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="Description" Caption="Popis" />
+        </Columns>
+    </OvcinaGrid>
+}
+
+@* Edit / create dialog *@
+<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle"
+         CssClass="oh-char-dialog-popup" Width="640px">
+    <BodyContentTemplate Context="popupContext">
+        <div class="oh-char-dialog">
+            <DxFormLayout>
+                <DxFormLayoutItem Caption="Název" ColSpanMd="12">
+                    @if (isNameGated)
+                    {
+                        <div class="d-flex align-items-center gap-2">
+                            <DxTextBox @bind-Text="@name" Enabled="false" />
+                            <span class="text-muted" title="Toto království je přiřazeno postavám — název nelze přejmenovat zde.">
+                                <i class="bi bi-lock-fill"></i>
+                            </span>
+                        </div>
+                    }
+                    else
+                    {
+                        <DxTextBox @bind-Text="@name" />
+                    }
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Hex barva" ColSpanMd="8">
+                    <div class="d-flex align-items-center gap-2">
+                        <DxTextBox @bind-Text="@hexColor" NullText="#RRGGBB" />
+                        <span class="oh-kbadge oh-kbadge-lg" style="background:@(string.IsNullOrWhiteSpace(hexColor) ? "transparent" : hexColor)"></span>
+                    </div>
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Pořadí" ColSpanMd="4">
+                    <DxSpinEdit @bind-Value="@sortOrder" MinValue="0" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="URL znaku (badge)" ColSpanMd="12">
+                    <DxTextBox @bind-Text="@badgeImageUrl" NullText="https://…" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Popis" ColSpanMd="12">
+                    <DxMemo @bind-Text="@description" Rows="4" NullText="Stručná charakteristika království (volitelné)…" />
+                </DxFormLayoutItem>
+            </DxFormLayout>
+
+            @if (editingId.HasValue && assignmentCount > 0)
+            {
+                <div class="oh-section-block">
+                    <div class="oh-section-label">Přiřazení</div>
+                    <p class="mb-0">
+                        Toto království je přiřazeno <strong>@assignmentCount</strong>
+                        @(PluralForm(assignmentCount, "postavě", "postavám", "postavám")).
+                        Rename a smazání jsou proto zamčené.
+                    </p>
+                </div>
+            }
+
+            @if (error is not null)
+            {
+                <div class="oh-drozd-val">
+                    <i class="bi bi-exclamation-circle oh-drozd-val-icon"></i>
+                    <div>
+                        <div class="oh-drozd-val-title">Něco se pokazilo</div>
+                        <div class="oh-drozd-val-msg">@error</div>
+                    </div>
+                </div>
+            }
+
+            <div class="oh-footer">
+                @if (editingId.HasValue && assignmentCount == 0)
+                {
+                    <button class="btn oh-btn-ghost-bordeaux" @onclick="() => isDeleteVisible = true" disabled="@isSaving">Smazat</button>
+                }
+                <div class="flex-grow-1"></div>
+                <button class="btn btn-secondary" @onclick="() => isModalVisible = false" disabled="@isSaving">Zrušit</button>
+                <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(isSaving || string.IsNullOrWhiteSpace(name))">Uložit</button>
+            </div>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@* Delete confirmation — MEMORY §D *@
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Opravdu chcete smazat království <strong>@name</strong>?</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    private List<KingdomDto> kingdoms = [];
+    private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
+    private string modalTitle = "";
+    private string name = "";
+    private string? hexColor, badgeImageUrl, description;
+    private int sortOrder;
+    private int? editingId;
+    private int assignmentCount;
+    private string? error;
+
+    private bool isNameGated => editingId.HasValue && assignmentCount > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        kingdoms = await Api.GetListAsync<KingdomDto>("/api/kingdoms");
+        loading = false;
+    }
+
+    private void OpenModal(KingdomDto? k)
+    {
+        error = null;
+        if (k is null)
+        {
+            editingId = null;
+            name = ""; hexColor = null; badgeImageUrl = null; description = null;
+            sortOrder = kingdoms.Count == 0 ? 1 : kingdoms.Max(x => x.SortOrder) + 1;
+            assignmentCount = 0;
+            modalTitle = "Nové království";
+        }
+        else
+        {
+            editingId = k.Id;
+            name = k.Name;
+            hexColor = k.HexColor;
+            badgeImageUrl = k.BadgeImageUrl;
+            description = k.Description;
+            sortOrder = k.SortOrder;
+            assignmentCount = k.AssignmentCount;
+            modalTitle = $"Upravit: {k.Name}";
+        }
+        isModalVisible = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        error = null; isSaving = true;
+        try
+        {
+            if (editingId.HasValue)
+            {
+                await Api.PutAsync($"/api/kingdoms/{editingId}",
+                    new UpdateKingdomDto(name, hexColor, badgeImageUrl, description, sortOrder));
+            }
+            else
+            {
+                await Api.PostAsync<CreateKingdomDto, KingdomDto>("/api/kingdoms",
+                    new CreateKingdomDto(name, hexColor, badgeImageUrl, description, sortOrder));
+            }
+
+            isModalVisible = false;
+            await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        error = null;
+        try
+        {
+            var deleted = await Api.DeleteAsync($"/api/kingdoms/{editingId}");
+            if (!deleted)
+            {
+                error = "Smazání království selhalo.";
+                return;
+            }
+
+            isDeleteVisible = false;
+            isModalVisible = false;
+            await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; isDeleteVisible = false; }
+    }
+
+    // Czech plural helper for "postava" forms (1 → singular, 2-4 → paucal, 5+ → plural).
+    private static string PluralForm(int n, string one, string few, string many)
+    {
+        if (n == 1) return one;
+        if (n >= 2 && n <= 4) return few;
+        return many;
+    }
+}

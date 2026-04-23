@@ -8,7 +8,7 @@ namespace OvcinaHra.Api.Endpoints;
 
 public static class ImageEndpoints
 {
-    private static readonly HashSet<string> ValidEntityTypes = ["locations", "items", "monsters", "secretstashes", "npcs", "buildings"];
+    private static readonly HashSet<string> ValidEntityTypes = ["locations", "items", "monsters", "secretstashes", "npcs", "buildings", "characters", "kingdoms"];
     private static readonly HashSet<string> AllowedContentTypes = ["image/jpeg", "image/png", "image/webp"];
     private const long MaxFileSize = 5 * 1024 * 1024; // 5 MB
 
@@ -133,6 +133,14 @@ public static class ImageEndpoints
                 var building = await db.Buildings.FindAsync(entityId);
                 if (building is not null) building.ImagePath = blobKey;
                 break;
+            case "characters":
+                var character = await db.Characters.FindAsync(entityId);
+                if (character is not null) character.ImagePath = blobKey;
+                break;
+            case "kingdoms":
+                var kingdom = await db.Kingdoms.FindAsync(entityId);
+                if (kingdom is not null) kingdom.BadgeImageUrl = blobKey;
+                break;
         }
 
         await db.SaveChangesAsync();
@@ -161,6 +169,12 @@ public static class ImageEndpoints
             "buildings" => await db.Buildings.Where(b => b.Id == entityId)
                 .Select(b => new ValueTuple<string?, string?>(b.ImagePath, null))
                 .FirstOrDefaultAsync(),
+            "characters" => await db.Characters.Where(c => c.Id == entityId)
+                .Select(c => new ValueTuple<string?, string?>(c.ImagePath, null))
+                .FirstOrDefaultAsync(),
+            "kingdoms" => await db.Kingdoms.Where(k => k.Id == entityId)
+                .Select(k => new ValueTuple<string?, string?>(k.BadgeImageUrl, null))
+                .FirstOrDefaultAsync(),
             _ => (null, null)
         };
     }
@@ -175,6 +189,8 @@ public static class ImageEndpoints
             "secretstashes" => await db.SecretStashes.AnyAsync(s => s.Id == entityId),
             "npcs" => await db.Npcs.AnyAsync(n => n.Id == entityId),
             "buildings" => await db.Buildings.AnyAsync(b => b.Id == entityId),
+            "characters" => await db.Characters.AnyAsync(c => c.Id == entityId),
+            "kingdoms" => await db.Kingdoms.AnyAsync(k => k.Id == entityId),
             _ => false
         };
     }

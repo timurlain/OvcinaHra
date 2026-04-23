@@ -42,6 +42,7 @@ public class WorldDbContext(DbContextOptions<WorldDbContext> options) : DbContex
     public DbSet<BattlefieldBonus> BattlefieldBonuses => Set<BattlefieldBonus>();
     public DbSet<LocalUser> LocalUsers => Set<LocalUser>();
     public DbSet<Character> Characters => Set<Character>();
+    public DbSet<Kingdom> Kingdoms => Set<Kingdom>();
     public DbSet<CharacterAssignment> CharacterAssignments => Set<CharacterAssignment>();
     public DbSet<CharacterEvent> CharacterEvents => Set<CharacterEvent>();
     public DbSet<GameEvent> GameEvents => Set<GameEvent>();

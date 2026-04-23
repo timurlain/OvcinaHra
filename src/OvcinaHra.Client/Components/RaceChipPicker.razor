@@ -1,0 +1,31 @@
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Extensions
+
+<div class="oh-chips">
+    @foreach (var r in Enum.GetValues<Race>())
+    {
+        <button type="button"
+                class="oh-chip @(Value == r ? "sel" : string.Empty)"
+                @onclick="() => PickAsync(r)">
+            @r.GetDisplayName()
+        </button>
+    }
+    @if (AllowClear && Value is not null)
+    {
+        <button type="button" class="oh-chip oh-chip-clear" @onclick="() => PickAsync(null)" title="Vymazat">
+            <i class="bi bi-x"></i>
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter] public Race? Value { get; set; }
+    [Parameter] public EventCallback<Race?> ValueChanged { get; set; }
+    [Parameter] public bool AllowClear { get; set; } = true;
+
+    private async Task PickAsync(Race? r)
+    {
+        Value = r;
+        await ValueChanged.InvokeAsync(r);
+    }
+}

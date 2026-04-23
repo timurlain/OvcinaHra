@@ -490,3 +490,240 @@
 .location-card-body .location-card-text:only-child {
     flex: 1 1 100%;
 }
+
+/* ============================================================
+   Character edit dialog — Claude Design handoff, 2026-04-23
+   Scope: every selector here is prefixed .oh-* to avoid clashing
+   with Bootstrap/global classes. Lives in the CharacterList popup.
+   ============================================================ */
+
+/* --- Race chip picker ---------------------------------------- */
+.oh-chips {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.oh-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 13px;
+    border-radius: 99px;
+    background: var(--oh-surface);
+    border: 1px solid var(--oh-border);
+    font: 500 0.8125rem var(--oh-font-body);
+    color: var(--oh-text);
+    cursor: pointer;
+    transition: var(--oh-transition);
+    user-select: none;
+}
+
+.oh-chip:hover {
+    border-color: var(--oh-primary-light);
+    background: var(--oh-primary-surface);
+    color: var(--oh-primary);
+}
+
+.oh-chip.sel {
+    background: var(--oh-primary);
+    border-color: var(--oh-primary);
+    color: #fff;
+    box-shadow: 0 1px 3px rgba(45, 80, 22, 0.25);
+}
+
+.oh-chip-clear {
+    padding: 7px 10px;
+    color: var(--oh-text-secondary);
+}
+
+/* Small variant used in grid cells + parent combo option */
+.oh-racechip {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 99px;
+    background: var(--oh-primary-surface);
+    border: 1px solid rgba(74, 124, 52, 0.3);
+    color: var(--oh-primary);
+    font: 600 0.6875rem var(--oh-font-body);
+    white-space: nowrap;
+}
+
+/* --- Kingdom cell / badge (grid + combobox templates) -------- */
+.oh-kcell {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.oh-kbadge {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: inline-block;
+    border: 2px solid rgba(255, 255, 255, 0.6);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+    flex-shrink: 0;
+}
+
+.oh-kbadge-lg {
+    width: 24px;
+    height: 24px;
+}
+
+/* --- Kingdom unavailable hint (no assignment in current game)  */
+.oh-kingdom-unavailable {
+    padding: 10px 12px;
+    background: var(--oh-surface-alt);
+    border: 1px dashed var(--oh-border);
+    border-radius: var(--oh-radius-sm);
+    color: var(--oh-text-secondary);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+}
+
+/* --- Parent combobox item template --------------------------- */
+.oh-parent-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.oh-parent-thumb {
+    width: 24px;
+    height: 30px;
+    border-radius: 3px;
+    border: 1px solid var(--oh-border);
+    background: linear-gradient(145deg, #e8c89a 0%, #b88c5a 60%, #6b4a2a 100%);
+    flex-shrink: 0;
+}
+
+.oh-parent-name {
+    font-weight: 600;
+    color: var(--oh-text);
+}
+
+/* --- Character dialog wrapper + layout ----------------------- */
+.oh-char-dialog-popup .dxbl-popup-content {
+    max-width: 960px;
+}
+
+.oh-char-dialog {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Identity section — two columns, portrait on the right */
+.oh-char-dialog .oh-identity {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 240px;
+    gap: 24px;
+    align-items: flex-start;
+}
+
+@media (max-width: 760px) {
+    .oh-char-dialog .oh-identity {
+        grid-template-columns: 1fr;
+    }
+    .oh-char-dialog .oh-identity-portrait {
+        justify-self: center;
+    }
+}
+
+.oh-char-dialog .oh-identity-portrait {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.oh-portrait-placeholder {
+    width: 240px;
+    height: 300px;
+    border-radius: var(--oh-radius);
+    border: 2px dashed var(--oh-border);
+    background: var(--oh-surface-alt);
+    color: var(--oh-text-secondary);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 16px;
+    font-size: 0.8125rem;
+}
+
+/* Section blocks (Hráč, Rodokmen, Poznámky) */
+.oh-char-dialog .oh-section-block {
+    padding-top: 14px;
+    border-top: 1px solid var(--oh-border);
+}
+
+.oh-char-dialog .oh-section-label {
+    font-family: var(--oh-font-body);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--oh-text-secondary);
+    margin-bottom: 8px;
+}
+
+/* Footer row */
+.oh-char-dialog .oh-footer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-top: 14px;
+    border-top: 1px solid var(--oh-border);
+    margin-top: 6px;
+}
+
+/* Destructive ghost-bordeaux button (Smazat) */
+.oh-btn-ghost-bordeaux {
+    color: var(--oh-accent);
+    border: 1px solid rgba(178, 34, 34, 0.4);
+    background: transparent;
+    transition: var(--oh-transition);
+}
+
+.oh-btn-ghost-bordeaux:hover {
+    background: var(--oh-accent);
+    color: #fff;
+    border-color: var(--oh-accent);
+}
+
+/* --- Validation / Drozd error banner ------------------------- */
+.oh-drozd-val {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 14px;
+    background: #FDECEC;
+    border: 1px solid rgba(198, 40, 40, 0.25);
+    border-left: 3px solid var(--oh-error);
+    border-radius: var(--oh-radius);
+}
+
+.oh-drozd-val-icon {
+    color: var(--oh-error);
+    font-size: 1.25rem;
+    line-height: 1.25;
+    flex-shrink: 0;
+}
+
+.oh-drozd-val-title {
+    font-family: var(--oh-font-heading);
+    font-style: italic;
+    color: var(--oh-error);
+    font-weight: 700;
+    font-size: 0.9375rem;
+}
+
+.oh-drozd-val-msg {
+    font-size: 0.8125rem;
+    color: var(--oh-text-secondary);
+    margin-top: 2px;
+}
+

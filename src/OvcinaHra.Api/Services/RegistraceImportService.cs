@@ -5,6 +5,7 @@ using OvcinaHra.Api.Data;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
+using OvcinaHra.Shared.Extensions;
 
 namespace OvcinaHra.Api.Services;
 
@@ -30,6 +31,11 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
             return new ImportResultDto(0, 0, 0, [$"Failed to fetch from registrace: {ex.Message}"]);
         }
 
+        // Kingdom-name → id lookup, loaded once per import. Names from registrace
+        // are matched case-insensitively against the Kingdom lookup table.
+        var kingdomByName = await db.Kingdoms
+            .ToDictionaryAsync(k => k.Name, k => k.Id, StringComparer.OrdinalIgnoreCase);
+
         foreach (var record in records)
         {
             try
@@ -50,7 +56,7 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
                         Name = name,
                         PlayerFirstName = record.PersonFirstName,
                         PlayerLastName = record.PersonLastName,
-                        Race = record.Race,
+                        Race = RaceExtensions.TryParseRace(record.Race),
                         BirthYear = record.PersonBirthYear,
                         IsPlayedCharacter = true,
                         ExternalPersonId = record.PersonId,
@@ -66,7 +72,7 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
                     // Name is intentionally NOT updated — it's user-editable in our app
                     character.PlayerFirstName = record.PersonFirstName;
                     character.PlayerLastName = record.PersonLastName;
-                    character.Race = record.Race;
+                    character.Race = RaceExtensions.TryParseRace(record.Race);
                     character.BirthYear = record.PersonBirthYear;
                     character.UpdatedAtUtc = DateTime.UtcNow;
 
@@ -85,6 +91,13 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
                     Enum.TryParse<PlayerClass>(record.ClassOrType, ignoreCase: true, out var pc)
                         .WhenTrue(pc, ref playerClass);
 
+                int? kingdomId = null;
+                if (!string.IsNullOrWhiteSpace(record.KingdomName)
+                    && kingdomByName.TryGetValue(record.KingdomName, out var kid))
+                {
+                    kingdomId = kid;
+                }
+
                 if (assignment is null)
                 {
                     assignment = new CharacterAssignment
@@ -94,7 +107,7 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
                         ExternalPersonId = record.PersonId,
                         RegistraceCharacterId = record.CharacterId,
                         Class = playerClass,
-                        Kingdom = record.KingdomName,
+                        KingdomId = kingdomId,
                         IsActive = true,
                         StartedAtUtc = DateTime.UtcNow
                     };
@@ -105,7 +118,7 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
                 {
                     assignment.RegistraceCharacterId = record.CharacterId;
                     assignment.Class = playerClass;
-                    assignment.Kingdom = record.KingdomName;
+                    assignment.KingdomId = kingdomId;
                     updated++;
                 }
 
