@@ -12,7 +12,7 @@
         CustomizeElement="@OnCustomizeElement"
         CssClass="@($"ovcina-grid {CssClass}")"
         ContextMenus="GridContextMenus.Header"
-        ShowSearchBox="true"
+        ShowSearchBox="@ShowSearchBox"
         SearchText="@SearchText"
         SearchTextChanged="@SearchTextChanged"
         FilterMenuButtonDisplayMode="GridFilterMenuButtonDisplayMode.Always"
@@ -39,6 +39,7 @@
     [Parameter] public EventCallback<IReadOnlyList<object>> SelectedDataItemsChanged { get; set; }
     [Parameter] public EventCallback<GridRowClickEventArgs> RowClick { get; set; }
     [Parameter] public Action<GridCustomizeElementEventArgs>? CustomizeElement { get; set; }
+    [Parameter] public bool ShowSearchBox { get; set; } = true;
     [Parameter] public string? SearchText { get; set; }
     [Parameter] public EventCallback<string> SearchTextChanged { get; set; }
     private void OnCustomizeElement(GridCustomizeElementEventArgs e)

@@ -163,11 +163,11 @@ else
                 <div class="oh-section-block">
                     <div class="oh-section-label">Hráč</div>
                     <DxFormLayout>
-                        <DxFormLayoutItem Caption="Jméno hráče" ColSpanMd="6">
-                            <DxTextBox @bind-Text="@playerFirstName" NullText="(nezadáno)" />
+                        <DxFormLayoutItem Caption="Jméno" ColSpanMd="6">
+                            <DxTextBox @bind-Text="@playerFirstName" NullText="(nezadáno)" ReadOnly="true" />
                         </DxFormLayoutItem>
-                        <DxFormLayoutItem Caption="Příjmení hráče" ColSpanMd="6">
-                            <DxTextBox @bind-Text="@playerLastName" NullText="(nezadáno)" />
+                        <DxFormLayoutItem Caption="Příjmení" ColSpanMd="6">
+                            <DxTextBox @bind-Text="@playerLastName" NullText="(nezadáno)" ReadOnly="true" />
                         </DxFormLayoutItem>
                         <DxFormLayoutItem Caption="ID v registraci" ColSpanMd="12">
                             <div class="d-flex gap-2 align-items-center">

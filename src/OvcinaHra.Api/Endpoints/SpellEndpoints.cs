@@ -130,7 +130,7 @@ public static class SpellEndpoints
             .ThenBy(gs => gs.Spell.Name)
             .Select(gs => new GameSpellDto(
                 gs.Id, gs.GameId, gs.SpellId, gs.Spell.Name, gs.Spell.Level, gs.Spell.School,
-                gs.Price, gs.IsFindable, gs.AvailabilityNotes))
+                gs.Price, gs.IsFindable, gs.AvailabilityNotes, gs.Spell.Price))
             .ToListAsync();
         return TypedResults.Ok(rows);
     }
@@ -162,7 +162,7 @@ public static class SpellEndpoints
         return TypedResults.Created(
             $"/api/spells/by-game/{gs.GameId}",
             new GameSpellDto(gs.Id, gs.GameId, gs.SpellId, spell.Name, spell.Level, spell.School,
-                gs.Price, gs.IsFindable, gs.AvailabilityNotes));
+                gs.Price, gs.IsFindable, gs.AvailabilityNotes, spell.Price));
     }
 
     private static async Task<Results<NoContent, NotFound>> UpdateGameSpell(
