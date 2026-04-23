@@ -41,7 +41,7 @@ public static class KingdomEndpoints
         var kingdoms = rows.Select(r => new KingdomDto(
             r.Id, r.Name, r.HexColor, r.BadgeImageUrl, r.Description, r.SortOrder,
             r.AssignmentCount,
-            ImageUrl: string.IsNullOrWhiteSpace(r.BadgeImageUrl) ? null : blob.GetSasUrl(r.BadgeImageUrl))).ToList();
+            BadgeImageSasUrl: string.IsNullOrWhiteSpace(r.BadgeImageUrl) ? null : blob.GetSasUrl(r.BadgeImageUrl))).ToList();
 
         return TypedResults.Ok(kingdoms);
     }

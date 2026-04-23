@@ -2,14 +2,14 @@
 
 <a class="oh-lc-tile" href="/secret-stashes/@Stash.Id">
     <div class="oh-lc-tile-img">
-        @* onerror swap: if the img 404s (stale key, deleted blob, SAS failure)
-           we reveal the "bez obrázku" placeholder instead of the broken-image icon. *@
-        @if (!string.IsNullOrEmpty(Stash.ImageUrl))
+        @* Blazor @onerror state so a broken img (stale key, deleted blob, SAS
+           failure) reveals the "bez obrázku" placeholder. State-based rather
+           than DOM-mutation so it survives component reuse across list updates. *@
+        @if (!string.IsNullOrEmpty(Stash.ImageUrl) && !imageFailed)
         {
             <img src="@Stash.ImageUrl"
                  alt="@Stash.Name"
-                 onerror="this.style.display='none'; this.nextElementSibling.style.display=''" />
-            <div class="oh-lc-tile-img-empty" style="display:none">bez obrázku</div>
+                 @onerror="() => imageFailed = true" />
         }
         else
         {
@@ -41,12 +41,22 @@
 
     private List<LocationTreasureQuestDto> visibleQuests = [];
     private int overflowCount;
+    private bool imageFailed;
+    private string? _lastImageUrl;
 
     protected override void OnParametersSet()
     {
         var all = Stash.TreasureQuests ?? [];
         visibleQuests = all.Take(MaxVisibleQuests).ToList();
         overflowCount = Math.Max(0, all.Count - MaxVisibleQuests);
+
+        // Reset img error state when the URL changes — matters when a reused
+        // component shifts to a different Stash across a list re-render.
+        if (_lastImageUrl != Stash.ImageUrl)
+        {
+            _lastImageUrl = Stash.ImageUrl;
+            imageFailed = false;
+        }
     }
 
     // Czech plural for count: 1 → "další", 2-4 → "další", 5+ → "dalších"

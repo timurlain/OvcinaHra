@@ -26,12 +26,14 @@ public interface IBlobStorageService
 public class BlobStorageService : IBlobStorageService
 {
     private readonly BlobContainerClient _container;
+    private readonly ILogger<BlobStorageService> _logger;
 
-    public BlobStorageService(IConfiguration config)
+    public BlobStorageService(IConfiguration config, ILogger<BlobStorageService> logger)
     {
         var connectionString = config["BlobStorage:ConnectionString"]!;
         var containerName = config["BlobStorage:ContainerName"] ?? "ovcinahra-images";
         _container = new BlobContainerClient(connectionString, containerName);
+        _logger = logger;
     }
 
     public async Task<string> UploadAsync(string blobKey, Stream content, string contentType, CancellationToken ct)
@@ -58,10 +60,12 @@ public class BlobStorageService : IBlobStorageService
             var blob = _container.GetBlobClient(blobKey);
             return BuildSasUrl(blob);
         }
-        catch
+        catch (Exception ex)
         {
             // Never let a single row's SAS generation failure 500 a whole list page.
             // The tile components render a glyph fallback when ImageUrl is null.
+            // Logged so credential/container misconfiguration is still diagnosable.
+            _logger.LogWarning(ex, "Failed to generate SAS URL for blob key {BlobKey}", blobKey);
             return null;
         }
     }
