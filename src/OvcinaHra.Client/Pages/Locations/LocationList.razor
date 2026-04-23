@@ -36,7 +36,7 @@ else if (!Catalog && locations.Count == 0)
 else
 {
     <OvcinaGrid Data="@locations" KeyFieldName="Id" LayoutKey="grid-layout-locations-v2"
-                RowClick="@(async e => await locationPopup.OpenAsync(((LocationListDto)e.Grid.GetDataItem(e.VisibleIndex)).Id))">
+                RowClick="@(e => Nav.NavigateTo($"/locations/{((LocationListDto)e.Grid.GetDataItem(e.VisibleIndex)).Id}"))">
         <Columns>
             <DxGridDataColumn FieldName="" Caption="" Width="40px" AllowSort="false" FixedPosition="GridColumnFixedPosition.Left">
                 <CellDisplayTemplate>
@@ -59,14 +59,14 @@ else
                         if (loc.ParentLocationId.HasValue)
                         {
                             var parent = locations.FirstOrDefault(l => l.Id == loc.ParentLocationId.Value);
-                            <a href="#" class="text-muted" @onclick="async () => await locationPopup.OpenAsync(loc.ParentLocationId.Value)" @onclick:preventDefault @onclick:stopPropagation>↳ @(parent?.Name ?? $"#{loc.ParentLocationId}")</a>
+                            <a href="/locations/@loc.ParentLocationId.Value" class="text-muted" @onclick:stopPropagation>↳ @(parent?.Name ?? $"#{loc.ParentLocationId}")</a>
                         }
                         else
                         {
                             var variants = locations.Where(l => l.ParentLocationId == loc.Id).ToList();
                             @foreach (var v in variants)
                             {
-                                <a href="#" class="badge bg-secondary text-decoration-none me-1" @onclick="async () => await locationPopup.OpenAsync(v.Id)" @onclick:preventDefault @onclick:stopPropagation>@v.Name</a>
+                                <a href="/locations/@v.Id" class="badge bg-secondary text-decoration-none me-1" @onclick:stopPropagation>@v.Name</a>
                             }
                         }
                     }
