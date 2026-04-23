@@ -2,9 +2,14 @@
 
 <a class="oh-lc-tile" href="/secret-stashes/@Stash.Id">
     <div class="oh-lc-tile-img">
+        @* onerror swap: if the img 404s (stale key, deleted blob, SAS failure)
+           we reveal the "bez obrázku" placeholder instead of the broken-image icon. *@
         @if (!string.IsNullOrEmpty(Stash.ImageUrl))
         {
-            <img src="@Stash.ImageUrl" alt="@Stash.Name" />
+            <img src="@Stash.ImageUrl"
+                 alt="@Stash.Name"
+                 onerror="this.style.display='none'; this.nextElementSibling.style.display=''" />
+            <div class="oh-lc-tile-img-empty" style="display:none">bez obrázku</div>
         }
         else
         {
