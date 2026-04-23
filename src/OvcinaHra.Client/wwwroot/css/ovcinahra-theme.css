@@ -1500,6 +1500,18 @@
 .oh-lg-stash-tile:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(45,80,22,.3);z-index:5}
 /* Rubber-stamp thumb rendered in the hidden Razítko column of /locations. */
 .oh-lg-stamp-thumb{width:128px;height:128px;object-fit:contain;display:block}
+/* Thumbnail image overlays the themed gradient; its own veil provides the
+   bottom scrim so the name bar stays readable over photographic art. */
+.oh-lg-stash-tile > img.oh-lg-stash-tile-img{
+  position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;z-index:1;display:block;
+}
+.oh-lg-stash-tile > .oh-lg-stash-tile-img-veil{
+  position:absolute;inset:0;pointer-events:none;z-index:2;
+  background:
+    radial-gradient(ellipse at 30% 35%,rgba(255,248,230,.18) 0%,transparent 55%),
+    linear-gradient(180deg,transparent 45%,rgba(20,12,4,.55) 85%,rgba(20,12,4,.75) 100%);
+}
 /* subtle interior vignette */
 .oh-lg-stash-tile::before{
   content:"";position:absolute;inset:0;pointer-events:none;
