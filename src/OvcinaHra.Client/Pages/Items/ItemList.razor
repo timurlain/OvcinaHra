@@ -62,8 +62,10 @@ else if (Catalog)
                 </CellDisplayTemplate>
             </DxGridDataColumn>
 
-            @* Type-dot 24px — neutral palette per ItemType (NOT kingdom colors) *@
-            <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="•" Width="24px" AllowGroup="true">
+            @* Type-dot 24px — neutral palette per ItemType (NOT kingdom colors).
+               Unbound (no FieldName) so it doesn't collide with the text "Typ" column
+               under DxGrid's layout-persistence keying-by-FieldName. *@
+            <DxGridDataColumn Caption="•" Width="24px" AllowSort="false" AllowGroup="false">
                 <CellDisplayTemplate>
                     @{ var it = (ItemListDto)context.DataItem; }
                     <span class="oh-it-tdot @TdotClass(it.ItemType)" title="@it.ItemTypeDisplay"></span>
@@ -76,16 +78,16 @@ else if (Catalog)
 
             @* 4 class pip cols 64/64/64/88 *@
             <DxGridDataColumn FieldName="ReqWarrior" Caption="Vál." Width="64px">
-                <CellDisplayTemplate><span class="oh-it-pip @PipClass((int)context.Value)" title="Válečník: @context.Value"><i class="bi bi-shield-shaded"></i></span></CellDisplayTemplate>
+                <CellDisplayTemplate><span class="oh-it-pip @ItemClassPipsHelpers.PipClass((int)context.Value)" title="Válečník: @context.Value"><i class="bi bi-shield-shaded"></i></span></CellDisplayTemplate>
             </DxGridDataColumn>
             <DxGridDataColumn FieldName="ReqArcher" Caption="Luč." Width="64px">
-                <CellDisplayTemplate><span class="oh-it-pip @PipClass((int)context.Value)" title="Lučištník: @context.Value"><i class="bi bi-bullseye"></i></span></CellDisplayTemplate>
+                <CellDisplayTemplate><span class="oh-it-pip @ItemClassPipsHelpers.PipClass((int)context.Value)" title="Lučištník: @context.Value"><i class="bi bi-bullseye"></i></span></CellDisplayTemplate>
             </DxGridDataColumn>
             <DxGridDataColumn FieldName="ReqMage" Caption="Mág" Width="64px">
-                <CellDisplayTemplate><span class="oh-it-pip @PipClass((int)context.Value)" title="Mág: @context.Value"><i class="bi bi-magic"></i></span></CellDisplayTemplate>
+                <CellDisplayTemplate><span class="oh-it-pip @ItemClassPipsHelpers.PipClass((int)context.Value)" title="Mág: @context.Value"><i class="bi bi-magic"></i></span></CellDisplayTemplate>
             </DxGridDataColumn>
             <DxGridDataColumn FieldName="ReqThief" Caption="Zlo." Width="88px">
-                <CellDisplayTemplate><span class="oh-it-pip @PipClass((int)context.Value)" title="Zloděj: @context.Value"><i class="bi bi-incognito"></i></span></CellDisplayTemplate>
+                <CellDisplayTemplate><span class="oh-it-pip @ItemClassPipsHelpers.PipClass((int)context.Value)" title="Zloděj: @context.Value"><i class="bi bi-incognito"></i></span></CellDisplayTemplate>
             </DxGridDataColumn>
 
             @* Cena + Sklad columns — hidden in catalog (no GameItem data; brief acceptance §4) *@
@@ -154,8 +156,10 @@ else
                 </CellDisplayTemplate>
             </DxGridDataColumn>
 
-            @* Type-dot 24px *@
-            <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="•" Width="24px" AllowGroup="true">
+            @* Type-dot 24px — unbound (no FieldName) per Copilot review on PR #88
+               so it doesn't collide with the text "Typ" column under DxGrid's
+               layout-persistence keying-by-FieldName. *@
+            <DxGridDataColumn Caption="•" Width="24px" AllowSort="false" AllowGroup="false">
                 <CellDisplayTemplate>
                     @{ var gi = (GameItemListDto)context.DataItem; }
                     <span class="oh-it-tdot @TdotClass(gi.ItemType)" title="@gi.ItemTypeDisplay"></span>
@@ -168,16 +172,16 @@ else
 
             @* 4 class pip cols *@
             <DxGridDataColumn FieldName="ReqWarrior" Caption="Vál." Width="64px">
-                <CellDisplayTemplate><span class="oh-it-pip @PipClass((int)context.Value)" title="Válečník: @context.Value"><i class="bi bi-shield-shaded"></i></span></CellDisplayTemplate>
+                <CellDisplayTemplate><span class="oh-it-pip @ItemClassPipsHelpers.PipClass((int)context.Value)" title="Válečník: @context.Value"><i class="bi bi-shield-shaded"></i></span></CellDisplayTemplate>
             </DxGridDataColumn>
             <DxGridDataColumn FieldName="ReqArcher" Caption="Luč." Width="64px">
-                <CellDisplayTemplate><span class="oh-it-pip @PipClass((int)context.Value)" title="Lučištník: @context.Value"><i class="bi bi-bullseye"></i></span></CellDisplayTemplate>
+                <CellDisplayTemplate><span class="oh-it-pip @ItemClassPipsHelpers.PipClass((int)context.Value)" title="Lučištník: @context.Value"><i class="bi bi-bullseye"></i></span></CellDisplayTemplate>
             </DxGridDataColumn>
             <DxGridDataColumn FieldName="ReqMage" Caption="Mág" Width="64px">
-                <CellDisplayTemplate><span class="oh-it-pip @PipClass((int)context.Value)" title="Mág: @context.Value"><i class="bi bi-magic"></i></span></CellDisplayTemplate>
+                <CellDisplayTemplate><span class="oh-it-pip @ItemClassPipsHelpers.PipClass((int)context.Value)" title="Mág: @context.Value"><i class="bi bi-magic"></i></span></CellDisplayTemplate>
             </DxGridDataColumn>
             <DxGridDataColumn FieldName="ReqThief" Caption="Zlo." Width="88px">
-                <CellDisplayTemplate><span class="oh-it-pip @PipClass((int)context.Value)" title="Zloděj: @context.Value"><i class="bi bi-incognito"></i></span></CellDisplayTemplate>
+                <CellDisplayTemplate><span class="oh-it-pip @ItemClassPipsHelpers.PipClass((int)context.Value)" title="Zloděj: @context.Value"><i class="bi bi-incognito"></i></span></CellDisplayTemplate>
             </DxGridDataColumn>
 
             @* Cena coin gold accent — strikethrough when IsSold=false *@
@@ -301,8 +305,9 @@ else
                     <button class="btn btn-outline-primary" @onclick="OpenEditFromQuickPeek">
                         <i class="bi bi-pencil"></i> Upravit
                     </button>
-                    <button class="btn btn-primary"
-                            @onclick="@(() => Nav.NavigateTo($"/items/{quickPeekItem!.Id}"))">
+                    @* Disabled until /items/{id} ships in a follow-up port — would 404 today. *@
+                    <button class="btn btn-primary" disabled
+                            title="Detail předmětu zatím není hotový — sleduj follow-up.">
                         Otevřít detail <i class="bi bi-arrow-right"></i>
                     </button>
                 </div>
@@ -970,16 +975,8 @@ else
     // CSS suffix for the .oh-it-tdot--xxx neutral palette per ItemType.
     private static string TdotClass(ItemType t) => "oh-it-tdot--" + t.ToString().ToLowerInvariant();
 
-    // CSS class for a single class-pip cell — lit + intensity ramp by req level.
-    private static string PipClass(int req) => req switch
-    {
-        <= 0 => "",
-        1 => "oh-it-pip--lit",
-        2 => "oh-it-pip--lit oh-it-pip--lit-r2",
-        3 => "oh-it-pip--lit oh-it-pip--lit-r3",
-        4 => "oh-it-pip--lit oh-it-pip--lit-r4",
-        _ => "oh-it-pip--lit oh-it-pip--lit-r5",
-    };
+    // PipClass mapping moved to ItemClassPipsHelpers.PipClass (per Copilot review on
+    // PR #88) so the lit/intensity ramp lives in one place.
 
     // ---- Quick-peek popup ----
 

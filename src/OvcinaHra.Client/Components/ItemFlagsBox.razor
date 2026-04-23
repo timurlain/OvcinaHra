@@ -23,7 +23,7 @@
             <i class="bi bi-hourglass-split"></i>
         </span>
     }
-    <span class="oh-it-fcell @(IsCraftable ? "oh-it-fcell--lit" : "")" title="Craftable: @(IsCraftable ? "ano" : "ne")">
+    <span class="oh-it-fcell @(IsCraftable ? "oh-it-fcell--lit" : "")" title="Vyrobitelný: @(IsCraftable ? "ano" : "ne")">
         <i class="bi bi-tools"></i>
     </span>
 </div>
@@ -42,9 +42,9 @@
     {
         if (PerGame)
         {
-            return $"Prodává: {YN(IsSold)} · Nalezitelný: {YN(IsFindable)} · Craftable: {YN(IsCraftable)}";
+            return $"Prodává: {YN(IsSold)} · Nalezitelný: {YN(IsFindable)} · Vyrobitelný: {YN(IsCraftable)}";
         }
-        return $"Unikát: {YN(IsUnique)} · Limit: {YN(IsLimited)} · Craftable: {YN(IsCraftable)}";
+        return $"Unikát: {YN(IsUnique)} · Limit: {YN(IsLimited)} · Vyrobitelný: {YN(IsCraftable)}";
     }
 
     private static string YN(bool b) => b ? "ano" : "ne";

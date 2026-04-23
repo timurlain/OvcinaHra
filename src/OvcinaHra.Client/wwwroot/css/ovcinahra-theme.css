@@ -2105,11 +2105,9 @@
 .oh-it-coin--struck{text-decoration:line-through;opacity:.55}
 .oh-it-coin--empty{background:transparent;border-color:transparent;color:var(--oh-text-secondary);opacity:.6;font-weight:500}
 
-/* Sklad meter — mono "current/max" + 60px bar; red below 25%; infinite glyph */
+/* Sklad — mono current count or infinite glyph. Meter bar deferred until
+   GameItemListDto carries a max field (see PR body follow-up #4). */
 .oh-it-sklad{display:inline-flex;align-items:center;gap:8px;font-family:var(--oh-font-mono);font-size:.8125rem;font-variant-numeric:tabular-nums;color:var(--oh-text)}
-.oh-it-sklad-meter{position:relative;width:60px;height:6px;background:var(--oh-surface-alt);border:1px solid var(--oh-border);border-radius:99px;overflow:hidden}
-.oh-it-sklad-meter-fill{position:absolute;top:0;left:0;bottom:0;background:var(--oh-primary);border-radius:99px;transition:width .15s}
-.oh-it-sklad-meter-fill--low{background:#c0392b}
 .oh-it-sklad--inf{font-size:1rem;color:var(--oh-primary)}
 .oh-it-sklad--empty{color:var(--oh-text-secondary)}
 
