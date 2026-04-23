@@ -21,7 +21,7 @@ public static class KingdomEndpoints
         return group;
     }
 
-    private static async Task<Ok<List<KingdomDto>>> GetAll(WorldDbContext db, IBlobStorageService blob)
+    private static async Task<Ok<List<KingdomDto>>> GetAll(WorldDbContext db)
     {
         var rows = await db.Kingdoms
             .OrderBy(k => k.SortOrder)
@@ -41,7 +41,7 @@ public static class KingdomEndpoints
         var kingdoms = rows.Select(r => new KingdomDto(
             r.Id, r.Name, r.HexColor, r.BadgeImageUrl, r.Description, r.SortOrder,
             r.AssignmentCount,
-            BadgeImageSasUrl: string.IsNullOrWhiteSpace(r.BadgeImageUrl) ? null : blob.GetSasUrl(r.BadgeImageUrl))).ToList();
+            BadgeImageSasUrl: string.IsNullOrWhiteSpace(r.BadgeImageUrl) ? null : $"/api/images/kingdoms/{r.Id}/thumb?size=small")).ToList();
 
         return TypedResults.Ok(kingdoms);
     }
