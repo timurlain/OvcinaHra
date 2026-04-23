@@ -2046,3 +2046,88 @@
 .oh-mon-karta-block-title{font:700 .75rem var(--oh-font-body);color:var(--oh-text-secondary);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
 .oh-mon-karta-block-body{font:400 .875rem var(--oh-font-body);color:var(--oh-text);white-space:pre-wrap;line-height:1.5}
 .oh-mon-karta-foot{display:flex;justify-content:space-between;gap:10px;padding-top:8px;border-top:1px solid var(--oh-border);margin-top:6px}
+
+/* ============================================================
+   Items grid (/items) — .oh-it-*
+   Keeps the DxGrid chassis. CellTemplates use these classes for:
+   photo thumb · type-dot · type chip · 4 class pips · coin price ·
+   sklad meter · 3-cell flags box · quick-peek popup hero+fields.
+   Ported from docs/design/dialogs/item-list.mockup.unbundled.html
+   ============================================================ */
+
+/* Photo thumbnail in the Foto column (78px wide, 64x48 photo inside, 4:3) */
+.oh-it-photo{width:64px;height:48px;border-radius:3px;overflow:hidden;background:var(--oh-surface-alt);display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--oh-border)}
+.oh-it-photo img{width:100%;height:100%;object-fit:cover;display:block}
+.oh-it-photo-empty{font-size:1.25rem;color:rgba(139,90,43,.4)}
+
+/* Type-dot — 10px circle, neutral palette per ItemType (NOT kingdom colors) */
+.oh-it-tdot{display:inline-block;width:10px;height:10px;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.1),inset 0 -1px 1px rgba(0,0,0,.2);vertical-align:middle}
+.oh-it-tdot--weapon{background:#8a7148}
+.oh-it-tdot--shield{background:#a87038}
+.oh-it-tdot--armor{background:#6a4820}
+.oh-it-tdot--helmet{background:#8a8370}
+.oh-it-tdot--firearm{background:#b89060}
+.oh-it-tdot--horse{background:#7a5230}
+.oh-it-tdot--controlledcreature{background:#603020}
+.oh-it-tdot--lives{background:#a82828}
+.oh-it-tdot--scroll{background:#b89a68}
+.oh-it-tdot--potion{background:#2a6030}
+.oh-it-tdot--resource{background:#5a7a3d}
+.oh-it-tdot--money{background:#e8b830}
+.oh-it-tdot--gameanimal{background:#506838}
+.oh-it-tdot--minorartifact{background:#3870a8}
+.oh-it-tdot--jewelry{background:#b8963a}
+.oh-it-tdot--artifact{background:#6020a0}
+.oh-it-tdot--ingredient{background:#5a7a3d}
+.oh-it-tdot--commodity{background:#7a5a3d}
+.oh-it-tdot--miscellaneous{background:#9e9e9e}
+
+/* ItemType chip (text label) */
+.oh-it-ichip{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:99px;background:var(--oh-surface-alt);border:1px solid var(--oh-border);color:var(--oh-text-secondary);font:600 .6875rem var(--oh-font-body);letter-spacing:.02em;white-space:nowrap}
+.oh-it-ichip i{font-size:.6875rem;opacity:.85}
+
+/* Class pips — 4 mono pips, lit when Req>=1 with intensity by level */
+.oh-it-pips{display:inline-flex;align-items:center;gap:3px}
+.oh-it-pip{width:22px;height:20px;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;gap:2px;background:transparent;border:1px solid var(--oh-border);color:#c4b494;font:600 .6875rem var(--oh-font-mono);cursor:help;line-height:1;position:relative}
+.oh-it-pip i{font-size:.6875rem}
+.oh-it-pip-n{font-size:.5625rem;line-height:1;opacity:.7}
+.oh-it-pip--lit{background:var(--oh-primary-surface);border-color:rgba(74,124,52,.5);color:var(--oh-primary)}
+.oh-it-pip--lit .oh-it-pip-n{color:var(--oh-primary);opacity:1}
+.oh-it-pip--lit-r2{background:#cfe0c2;border-color:rgba(74,124,52,.7)}
+.oh-it-pip--lit-r3{background:var(--oh-primary-light);border-color:var(--oh-primary);color:#fff}
+.oh-it-pip--lit-r3 .oh-it-pip-n{color:#fff}
+.oh-it-pip--lit-r4,.oh-it-pip--lit-r5{background:var(--oh-primary);border-color:var(--oh-primary-dark);color:#fff}
+.oh-it-pip--lit-r4 .oh-it-pip-n,.oh-it-pip--lit-r5 .oh-it-pip-n{color:#fff}
+
+/* Coin/Cena pill — gold accent (semantic, NOT kingdom Arnor color) */
+.oh-it-coin{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;background:rgba(249,168,37,.18);border:1px solid rgba(249,168,37,.55);color:#8a6b0d;font:700 .8125rem var(--oh-font-mono);font-variant-numeric:tabular-nums;line-height:1}
+.oh-it-coin i{font-size:.75rem}
+.oh-it-coin--struck{text-decoration:line-through;opacity:.55}
+.oh-it-coin--empty{background:transparent;border-color:transparent;color:var(--oh-text-secondary);opacity:.6;font-weight:500}
+
+/* Sklad — mono current count or infinite glyph. Meter bar deferred until
+   GameItemListDto carries a max field (see PR body follow-up #4). */
+.oh-it-sklad{display:inline-flex;align-items:center;gap:8px;font-family:var(--oh-font-mono);font-size:.8125rem;font-variant-numeric:tabular-nums;color:var(--oh-text)}
+.oh-it-sklad--inf{font-size:1rem;color:var(--oh-primary)}
+.oh-it-sklad--empty{color:var(--oh-text-secondary)}
+
+/* Flags box — 3 cells (28x22 each), lit/dim, mode-aware coloring */
+.oh-it-flags{display:inline-flex;gap:2px;align-items:center}
+.oh-it-fcell{width:28px;height:22px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--oh-border);background:var(--oh-surface-alt);color:#c4b494;border-radius:3px;font-size:.75rem;cursor:help}
+.oh-it-fcell--lit{background:var(--oh-primary-surface);border-color:rgba(74,124,52,.5);color:var(--oh-primary)}
+.oh-it-fcell--lit-gold{background:rgba(249,168,37,.18);border-color:rgba(249,168,37,.55);color:#8a6b0d}
+.oh-it-fcell--lit-bordeaux{background:rgba(140,36,35,.10);border-color:rgba(140,36,35,.40);color:#8c2423}
+
+/* Quick-peek popup — 720x480, 360px hero photo left + fields right */
+.oh-it-qp-grid{display:grid;grid-template-columns:360px 1fr;gap:20px;padding:4px 4px 14px;align-items:start}
+@media (max-width:768px){.oh-it-qp-grid{grid-template-columns:1fr}}
+.oh-it-qp-hero{width:100%;aspect-ratio:4/3;border-radius:var(--oh-radius);overflow:hidden;background:var(--oh-surface-alt);border:1px solid var(--oh-border);display:flex;align-items:center;justify-content:center}
+.oh-it-qp-hero img{width:100%;height:100%;object-fit:cover;display:block}
+.oh-it-qp-hero .oh-it-photo-empty{font-size:4rem}
+.oh-it-qp-fields{display:flex;flex-direction:column;gap:12px;min-width:0}
+.oh-it-qp-name{font:700 1.25rem var(--oh-font-heading);color:var(--oh-primary);margin:0}
+.oh-it-qp-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.oh-it-qp-section{padding:8px 12px;background:var(--oh-surface-alt);border-radius:var(--oh-radius-sm);border:1px solid var(--oh-border)}
+.oh-it-qp-section-title{font:700 .6875rem var(--oh-font-body);color:var(--oh-text-secondary);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+.oh-it-qp-section-body{font:400 .875rem var(--oh-font-body);color:var(--oh-text);line-height:1.5;white-space:pre-wrap}
+.oh-it-qp-foot{display:flex;justify-content:space-between;gap:10px;padding-top:10px;border-top:1px solid var(--oh-border);margin-top:6px}

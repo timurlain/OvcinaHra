@@ -1,0 +1,51 @@
+@* Compact 3-cell flags box. Two modes:
+   - Catalog (default):  Unikát · Limit · Craftable
+   - Per-hra (PerGame):  Prodává · Nalezitelný · Craftable
+   Each cell is always present (consistent column width); lit/dim by flag.
+   Designer kept the box at 96px wide regardless of which flags are set. *@
+
+<div class="oh-it-flags" title="@Summary()">
+    @if (PerGame)
+    {
+        <span class="oh-it-fcell @(IsSold ? "oh-it-fcell--lit-gold" : "")" title="Prodává: @(IsSold ? "ano" : "ne")">
+            <i class="bi bi-tag-fill"></i>
+        </span>
+        <span class="oh-it-fcell @(IsFindable ? "oh-it-fcell--lit" : "")" title="Nalezitelný: @(IsFindable ? "ano" : "ne")">
+            <i class="bi bi-search"></i>
+        </span>
+    }
+    else
+    {
+        <span class="oh-it-fcell @(IsUnique ? "oh-it-fcell--lit-gold" : "")" title="Unikát: @(IsUnique ? "ano" : "ne")">
+            <i class="bi bi-gem"></i>
+        </span>
+        <span class="oh-it-fcell @(IsLimited ? "oh-it-fcell--lit-bordeaux" : "")" title="Limit: @(IsLimited ? "ano" : "ne")">
+            <i class="bi bi-hourglass-split"></i>
+        </span>
+    }
+    <span class="oh-it-fcell @(IsCraftable ? "oh-it-fcell--lit" : "")" title="Vyrobitelný: @(IsCraftable ? "ano" : "ne")">
+        <i class="bi bi-tools"></i>
+    </span>
+</div>
+
+@code {
+    /// <summary>True for per-hra grid (Prodává/Nalezitelný/Craftable), false for catalog (Unikát/Limit/Craftable).</summary>
+    [Parameter] public bool PerGame { get; set; }
+
+    [Parameter] public bool IsUnique { get; set; }
+    [Parameter] public bool IsLimited { get; set; }
+    [Parameter] public bool IsSold { get; set; }
+    [Parameter] public bool IsFindable { get; set; }
+    [Parameter] public bool IsCraftable { get; set; }
+
+    private string Summary()
+    {
+        if (PerGame)
+        {
+            return $"Prodává: {YN(IsSold)} · Nalezitelný: {YN(IsFindable)} · Vyrobitelný: {YN(IsCraftable)}";
+        }
+        return $"Unikát: {YN(IsUnique)} · Limit: {YN(IsLimited)} · Vyrobitelný: {YN(IsCraftable)}";
+    }
+
+    private static string YN(bool b) => b ? "ano" : "ne";
+}
