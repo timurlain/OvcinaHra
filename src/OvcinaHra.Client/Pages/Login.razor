@@ -26,24 +26,38 @@
             @* Production: OIDC login via registrace *@
             @if (!string.IsNullOrEmpty(oidcAuthority))
             {
-                @if (Error is null)
+                @if (Error is null && autoRedirectError is null)
                 {
-                    @* Auto-redirect path — no button, just a reassuring spinner. *@
+                    @* Auto-redirect path — spinner with a fallback link so the user
+                       isn't stuck on an infinite spinner if JS interop or a slow
+                       network eats the redirect. *@
                     <div class="card mb-4">
                         <div class="card-body d-flex flex-column align-items-center py-4">
-                            <div class="spinner-border text-primary mb-3" role="status"></div>
-                            <p class="text-muted mb-0">Přesměrování na přihlášení…</p>
+                            <div class="spinner-border text-primary mb-3" role="status">
+                                <span class="visually-hidden">Přesměrování na přihlášení…</span>
+                            </div>
+                            <p class="text-muted mb-2">Přesměrování na přihlášení…</p>
+                            <button class="btn btn-link btn-sm" @onclick="async () => await LoginOidc()" disabled="@loading">
+                                Pokud se nic nestane, klikni zde
+                            </button>
                         </div>
                     </div>
                 }
                 else
                 {
-                    @* Error path — user needs to see the message and retry manually. *@
+                    @* Error path — either a server-side redirect back with ?error=…
+                       or a local auto-redirect failure. Show a manual retry button. *@
                     <div class="card mb-4">
                         <div class="card-header text-center">
                             <h4 class="mb-0">OvčinaHra — Přihlášení</h4>
                         </div>
                         <div class="card-body d-flex flex-column align-items-center">
+                            @if (autoRedirectError is not null)
+                            {
+                                <div class="alert alert-warning mb-3" style="max-width: 320px; font-size: 0.875rem;">
+                                    Automatické přesměrování selhalo: @autoRedirectError
+                                </div>
+                            }
                             <p class="text-muted mb-3">Přihlásit se pomocí Ovčina účtu</p>
                             <button class="btn btn-primary btn-lg w-100" style="max-width: 320px;" @onclick="async () => await LoginOidc()" disabled="@loading">
                                 @if (loading) { <span class="spinner-border spinner-border-sm me-2"></span> }
@@ -97,6 +111,7 @@
     private string name = "Organizátor";
     private string email = "org@ovcina.cz";
     private string? errorMessage;
+    private string? autoRedirectError;
     private bool loading;
     private bool autoFired;
 
@@ -107,7 +122,17 @@
         if (Error is not null) return;                    // let the user see the message first
         if (string.IsNullOrEmpty(oidcAuthority)) return;  // dev mode — keep manual form
         autoFired = true;
-        await LoginOidc();
+        try
+        {
+            await LoginOidc();
+        }
+        catch (Exception ex)
+        {
+            // JS interop / localStorage / transient failure — surface a manual
+            // retry button so the user isn't stuck on the spinner.
+            autoRedirectError = ex.Message;
+            StateHasChanged();
+        }
     }
 
     private async Task LoginOidc()
