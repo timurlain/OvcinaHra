@@ -238,7 +238,19 @@
     // We bind this to the whole nav container; tab buttons stop propagation via their click handlers being separate.
     private void CollapseOnMobile() => collapseNavMenu = true;
 
-    private string HraTabHint => GameContext.GameName ?? "Žádná hra";
+    // Tab is half the sidebar (~120 px); after icon + padding roughly ~85 px
+    // of text room, so cap the hint at ~20 chars with an ellipsis. CSS
+    // truncation in NavMenu.razor.css catches anything that still spills.
+    // The full game name is always reachable on /games and the hra overview.
+    private string HraTabHint
+    {
+        get
+        {
+            var name = GameContext.GameName;
+            if (string.IsNullOrWhiteSpace(name)) return "Žádná hra";
+            return name.Length > 20 ? name[..19] + "…" : name;
+        }
+    }
 
     protected override void OnInitialized()
     {
