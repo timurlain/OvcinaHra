@@ -324,7 +324,7 @@ else
                 <div class="oh-lc-stash-grid">
                     @foreach (var stash in loc.Stashes!)
                     {
-                        <LocationStashTile Stash="stash" />
+                        <LocationStashTile @key="stash.Id" Stash="stash" />
                     }
                 </div>
             }

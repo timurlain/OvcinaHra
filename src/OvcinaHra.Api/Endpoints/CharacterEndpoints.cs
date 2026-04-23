@@ -33,7 +33,7 @@ public static class CharacterEndpoints
             : $"{c.PlayerFirstName} {c.PlayerLastName}".Trim();
 
     private static async Task<Ok<List<CharacterListDto>>> GetAll(
-        WorldDbContext db, string? search = null, int? gameId = null)
+        WorldDbContext db, IBlobStorageService blob, string? search = null, int? gameId = null)
     {
         var query = db.Characters.AsQueryable();
 
@@ -63,7 +63,9 @@ public static class CharacterEndpoints
                 kingdomByCharacter.TryGetValue(c.Id, out var k);
                 return new CharacterListDto(
                     c.Id, c.Name, FullName(c), c.Race, c.IsPlayedCharacter, c.ExternalPersonId,
-                    k.KingdomId == 0 ? null : k.KingdomId, k.Name, k.HexColor);
+                    k.KingdomId == 0 ? null : k.KingdomId, k.Name, k.HexColor,
+                    ImagePath: c.ImagePath,
+                    ImageUrl: string.IsNullOrWhiteSpace(c.ImagePath) ? null : blob.GetSasUrl(c.ImagePath));
             })
             .ToList());
     }
