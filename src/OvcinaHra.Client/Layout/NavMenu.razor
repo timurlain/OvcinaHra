@@ -1,186 +1,213 @@
 @using System.Reflection
+@using Microsoft.JSInterop
 @inject GameContextService GameContext
+@inject IJSRuntime JS
 @implements IDisposable
 
-<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">
-            <i class="bi bi-feather me-1"></i><span>OvčinaHra</span>
-        </a>
-        <button title="Navigační menu" class="navbar-toggler" @onclick="ToggleNavMenu">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-    </div>
+<div class="sb-brand">
+    <i class="bi bi-feather"></i><span>OvčinaHra</span>
+    <button title="Navigační menu" class="sb-brand-toggler" @onclick="ToggleNavMenu" aria-label="Navigační menu">
+        <i class="bi bi-list"></i>
+    </button>
 </div>
 
-<div class="@NavMenuCssClass nav-scrollable">
-    <nav class="nav flex-column" @onclick="ToggleNavMenu">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <i class="bi bi-house-door-fill"></i><span class="nav-label">Přehled</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="map">
-                <i class="bi bi-map-fill"></i><span class="nav-label">Mapa</span>
-            </NavLink>
-        </div>
+<div class="@NavMenuCssClass oh-nav" @onclick="CollapseOnMobile">
+    @* Always-visible: Přehled + Mapa (mode-agnostic overviews) *@
+    <div class="oh-nav-fixed-top">
+        <NavLink class="oh-nav-item" href="" Match="NavLinkMatch.All">
+            <span class="oh-nav-rail"></span>
+            <i class="bi bi-house-door-fill ni"></i><span class="oh-nav-label">Přehled</span>
+        </NavLink>
+        <NavLink class="oh-nav-item" href="map">
+            <span class="oh-nav-rail"></span>
+            <i class="bi bi-map-fill ni"></i><span class="oh-nav-label">Mapa</span>
+        </NavLink>
+    </div>
 
-        <div class="oh-nav-section-label">Hra</div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="timeline">
-                <i class="bi bi-clock-fill"></i><span class="nav-label">Časová osa</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="treasures">
-                <i class="bi bi-safe-fill"></i><span class="nav-label">Poklady</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="characters">
-                <i class="bi bi-person-fill"></i><span class="nav-label">Postavy</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="events">
-                <i class="bi bi-calendar-event-fill"></i><span class="nav-label">Události</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="locations">
-                <i class="bi bi-geo-alt-fill"></i><span class="nav-label">Lokace</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="items">
-                <i class="bi bi-gem"></i><span class="nav-label">Předměty</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="monsters">
-                <img src="img/troll.svg" class="nav-icon-svg" alt="" /><span class="nav-label">Příšery</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="quests">
-                <i class="bi bi-journal-text"></i><span class="nav-label">Questy</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="personal-quests">
-                <i class="bi bi-person-workspace"></i><span class="nav-label">Osobní questy</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="buildings">
-                <i class="bi bi-houses-fill"></i><span class="nav-label">Budovy</span>
-            </NavLink>
-        </div>
-        @if (GameContext.SelectedGameId is int hraSkillsGameId)
-        {
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="@($"games/{hraSkillsGameId}/skills")">
-                    <i class="bi bi-star-fill"></i><span class="nav-label">Dovednosti</span>
-                </NavLink>
+    @* Mode switch — two toggle buttons. Uses aria-pressed rather than the
+       tablist/tab/tabpanel triad (we don't implement full ARIA tabs with
+       roving tabindex + arrow-key handling; a button group is the honest
+       representation). @onclick:stopPropagation keeps tab clicks from
+       bubbling to the outer CollapseOnMobile handler, which would close
+       the menu immediately after a mode switch on touch devices. *@
+    <div class="oh-nav-tabs" aria-label="Režim">
+        <button type="button"
+                class="oh-nav-tab @(mode == "hra" ? "on" : "")"
+                aria-pressed="@(mode == "hra" ? "true" : "false")"
+                @onclick='() => SwitchMode("hra")'
+                @onclick:stopPropagation="true">
+            <i class="bi bi-calendar-event-fill"></i>
+            <div class="oh-nav-tab-body">
+                <div class="oh-nav-tab-name">Tato hra</div>
+                <div class="oh-nav-tab-hint">@HraTabHint</div>
             </div>
-        }
-        @if (GameContext.SelectedGameId is int hraSpellsGameId)
-        {
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="@($"games/{hraSpellsGameId}/spells")">
-                    <i class="bi bi-magic"></i><span class="nav-label">Kouzla</span>
-                </NavLink>
+        </button>
+        <button type="button"
+                class="oh-nav-tab @(mode == "katalog" ? "on" : "")"
+                aria-pressed="@(mode == "katalog" ? "true" : "false")"
+                @onclick='() => SwitchMode("katalog")'
+                @onclick:stopPropagation="true">
+            <i class="bi bi-collection-fill"></i>
+            <div class="oh-nav-tab-body">
+                <div class="oh-nav-tab-name">Katalog</div>
+                <div class="oh-nav-tab-hint">napříč ročníky</div>
             </div>
-        }
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="secret-stashes">
-                <i class="bi bi-lock-fill"></i><span class="nav-label">Tajné skrýše</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="npcs">
-                <i class="bi bi-person-badge-fill"></i><span class="nav-label">NPC</span>
-            </NavLink>
+        </button>
+    </div>
+
+    @* Folder — parchment panel behind the active tab *@
+    <div class="oh-nav-folder">
+        <div class="oh-nav-meta">
+            <span class="dot"></span>
+            @if (mode == "hra")
+            {
+                <b>@(GameContext.GameName ?? "Žádná hra")</b>
+            }
+            else
+            {
+                <b>Šablony</b>
+                <span class="sep">·</span>
+                <span>sdílené napříč ročníky</span>
+            }
         </div>
 
-        <div class="oh-nav-section-label">Katalog světa</div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="locations?catalog=true">
-                <i class="bi bi-geo-alt"></i><span class="nav-label">Lokace</span>
-            </NavLink>
+        <div class="oh-nav-list">
+            <div class="pane pane-@mode" @key="mode">
+                @if (mode == "hra")
+                {
+                    <NavLink class="oh-nav-item" href="timeline">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-clock-fill ni"></i><span class="oh-nav-label">Časová osa</span>
+                    </NavLink>
+                    <NavLink class="oh-nav-item" href="treasures">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-safe-fill ni"></i><span class="oh-nav-label">Poklady</span>
+                    </NavLink>
+                    <NavLink class="oh-nav-item" href="characters">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-person-fill ni"></i><span class="oh-nav-label">Postavy</span>
+                    </NavLink>
+                    <NavLink class="oh-nav-item" href="events">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-calendar-event-fill ni"></i><span class="oh-nav-label">Události</span>
+                    </NavLink>
+                    <NavLink class="oh-nav-item" href="locations">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-geo-alt-fill ni"></i><span class="oh-nav-label">Lokace</span>
+                    </NavLink>
+                    <NavLink class="oh-nav-item" href="items">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-gem ni"></i><span class="oh-nav-label">Předměty</span>
+                    </NavLink>
+                    <NavLink class="oh-nav-item" href="monsters">
+                        <span class="oh-nav-rail"></span>
+                        <img src="img/troll.svg" class="ni oh-nav-icon-svg" alt="" /><span class="oh-nav-label">Příšery</span>
+                    </NavLink>
+                    <NavLink class="oh-nav-item" href="quests">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-journal-text ni"></i><span class="oh-nav-label">Questy</span>
+                    </NavLink>
+                    <NavLink class="oh-nav-item" href="personal-quests">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-person-workspace ni"></i><span class="oh-nav-label">Osobní questy</span>
+                    </NavLink>
+                    <NavLink class="oh-nav-item" href="buildings">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-houses-fill ni"></i><span class="oh-nav-label">Budovy</span>
+                    </NavLink>
+                    @if (GameContext.SelectedGameId is int hraSkillsGameId)
+                    {
+                        <NavLink class="oh-nav-item" href="@($"games/{hraSkillsGameId}/skills")">
+                            <span class="oh-nav-rail"></span>
+                            <i class="bi bi-star-fill ni"></i><span class="oh-nav-label">Dovednosti</span>
+                        </NavLink>
+                    }
+                    @if (GameContext.SelectedGameId is int hraSpellsGameId)
+                    {
+                        <NavLink class="oh-nav-item" href="@($"games/{hraSpellsGameId}/spells")">
+                            <span class="oh-nav-rail"></span>
+                            <i class="bi bi-magic ni"></i><span class="oh-nav-label">Kouzla</span>
+                        </NavLink>
+                    }
+                    <NavLink class="oh-nav-item" href="secret-stashes">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-lock-fill ni"></i><span class="oh-nav-label">Tajné skrýše</span>
+                    </NavLink>
+                    <NavLink class="oh-nav-item" href="npcs">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-person-badge-fill ni"></i><span class="oh-nav-label">NPC</span>
+                    </NavLink>
+                }
+                else
+                {
+                    <NavLink class="oh-nav-item" href="locations?catalog=true">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-geo-alt ni"></i><span class="oh-nav-label">Lokace</span>
+                    </NavLink>
+                    <NavLink class="oh-nav-item" href="items?catalog=true">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-gem ni"></i><span class="oh-nav-label">Předměty</span>
+                    </NavLink>
+                    <NavLink class="oh-nav-item" href="monsters?catalog=true">
+                        <span class="oh-nav-rail"></span>
+                        <img src="img/troll.svg" class="ni oh-nav-icon-svg" alt="" /><span class="oh-nav-label">Příšery</span>
+                    </NavLink>
+                    <NavLink class="oh-nav-item" href="quests?catalog=true">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-journal-text ni"></i><span class="oh-nav-label">Questy</span>
+                    </NavLink>
+                    <NavLink class="oh-nav-item" href="personal-quests?catalog=true">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-person-workspace ni"></i><span class="oh-nav-label">Osobní questy</span>
+                    </NavLink>
+                    <NavLink class="oh-nav-item" href="buildings?catalog=true">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-houses ni"></i><span class="oh-nav-label">Budovy</span>
+                    </NavLink>
+                    <NavLink class="oh-nav-item" href="skills">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-star ni"></i><span class="oh-nav-label">Dovednosti</span>
+                    </NavLink>
+                    <NavLink class="oh-nav-item" href="spells">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-magic ni"></i><span class="oh-nav-label">Kouzla</span>
+                    </NavLink>
+                    <NavLink class="oh-nav-item" href="secret-stashes?catalog=true">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-lock ni"></i><span class="oh-nav-label">Tajné skrýše</span>
+                    </NavLink>
+                    <NavLink class="oh-nav-item" href="npcs?catalog=true">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-person-badge ni"></i><span class="oh-nav-label">NPC</span>
+                    </NavLink>
+                    <NavLink class="oh-nav-item" href="kingdoms">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-flag ni"></i><span class="oh-nav-label">Království</span>
+                    </NavLink>
+                }
+            </div>
         </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="items?catalog=true">
-                <i class="bi bi-gem"></i><span class="nav-label">Předměty</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="monsters?catalog=true">
-                <img src="img/troll.svg" class="nav-icon-svg" alt="" /><span class="nav-label">Příšery</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="quests?catalog=true">
-                <i class="bi bi-journal-text"></i><span class="nav-label">Questy</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="personal-quests?catalog=true">
-                <i class="bi bi-person-workspace"></i><span class="nav-label">Osobní questy</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="buildings?catalog=true">
-                <i class="bi bi-houses"></i><span class="nav-label">Budovy</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="skills">
-                <i class="bi bi-star"></i><span class="nav-label">Dovednosti</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="spells">
-                <i class="bi bi-magic"></i><span class="nav-label">Kouzla</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="secret-stashes?catalog=true">
-                <i class="bi bi-lock"></i><span class="nav-label">Tajné skrýše</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="npcs?catalog=true">
-                <i class="bi bi-person-badge"></i><span class="nav-label">NPC</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="kingdoms">
-                <i class="bi bi-flag"></i><span class="nav-label">Království</span>
-            </NavLink>
-        </div>
+    </div>
 
-        <div class="oh-nav-section-label">Nástroje</div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="games">
-                <i class="bi bi-calendar-event-fill"></i><span class="nav-label">Seznam Ovčin</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="tags">
-                <i class="bi bi-tags-fill"></i><span class="nav-label">Tagy</span>
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="search">
-                <i class="bi bi-search"></i><span class="nav-label">Hledání</span>
-            </NavLink>
-        </div>
-    </nav>
+    @* Tools — always pinned bottom *@
+    <div class="oh-nav-tools">
+        <div class="oh-nav-tools-head">Nástroje</div>
+        <NavLink class="oh-nav-item" href="games">
+            <span class="oh-nav-rail"></span>
+            <i class="bi bi-list-ul ni"></i><span class="oh-nav-label">Seznam Ovčin</span>
+        </NavLink>
+        <NavLink class="oh-nav-item" href="tags">
+            <span class="oh-nav-rail"></span>
+            <i class="bi bi-tags-fill ni"></i><span class="oh-nav-label">Tagy</span>
+        </NavLink>
+        <NavLink class="oh-nav-item" href="search">
+            <span class="oh-nav-rail"></span>
+            <i class="bi bi-search ni"></i><span class="oh-nav-label">Hledání</span>
+        </NavLink>
+    </div>
 
-    <div class="nav-footer">
-        <button class="collapse-toggle" title="Sbalit menu" @onclick="OnToggle" @onclick:stopPropagation="true">
+    <div class="oh-nav-foot">
+        <button class="oh-nav-collapse" title="Sbalit menu" @onclick="OnToggle" @onclick:stopPropagation="true">
             <i class="bi @(Collapsed ? "bi-chevron-right" : "bi-chevron-left")"></i>
         </button>
         @if (!Collapsed)
@@ -194,18 +221,60 @@
     [Parameter] public bool Collapsed { get; set; }
     [Parameter] public EventCallback OnToggle { get; set; }
 
+    private const string NavModeStorageKey = "oh-nav-mode";
+
     private static string AppVersion =>
         typeof(NavMenu).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
             ?.InformationalVersion.Split('+')[0] ?? "dev";
 
+    private string mode = "hra";  // "hra" | "katalog"
+
     private bool collapseNavMenu = true;
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
     private void ToggleNavMenu() => collapseNavMenu = !collapseNavMenu;
 
+    // On mobile, tapping an item collapses the menu (preserves pre-rewrite behaviour).
+    // We bind this to the whole nav container; tab buttons stop propagation via their click handlers being separate.
+    private void CollapseOnMobile() => collapseNavMenu = true;
+
+    private string HraTabHint => GameContext.GameName ?? "Žádná hra";
+
     protected override void OnInitialized()
     {
         GameContext.OnGameChanged += OnGameChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            var stored = await JS.InvokeAsync<string?>("localStorage.getItem", NavModeStorageKey);
+            if ((stored == "hra" || stored == "katalog") && stored != mode)
+            {
+                mode = stored;
+                StateHasChanged();
+            }
+        }
+        catch
+        {
+            // prerender / JS-unavailable — keep default mode
+        }
+    }
+
+    private async Task SwitchMode(string next)
+    {
+        if (mode == next) return;
+        mode = next;
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", NavModeStorageKey, next);
+        }
+        catch
+        {
+            // non-fatal
+        }
     }
 
     private async void OnGameChanged()
