@@ -66,9 +66,18 @@ public static class ImageEndpoints
         // so the browser fetches the bytes straight from Azure Blob and the API
         // is out of the bandwidth path entirely. Prevents the 503 storm when a
         // page like /locations fires 80+ parallel thumbnail requests at once.
+        //
+        // Cache-Control on the redirect itself tells the browser to reuse the
+        // 302 response for an hour — without it the browser re-issues the same
+        // GET on every navigation, and the rolling 1 h SAS means the Location
+        // header differs each time, so the browser can't reuse the downstream
+        // blob bytes either. One hour keeps us safely under the SAS expiry.
         var cachedSasUrl = await thumbnailService.TryGetCachedSasUrlAsync(entityType, entityId, preset, ct);
         if (cachedSasUrl is not null)
+        {
+            http.Response.Headers.CacheControl = "public, max-age=3600";
             return TypedResults.Redirect(cachedSasUrl, permanent: false);
+        }
 
         // Cold-cache path: resize + cache (throttled inside the service). On
         // first-ever generation we stream the bytes inline — the cache will be

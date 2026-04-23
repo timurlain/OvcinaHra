@@ -93,24 +93,24 @@ public class ThumbnailService : IThumbnailService
         if (cached is not null)
             return new ThumbnailResult(cached, "image/webp");
 
-        // Cache miss — fetch source, resize, encode, cache. The resize block runs
-        // under a concurrency gate so a thumbnail stampede on a cold page doesn't
-        // overwhelm the container.
-        var source = await _blob.DownloadAsync(sourceBlobKey, ct);
-        if (source is null)
-        {
-            _logger.LogWarning("Thumbnail source blob missing: {SourceKey}", sourceBlobKey);
-            return null;
-        }
-
+        // Cache miss — acquire the gate FIRST, then download + resize. Doing the
+        // download outside the gate would let 80 concurrent 5 MB source blobs
+        // sit in memory while queued, which defeats half the point of throttling.
         await _resizeGate.WaitAsync(ct);
         try
         {
             // Re-check after acquiring the gate — another request may have populated
-            // the cache while we were waiting. Avoids duplicate work.
+            // the cache while we were waiting. Avoids duplicate download + resize.
             cached = await _blob.DownloadAsync(cacheKey, ct);
             if (cached is not null)
                 return new ThumbnailResult(cached, "image/webp");
+
+            var source = await _blob.DownloadAsync(sourceBlobKey, ct);
+            if (source is null)
+            {
+                _logger.LogWarning("Thumbnail source blob missing: {SourceKey}", sourceBlobKey);
+                return null;
+            }
 
             byte[] resized;
             using (var image = Image.Load(source))
