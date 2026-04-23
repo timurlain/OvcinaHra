@@ -79,6 +79,12 @@
     cursor: pointer;
     font-family: var(--oh-font-body);
     transition: background 0.15s, color 0.15s, transform 0.15s;
+    /* Grid columns default to min-content — without min-width:0 the tab
+       refuses to shrink below its intrinsic content, pushing the second
+       tab off-screen. overflow:hidden is the visual safety net so a
+       stubborn child never bleeds past the column. */
+    min-width: 0;
+    overflow: hidden;
 }
 
     .oh-nav-tab .bi {
