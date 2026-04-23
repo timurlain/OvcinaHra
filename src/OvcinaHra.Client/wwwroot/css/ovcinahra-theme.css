@@ -1498,6 +1498,8 @@
 .oh-lg-stash-tile.oh-lg-creek{background:linear-gradient(180deg,#8fab6a 0%,#6b8ca8 55%,#3d5a78 100%)}
 .oh-lg-stash-tile.oh-lg-cave{background:radial-gradient(circle at 50% 55%,#1a0f08 0%,#3a2818 50%,#5a4028 85%)}
 .oh-lg-stash-tile:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(45,80,22,.3);z-index:5}
+/* Rubber-stamp thumb rendered in the hidden Razítko column of /locations. */
+.oh-lg-stamp-thumb{width:128px;height:128px;object-fit:contain;display:block}
 /* subtle interior vignette */
 .oh-lg-stash-tile::before{
   content:"";position:absolute;inset:0;pointer-events:none;

@@ -84,7 +84,7 @@ else
 {
     <OvcinaGrid Data="@visibleRows"
                 KeyFieldName="Id"
-                LayoutKey="grid-layout-locations-v3"
+                LayoutKey="grid-layout-locations-v4"
                 RowClick="@OnGridRowClick">
         <Columns>
             @* Marker dot — 40px, fixed left *@
@@ -379,6 +379,22 @@ else
             <DxGridDataColumn FieldName="NpcInfo" Caption="NPC" Width="220px" Visible="false" />
             <DxGridDataColumn FieldName="Latitude" Caption="Šířka" Width="120px" DisplayFormat="F5" Visible="false" />
             <DxGridDataColumn FieldName="Longitude" Caption="Délka" Width="120px" DisplayFormat="F5" Visible="false" />
+            @* Rubber stamp thumbnail — hidden by default; organizers reveal via
+               the column chooser. Filter/sort on the URL is not meaningful, so
+               both are disabled. *@
+            <DxGridDataColumn FieldName="StampImageUrl" Caption="Razítko" Width="150px"
+                              Visible="false" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{
+                        var loc = (LocationListDto)context.DataItem;
+                    }
+                    @if (!string.IsNullOrWhiteSpace(loc.StampImageUrl))
+                    {
+                        <img src="@loc.StampImageUrl" alt="Razítko @loc.Name"
+                             class="oh-lg-stamp-thumb" loading="lazy" />
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
         </Columns>
     </OvcinaGrid>
 }

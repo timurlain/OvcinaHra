@@ -8,7 +8,13 @@ namespace OvcinaHra.Api.Endpoints;
 
 public static class ImageEndpoints
 {
-    private static readonly HashSet<string> ValidEntityTypes = ["locations", "items", "monsters", "secretstashes", "npcs", "buildings", "characters", "kingdoms", "spells"];
+    // "locationstamps" is a logical alias keyed by Location.Id that reads /
+    // writes Location.StampImagePath. Exposed as its own entity type so that
+    // the thumbnail cache, pre-gen, and backfill pipelines treat the rubber
+    // stamp as an independent image (its cache keys don't collide with the
+    // main location image). See GetEntityImagePaths and the Upload DbContext
+    // switch for the dispatch.
+    private static readonly HashSet<string> ValidEntityTypes = ["locations", "locationstamps", "items", "monsters", "secretstashes", "npcs", "buildings", "characters", "kingdoms", "spells"];
     private static readonly HashSet<string> AllowedContentTypes = ["image/jpeg", "image/png", "image/webp"];
     private const long MaxFileSize = 5 * 1024 * 1024; // 5 MB
 
@@ -244,6 +250,14 @@ public static class ImageEndpoints
             .ToListAsync(ct))
             targets.Add((entityType, id, blobKey));
 
+        // Rubber-stamp image on Location is surfaced as the "locationstamps"
+        // entity-type alias; see the comment on ValidEntityTypes.
+        foreach (var (entityType, id, blobKey) in await db.Locations
+            .Where(l => l.StampImagePath != null && l.StampImagePath != "")
+            .Select(l => ValueTuple.Create("locationstamps", l.Id, l.StampImagePath!))
+            .ToListAsync(ct))
+            targets.Add((entityType, id, blobKey));
+
         foreach (var (entityType, id, blobKey) in await db.Items
             .Where(i => i.ImagePath != null && i.ImagePath != "")
             .Select(i => ValueTuple.Create("items", i.Id, i.ImagePath!))
@@ -400,6 +414,13 @@ public static class ImageEndpoints
                         location.ImagePath = blobKey;
                 }
                 break;
+            case "locationstamps":
+                // Logical alias for Location.StampImagePath; ignores isPlacement
+                // because the rubber stamp has no placement variant.
+                var locationForStamp = await db.Locations.FindAsync(entityId);
+                if (locationForStamp is not null)
+                    locationForStamp.StampImagePath = blobKey;
+                break;
             case "items":
                 var item = await db.Items.FindAsync(entityId);
                 if (item is not null) item.ImagePath = blobKey;
@@ -445,6 +466,9 @@ public static class ImageEndpoints
             "locations" => await db.Locations.Where(l => l.Id == entityId)
                 .Select(l => new ValueTuple<string?, string?>(l.ImagePath, l.PlacementPhotoPath))
                 .FirstOrDefaultAsync(),
+            "locationstamps" => await db.Locations.Where(l => l.Id == entityId)
+                .Select(l => new ValueTuple<string?, string?>(l.StampImagePath, null))
+                .FirstOrDefaultAsync(),
             "items" => await db.Items.Where(i => i.Id == entityId)
                 .Select(i => new ValueTuple<string?, string?>(i.ImagePath, null))
                 .FirstOrDefaultAsync(),
@@ -478,6 +502,7 @@ public static class ImageEndpoints
         return entityType switch
         {
             "locations" => await db.Locations.AnyAsync(l => l.Id == entityId),
+            "locationstamps" => await db.Locations.AnyAsync(l => l.Id == entityId),
             "items" => await db.Items.AnyAsync(i => i.Id == entityId),
             "monsters" => await db.Monsters.AnyAsync(m => m.Id == entityId),
             "secretstashes" => await db.SecretStashes.AnyAsync(s => s.Id == entityId),

@@ -12,6 +12,7 @@ public class Location
     public GpsCoordinates? Coordinates { get; set; }
     public string? ImagePath { get; set; }
     public string? PlacementPhotoPath { get; set; }
+    public string? StampImagePath { get; set; }
     public string? NpcInfo { get; set; }
     public string? SetupNotes { get; set; }
     public string? Details { get; set; }

@@ -46,7 +46,8 @@ public static class LocationEndpoints
                 l.GamePotential,
                 l.NpcInfo,
                 l.SetupNotes,
-                l.ImagePath
+                l.ImagePath,
+                l.StampImagePath
             })
             .ToListAsync();
 
@@ -61,7 +62,9 @@ public static class LocationEndpoints
             Array.Empty<LocationQuestDto>(),
             Array.Empty<LocationTreasureQuestDto>(),
             ImagePath: r.ImagePath,
-            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locations", r.Id, "small"))).ToList();
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locations", r.Id, "small"),
+            StampImagePath: r.StampImagePath,
+            StampImageUrl: string.IsNullOrWhiteSpace(r.StampImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locationstamps", r.Id, "small"))).ToList();
 
         return TypedResults.Ok(locations);
     }
@@ -78,7 +81,7 @@ public static class LocationEndpoints
         return TypedResults.Ok(new LocationDetailDto(
             loc.Id, loc.Name, loc.Description, loc.Details, loc.GamePotential, loc.Prompt, loc.Region, loc.LocationKind,
             loc.Coordinates?.Latitude, loc.Coordinates?.Longitude,
-            loc.ImagePath, loc.PlacementPhotoPath, loc.NpcInfo, loc.SetupNotes,
+            loc.ImagePath, loc.PlacementPhotoPath, loc.StampImagePath, loc.NpcInfo, loc.SetupNotes,
             loc.ParentLocationId, variants));
     }
 
@@ -106,7 +109,7 @@ public static class LocationEndpoints
         var result = new LocationDetailDto(
             loc.Id, loc.Name, loc.Description, loc.Details, loc.GamePotential, loc.Prompt, loc.Region, loc.LocationKind,
             loc.Coordinates?.Latitude, loc.Coordinates?.Longitude,
-            loc.ImagePath, loc.PlacementPhotoPath, loc.NpcInfo, loc.SetupNotes,
+            loc.ImagePath, loc.PlacementPhotoPath, loc.StampImagePath, loc.NpcInfo, loc.SetupNotes,
             loc.ParentLocationId, []);
 
         return TypedResults.Created($"/api/locations/{loc.Id}", result);
@@ -166,6 +169,7 @@ public static class LocationEndpoints
                 l.NpcInfo,
                 l.SetupNotes,
                 l.ImagePath,
+                l.StampImagePath,
                 Stashes = l.GameSecretStashes
                     .Where(gss => gss.GameId == gameId)
                     .OrderBy(gss => gss.SecretStash.Name)
@@ -224,7 +228,9 @@ public static class LocationEndpoints
             Quests: r.Quests,
             LocationTreasureQuests: r.LocationTreasureQuests,
             ImagePath: r.ImagePath,
-            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locations", r.Id, "small"))).ToList();
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locations", r.Id, "small"),
+            StampImagePath: r.StampImagePath,
+            StampImageUrl: string.IsNullOrWhiteSpace(r.StampImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locationstamps", r.Id, "small"))).ToList();
 
         return TypedResults.Ok(dtos);
     }
