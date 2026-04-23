@@ -60,23 +60,44 @@ public static class ImageEndpoints
             return TypedResults.NotFound();
 
         var preset = ThumbnailService.ParsePreset(size);
+
+        // Hot-cache path: the common case after the first visitor for a given
+        // (entity, preset). Return a 302 redirect to the cached thumb's SAS URL
+        // so the browser fetches the bytes straight from Azure Blob and the API
+        // is out of the bandwidth path entirely. Prevents the 503 storm when a
+        // page like /locations fires 80+ parallel thumbnail requests at once.
+        //
+        // Cache-Control on the redirect itself tells the browser to reuse the
+        // 302 response for an hour — without it the browser re-issues the same
+        // GET on every navigation, and the rolling 1 h SAS means the Location
+        // header differs each time, so the browser can't reuse the downstream
+        // blob bytes either. One hour keeps us safely under the SAS expiry.
+        var cachedSasUrl = await thumbnailService.TryGetCachedSasUrlAsync(entityType, entityId, preset, ct);
+        if (cachedSasUrl is not null)
+        {
+            http.Response.Headers.CacheControl = "public, max-age=3600";
+            return TypedResults.Redirect(cachedSasUrl, permanent: false);
+        }
+
+        // Cold-cache path: resize + cache (throttled inside the service). On
+        // first-ever generation we stream the bytes inline — the cache will be
+        // populated for subsequent requests which then hit the hot path above.
         var result = await thumbnailService.GetOrCreateAsync(entityType, entityId, imagePath, preset, ct);
 
         if (result is null)
         {
-            // Graceful degrade — return a redirect to the full-res SAS so the
-            // user still sees something when resize fails (missing source
-            // blob, corrupt image, ImageSharp exception, etc.).
+            // Graceful degrade — redirect to the full-res SAS so the user still
+            // sees something when resize fails (missing source blob, corrupt
+            // image, ImageSharp exception, etc.).
             var fallback = blobService.GetSasUrl(imagePath);
             if (fallback is null)
                 return TypedResults.NotFound();
             return TypedResults.Redirect(fallback, permanent: false);
         }
 
-        // Let browsers cache aggressively — list pages revisit the same tile
-        // URLs constantly, and our cache-key includes the (entity, size) pair.
-        // Upload path invalidates the server cache, but user browsers will
-        // only refresh after 24 h or a hard reload. Acceptable for this UX.
+        // Cold-path: tell the browser to cache for 24 h so we don't churn the
+        // resize work on refreshes. Upload path invalidates the server cache;
+        // browser caches only refresh after max-age or a hard reload.
         http.Response.Headers.CacheControl = "public, max-age=86400";
         return TypedResults.File(result.Bytes, result.ContentType);
     }
