@@ -1,8 +1,7 @@
 @using OvcinaHra.Shared.Dtos
 @inject ApiClient Api
-@inject NavigationManager Nav
 
-<a class="oh-lc-tile" @onclick="Navigate" @onclick:preventDefault>
+<a class="oh-lc-tile" href="/secret-stashes/@Stash.Id">
     <div class="oh-lc-tile-img">
         @if (imageUrl is not null)
         {
@@ -41,13 +40,13 @@
     private List<LocationTreasureQuestDto> visibleQuests = [];
     private int overflowCount;
 
-    private static int _lastStashId;
+    private int? _loadedForStashId;
 
     protected override async Task OnParametersSetAsync()
     {
-        if (_lastStashId != Stash.Id)
+        if (_loadedForStashId != Stash.Id)
         {
-            _lastStashId = Stash.Id;
+            _loadedForStashId = Stash.Id;
             await LoadImageAsync();
         }
 
@@ -65,8 +64,6 @@
         }
         catch { imageUrl = null; }
     }
-
-    private void Navigate() => Nav.NavigateTo($"/secret-stashes/{Stash.Id}");
 
     // Czech plural for count: 1 → "další", 2-4 → "další", 5+ → "dalších"
     private static string PluralForm(int n, string one, string few, string many)

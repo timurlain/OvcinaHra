@@ -204,12 +204,14 @@ else
                 <div class="oh-lc-sect-label"><i class="bi bi-geo-alt"></i> GPS</div>
                 <div class="oh-lc-gps-block">
                     <div class="oh-lc-gps-row">
-                        <DxFormLayoutItem Caption="Latitude" ColSpanMd="12">
-                            <DxTextBox @bind-Text="@latitudeStr" NullText="např. 49,4543192" />
-                        </DxFormLayoutItem>
-                        <DxFormLayoutItem Caption="Longitude" ColSpanMd="12">
-                            <DxTextBox @bind-Text="@longitudeStr" NullText="např. 18,0203280" />
-                        </DxFormLayoutItem>
+                        <DxFormLayout>
+                            <DxFormLayoutItem Caption="Latitude" ColSpanMd="12">
+                                <DxTextBox @bind-Text="@latitudeStr" NullText="např. 49,4543192" />
+                            </DxFormLayoutItem>
+                            <DxFormLayoutItem Caption="Longitude" ColSpanMd="12">
+                                <DxTextBox @bind-Text="@longitudeStr" NullText="např. 18,0203280" />
+                            </DxFormLayoutItem>
+                        </DxFormLayout>
                     </div>
                     <div>
                         @if (HasGps)
@@ -392,6 +394,7 @@ else
     private string MiniMapElementId => $"oh-lc-gps-map-{Id}";
     private bool miniMapInited;
     private decimal? lastMiniMapLat, lastMiniMapLon;
+    private LocationKind? lastMiniMapKind;
 
     private bool HasGps => ParseGps(out _, out _);
 
@@ -417,16 +420,50 @@ else
         loading = true; error = null;
         try
         {
-            loc = await Api.GetAsync<LocationListDto>($"/api/locations/{Id}");
-            if (loc is null) { loading = false; return; }
+            var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{Id}");
+            if (detail is null) { loc = null; loading = false; return; }
 
-            PopulateFormFromDto(loc);
+            // Game-scoped data (Stashes, Quests, LocationTreasureQuests) lives on
+            // /api/locations/by-game/{gameId}; /api/locations/{id} returns only
+            // the flat LocationDetailDto. Merge both into the LocationListDto
+            // shape the template expects.
+            IReadOnlyList<LocationStashDto> stashes = Array.Empty<LocationStashDto>();
+            IReadOnlyList<LocationQuestDto> quests = Array.Empty<LocationQuestDto>();
+            IReadOnlyList<LocationTreasureQuestDto> locationTreasureQuests =
+                Array.Empty<LocationTreasureQuestDto>();
+
+            if (GameContext.SelectedGameId.HasValue)
+            {
+                try
+                {
+                    var gameList = await Api.GetListAsync<LocationListDto>(
+                        $"/api/locations/by-game/{GameContext.SelectedGameId.Value}");
+                    var inGame = gameList.FirstOrDefault(l => l.Id == Id);
+                    if (inGame is not null)
+                    {
+                        stashes = inGame.Stashes;
+                        quests = inGame.Quests;
+                        locationTreasureQuests = inGame.LocationTreasureQuests;
+                    }
+                }
+                catch { /* non-fatal — detail view still usable without game context */ }
+            }
+
+            loc = new LocationListDto(
+                detail.Id, detail.Name, detail.LocationKind,
+                detail.Region, detail.Latitude, detail.Longitude,
+                detail.ParentLocationId,
+                detail.Description, detail.Details, detail.GamePotential,
+                detail.NpcInfo, detail.SetupNotes,
+                stashes, quests, locationTreasureQuests);
+
+            PopulateFormFromDto(detail);
 
             // Parent + variants
             var all = await Api.GetListAsync<LocationListDto>("/api/locations");
             parentCandidates = all.Where(l => l.Id != Id).ToList();
-            parent = loc.ParentLocationId.HasValue
-                ? all.FirstOrDefault(l => l.Id == loc.ParentLocationId.Value)
+            parent = detail.ParentLocationId.HasValue
+                ? all.FirstOrDefault(l => l.Id == detail.ParentLocationId.Value)
                 : null;
             variants = all.Where(l => l.ParentLocationId == Id).ToList();
 
@@ -442,7 +479,7 @@ else
         finally { loading = false; }
     }
 
-    private void PopulateFormFromDto(LocationListDto d)
+    private void PopulateFormFromDto(LocationDetailDto d)
     {
         name = d.Name;
         locationKind = d.LocationKind;
@@ -452,7 +489,7 @@ else
         gamePotential = d.GamePotential;
         npcInfo = d.NpcInfo;
         setupNotes = d.SetupNotes;
-        prompt = null; // Prompt not on ListDto; future: fetch from dedicated detail endpoint
+        prompt = d.Prompt;
         parentLocationId = d.ParentLocationId;
         latitudeStr = d.Latitude?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "";
         longitudeStr = d.Longitude?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "";
@@ -516,9 +553,16 @@ else
 
     private async Task ConfirmDeleteAsync()
     {
+        error = null;
         try
         {
-            await Api.DeleteAsync($"/api/locations/{Id}");
+            var deleted = await Api.DeleteAsync($"/api/locations/{Id}");
+            if (!deleted)
+            {
+                error = "Smazání lokace se nezdařilo.";
+                return;
+            }
+
             isDeleteVisible = false;
             Nav.NavigateTo("/locations");
         }
@@ -554,12 +598,24 @@ else
                 try { await JS.InvokeVoidAsync("ovcinaMiniMap.dispose", MiniMapElementId); } catch { }
                 miniMapInited = false;
                 lastMiniMapLat = null; lastMiniMapLon = null;
+                lastMiniMapKind = null;
             }
             return;
         }
 
-        var kindColor = KindMarkerColors.GetValueOrDefault(loc!.LocationKind, "#2D5016");
+        // Use the in-form locationKind (not loc.LocationKind) so the preview reflects
+        // the pending Druh change before the user saves.
+        var kindColor = KindMarkerColors.GetValueOrDefault(locationKind, "#2D5016");
         var apiKey = Config["Maps:MapyCzApiKey"] ?? "";
+
+        // If the kind changed while the map is live, dispose + reinit so the marker
+        // color updates (ovcinaMiniMap.update only repositions the pin).
+        if (miniMapInited && lastMiniMapKind != locationKind)
+        {
+            try { await JS.InvokeVoidAsync("ovcinaMiniMap.dispose", MiniMapElementId); } catch { }
+            miniMapInited = false;
+            lastMiniMapLat = null; lastMiniMapLon = null;
+        }
 
         if (!miniMapInited)
         {
@@ -569,6 +625,7 @@ else
                     MiniMapElementId, (double)lat, (double)lon, 12, kindColor, apiKey);
                 miniMapInited = true;
                 lastMiniMapLat = lat; lastMiniMapLon = lon;
+                lastMiniMapKind = locationKind;
             }
             catch { /* element may not be in DOM yet; retried on next render */ }
             return;
