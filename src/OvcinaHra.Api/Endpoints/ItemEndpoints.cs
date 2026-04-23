@@ -32,6 +32,9 @@ public static class ItemEndpoints
         group.MapPut("/game-item/{gameId:int}/{itemId:int}", UpdateGameItem);
         group.MapDelete("/game-item/{gameId:int}/{itemId:int}", DeleteGameItem);
 
+        // Detail-page aggregate: powers Tvorba + Výskyt + Obchod tabs on ItemDetail.
+        group.MapGet("/{id:int}/usage", GetUsage);
+
         return group;
     }
 
@@ -302,4 +305,90 @@ public static class ItemEndpoints
         item.ClassRequirements.Warrior, item.ClassRequirements.Archer,
         item.ClassRequirements.Mage, item.ClassRequirements.Thief,
         item.IsUnique, item.IsLimited, item.ImagePath);
+
+    // Detail-page aggregate. One round-trip returns:
+    //  - CraftedBy:    recipes whose OutputItemId == this item
+    //  - UsedIn:       recipes that include this item as a CraftingIngredient
+    //  - MonsterLoot:  per-game MonsterLoot rows (with monster name + thumb URL)
+    //  - QuestRewards: per-game QuestReward rows (only quests bound to a game)
+    //  - Treasures:    per-game TreasureItem rows
+    //  - Shops:        per-game GameItem rows
+    private static async Task<Results<Ok<ItemUsageDto>, NotFound>> GetUsage(int id, WorldDbContext db, HttpContext http)
+    {
+        var item = await db.Items.FindAsync(id);
+        if (item is null) return TypedResults.NotFound();
+
+        var craftedBy = await db.CraftingRecipes
+            .Where(r => r.OutputItemId == id)
+            .Select(r => new ItemUsageRecipeDto(
+                r.Id,
+                new ItemUsageGameRefDto(r.GameId, r.Game.Name, r.Game.Edition),
+                r.OutputItemId, r.OutputItem.Name,
+                r.LocationId, r.Location != null ? r.Location.Name : null,
+                r.Ingredients.Select(i => new CraftingIngredientDto(i.ItemId, i.Item.Name, i.Quantity)).ToList(),
+                r.BuildingRequirements.Select(b => new CraftingBuildingReqDto(b.BuildingId, b.Building.Name)).ToList()))
+            .ToListAsync();
+
+        var usedIn = await db.CraftingRecipes
+            .Where(r => r.Ingredients.Any(i => i.ItemId == id))
+            .Select(r => new ItemUsageRecipeDto(
+                r.Id,
+                new ItemUsageGameRefDto(r.GameId, r.Game.Name, r.Game.Edition),
+                r.OutputItemId, r.OutputItem.Name,
+                r.LocationId, r.Location != null ? r.Location.Name : null,
+                r.Ingredients.Select(i => new CraftingIngredientDto(i.ItemId, i.Item.Name, i.Quantity)).ToList(),
+                r.BuildingRequirements.Select(b => new CraftingBuildingReqDto(b.BuildingId, b.Building.Name)).ToList()))
+            .ToListAsync();
+
+        // Project bare path first; resolve thumb URL host-side after materialization.
+        var monsterLootRows = await db.MonsterLoots
+            .Where(ml => ml.ItemId == id)
+            .Select(ml => new
+            {
+                ml.MonsterId,
+                MonsterName = ml.Monster.Name,
+                MonsterImagePath = ml.Monster.ImagePath,
+                ml.GameId,
+                GameName = ml.Game.Name,
+                ml.Game.Edition,
+                ml.Quantity
+            })
+            .ToListAsync();
+
+        var monsterLoot = monsterLootRows.Select(ml => new ItemUsageMonsterLootDto(
+            ml.MonsterId, ml.MonsterName,
+            string.IsNullOrWhiteSpace(ml.MonsterImagePath) ? null : ImageEndpoints.ThumbUrl(http, "monsters", ml.MonsterId, "small"),
+            new ItemUsageGameRefDto(ml.GameId, ml.GameName, ml.Edition),
+            ml.Quantity)).ToList();
+
+        var questRewards = await db.QuestRewards
+            .Where(qr => qr.ItemId == id && qr.Quest.GameId != null)
+            .Select(qr => new ItemUsageQuestRewardDto(
+                qr.QuestId,
+                qr.Quest.Name,
+                new ItemUsageGameRefDto(qr.Quest.GameId!.Value, qr.Quest.Game!.Name, qr.Quest.Game.Edition),
+                qr.Quantity))
+            .ToListAsync();
+
+        var treasures = await db.TreasureItems
+            .Where(ti => ti.ItemId == id && ti.TreasureQuestId != null)
+            .Select(ti => new ItemUsageTreasureDto(
+                ti.TreasureQuestId!.Value,
+                ti.TreasureQuest!.Title,
+                new ItemUsageGameRefDto(ti.GameId, ti.Game.Name, ti.Game.Edition),
+                ti.Count))
+            .ToListAsync();
+
+        var shops = await db.GameItems
+            .Where(gi => gi.ItemId == id)
+            .Select(gi => new ItemUsageShopDto(
+                new ItemUsageGameRefDto(gi.GameId, gi.Game.Name, gi.Game.Edition),
+                gi.Price, gi.StockCount, gi.IsSold, gi.SaleCondition, gi.IsFindable))
+            .ToListAsync();
+
+        return TypedResults.Ok(new ItemUsageDto(
+            item.Id, item.Name,
+            craftedBy, usedIn,
+            monsterLoot, questRewards, treasures, shops));
+    }
 }
