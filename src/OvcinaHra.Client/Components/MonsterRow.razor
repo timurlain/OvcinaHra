@@ -1,0 +1,107 @@
+<div class="oh-mon-row @(Catalog ? "oh-mon-catalog" : null)" @onclick="HandleRowClick">
+    <div class="oh-mon-thumb">
+        @if (!string.IsNullOrEmpty(Monster.ImageUrl) && !imageFailed)
+        {
+            <img src="@Monster.ImageUrl" alt="@Monster.Name" @onerror="() => imageFailed = true" />
+        }
+        else
+        {
+            <i class="bi bi-bug-fill oh-mon-thumb-fallback" aria-hidden="true"></i>
+        }
+    </div>
+
+    <div class="oh-mon-body">
+        <div class="oh-mon-name-row">
+            <span class="oh-mon-name" title="@Monster.Name">@Monster.Name</span>
+        </div>
+        <div class="oh-mon-meta">
+            <span class="oh-mon-mtype">
+                <i class="bi @MonsterTypeIcon(Monster.MonsterType)"></i>@Monster.MonsterTypeDisplay
+            </span>
+            <span class="oh-mon-kbadge" title="Kategorie @Monster.Category">
+                <i class="bi bi-bar-chart-steps"></i>K@Monster.Category
+            </span>
+            @foreach (var tag in Monster.TagNames.Take(3))
+            {
+                <span class="oh-mon-tag">@tag</span>
+            }
+            @if (Monster.TagNames.Count > 3)
+            {
+                <span class="oh-mon-tag" title="@string.Join(", ", Monster.TagNames.Skip(3))">+@(Monster.TagNames.Count - 3)</span>
+            }
+        </div>
+    </div>
+
+    <div class="oh-mon-stats">
+        <span class="oh-mon-pill"><span class="oh-mon-pill-lbl">ÚT</span><span class="oh-mon-pill-val">@Monster.Attack</span></span>
+        <span class="oh-mon-pill"><span class="oh-mon-pill-lbl">OBR</span><span class="oh-mon-pill-val">@Monster.Defense</span></span>
+        <span class="oh-mon-pill"><span class="oh-mon-pill-lbl">ŽIV</span><span class="oh-mon-pill-val">@Monster.Health</span></span>
+        <span class="oh-mon-pill"><span class="oh-mon-pill-lbl">XP</span><span class="oh-mon-pill-val">@(Monster.RewardXp ?? 0)</span></span>
+        <span class="oh-mon-pill oh-mon-gold"><span class="oh-mon-pill-lbl">GR</span><span class="oh-mon-pill-val">@(Monster.RewardMoney ?? 0)</span></span>
+    </div>
+
+    <div class="oh-mon-actions" @onclick:stopPropagation="true">
+        <button type="button" title="Upravit" @onclick="HandleEdit"><i class="bi bi-pencil"></i></button>
+        <button type="button" title="Přidat kořist" @onclick="HandleAddLoot"><i class="bi bi-plus-square"></i></button>
+        <button type="button" title="Zkoušet (Bojovka)" @onclick="HandleBattle"><i class="bi bi-play-fill"></i></button>
+        <button type="button" class="oh-mon-danger" title="Smazat" @onclick="HandleDelete"><i class="bi bi-trash"></i></button>
+    </div>
+
+    @if (Catalog)
+    {
+        <div @onclick:stopPropagation="true">
+            @if (IsAssigned)
+            {
+                <span class="oh-mon-assign oh-mon-on" title="V této hře"><i class="bi bi-check2"></i> V této hře</span>
+            }
+            else
+            {
+                <button type="button" class="oh-mon-assign" @onclick="HandleAssign">
+                    <i class="bi bi-plus-lg"></i> Přiřadit ke hře
+                </button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MonsterListDto Monster { get; set; } = null!;
+    [Parameter] public bool Catalog { get; set; }
+    [Parameter] public bool IsAssigned { get; set; }
+    [Parameter] public EventCallback OnRowClick { get; set; }
+    [Parameter] public EventCallback OnEdit { get; set; }
+    [Parameter] public EventCallback OnAddLoot { get; set; }
+    [Parameter] public EventCallback OnBattle { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+    [Parameter] public EventCallback OnAssign { get; set; }
+
+    private bool imageFailed;
+    private string? _lastImageUrl;
+
+    protected override void OnParametersSet()
+    {
+        if (_lastImageUrl != Monster.ImageUrl)
+        {
+            _lastImageUrl = Monster.ImageUrl;
+            imageFailed = false;
+        }
+    }
+
+    private Task HandleRowClick() => OnRowClick.HasDelegate ? OnRowClick.InvokeAsync() : Task.CompletedTask;
+    private Task HandleEdit() => OnEdit.HasDelegate ? OnEdit.InvokeAsync() : Task.CompletedTask;
+    private Task HandleAddLoot() => OnAddLoot.HasDelegate ? OnAddLoot.InvokeAsync() : Task.CompletedTask;
+    private Task HandleBattle() => OnBattle.HasDelegate ? OnBattle.InvokeAsync() : Task.CompletedTask;
+    private Task HandleDelete() => OnDelete.HasDelegate ? OnDelete.InvokeAsync() : Task.CompletedTask;
+    private Task HandleAssign() => OnAssign.HasDelegate ? OnAssign.InvokeAsync() : Task.CompletedTask;
+
+    public static string MonsterTypeIcon(MonsterType t) => t switch
+    {
+        MonsterType.Undead => "bi-x-octagon",
+        MonsterType.Beast => "bi-bug",
+        MonsterType.Goblin => "bi-person-walking",
+        MonsterType.Benevolent => "bi-heart",
+        MonsterType.Legend => "bi-stars",
+        MonsterType.Miscellaneous => "bi-question-circle",
+        _ => "bi-question-circle"
+    };
+}

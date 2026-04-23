@@ -1960,3 +1960,87 @@
 /* Upravit — sticky form footer */
 .oh-mon-d-edit-footer{position:sticky;bottom:0;display:flex;align-items:center;gap:8px;padding:14px 28px;background:var(--oh-surface);border-top:1px solid var(--oh-border);box-shadow:0 -2px 8px rgba(45,80,22,.06);margin:24px -28px -24px;z-index:3}
 .oh-mon-d-edit-footer .oh-mon-d-spacer{flex:1}
+   Monster bestiary list (/monsters) — .oh-mon-*
+   Card-row hybrid: thumb · name · chips · stat pills · hover icons
+   Ported from docs/design/dialogs/monster-list.mockup.unbundled.html
+   Quick-peek popup variant: .oh-mon-karta-*
+   ============================================================ */
+
+/* Filter toolbar (sticky below page title) */
+.oh-mon-toolbar{display:flex;align-items:center;gap:10px;padding:10px 0 12px;flex-wrap:wrap;position:sticky;top:0;background:var(--oh-surface);z-index:5;border-bottom:1px solid var(--oh-border);margin-bottom:14px}
+.oh-mon-tb-search{flex:0 0 280px;padding:8px 10px 8px 32px;background:var(--oh-surface);border:1px solid var(--oh-border);border-radius:var(--oh-radius-sm);font:400 .875rem var(--oh-font-body);color:var(--oh-text);background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 16 16'><path fill='%238B4513' d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z'/></svg>");background-repeat:no-repeat;background-position:10px 50%}
+.oh-mon-tb-search:focus{outline:none;border-color:var(--oh-primary-light);box-shadow:0 0 0 3px rgba(74,124,52,.15);background-color:#fff}
+.oh-mon-tb-select{min-width:130px;padding:8px 10px;background:var(--oh-surface);border:1px solid var(--oh-border);border-radius:var(--oh-radius-sm);font:400 .875rem var(--oh-font-body);color:var(--oh-text)}
+.oh-mon-tb-toggle{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;background:var(--oh-surface);border:1px solid var(--oh-border);border-radius:99px;font:500 .8125rem var(--oh-font-body);color:var(--oh-text-secondary);cursor:pointer;user-select:none}
+.oh-mon-tb-toggle.oh-mon-on{color:var(--oh-primary);border-color:rgba(74,124,52,.35);background:var(--oh-primary-surface)}
+.oh-mon-count{margin-left:auto;font-size:.8125rem;color:var(--oh-text-secondary);font-family:var(--oh-font-mono)}
+
+/* Card-row list container */
+.oh-mon-list{display:flex;flex-direction:column;gap:10px;padding-bottom:24px}
+.oh-mon-row{position:relative;display:grid;grid-template-columns:96px 1fr auto auto;align-items:center;gap:16px;min-height:96px;padding:8px 14px 8px 8px;background:var(--oh-surface);border:1px solid var(--oh-border);border-radius:var(--oh-radius);box-shadow:0 1px 3px rgba(45,80,22,.10);transition:background var(--oh-transition),box-shadow var(--oh-transition),border-color var(--oh-transition);cursor:pointer}
+.oh-mon-row:hover{background:var(--oh-primary-surface);box-shadow:0 4px 14px rgba(45,80,22,.16);border-color:rgba(74,124,52,.35)}
+.oh-mon-row.oh-mon-catalog{grid-template-columns:96px 1fr auto auto auto}
+
+/* Thumbnail 96×72 (4:3) */
+.oh-mon-thumb{width:96px;height:72px;border-radius:var(--oh-radius-sm);overflow:hidden;background:var(--oh-surface-alt);position:relative;display:flex;align-items:center;justify-content:center;border:1px solid var(--oh-border)}
+.oh-mon-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.oh-mon-thumb-fallback{font-size:1.75rem;color:rgba(139,90,43,.5)}
+
+/* Name + meta block */
+.oh-mon-body{min-width:0;display:flex;flex-direction:column;gap:6px;padding:2px 0}
+.oh-mon-name-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.oh-mon-name{font:700 1.0625rem/1.2 var(--oh-font-heading);color:var(--oh-primary);letter-spacing:-.005em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px}
+.oh-mon-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+
+/* MonsterType chip — neutral palette ALWAYS (never kingdom colors) */
+.oh-mon-mtype{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:99px;font:600 .6875rem var(--oh-font-body);letter-spacing:.02em;white-space:nowrap;background:#e9e4dc;border:1px solid #bfb4a2;color:#5a4a30}
+.oh-mon-mtype i{font-size:.75rem}
+
+/* Kategorie badge — amber accent (advisory only, NOT the kingdom palette) */
+.oh-mon-kbadge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;background:rgba(178,98,35,.10);border:1px solid rgba(178,98,35,.32);color:#7a4315;font:600 .75rem var(--oh-font-mono)}
+.oh-mon-kbadge i{font-size:.6875rem;opacity:.7}
+
+/* Tag chip */
+.oh-mon-tag{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;background:var(--oh-surface-alt);border:1px solid var(--oh-border);color:var(--oh-text-secondary);font:500 .6875rem var(--oh-font-body)}
+.oh-mon-tag i{font-size:.6875rem}
+
+/* Stat pill cluster (5 pills inline) */
+.oh-mon-stats{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-self:end}
+.oh-mon-pill{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;background:var(--oh-surface-alt);border:1px solid var(--oh-border);border-radius:var(--oh-radius-sm);font:600 .8125rem var(--oh-font-mono);color:var(--oh-text);font-variant-numeric:tabular-nums;line-height:1}
+.oh-mon-pill-lbl{font:700 .625rem var(--oh-font-body);letter-spacing:.06em;text-transform:uppercase;color:var(--oh-card-border);padding:2px 5px;border-radius:3px;border:1px solid rgba(178,98,35,.38);background:rgba(255,248,240,.7);line-height:1}
+.oh-mon-pill-val{font-variant-numeric:tabular-nums;min-width:14px;text-align:right}
+.oh-mon-pill.oh-mon-gold{background:rgba(249,168,37,.08)}
+.oh-mon-pill.oh-mon-gold .oh-mon-pill-lbl{color:#8a6b0d;border-color:rgba(249,168,37,.55);background:rgba(249,168,37,.18)}
+
+/* Hover-reveal action icons (right edge) */
+.oh-mon-actions{display:flex;align-items:center;gap:6px;opacity:0;transform:translateX(4px);transition:.18s;justify-self:end;padding-left:4px}
+.oh-mon-row:hover .oh-mon-actions{opacity:.95;transform:translateX(0)}
+.oh-mon-actions button{width:28px;height:28px;border-radius:var(--oh-radius-sm);border:1px solid var(--oh-border);background:var(--oh-surface);color:var(--oh-text-secondary);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:.15s;padding:0}
+.oh-mon-actions button:hover{background:var(--oh-primary-surface);color:var(--oh-primary);border-color:var(--oh-primary-light)}
+.oh-mon-actions button.oh-mon-danger:hover{background:rgba(140,36,35,.08);color:#8c2423;border-color:rgba(140,36,35,.4)}
+
+/* Catalog assign pill (extra column in catalog mode) */
+.oh-mon-assign{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:99px;background:var(--oh-primary);color:#fff;border:1px solid var(--oh-primary);font:600 .75rem var(--oh-font-body);cursor:pointer;transition:.15s;opacity:0;transform:translateX(4px)}
+.oh-mon-row:hover .oh-mon-assign{opacity:1;transform:translateX(0)}
+.oh-mon-assign:hover{background:var(--oh-primary-light);border-color:var(--oh-primary-light)}
+.oh-mon-assign.oh-mon-on{background:var(--oh-primary-surface);color:var(--oh-primary);border-color:rgba(74,124,52,.35);cursor:default;opacity:1;transform:none}
+
+/* Empty state */
+.oh-mon-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 16px;gap:14px;text-align:center}
+.oh-mon-empty-icon{width:120px;height:120px;border-radius:50%;background:var(--oh-primary-surface);display:flex;align-items:center;justify-content:center;color:var(--oh-primary);font-size:3rem;border:2px solid rgba(74,124,52,.2)}
+.oh-mon-empty-msg{font-size:1rem;color:var(--oh-text-secondary)}
+.oh-mon-empty-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+
+/* Quick-peek popup — Karta view (720×520) */
+.oh-mon-karta-grid{display:grid;grid-template-columns:400px 1fr;gap:24px;padding:4px 4px 14px;align-items:start}
+.oh-mon-karta-img{width:400px;aspect-ratio:4/3;border-radius:var(--oh-radius);overflow:hidden;background:var(--oh-surface-alt);border:1px solid var(--oh-border);display:flex;align-items:center;justify-content:center}
+.oh-mon-karta-img img{width:100%;height:100%;object-fit:cover;display:block}
+.oh-mon-karta-img .oh-mon-thumb-fallback{font-size:4rem}
+.oh-mon-karta-stats{display:flex;flex-direction:column;gap:14px;min-width:0}
+.oh-mon-karta-name{font:700 1.5rem var(--oh-font-heading);color:var(--oh-primary);margin:0}
+.oh-mon-karta-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.oh-mon-karta-pills{display:flex;flex-wrap:wrap;gap:6px}
+.oh-mon-karta-block{padding:10px 12px;background:var(--oh-surface-alt);border-radius:var(--oh-radius-sm);border:1px solid var(--oh-border)}
+.oh-mon-karta-block-title{font:700 .75rem var(--oh-font-body);color:var(--oh-text-secondary);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+.oh-mon-karta-block-body{font:400 .875rem var(--oh-font-body);color:var(--oh-text);white-space:pre-wrap;line-height:1.5}
+.oh-mon-karta-foot{display:flex;justify-content:space-between;gap:10px;padding-top:8px;border-top:1px solid var(--oh-border);margin-top:6px}
