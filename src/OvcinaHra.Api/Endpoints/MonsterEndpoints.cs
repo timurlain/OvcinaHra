@@ -39,7 +39,7 @@ public static class MonsterEndpoints
         return group;
     }
 
-    private static async Task<Ok<List<MonsterListDto>>> GetAll(WorldDbContext db, IBlobStorageService blob)
+    private static async Task<Ok<List<MonsterListDto>>> GetAll(WorldDbContext db, HttpContext http)
     {
         var rows = await db.Monsters
             .OrderBy(m => m.Name)
@@ -69,7 +69,7 @@ public static class MonsterEndpoints
             r.Abilities, r.AiBehavior, r.RewardNotes, r.Notes,
             r.TagNames,
             ImagePath: r.ImagePath,
-            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : blob.GetSasUrl(r.ImagePath))).ToList();
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "monsters", r.Id, "small"))).ToList();
         return TypedResults.Ok(monsters);
     }
 

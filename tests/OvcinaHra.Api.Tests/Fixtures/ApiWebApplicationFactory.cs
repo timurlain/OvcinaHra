@@ -62,4 +62,18 @@ public class InMemoryBlobService : IBlobStorageService
         _blobs.Remove(blobKey);
         return Task.CompletedTask;
     }
+
+    public Task DeletePrefixAsync(string prefix, CancellationToken ct = default)
+    {
+        var keys = _blobs.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).ToList();
+        foreach (var k in keys)
+            _blobs.Remove(k);
+        return Task.CompletedTask;
+    }
+
+    public Task<byte[]?> DownloadAsync(string blobKey, CancellationToken ct = default)
+        => Task.FromResult(_blobs.TryGetValue(blobKey, out var bytes) ? bytes : null);
+
+    public Task<bool> ExistsAsync(string blobKey, CancellationToken ct = default)
+        => Task.FromResult(_blobs.ContainsKey(blobKey));
 }

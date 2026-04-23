@@ -30,7 +30,7 @@ public static class SpellEndpoints
 
     // ── Catalog ────────────────────────────────────────────────────────
 
-    private static async Task<Ok<List<SpellListDto>>> GetAll(WorldDbContext db, IBlobStorageService blob)
+    private static async Task<Ok<List<SpellListDto>>> GetAll(WorldDbContext db, HttpContext http)
     {
         var rows = await db.Spells
             .OrderBy(s => s.Level)
@@ -58,7 +58,7 @@ public static class SpellEndpoints
             r.ManaCost, r.MinMageLevel, r.Price,
             r.Effect, r.Description,
             ImagePath: r.ImagePath,
-            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : blob.GetSasUrl(r.ImagePath))).ToList();
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "spells", r.Id, "small"))).ToList();
         return TypedResults.Ok(spells);
     }
 
@@ -140,7 +140,7 @@ public static class SpellEndpoints
 
     // ── Per-game ──────────────────────────────────────────────────────
 
-    private static async Task<Ok<List<GameSpellDto>>> GetByGame(int gameId, WorldDbContext db, IBlobStorageService blob)
+    private static async Task<Ok<List<GameSpellDto>>> GetByGame(int gameId, WorldDbContext db, HttpContext http)
     {
         var raw = await db.GameSpells
             .Where(gs => gs.GameId == gameId)
@@ -165,12 +165,12 @@ public static class SpellEndpoints
             r.Id, r.GameId, r.SpellId, r.SpellName, r.Level, r.School,
             r.Price, r.IsFindable, r.AvailabilityNotes, r.CatalogPrice,
             ImagePath: r.SpellImagePath,
-            ImageUrl: string.IsNullOrWhiteSpace(r.SpellImagePath) ? null : blob.GetSasUrl(r.SpellImagePath))).ToList();
+            ImageUrl: string.IsNullOrWhiteSpace(r.SpellImagePath) ? null : ImageEndpoints.ThumbUrl(http, "spells", r.SpellId, "small"))).ToList();
         return TypedResults.Ok(rows);
     }
 
     private static async Task<Results<Created<GameSpellDto>, Conflict<string>, NotFound<string>>> CreateGameSpell(
-        CreateGameSpellDto dto, WorldDbContext db, IBlobStorageService blob)
+        CreateGameSpellDto dto, WorldDbContext db, HttpContext http)
     {
         // Validate FKs up front — otherwise EF surfaces FK violations as 500.
         var spell = await db.Spells.FindAsync(dto.SpellId);
@@ -198,7 +198,7 @@ public static class SpellEndpoints
             new GameSpellDto(gs.Id, gs.GameId, gs.SpellId, spell.Name, spell.Level, spell.School,
                 gs.Price, gs.IsFindable, gs.AvailabilityNotes, spell.Price,
                 ImagePath: spell.ImagePath,
-                ImageUrl: string.IsNullOrWhiteSpace(spell.ImagePath) ? null : blob.GetSasUrl(spell.ImagePath)));
+                ImageUrl: string.IsNullOrWhiteSpace(spell.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "spells", gs.SpellId, "small")));
     }
 
     private static async Task<Results<NoContent, NotFound>> UpdateGameSpell(

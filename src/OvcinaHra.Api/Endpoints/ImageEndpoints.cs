@@ -8,7 +8,7 @@ namespace OvcinaHra.Api.Endpoints;
 
 public static class ImageEndpoints
 {
-    private static readonly HashSet<string> ValidEntityTypes = ["locations", "items", "monsters", "secretstashes", "npcs", "buildings", "characters", "kingdoms"];
+    private static readonly HashSet<string> ValidEntityTypes = ["locations", "items", "monsters", "secretstashes", "npcs", "buildings", "characters", "kingdoms", "spells"];
     private static readonly HashSet<string> AllowedContentTypes = ["image/jpeg", "image/png", "image/webp"];
     private const long MaxFileSize = 5 * 1024 * 1024; // 5 MB
 
@@ -18,9 +18,67 @@ public static class ImageEndpoints
 
         group.MapPost("/{entityType}/{entityId:int}", Upload).DisableAntiforgery();
         group.MapGet("/{entityType}/{entityId:int}", GetUrls);
+        group.MapGet("/{entityType}/{entityId:int}/thumb", GetThumbnail).AllowAnonymous();
         group.MapDelete("/{entityType}/{entityId:int}", Delete);
 
         return group;
+    }
+
+    /// <summary>
+    /// Builds an absolute URL to the thumbnail endpoint for a given entity.
+    /// Needed because the frontend (hra.ovcina.cz) and API (api.hra.ovcina.cz)
+    /// live on different origins — a relative "/api/images/..." URL would be
+    /// resolved by the browser against the frontend host and 404.
+    ///
+    /// Prefers a configured <c>Api:PublicBaseUrl</c> (set in prod via the
+    /// Azure Container App env var <c>Api__PublicBaseUrl=https://api.hra.ovcina.cz</c>)
+    /// to sidestep host-header injection — <c>AllowedHosts</c> is permissive
+    /// ("*") and <c>Request.Host</c> reflects the inbound header. Falls back to
+    /// <c>Request.Scheme+Host</c> for local dev where no config is set.
+    /// </summary>
+    public static string ThumbUrl(HttpContext http, string entityType, int entityId, string size)
+    {
+        var config = http.RequestServices.GetRequiredService<IConfiguration>();
+        var baseUrl = config["Api:PublicBaseUrl"]?.TrimEnd('/')
+            ?? $"{http.Request.Scheme}://{http.Request.Host}";
+        return $"{baseUrl}/api/images/{entityType}/{entityId}/thumb?size={size}";
+    }
+
+    private static async Task<IResult> GetThumbnail(
+        string entityType, int entityId,
+        IBlobStorageService blobService, IThumbnailService thumbnailService, WorldDbContext db,
+        HttpContext http, CancellationToken ct, string? size = null)
+    {
+        if (!ValidEntityTypes.Contains(entityType))
+            return TypedResults.BadRequest($"Invalid entity type '{entityType}'.");
+
+        if (!await EntityExists(db, entityType, entityId))
+            return TypedResults.NotFound();
+
+        var (imagePath, _) = await GetEntityImagePaths(db, entityType, entityId);
+        if (string.IsNullOrWhiteSpace(imagePath))
+            return TypedResults.NotFound();
+
+        var preset = ThumbnailService.ParsePreset(size);
+        var result = await thumbnailService.GetOrCreateAsync(entityType, entityId, imagePath, preset, ct);
+
+        if (result is null)
+        {
+            // Graceful degrade — return a redirect to the full-res SAS so the
+            // user still sees something when resize fails (missing source
+            // blob, corrupt image, ImageSharp exception, etc.).
+            var fallback = blobService.GetSasUrl(imagePath);
+            if (fallback is null)
+                return TypedResults.NotFound();
+            return TypedResults.Redirect(fallback, permanent: false);
+        }
+
+        // Let browsers cache aggressively — list pages revisit the same tile
+        // URLs constantly, and our cache-key includes the (entity, size) pair.
+        // Upload path invalidates the server cache, but user browsers will
+        // only refresh after 24 h or a hard reload. Acceptable for this UX.
+        http.Response.Headers.CacheControl = "public, max-age=86400";
+        return TypedResults.File(result.Bytes, result.ContentType);
     }
 
     private static async Task<Results<Ok<ImageUploadResult>, NotFound, BadRequest<string>>> Upload(
@@ -52,6 +110,12 @@ public static class ImageEndpoints
 
         await using var stream = file.OpenReadStream();
         await blobService.UploadAsync(blobKey, stream, file.ContentType);
+
+        // Invalidate any cached thumbnails for this entity — they were resized
+        // from the previous source image and are stale now. Only apply to the
+        // main image path; placement photos are detail-only and not cached.
+        if (!isPlacement)
+            await blobService.DeletePrefixAsync($"{entityType}-thumbs/{entityId}-");
 
         await UpdateEntityImagePath(db, entityType, entityId, blobKey, isPlacement);
 
@@ -141,6 +205,10 @@ public static class ImageEndpoints
                 var kingdom = await db.Kingdoms.FindAsync(entityId);
                 if (kingdom is not null) kingdom.BadgeImageUrl = blobKey;
                 break;
+            case "spells":
+                var spell = await db.Spells.FindAsync(entityId);
+                if (spell is not null) spell.ImagePath = blobKey;
+                break;
         }
 
         await db.SaveChangesAsync();
@@ -175,6 +243,9 @@ public static class ImageEndpoints
             "kingdoms" => await db.Kingdoms.Where(k => k.Id == entityId)
                 .Select(k => new ValueTuple<string?, string?>(k.BadgeImageUrl, null))
                 .FirstOrDefaultAsync(),
+            "spells" => await db.Spells.Where(s => s.Id == entityId)
+                .Select(s => new ValueTuple<string?, string?>(s.ImagePath, null))
+                .FirstOrDefaultAsync(),
             _ => (null, null)
         };
     }
@@ -191,6 +262,7 @@ public static class ImageEndpoints
             "buildings" => await db.Buildings.AnyAsync(b => b.Id == entityId),
             "characters" => await db.Characters.AnyAsync(c => c.Id == entityId),
             "kingdoms" => await db.Kingdoms.AnyAsync(k => k.Id == entityId),
+            "spells" => await db.Spells.AnyAsync(s => s.Id == entityId),
             _ => false
         };
     }

@@ -31,7 +31,7 @@ public static class SecretStashEndpoints
 
     // --- Catalog ---
 
-    private static async Task<Ok<List<SecretStashListDto>>> GetAll(WorldDbContext db, IBlobStorageService blob)
+    private static async Task<Ok<List<SecretStashListDto>>> GetAll(WorldDbContext db, HttpContext http)
     {
         var rows = await db.SecretStashes
             .OrderBy(s => s.Name)
@@ -49,7 +49,7 @@ public static class SecretStashEndpoints
             r.Id, r.Name, r.Description,
             r.TreasureCount, r.GameCount,
             ImagePath: r.ImagePath,
-            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : blob.GetSasUrl(r.ImagePath))).ToList();
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "secretstashes", r.Id, "medium"))).ToList();
         return TypedResults.Ok(stashes);
     }
 
@@ -90,7 +90,7 @@ public static class SecretStashEndpoints
 
     // --- Per-game assignment ---
 
-    private static async Task<Ok<List<GameSecretStashDto>>> GetByGame(int gameId, WorldDbContext db, IBlobStorageService blob)
+    private static async Task<Ok<List<GameSecretStashDto>>> GetByGame(int gameId, WorldDbContext db, HttpContext http)
     {
         var rows = await db.GameSecretStashes
             .Where(gs => gs.GameId == gameId)
@@ -111,12 +111,12 @@ public static class SecretStashEndpoints
             r.LocationId, r.LocationName,
             r.TreasureCount,
             ImagePath: r.StashImagePath,
-            ImageUrl: string.IsNullOrWhiteSpace(r.StashImagePath) ? null : blob.GetSasUrl(r.StashImagePath))).ToList();
+            ImageUrl: string.IsNullOrWhiteSpace(r.StashImagePath) ? null : ImageEndpoints.ThumbUrl(http, "secretstashes", r.SecretStashId, "medium"))).ToList();
         return TypedResults.Ok(stashes);
     }
 
     private static async Task<Results<Created<GameSecretStashDto>, Conflict, ValidationProblem>> CreateGameStash(
-        CreateGameSecretStashDto dto, WorldDbContext db, IBlobStorageService blob)
+        CreateGameSecretStashDto dto, WorldDbContext db, HttpContext http)
     {
         if (await db.GameSecretStashes.AnyAsync(gs => gs.GameId == dto.GameId && gs.SecretStashId == dto.SecretStashId))
             return TypedResults.Conflict();
@@ -149,7 +149,7 @@ public static class SecretStashEndpoints
                 dto.LocationId, locName,
                 TreasureCount: 0,
                 ImagePath: stashImagePath,
-                ImageUrl: string.IsNullOrWhiteSpace(stashImagePath) ? null : blob.GetSasUrl(stashImagePath)));
+                ImageUrl: string.IsNullOrWhiteSpace(stashImagePath) ? null : ImageEndpoints.ThumbUrl(http, "secretstashes", dto.SecretStashId, "medium")));
     }
 
     private static async Task<Results<NoContent, NotFound>> UpdateGameStash(

@@ -90,6 +90,7 @@ try
     builder.Services.AddProblemDetails();
     builder.Services.AddHttpClient();
     builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
+    builder.Services.AddSingleton<IThumbnailService, ThumbnailService>();
 
     // In-memory log ring buffer for production debugging
     var logBuffer = new LogRingBuffer();
