@@ -37,8 +37,20 @@
 }
 else if (characters.Count == 0)
 {
+    @* Drozd knocking — "nobody here yet, register first character".
+       State-flag fallback per feedback_blazor_img_onerror_state_and_key. *@
     <div class="text-center text-muted py-5">
-        <i class="bi bi-feather fs-1 d-block mb-2"></i>
+        <div class="oh-lg-drozd-box mx-auto mb-3">
+            @if (!drozdFailed)
+            {
+                <img src="/img/drozd/drozd-knocking.svg" alt=""
+                     @onerror="() => drozdFailed = true" />
+            }
+            else
+            {
+                <i class="bi bi-feather" style="font-size:3rem;color:var(--oh-primary-light)"></i>
+            }
+        </div>
         <p>Zatím tu nikdo nepřebývá.</p>
         <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nová postava</button>
     </div>
@@ -268,7 +280,7 @@ else
     private List<CharacterListDto> characters = [];
     private List<CharacterListDto> allCharacters = [];
     private List<KingdomDto> kingdoms = [];
-    private bool loading = true, isModalVisible, isDeleteVisible, isSaving, isImporting;
+    private bool loading = true, isModalVisible, isDeleteVisible, isSaving, isImporting, drozdFailed;
     private string modalTitle = "", name = "";
     private string? error, notes, playerFirstName, playerLastName;
     private Race? race;

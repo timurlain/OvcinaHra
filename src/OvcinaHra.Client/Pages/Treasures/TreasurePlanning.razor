@@ -22,8 +22,19 @@
 }
 else if (poolItems.Count == 0 && locationCards.Count == 0 && allQuests.Count == 0)
 {
+    @* Drozd idle — brief #6 STATE 1: quiet presence on the empty planner
+       ("I'm here when you're ready"), not the needs-knocking variant that
+       the other list empty-states use. State-flag fallback per memory rule. *@
     <div class="oh-tp-empty">
-        <i class="bi bi-gem"></i>
+        @if (!drozdFailed)
+        {
+            <img src="/img/drozd/drozd-idle.svg" alt=""
+                 @onerror="() => drozdFailed = true" />
+        }
+        else
+        {
+            <i class="bi bi-gem"></i>
+        }
         <p>Žádné poklady pro tuto hru.</p>
         <button class="btn btn-primary" @onclick="OpenAddToPoolModal">
             <i class="bi bi-plus-circle me-1"></i> Přidat do zásobníku
@@ -383,6 +394,7 @@ else
     private List<UnlimitedItemDto> unlimitedItems = [];
     private TreasureSummaryDto? summary;
     private bool loading = true;
+    private bool drozdFailed;   // flips true if /img/drozd/drozd-idle.svg 404s
 
     // ===== Pool selection =====
     private readonly List<TreasurePoolItemDto> selectedPool = [];
