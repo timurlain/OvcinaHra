@@ -1,0 +1,18 @@
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Extensions
+
+<span class="oh-stage-chip @CssClass(Difficulty)">@(Text ?? Difficulty.GetDisplayName())</span>
+
+@code {
+    [Parameter, EditorRequired] public TreasureQuestDifficulty Difficulty { get; set; }
+    [Parameter] public string? Text { get; set; }
+
+    private static string CssClass(TreasureQuestDifficulty d) => d switch
+    {
+        TreasureQuestDifficulty.Start => "oh-stage-chip-start",
+        TreasureQuestDifficulty.Early => "oh-stage-chip-early",
+        TreasureQuestDifficulty.Midgame => "oh-stage-chip-mid",
+        TreasureQuestDifficulty.Lategame => "oh-stage-chip-late",
+        _ => "oh-stage-chip-start"
+    };
+}

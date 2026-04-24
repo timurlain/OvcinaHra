@@ -1,217 +1,251 @@
 @page "/treasures"
 @attribute [Authorize]
+@using OvcinaHra.Client.Components
+@using OvcinaHra.Shared.Dtos
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Extensions
 @inject ApiClient Api
 @inject GameContextService GameContext
+@inject IJSRuntime JS
 @implements IDisposable
 
-<h1 class="mb-3">Rozmístění pokladů</h1>
-
-@* Summary bar *@
-@if (summary is not null)
-{
-    <div class="d-flex gap-3 mb-3 flex-wrap">
-        <div class="badge bg-secondary fs-6 p-2">V zásobě: <strong>@summary.PoolRemaining</strong></div>
-        <div class="badge bg-success fs-6 p-2">Umístěno: <strong>@summary.Placed</strong></div>
-        <div class="badge bg-info text-dark fs-6 p-2">Start: @summary.StartCount</div>
-        <div class="badge bg-info text-dark fs-6 p-2">Raná: @summary.EarlyCount</div>
-        <div class="badge bg-warning text-dark fs-6 p-2">Střed: @summary.MidgameCount</div>
-        <div class="badge bg-danger fs-6 p-2">Závěr: @summary.LategameCount</div>
-    </div>
-}
+<div class="d-flex justify-content-between align-items-center mb-2">
+    <h1 class="mb-0">Rozmístění pokladů</h1>
+    <button class="btn btn-primary btn-sm" @onclick="OpenAddToPoolModal">
+        <i class="bi bi-plus-circle me-1"></i> Přidat do zásobníku
+    </button>
+</div>
 
 @if (loading)
 {
-    <p>Načítám...</p>
+    <div class="oh-tp-loading">Načítám…</div>
 }
-else if (poolItems.Count == 0 && locationCards.Count == 0)
+else if (poolItems.Count == 0 && locationCards.Count == 0 && allQuests.Count == 0)
 {
-    <div class="text-center text-muted py-5">
-        <i class="bi bi-gem fs-1 d-block mb-2"></i>
+    <div class="oh-tp-empty">
+        <i class="bi bi-gem"></i>
         <p>Žádné poklady pro tuto hru.</p>
-        <button class="btn btn-primary" @onclick="OpenAddToPoolModal">+ Přidat do zásobníku</button>
+        <button class="btn btn-primary" @onclick="OpenAddToPoolModal">
+            <i class="bi bi-plus-circle me-1"></i> Přidat do zásobníku
+        </button>
     </div>
 }
 else
 {
-    <div class="row">
-        @* LEFT: Item pool *@
-        <div class="col-md-5">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h5 class="mb-0">Zásobník předmětů</h5>
-                <button class="btn btn-sm btn-primary" @onclick="OpenAddToPoolModal">+ Přidat</button>
+    <div class="oh-tp-page">
+
+        @* ================== ZONE 1 — Pipeline ================== *@
+        <div class="oh-tp-pipeline">
+            <StagePipelineCard StageKey="start" Label="Start" Count="@(summary?.StartCount ?? 0)" />
+            <StagePipelineCard StageKey="early" Label="Rozvoj hry" Count="@(summary?.EarlyCount ?? 0)" />
+            <StagePipelineCard StageKey="mid"   Label="Střed hry"  Count="@(summary?.MidgameCount ?? 0)" />
+            <StagePipelineCard StageKey="late"  Label="Závěr hry"  Count="@(summary?.LategameCount ?? 0)" />
+            <div class="oh-tp-pool-mini @(summary?.PoolRemaining == 0 ? "oh-tp-empty-state" : "")"
+                 @onclick="ScrollToPoolAsync">
+                <div class="oh-tp-pool-mini-lbl"><i class="bi bi-bag"></i> Zásobník</div>
+                <div class="oh-tp-pool-mini-num">@(summary?.PoolRemaining ?? 0)</div>
+                <div class="oh-tp-pool-mini-sub">předmětů čeká</div>
+                <div class="oh-tp-pool-mini-jump">Ukázat <i class="bi bi-arrow-right"></i></div>
             </div>
-            <OvcinaGrid Data="@poolItems" KeyFieldName="Id" LayoutKey="grid-layout-treasure-pool"
-                        SelectionMode="GridSelectionMode.Multiple"
-                        SelectedDataItems="@selectedPoolItems"
-                        SelectedDataItemsChanged="@OnPoolSelectionChanged"
-                        ShowGroupPanel="true">
-                <Columns>
-                    <DxGridDataColumn FieldName="ItemName" Caption="Předmět" />
-                    <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="Typ" Width="120px" />
-                    <DxGridDataColumn FieldName="Count" Caption="Počet" Width="70px" />
-                </Columns>
-            </OvcinaGrid>
         </div>
 
-        @* RIGHT: Location cards *@
-        <div class="col-md-7">
-            <h5 class="mb-2">Lokace</h5>
-            <div class="d-flex flex-wrap gap-2" style="max-height: 65vh; overflow-y: auto;">
-                @foreach (var loc in locationCards)
+        @* ================== ZONE 2 — Workspace ================== *@
+        <div class="oh-tp-workspace">
+
+            @* LEFT: map *@
+            <div class="oh-tp-map-panel">
+                <div class="oh-tp-stage-filter">
+                    <span class="oh-tp-stage-filter-lbl">Fáze:</span>
+                    <button class="oh-tp-filter-chip @(activeStages is null ? "active" : "")"
+                            data-stage="all"
+                            @onclick="SelectAllStages">Všechny</button>
+                    @foreach (var s in stageKeys)
+                    {
+                        <button class="oh-tp-filter-chip @(IsStageActive(s.Key) ? "active" : "")"
+                                data-stage="@s.Key"
+                                @onclick="() => ToggleStage(s.Key)">@s.Label</button>
+                    }
+                </div>
+                <div class="oh-tp-map-host" id="oh-tp-map-host">
+                    <MapView @ref="mapView"
+                             Height="100%"
+                             CenterLat="49.4532461" CenterLon="18.0203242" Zoom="12"
+                             OnPieMarkerClick="HandlePieClick"
+                             OnPieMarkerDrop="HandlePieDrop"
+                             OnStyleLoaded="HandleStyleLoaded" />
+                </div>
+                <div class="oh-tp-map-toolbar">
+                    <span>Legenda:</span>
+                    @foreach (var s in stageKeys)
+                    {
+                        <span class="oh-tp-focus-stats"><span class="sw" style="background:var(--oh-stage-@s.SoftKey)"></span>@s.Label</span>
+                    }
+                    <div class="oh-tp-map-toolbar-spacer"></div>
+                    <span class="oh-tp-map-count">@locationCards.Count lokací · @(summary?.Placed ?? 0) umístěno</span>
+                </div>
+            </div>
+
+            @* RIGHT: assignment panel *@
+            <div class="oh-tp-assign-panel">
+                @if (focusedLocationId is null)
                 {
-                    <div class="card treasure-location-card @(loc.TotalItems == 0 ? "border-secondary" : "border-primary")"
-                         style="width: 220px; cursor: pointer;"
-                         @onclick="() => OpenAssignPopup(loc)">
-                        <div class="card-body p-2">
-                            <h6 class="card-title mb-1 text-truncate" title="@loc.LocationName">
-                                @GetLocationIcon(loc.LocationKind) @loc.LocationName
-                            </h6>
-                            <div class="d-flex gap-1 flex-wrap mb-1">
-                                <span class="badge bg-info text-dark" title="Start">S:@loc.StartCount</span>
-                                <span class="badge bg-info text-dark" title="Rozvoj hry">R:@loc.EarlyCount</span>
-                                <span class="badge bg-warning text-dark" title="Střed hry">M:@loc.MidgameCount</span>
-                                <span class="badge bg-danger" title="Závěr hry">L:@loc.LategameCount</span>
+                    @* --- Default: pool grid --- *@
+                    <div class="oh-tp-assign-hdr">
+                        <h5>Zásobník (@poolItems.Count)</h5>
+                        <span class="oh-tp-focus-quest-meta">@selectedPool.Count vybráno</span>
+                    </div>
+                    <div class="oh-tp-assign-body" id="oh-tp-pool-anchor">
+                        @if (selectedPool.Count > 0)
+                        {
+                            <div class="oh-tp-drag-hint">
+                                <i class="bi bi-arrow-left-right"></i>
+                                Přetáhni vybrané kachličky na špendlík na mapě, nebo klikni na lokaci pro přidání.
                             </div>
-                            <div class="d-flex justify-content-between">
-                                <small class="text-muted">Celkem: @loc.TotalItems</small>
-                                <small class="text-muted">Skrýše: @loc.StashCount/@loc.MaxStashes</small>
+                        }
+                        @if (poolItems.Count == 0)
+                        {
+                            <div class="oh-tp-empty">
+                                <i class="bi bi-bag"></i>
+                                <p>Zásobník je prázdný.</p>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="OpenAddToPoolModal">Přidat předmět</button>
                             </div>
-                        </div>
+                        }
+                        else
+                        {
+                            <div class="oh-tp-pool-grid">
+                                @foreach (var p in poolItems)
+                                {
+                                    <TreasurePoolTile @key="p.Id"
+                                                      Item="p"
+                                                      Selected="@IsSelected(p)"
+                                                      OnToggle="TogglePoolSelection" />
+                                }
+                            </div>
+                        }
                     </div>
                 }
-                @if (locationCards.Count == 0)
+                else
                 {
-                    <p class="text-muted">Žádné lokace přiřazené k hře.</p>
+                    @* --- Location focus --- *@
+                    var loc = locationCards.FirstOrDefault(l => l.LocationId == focusedLocationId);
+                    <div class="oh-tp-assign-hdr">
+                        <h5>@(loc?.LocationName ?? "Lokace")</h5>
+                        <button class="oh-tp-close" @onclick="CloseFocus" title="Zavřít">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                    <div class="oh-tp-assign-tabs">
+                        <button class="oh-tp-assign-tab @(focusTab == "prehled" ? "active" : "")"
+                                @onclick='() => focusTab = "prehled"'>Přehled</button>
+                        <button class="oh-tp-assign-tab @(focusTab == "pridat" ? "active" : "")"
+                                @onclick='() => focusTab = "pridat"'>Přidat poklad</button>
+                    </div>
+                    <div class="oh-tp-assign-body">
+                        @if (focusTab == "prehled" && loc is not null)
+                        {
+                            <div class="oh-tp-focus-summary">
+                                <div class="oh-tp-focus-stats">
+                                    <span><span class="sw" style="background:var(--oh-stage-start)"></span>Start @loc.StartCount</span>
+                                    <span><span class="sw" style="background:var(--oh-stage-early)"></span>Rozvoj @loc.EarlyCount</span>
+                                    <span><span class="sw" style="background:var(--oh-stage-midgame)"></span>Střed @loc.MidgameCount</span>
+                                    <span><span class="sw" style="background:var(--oh-stage-lategame)"></span>Závěr @loc.LategameCount</span>
+                                </div>
+                            </div>
+
+                            var locQuests = allQuests.Where(q => q.LocationId == focusedLocationId).ToList();
+                            var stashIds = loc.Stashes.Select(s => s.Id).ToHashSet();
+                            var stashQuests = allQuests.Where(q => q.SecretStashId.HasValue && stashIds.Contains(q.SecretStashId.Value)).ToList();
+                            var allLocQuests = locQuests.Concat(stashQuests).ToList();
+
+                            @if (allLocQuests.Count == 0)
+                            {
+                                <p class="text-muted">Žádné poklady. Klikni na <strong>Přidat poklad</strong>.</p>
+                            }
+                            else
+                            {
+                                foreach (var stage in stageKeys)
+                                {
+                                    var qs = allLocQuests.Where(q => q.Difficulty == stage.Value).ToList();
+                                    if (qs.Count == 0) continue;
+                                    <div class="oh-tp-focus-group-hdr">
+                                        <span class="sw" style="background:var(--oh-stage-@stage.SoftKey)"></span>
+                                        @stage.Label · @qs.Count @Pluralize(qs.Count)
+                                    </div>
+                                    foreach (var q in qs)
+                                    {
+                                        <div class="oh-tp-focus-quest" @onclick="() => OpenEditQuestPopup(q)">
+                                            <StageChip Difficulty="@q.Difficulty" />
+                                            <span class="oh-tp-focus-quest-title">@q.Title</span>
+                                            @if (q.SecretStashId.HasValue)
+                                            {
+                                                <span class="oh-tp-focus-quest-meta">
+                                                    <i class="bi bi-gem"></i>
+                                                    @(loc.Stashes.FirstOrDefault(s => s.Id == q.SecretStashId.Value)?.Name ?? $"skrýš #{q.SecretStashId}")
+                                                </span>
+                                            }
+                                            <i class="bi bi-pencil oh-tp-focus-quest-meta"></i>
+                                        </div>
+                                    }
+                                }
+                            }
+                        }
+                        else if (focusTab == "pridat" && loc is not null)
+                        {
+                            <TreasureAssignForm GameId="@gameId"
+                                                LocationId="@focusedLocationId"
+                                                LocationName="@loc.LocationName"
+                                                Stashes="@loc.Stashes.ToList()"
+                                                SelectedPool="@selectedPool"
+                                                Unlimited="@unlimitedItems"
+                                                InitialDifficulty="@lastUsedDifficulty"
+                                                OnSave="HandleAssignSaveAsync"
+                                                OnCancel='() => focusTab = "prehled"' />
+                        }
+                    </div>
                 }
             </div>
         </div>
-    </div>
 
-    @* BOTTOM: Overview *@
-    <div class="mt-4">
-        <h5 class="mb-2 d-flex align-items-center gap-2">
-            Přehled pokladů
-            <button class="btn btn-sm btn-outline-secondary" @onclick="() => overviewVisible = !overviewVisible">
-                @(overviewVisible ? "Skrýt" : "Zobrazit")
-            </button>
-        </h5>
-        @if (overviewVisible)
-        {
-            <OvcinaGrid Data="@allQuests" KeyFieldName="Id" LayoutKey="grid-layout-treasure-overview"
-                        RowClick="@(e => OpenEditQuestPopup((TreasureQuestListDto)e.Grid.GetDataItem(e.VisibleIndex)))"
-                        ShowGroupPanel="true">
-                <Columns>
-                    <DxGridDataColumn FieldName="Title" Caption="Název" />
-                    <DxGridDataColumn FieldName="DifficultyDisplay" Caption="Obtížnost" Width="130px" />
-                    <DxGridDataColumn FieldName="LocationId" Caption="Lokace" Width="150px">
-                        <CellDisplayTemplate>@GetLocationName((int?)context.Value)</CellDisplayTemplate>
-                    </DxGridDataColumn>
-                    <DxGridDataColumn FieldName="SecretStashId" Caption="Skrýš" Width="150px" Visible="false" />
-                    <DxGridDataColumn FieldName="GameId" Caption="Hra" Width="60px" Visible="false" />
-                </Columns>
-            </OvcinaGrid>
-        }
+        @* ================== ZONE 3 — Overview ================== *@
+        <div class="oh-tp-z3 @(overviewVisible ? "" : "collapsed")">
+            <div class="oh-tp-z3-bar" @onclick="() => overviewVisible = !overviewVisible">
+                <i class="bi bi-chevron-down"></i>
+                <h5>Všechny poklady (@allQuests.Count)</h5>
+                <span class="oh-tp-focus-quest-meta">@(overviewVisible ? "Skrýt" : "Zobrazit")</span>
+            </div>
+            @if (overviewVisible)
+            {
+                <div class="oh-tp-z3-body">
+                    <OvcinaGrid Data="@allQuests" KeyFieldName="Id" LayoutKey="grid-layout-treasures-v2"
+                                RowClick="@(e => OpenEditQuestPopup((TreasureQuestListDto)e.Grid.GetDataItem(e.VisibleIndex)))"
+                                ShowGroupPanel="true">
+                        <Columns>
+                            <DxGridDataColumn FieldName="Title" Caption="Název" />
+                            <DxGridDataColumn FieldName="DifficultyDisplay" Caption="Fáze" Width="130px" GroupIndex="0" />
+                            <DxGridDataColumn FieldName="LocationId" Caption="Lokace" Width="200px">
+                                <CellDisplayTemplate>@GetLocationName((int?)context.Value)</CellDisplayTemplate>
+                            </DxGridDataColumn>
+                            <DxGridDataColumn FieldName="SecretStashId" Caption="Skrýš" Width="160px" Visible="false">
+                                <CellDisplayTemplate>@GetStashName((int?)context.Value)</CellDisplayTemplate>
+                            </DxGridDataColumn>
+                            <DxGridDataColumn FieldName="GameId" Caption="Hra" Width="60px" Visible="false" />
+                        </Columns>
+                    </OvcinaGrid>
+                </div>
+            }
+        </div>
     </div>
 }
 
-@* === ASSIGN POPUP === *@
-<DxPopup AllowResize="true" @bind-Visible="@isAssignVisible" HeaderText="@assignTitle" Width="650px">
-    <BodyContentTemplate Context="popupContext">
-        @if (assignSelectedPool.Count > 0)
-        {
-            <div class="mb-3">
-                <h6>Vybrané z zásobníku:</h6>
-                <ul class="list-unstyled mb-0">
-                    @foreach (var p in assignSelectedPool)
-                    {
-                        <li><i class="bi bi-check-circle text-success me-1"></i> @p.ItemName (@(p.Count)x)</li>
-                    }
-                </ul>
-            </div>
-        }
-
-        @* Unlimited items *@
-        <div class="mb-3 p-2 border rounded" style="background: var(--oh-primary-surface, #f8f9fa);">
-            <h6 class="mb-2">Přidat neomezený předmět:</h6>
-            <div class="d-flex gap-2 align-items-end">
-                <DxComboBox Data="@unlimitedItems" @bind-Value="@newUnlimitedItemId"
-                            TextFieldName="ItemName" ValueFieldName="ItemId"
-                            NullText="Vyberte předmět..." ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
-                            style="flex: 1;" />
-                <DxSpinEdit @bind-Value="@newUnlimitedCount" MinValue="1" MaxValue="99" style="width: 80px;" />
-                <button class="btn btn-sm btn-outline-primary" @onclick="AddUnlimitedToAssign" disabled="@(newUnlimitedItemId is null)">
-                    <i class="bi bi-plus-circle"></i>
-                </button>
-            </div>
-            @if (assignUnlimitedItems.Count > 0)
-            {
-                <ul class="list-unstyled mt-2 mb-0">
-                    @foreach (var u in assignUnlimitedItems)
-                    {
-                        <li class="d-flex justify-content-between align-items-center">
-                            <span>@u.ItemName (@(u.Count)x)</span>
-                            <button class="btn btn-sm btn-link text-danger p-0" @onclick="() => assignUnlimitedItems.Remove(u)">
-                                <i class="bi bi-x-circle"></i>
-                            </button>
-                        </li>
-                    }
-                </ul>
-            }
-        </div>
-
-        <DxFormLayout>
-            <DxFormLayoutItem Caption="Umístění" ColSpanMd="12">
-                <div class="d-flex gap-3">
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" id="placeAtLocation" checked="@(!assignToStash)" @onchange="() => assignToStash = false" />
-                        <label class="form-check-label" for="placeAtLocation">Přímo na lokaci</label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" id="placeAtStash" checked="@assignToStash"
-                               @onchange="() => assignToStash = true" disabled="@(assignLocationStashes.Count == 0)" />
-                        <label class="form-check-label" for="placeAtStash">Do skrýše</label>
-                    </div>
-                </div>
-            </DxFormLayoutItem>
-            @if (assignToStash)
-            {
-                <DxFormLayoutItem Caption="Skrýš" ColSpanMd="12">
-                    <DxComboBox Data="@assignLocationStashes" @bind-Value="@assignStashId"
-                                TextFieldName="Name" ValueFieldName="Id" NullText="Vyberte skrýš..." />
-                </DxFormLayoutItem>
-            }
-            <DxFormLayoutItem Caption="Obtížnost" ColSpanMd="6">
-                <DxComboBox Data="@difficultyValues" @bind-Value="@assignDifficulty" TextFieldName="Display" ValueFieldName="Value" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Název" ColSpanMd="12">
-                <DxTextBox @bind-Text="@assignQuestTitle" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Nápověda" ColSpanMd="12">
-                <DxMemo @bind-Text="@assignClue" Rows="2" />
-            </DxFormLayoutItem>
-        </DxFormLayout>
-
-        @if (assignError is not null) { <div class="alert alert-danger mt-2">@assignError</div> }
-
-        <div class="d-flex gap-2 mt-3">
-            <div style="flex: 1"></div>
-            <button class="btn btn-secondary" @onclick="() => isAssignVisible = false">Zrušit</button>
-            <button class="btn btn-primary" @onclick="ConfirmAssignAsync" disabled="@assignSaving">
-                @if (assignSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                Schovat poklad
-            </button>
-        </div>
-    </BodyContentTemplate>
-</DxPopup>
-
-@* === ADD TO POOL POPUP === *@
+@* ================== ADD-TO-POOL POPUP ================== *@
 <DxPopup @bind-Visible="@isAddPoolVisible" HeaderText="Přidat do zásobníku" Width="450px">
     <BodyContentTemplate Context="popupContext">
         <DxFormLayout>
             <DxFormLayoutItem Caption="Předmět" ColSpanMd="12">
                 <DxComboBox Data="@findableItems" @bind-Value="@poolItemId"
                             TextFieldName="DisplayName" ValueFieldName="ItemId"
-                            NullText="Vyberte předmět..." ListRenderMode="ListRenderMode.Virtual" />
+                            NullText="Vyberte předmět…"
+                            ListRenderMode="ListRenderMode.Virtual" />
             </DxFormLayoutItem>
             <DxFormLayoutItem Caption="Počet" ColSpanMd="6">
                 <DxSpinEdit @bind-Value="@poolItemCount" MinValue="1" MaxValue="99" />
@@ -220,58 +254,69 @@ else
         @if (poolError is not null) { <div class="alert alert-danger mt-2">@poolError</div> }
         <div class="d-flex gap-2 mt-3 justify-content-end">
             <button class="btn btn-secondary" @onclick="() => isAddPoolVisible = false">Zrušit</button>
-            <button class="btn btn-primary" @onclick="AddToPoolAsync" disabled="@poolSaving">Přidat</button>
+            <button class="btn btn-primary" @onclick="AddToPoolAsync" disabled="@(poolSaving || poolItemId is null)">
+                @if (poolSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Přidat
+            </button>
         </div>
     </BodyContentTemplate>
 </DxPopup>
 
-@* === EDIT QUEST POPUP === *@
-<DxPopup AllowResize="true" @bind-Visible="@isEditQuestVisible" HeaderText="@editQuestTitle" Width="700px">
+@* ================== EDIT QUEST POPUP ================== *@
+<DxPopup AllowResize="true" @bind-Visible="@isEditQuestVisible" HeaderText="@editQuestTitle" Width="720px">
     <BodyContentTemplate Context="popupContext">
         <DxFormLayout>
             <DxFormLayoutItem Caption="Název" ColSpanMd="12">
                 <DxTextBox @bind-Text="@editTitle" />
             </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Obtížnost" ColSpanMd="6">
-                <DxComboBox Data="@difficultyValues" @bind-Value="@editDifficulty" TextFieldName="Display" ValueFieldName="Value" />
+            <DxFormLayoutItem Caption="Fáze" ColSpanMd="6">
+                <DxComboBox Data="@difficultyValues"
+                            @bind-Value="@editDifficulty"
+                            TextFieldName="Display" ValueFieldName="Value" />
             </DxFormLayoutItem>
             <DxFormLayoutItem Caption="Nápověda" ColSpanMd="12">
                 <DxMemo @bind-Text="@editClue" Rows="2" />
             </DxFormLayoutItem>
             <DxFormLayoutItem Caption="Umístění" ColSpanMd="12">
-                <div class="d-flex gap-3">
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" id="editPlaceAtLocation" checked="@(!editToStash)" @onchange="() => editToStash = false" />
-                        <label class="form-check-label" for="editPlaceAtLocation">Přímo na lokaci</label>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" id="editPlaceAtStash" checked="@editToStash"
-                               @onchange="() => editToStash = true" disabled="@(editStashes.Count == 0)" />
-                        <label class="form-check-label" for="editPlaceAtStash">Do skrýše</label>
-                    </div>
+                <div class="oh-tp-target-radios">
+                    <label>
+                        <input type="radio" name="editTarget" checked="@(!editToStash)"
+                               @onchange="() => editToStash = false" />
+                        <span>Na lokaci</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="editTarget" checked="@editToStash"
+                               disabled="@(editStashes.Count == 0)"
+                               @onchange="() => editToStash = true" />
+                        <span>Do skrýše</span>
+                    </label>
                 </div>
             </DxFormLayoutItem>
             @if (!editToStash)
             {
                 <DxFormLayoutItem Caption="Lokace" ColSpanMd="12">
-                    <DxComboBox Data="@editLocations" @bind-Value="@editLocationId"
+                    <DxComboBox Data="@editLocations"
+                                @bind-Value="@editLocationId"
                                 TextFieldName="Name" ValueFieldName="Id"
-                                NullText="Vyberte lokaci..." ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                                NullText="Vyberte lokaci…"
+                                ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
                 </DxFormLayoutItem>
             }
-            @if (editToStash)
+            else
             {
                 <DxFormLayoutItem Caption="Skrýš" ColSpanMd="12">
-                    <DxComboBox Data="@editStashesFiltered" @bind-Value="@editStashId"
+                    <DxComboBox Data="@editStashesFiltered"
+                                @bind-Value="@editStashId"
                                 TextFieldName="StashName" ValueFieldName="SecretStashId"
-                                NullText="Vyberte skrýš..." ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                                NullText="Vyberte skrýš…"
+                                ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
                 </DxFormLayoutItem>
             }
         </DxFormLayout>
 
         @if (editQuestId.HasValue && editQuestItems.Count > 0)
         {
-            <div class="mt-3 p-3 border rounded" style="background: var(--oh-primary-surface, #f8f9fa);">
+            <div class="mt-3 p-3 border rounded" style="background:var(--oh-primary-surface,#f8f9fa);">
                 <h6 class="mb-2"><i class="bi bi-gem me-1"></i> Předměty v pokladu</h6>
                 <table class="table table-sm mb-0">
                     <thead><tr><th>Předmět</th><th style="width:80px">Počet</th><th style="width:40px"></th></tr></thead>
@@ -281,7 +326,13 @@ else
                             <tr>
                                 <td>@item.ItemName</td>
                                 <td>@item.Count</td>
-                                <td><button class="btn btn-sm btn-link text-danger p-0" @onclick="() => RemoveEditItemAsync(item)" @onclick:stopPropagation="true"><i class="bi bi-x-circle"></i></button></td>
+                                <td>
+                                    <button class="btn btn-sm btn-link text-danger p-0"
+                                            @onclick="() => RemoveEditItemAsync(item)"
+                                            @onclick:stopPropagation="true">
+                                        <i class="bi bi-x-circle"></i>
+                                    </button>
+                                </td>
                             </tr>
                         }
                     </tbody>
@@ -290,18 +341,25 @@ else
         }
 
         @if (editError is not null) { <div class="alert alert-danger mt-2">@editError</div> }
-        <div class="d-flex gap-2 mt-3">
-            <button class="btn btn-outline-danger" @onclick="() => isDeleteQuestVisible = true">Smazat</button>
-            <div style="flex: 1"></div>
+
+        <div class="oh-tp-form-footer">
+            <button class="btn btn-outline-danger" @onclick="() => isDeleteQuestVisible = true">
+                <i class="bi bi-trash me-1"></i> Smazat
+            </button>
+            <div class="spacer"></div>
             <button class="btn btn-secondary" @onclick="() => isEditQuestVisible = false">Zrušit</button>
-            <button class="btn btn-primary" @onclick="SaveEditQuestAsync" disabled="@editSaving">Uložit</button>
+            <button class="btn btn-primary" @onclick="SaveEditQuestAsync" disabled="@editSaving">
+                @if (editSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Uložit
+            </button>
         </div>
     </BodyContentTemplate>
 </DxPopup>
 
-<DxPopup @bind-Visible="@isDeleteQuestVisible" HeaderText="Potvrdit smazání" Width="400px">
+@* ================== DELETE CONFIRM POPUP ================== *@
+<DxPopup @bind-Visible="@isDeleteQuestVisible" HeaderText="Smazat poklad?" Width="420px">
     <BodyContentTemplate Context="popupContext">
-        <p>Smazat poklad <strong>@editTitle</strong>? Předměty se vrátí do zásobníku.</p>
+        <p>Opravdu smazat poklad <strong>@editTitle</strong>? Předměty ze zásobníku se uvolní zpět.</p>
         <div class="d-flex gap-2 justify-content-end">
             <button class="btn btn-secondary" @onclick="() => isDeleteQuestVisible = false">Zrušit</button>
             <button class="btn btn-danger" @onclick="DeleteQuestAsync">Smazat</button>
@@ -310,50 +368,70 @@ else
 </DxPopup>
 
 @code {
-    // Data
+    // ===== Data =====
     private List<TreasurePoolItemDto> poolItems = [];
     private List<TreasurePlanningLocationDto> locationCards = [];
+    private List<LocationListDto> locations = [];
     private List<TreasureQuestListDto> allQuests = [];
     private List<UnlimitedItemDto> unlimitedItems = [];
     private TreasureSummaryDto? summary;
-    private bool loading = true, overviewVisible;
+    private bool loading = true;
 
-    // Pool selection
-    private IReadOnlyList<object> selectedPoolItems = [];
-    private void OnPoolSelectionChanged(IReadOnlyList<object> items) => selectedPoolItems = items;
+    // ===== Pool selection =====
+    private readonly List<TreasurePoolItemDto> selectedPool = [];
+    private bool IsSelected(TreasurePoolItemDto p) => selectedPool.Any(s => s.Id == p.Id);
 
-    // Game context
-    private int gameId => GameContext.SelectedGameId ?? 1;
+    private void TogglePoolSelection(TreasurePoolItemDto p)
+    {
+        var existing = selectedPool.FirstOrDefault(s => s.Id == p.Id);
+        if (existing is not null) selectedPool.Remove(existing);
+        else selectedPool.Add(p);
+    }
 
-    // Difficulty enum helper
-    private static readonly List<EnumItem<TreasureQuestDifficulty>> difficultyValues = Enum.GetValues<TreasureQuestDifficulty>()
-        .Select(v => new EnumItem<TreasureQuestDifficulty>(v, v.GetDisplayName())).ToList();
-    record EnumItem<T>(T Value, string Display);
+    // ===== Stage filter =====
+    private HashSet<string>? activeStages;
+    private bool IsStageActive(string key) => activeStages is null || activeStages.Contains(key);
 
-    // === ASSIGN state ===
-    private bool isAssignVisible, assignSaving, assignToStash;
-    private string assignTitle = "", assignQuestTitle = "";
-    private string? assignClue, assignError;
-    private TreasureQuestDifficulty assignDifficulty = TreasureQuestDifficulty.Start;
-    private int? assignLocationId, assignStashId;
-    private List<StashSummaryDto> assignLocationStashes = [];
-    private List<TreasurePoolItemDto> assignSelectedPool = [];
-    private List<AssignUnlimitedItem> assignUnlimitedItems = [];
-    private int? newUnlimitedItemId;
-    private int newUnlimitedCount = 1;
-    record AssignUnlimitedItem(int ItemId, string ItemName, int Count);
+    private async Task SelectAllStages()
+    {
+        activeStages = null;
+        if (mapView is not null) await mapView.SetStageFilterAsync(null);
+    }
 
-    // Sticky difficulty
+    private async Task ToggleStage(string key)
+    {
+        activeStages ??= new HashSet<string>(stageKeys.Select(s => s.Key));
+        if (!activeStages.Add(key)) activeStages.Remove(key);
+        // Empty and full sets both collapse to null ("all active") so the
+        // filter chip UI and the JS opacity state never disagree.
+        if (activeStages.Count == 0 || activeStages.Count == stageKeys.Count) activeStages = null;
+        if (mapView is not null) await mapView.SetStageFilterAsync(activeStages);
+    }
+
+    // ===== Focus state =====
+    private int? focusedLocationId;
+    private string focusTab = "prehled";
     private TreasureQuestDifficulty lastUsedDifficulty = TreasureQuestDifficulty.Start;
 
-    // === ADD TO POOL state ===
+    // ===== Game context =====
+    private int gameId => GameContext.SelectedGameId ?? 1;
+
+    // ===== Map =====
+    private MapView? mapView;
+    private bool styleLoaded;
+    private bool markersPlaced;
+
+    // ===== Overview =====
+    private bool overviewVisible;
+
+    // ===== Add-to-pool popup =====
     private bool isAddPoolVisible, poolSaving;
     private int? poolItemId;
     private int poolItemCount = 1;
     private string? poolError;
     private List<AvailablePoolItemDto> findableItems = [];
 
-    // === EDIT QUEST state ===
+    // ===== Edit-quest popup =====
     private bool isEditQuestVisible, isDeleteQuestVisible, editSaving;
     private int? editQuestId;
     private string editTitle = "", editQuestTitle = "";
@@ -369,7 +447,28 @@ else
             ? editStashes.Where(s => s.LocationId == editLocationId.Value).ToList()
             : editStashes;
 
-    // === LIFECYCLE ===
+    // ===== Stage metadata =====
+    private record StageInfo(string Key, string SoftKey, TreasureQuestDifficulty Value, string Label);
+    private static readonly List<StageInfo> stageKeys =
+    [
+        new("start", "start",    TreasureQuestDifficulty.Start,    "Start"),
+        new("early", "early",    TreasureQuestDifficulty.Early,    "Rozvoj hry"),
+        new("mid",   "midgame",  TreasureQuestDifficulty.Midgame,  "Střed hry"),
+        new("late",  "lategame", TreasureQuestDifficulty.Lategame, "Závěr hry"),
+    ];
+
+    private static readonly List<EnumItem<TreasureQuestDifficulty>> difficultyValues = Enum.GetValues<TreasureQuestDifficulty>()
+        .Select(v => new EnumItem<TreasureQuestDifficulty>(v, v.GetDisplayName())).ToList();
+    private record EnumItem<T>(T Value, string Display);
+
+    private static string Pluralize(int n) => n switch
+    {
+        1 => "quest",
+        >= 2 and <= 4 => "questy",
+        _ => "questů"
+    };
+
+    // ===== Lifecycle =====
     protected override async Task OnInitializedAsync()
     {
         await GameContext.InitializeAsync();
@@ -377,114 +476,178 @@ else
         await LoadAllAsync();
     }
 
+    private async void OnGameChanged()
+    {
+        markersPlaced = false;
+        focusedLocationId = null;
+        selectedPool.Clear();
+        await LoadAllAsync();
+        await PlaceMarkersIfReadyAsync();
+        StateHasChanged();
+    }
+
+    public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
+
     private async Task LoadAllAsync()
     {
         loading = true;
-        var poolTask = Api.GetListAsync<TreasurePoolItemDto>($"/api/treasure-planning/pool/{gameId}");
-        var locTask = Api.GetListAsync<TreasurePlanningLocationDto>($"/api/treasure-planning/locations/{gameId}");
-        var questTask = Api.GetListAsync<TreasureQuestListDto>($"/api/treasure-quests/by-game/{gameId}");
-        var summaryTask = Api.GetAsync<TreasureSummaryDto>($"/api/treasure-planning/summary/{gameId}");
-        var unlimitedTask = Api.GetListAsync<UnlimitedItemDto>($"/api/treasure-planning/unlimited/{gameId}");
+        var poolTask       = Api.GetListAsync<TreasurePoolItemDto>($"/api/treasure-planning/pool/{gameId}");
+        var cardsTask      = Api.GetListAsync<TreasurePlanningLocationDto>($"/api/treasure-planning/locations/{gameId}");
+        var locationsTask  = Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gameId}");
+        var questTask      = Api.GetListAsync<TreasureQuestListDto>($"/api/treasure-quests/by-game/{gameId}");
+        var summaryTask    = Api.GetAsync<TreasureSummaryDto>($"/api/treasure-planning/summary/{gameId}");
+        var unlimitedTask  = Api.GetListAsync<UnlimitedItemDto>($"/api/treasure-planning/unlimited/{gameId}");
 
-        await Task.WhenAll(poolTask, locTask, questTask, summaryTask, unlimitedTask);
+        await Task.WhenAll(poolTask, cardsTask, locationsTask, questTask, summaryTask, unlimitedTask);
 
-        poolItems = poolTask.Result;
-        locationCards = locTask.Result;
-        allQuests = questTask.Result;
-        summary = summaryTask.Result;
+        poolItems      = poolTask.Result;
+        locationCards  = cardsTask.Result;
+        locations      = locationsTask.Result;
+        allQuests      = questTask.Result;
+        summary        = summaryTask.Result;
         unlimitedItems = unlimitedTask.Result;
+
+        // Prune selection of items that left the pool.
+        var poolIds = poolItems.Select(p => p.Id).ToHashSet();
+        selectedPool.RemoveAll(s => !poolIds.Contains(s.Id));
+
         loading = false;
     }
 
-    private async void OnGameChanged() { await LoadAllAsync(); StateHasChanged(); }
-    public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
-
-    // === LOCATION CARDS ===
-    private string GetLocationIcon(LocationKind kind) => kind switch
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        LocationKind.Town => "\ud83c\udfe0",
-        LocationKind.Village => "\ud83c\udfe1",
-        LocationKind.Wilderness => "\ud83c\udf32",
-        LocationKind.Magical => "\u2728",
-        LocationKind.PointOfInterest => "\ud83d\udccd",
-        LocationKind.Dungeon => "\ud83d\udd73\ufe0f",
-        _ => "\ud83d\udccd"
+        await PlaceMarkersIfReadyAsync();
+    }
+
+    private async Task PlaceMarkersIfReadyAsync()
+    {
+        if (mapView is null || !styleLoaded || loading || markersPlaced) return;
+        markersPlaced = true;
+        await RenderAllMarkersAsync();
+    }
+
+    private async Task HandleStyleLoaded()
+    {
+        styleLoaded = true;
+        markersPlaced = false;
+        await PlaceMarkersIfReadyAsync();
+    }
+
+    private async Task RenderAllMarkersAsync()
+    {
+        if (mapView is null) return;
+        await mapView.ClearPieMarkersAsync();
+
+        var maxCount = Math.Max(1, locationCards
+            .SelectMany(l => new[] { l.StartCount, l.EarlyCount, l.MidgameCount, l.LategameCount })
+            .DefaultIfEmpty(0).Max());
+
+        // Fit map to the game's locations.
+        var placed = locations.Where(l => l.Latitude.HasValue && l.Longitude.HasValue).ToList();
+        if (placed.Count > 0)
+        {
+            var minLat = (double)placed.Min(l => l.Latitude!.Value);
+            var maxLat = (double)placed.Max(l => l.Latitude!.Value);
+            var minLon = (double)placed.Min(l => l.Longitude!.Value);
+            var maxLon = (double)placed.Max(l => l.Longitude!.Value);
+            if (Math.Abs(maxLat - minLat) > 0.0005 || Math.Abs(maxLon - minLon) > 0.0005)
+            {
+                await mapView.FitBoundsAsync(minLat, minLon, maxLat, maxLon);
+            }
+            else
+            {
+                await mapView.SetCenterAsync(minLat, minLon, 15);
+            }
+        }
+
+        foreach (var loc in placed)
+        {
+            var card = locationCards.FirstOrDefault(c => c.LocationId == loc.Id);
+            if (card is null || card.TotalItems == 0)
+            {
+                await mapView.AddZeroMarkerAsync(loc.Id,
+                    (double)loc.Latitude!.Value, (double)loc.Longitude!.Value,
+                    loc.Name, KindSlug(loc.LocationKind));
+            }
+            else
+            {
+                var counts = new[] { card.StartCount, card.EarlyCount, card.MidgameCount, card.LategameCount };
+                await mapView.AddPieMarkerAsync(loc.Id,
+                    (double)loc.Latitude!.Value, (double)loc.Longitude!.Value,
+                    counts, maxCount);
+            }
+        }
+
+        await mapView.SetStageFilterAsync(activeStages);
+    }
+
+    private static string KindSlug(LocationKind k) => k switch
+    {
+        LocationKind.Town => "town",
+        LocationKind.Village => "village",
+        LocationKind.Magical => "magical",
+        LocationKind.Hobbit => "hobbit",
+        LocationKind.Wilderness => "wilderness",
+        LocationKind.Dungeon => "dungeon",
+        LocationKind.PointOfInterest => "pointofinterest",
+        _ => "wilderness"
     };
 
-    private string GetLocationName(int? locationId)
+    // ===== Handlers from MapView =====
+    private Task HandlePieClick(int locationId)
     {
-        if (locationId is null) return "";
-        return locationCards.FirstOrDefault(l => l.LocationId == locationId)?.LocationName ?? $"#{locationId}";
+        focusedLocationId = locationId;
+        focusTab = "prehled";
+        StateHasChanged();
+        return Task.CompletedTask;
     }
 
-    // === ASSIGN POPUP ===
-    private void OpenAssignPopup(TreasurePlanningLocationDto loc)
+    private async Task HandlePieDrop(PiePayloadEventArgs args)
     {
-        assignError = null;
-        assignLocationId = loc.LocationId;
-        assignStashId = null;
-        assignToStash = false;
-        assignLocationStashes = loc.Stashes;
-        assignDifficulty = lastUsedDifficulty;
-        assignClue = null;
-        assignUnlimitedItems = [];
-        newUnlimitedItemId = null;
-        newUnlimitedCount = 1;
-
-        // Capture selected pool items
-        assignSelectedPool = selectedPoolItems.Cast<TreasurePoolItemDto>().ToList();
-
-        // Auto-generate title
-        var itemPart = assignSelectedPool.Count switch
-        {
-            0 => "Poklad",
-            1 => assignSelectedPool[0].ItemName,
-            _ => $"{assignSelectedPool.Count} předmětů"
-        };
-        assignQuestTitle = $"{itemPart} @ {loc.LocationName}";
-        assignTitle = $"Schovat poklad — {loc.LocationName}";
-
-        isAssignVisible = true;
-    }
-
-    private void AddUnlimitedToAssign()
-    {
-        if (newUnlimitedItemId is null) return;
-        var item = unlimitedItems.FirstOrDefault(u => u.ItemId == newUnlimitedItemId.Value);
-        if (item is null) return;
-        // Update existing or add new
-        var existing = assignUnlimitedItems.FirstOrDefault(u => u.ItemId == item.ItemId);
-        if (existing is not null)
-            assignUnlimitedItems.Remove(existing);
-        assignUnlimitedItems.Add(new AssignUnlimitedItem(item.ItemId, item.ItemName, newUnlimitedCount));
-        newUnlimitedItemId = null;
-        newUnlimitedCount = 1;
-    }
-
-    private async Task ConfirmAssignAsync()
-    {
-        assignError = null; assignSaving = true;
+        // Payload: { PoolItemId, ItemId, ItemName, Count }
         try
         {
-            var dto = new AssignTreasureDto(
-                assignQuestTitle, assignDifficulty, gameId, assignClue,
-                assignToStash ? null : assignLocationId,
-                assignToStash ? assignStashId : null,
-                assignSelectedPool.Select(p => p.Id).ToList(),
-                assignUnlimitedItems.Select(u => new UnlimitedItemAssignDto(u.ItemId, u.Count)).ToList());
+            using var doc = System.Text.Json.JsonDocument.Parse(args.Payload);
+            var poolItemId = doc.RootElement.GetProperty("PoolItemId").GetInt32();
+            var picked = poolItems.FirstOrDefault(p => p.Id == poolItemId);
+            if (picked is null) return;
 
-            await Api.PostAsync<AssignTreasureDto, TreasureQuestDetailDto>("/api/treasure-planning/assign", dto);
-            lastUsedDifficulty = assignDifficulty;
-            isAssignVisible = false;
-            selectedPoolItems = [];
-            await LoadAllAsync();
+            // Ensure the dragged item is selected; keep any prior selection intact
+            // so the user can batch-drop multiple onto the same pin.
+            if (!IsSelected(picked)) selectedPool.Add(picked);
+
+            focusedLocationId = args.LocationId;
+            focusTab = "pridat";
             StateHasChanged();
+            await Task.CompletedTask;
         }
-        catch (Exception ex) { assignError = ex.Message; }
-        finally { assignSaving = false; }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Pie drop payload error: {ex.Message}");
+        }
     }
 
-    // === ADD TO POOL ===
+    // ===== Focus close =====
+    private void CloseFocus()
+    {
+        focusedLocationId = null;
+        focusTab = "prehled";
+    }
+
+    // ===== Save assignment =====
+    private async Task HandleAssignSaveAsync(AssignTreasureDto dto)
+    {
+        await Api.PostAsync<AssignTreasureDto, TreasureQuestDetailDto>("/api/treasure-planning/assign", dto);
+        lastUsedDifficulty = dto.Difficulty;
+        selectedPool.Clear();
+        markersPlaced = false;
+        await LoadAllAsync();
+        await PlaceMarkersIfReadyAsync();
+        focusTab = "prehled";
+        StateHasChanged();
+    }
+
+    // ===== Add-to-pool =====
     private async Task OpenAddToPoolModal()
     {
         poolError = null; poolItemId = null; poolItemCount = 1;
@@ -499,7 +662,8 @@ else
         try
         {
             await Api.PostAsync<CreateTreasurePoolItemDto, TreasurePoolItemDto>(
-                "/api/treasure-planning/pool", new CreateTreasurePoolItemDto(poolItemId.Value, gameId, poolItemCount));
+                "/api/treasure-planning/pool",
+                new CreateTreasurePoolItemDto(poolItemId.Value, gameId, poolItemCount));
             isAddPoolVisible = false;
             await LoadAllAsync();
             StateHasChanged();
@@ -508,7 +672,7 @@ else
         finally { poolSaving = false; }
     }
 
-    // === EDIT QUEST ===
+    // ===== Overview edit =====
     private void OpenEditQuestPopup(TreasureQuestListDto q)
     {
         editError = null;
@@ -540,7 +704,13 @@ else
 
     private async Task RemoveEditItemAsync(TreasureItemDto item)
     {
-        await Api.DeleteAsync($"/api/treasure-quests/{editQuestId}/items/{item.Id}");
+        var ok = await Api.DeleteAsync($"/api/treasure-quests/{editQuestId}/items/{item.Id}");
+        if (!ok)
+        {
+            editError = "Nepodařilo se odebrat předmět.";
+            StateHasChanged();
+            return;
+        }
         editQuestItems.Remove(item);
         StateHasChanged();
     }
@@ -555,7 +725,9 @@ else
                     editToStash ? null : editLocationId,
                     editToStash ? editStashId : null));
             isEditQuestVisible = false;
+            markersPlaced = false;
             await LoadAllAsync();
+            await PlaceMarkersIfReadyAsync();
             StateHasChanged();
         }
         catch (Exception ex) { editError = ex.Message; }
@@ -566,11 +738,48 @@ else
     {
         try
         {
-            await Api.DeleteAsync($"/api/treasure-quests/{editQuestId}");
-            isDeleteQuestVisible = false; isEditQuestVisible = false;
+            var ok = await Api.DeleteAsync($"/api/treasure-quests/{editQuestId}");
+            if (!ok)
+            {
+                editError = "Smazání pokladu selhalo.";
+                isDeleteQuestVisible = false;
+                StateHasChanged();
+                return;
+            }
+            isDeleteQuestVisible = false;
+            isEditQuestVisible = false;
+            markersPlaced = false;
             await LoadAllAsync();
+            await PlaceMarkersIfReadyAsync();
             StateHasChanged();
         }
         catch (Exception ex) { editError = ex.Message; }
+    }
+
+    // ===== Helpers =====
+    private string GetLocationName(int? locationId)
+    {
+        if (locationId is null) return "";
+        return locationCards.FirstOrDefault(l => l.LocationId == locationId)?.LocationName
+            ?? locations.FirstOrDefault(l => l.Id == locationId)?.Name
+            ?? $"#{locationId}";
+    }
+
+    private string GetStashName(int? stashId)
+    {
+        if (stashId is null) return "";
+        return locationCards.SelectMany(l => l.Stashes)
+            .FirstOrDefault(s => s.Id == stashId)?.Name ?? $"skrýš #{stashId}";
+    }
+
+    private async Task ScrollToPoolAsync()
+    {
+        focusedLocationId = null;
+        StateHasChanged();
+        try
+        {
+            await JS.InvokeVoidAsync("ovcinaDnd.scrollIntoViewById", "oh-tp-pool-anchor");
+        }
+        catch { /* best-effort scroll — ignore if JS host missing */ }
     }
 }

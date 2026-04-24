@@ -1,0 +1,43 @@
+<div class="oh-tp-stage-card @(Count == 0 ? "oh-tp-empty-state" : "")" data-stage="@StageKey">
+    <div class="oh-tp-stage-card-hdr">
+        <div class="oh-tp-stage-card-nm">@Label</div>
+        @if (Goal is > 0)
+        {
+            <div class="oh-tp-stage-card-goal">cíl @Goal</div>
+        }
+    </div>
+    <div class="oh-tp-stage-card-numline">
+        <span class="oh-tp-stage-card-num">@Count</span>
+        <span class="oh-tp-stage-card-unit">@Pluralize(Count)</span>
+    </div>
+    @if (Goal is > 0)
+    {
+        <div class="oh-tp-stage-card-progress" title="@Count / @Goal">
+            <div class="oh-tp-stage-card-progress-fill" style="width:@(Math.Min(100, Count * 100 / Goal.Value))%"></div>
+        </div>
+    }
+    <div class="oh-tp-stage-card-strip">
+        @for (int i = 0; i < Count && i < 40; i++)
+        {
+            <div class="oh-tp-stage-card-cell"></div>
+        }
+        @if (Count > 40)
+        {
+            <div class="oh-tp-stage-card-cell" title="+@(Count - 40) dalších">…</div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string StageKey { get; set; } = "start";
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter, EditorRequired] public int Count { get; set; }
+    [Parameter] public int? Goal { get; set; }
+
+    private static string Pluralize(int n) => n switch
+    {
+        1 => "poklad",
+        >= 2 and <= 4 => "poklady",
+        _ => "pokladů"
+    };
+}

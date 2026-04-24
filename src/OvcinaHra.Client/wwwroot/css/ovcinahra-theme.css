@@ -2250,3 +2250,188 @@
 .oh-it-d-loading{padding:48px 16px;text-align:center;color:var(--oh-text-secondary);font-style:italic}
 .oh-it-d-empty{padding:48px 16px;text-align:center;color:var(--oh-text-secondary)}
 .oh-it-d-empty i{font-size:3rem;color:var(--oh-primary-light);opacity:.6;display:block;margin-bottom:10px}
+
+/* ============================================================
+   Stage chip (reusable — difficulty pill for treasure quests).
+   Used on treasure pool tiles, assignment panel, overview grid.
+   ============================================================ */
+.oh-stage-chip{display:inline-block;font:600 .6875rem var(--oh-font-body);padding:2px 9px;border-radius:99px;color:#fff;letter-spacing:.02em;line-height:1.5;white-space:nowrap}
+.oh-stage-chip-start{background:var(--oh-stage-start)}
+.oh-stage-chip-early{background:var(--oh-stage-early);color:#3a2612}
+.oh-stage-chip-mid  {background:var(--oh-stage-midgame)}
+.oh-stage-chip-midgame{background:var(--oh-stage-midgame)}
+.oh-stage-chip-late {background:var(--oh-stage-lategame)}
+.oh-stage-chip-lategame{background:var(--oh-stage-lategame)}
+
+/* ============================================================
+   Treasures Planning dashboard — scoped .oh-tp-*
+   Zone 1: pipeline (4 stage cards + Zásobník mini)
+   Zone 2: map (60fr) + assignment panel (40fr)
+   Zone 3: collapsible overview grid
+   ============================================================ */
+.oh-tp-page{display:flex;flex-direction:column;gap:16px;padding:4px 0}
+.oh-tp-loading{padding:48px 16px;text-align:center;color:var(--oh-text-secondary);font-style:italic}
+.oh-tp-empty{padding:48px 16px;text-align:center;color:var(--oh-text-secondary)}
+.oh-tp-empty i{font-size:3rem;color:var(--oh-primary-light);opacity:.6;display:block;margin-bottom:10px}
+
+/* Zone 1 — pipeline ---------------------------------------- */
+.oh-tp-pipeline{display:grid;grid-template-columns:1fr 1fr 1fr 1fr 160px;gap:12px;min-height:160px}
+.oh-tp-stage-card{position:relative;display:flex;flex-direction:column;padding:14px 16px 14px 22px;background:var(--oh-surface);border:1px solid var(--oh-card-border,var(--oh-border));border-radius:var(--oh-radius);box-shadow:var(--oh-shadow)}
+.oh-tp-stage-card::before{content:"";position:absolute;top:0;bottom:0;left:0;width:6px;background:var(--c,#7FA657);border-radius:var(--oh-radius) 0 0 var(--oh-radius)}
+.oh-tp-stage-card[data-stage="start"]{--c:var(--oh-stage-start)}
+.oh-tp-stage-card[data-stage="early"]{--c:var(--oh-stage-early)}
+.oh-tp-stage-card[data-stage="mid"]{--c:var(--oh-stage-midgame)}
+.oh-tp-stage-card[data-stage="midgame"]{--c:var(--oh-stage-midgame)}
+.oh-tp-stage-card[data-stage="late"]{--c:var(--oh-stage-lategame)}
+.oh-tp-stage-card[data-stage="lategame"]{--c:var(--oh-stage-lategame)}
+.oh-tp-stage-card.oh-tp-empty-state{opacity:.62}
+.oh-tp-stage-card-hdr{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.oh-tp-stage-card-nm{font:700 1rem var(--oh-font-heading);color:var(--oh-primary);letter-spacing:.005em}
+.oh-tp-stage-card-goal{font:italic 400 .75rem var(--oh-font-body);color:var(--oh-text-secondary)}
+.oh-tp-stage-card-numline{display:flex;align-items:baseline;gap:8px;margin-top:2px}
+.oh-tp-stage-card-num{font:500 2.4rem/1 var(--oh-font-mono);color:var(--oh-text,#2a2a2a);letter-spacing:-.02em}
+.oh-tp-stage-card.oh-tp-empty-state .oh-tp-stage-card-num{color:var(--oh-text-secondary)}
+.oh-tp-stage-card-unit{font:400 .8125rem var(--oh-font-body);color:var(--oh-text-secondary)}
+.oh-tp-stage-card-progress{margin-top:8px;height:4px;background:var(--oh-surface-alt);border-radius:99px;overflow:hidden;border:1px solid var(--oh-border)}
+.oh-tp-stage-card-progress-fill{height:100%;background:var(--c);transition:.3s ease width}
+.oh-tp-stage-card-strip{margin-top:auto;display:flex;flex-wrap:wrap;gap:3px;align-content:flex-start;min-height:22px;padding-top:8px}
+.oh-tp-stage-card-cell{width:12px;height:12px;border-radius:2px;background:var(--c);opacity:.9;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+.oh-tp-stage-card-cell.k-elves{background:var(--oh-kingdom-elves)}
+.oh-tp-stage-card-cell.k-dwarves{background:var(--oh-kingdom-dwarves)}
+.oh-tp-stage-card-cell.k-lake{background:var(--oh-kingdom-lake)}
+.oh-tp-stage-card-cell.k-arnor{background:var(--oh-kingdom-arnor)}
+
+/* Zásobník mini-card ----------------------------------------- */
+.oh-tp-pool-mini{display:flex;flex-direction:column;padding:14px 16px;background:var(--oh-surface);border:1px solid var(--oh-card-border,var(--oh-border));border-radius:var(--oh-radius);box-shadow:var(--oh-shadow);cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.oh-tp-pool-mini:hover{border-color:var(--oh-primary-light);box-shadow:var(--oh-shadow-lg)}
+.oh-tp-pool-mini.oh-tp-empty-state{opacity:.62}
+.oh-tp-pool-mini-lbl{font:600 .6875rem var(--oh-font-body);text-transform:uppercase;letter-spacing:.08em;color:var(--oh-text-secondary);display:flex;align-items:center;gap:4px}
+.oh-tp-pool-mini-lbl i{color:var(--oh-card-border,#8B6F47);font-size:.75rem}
+.oh-tp-pool-mini-num{font:500 2.4rem/1 var(--oh-font-mono);color:var(--oh-primary);margin-top:6px}
+.oh-tp-pool-mini.oh-tp-empty-state .oh-tp-pool-mini-num{color:var(--oh-text-secondary)}
+.oh-tp-pool-mini-sub{font:400 .8125rem var(--oh-font-body);color:var(--oh-text-secondary);margin-top:2px}
+.oh-tp-pool-mini-jump{margin-top:auto;font:600 .75rem var(--oh-font-body);color:var(--oh-primary-light);display:inline-flex;align-items:center;gap:4px}
+
+/* Zone 2 — workspace --------------------------------------- */
+.oh-tp-workspace{display:grid;grid-template-columns:60fr 40fr;gap:16px;min-height:520px}
+.oh-tp-map-panel{display:flex;flex-direction:column;background:var(--oh-surface);border:1px solid var(--oh-card-border,var(--oh-border));border-radius:var(--oh-radius);box-shadow:var(--oh-shadow);overflow:hidden}
+.oh-tp-stage-filter{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--oh-border);background:var(--oh-surface-alt);flex-wrap:wrap}
+.oh-tp-stage-filter-lbl{font:600 .75rem var(--oh-font-body);color:var(--oh-text-secondary);text-transform:uppercase;letter-spacing:.06em;margin-right:4px}
+.oh-tp-filter-chip{font:600 .75rem var(--oh-font-body);padding:4px 12px;border-radius:99px;border:1px solid var(--oh-border);background:var(--oh-surface);color:var(--oh-text-secondary);cursor:pointer;user-select:none;transition:all .15s}
+.oh-tp-filter-chip:hover{border-color:var(--oh-primary-light);color:var(--oh-primary)}
+.oh-tp-filter-chip.active{background:var(--c,var(--oh-primary));border-color:var(--c,var(--oh-primary));color:#fff}
+.oh-tp-filter-chip[data-stage="start"]{--c:var(--oh-stage-start)}
+.oh-tp-filter-chip[data-stage="early"]{--c:var(--oh-stage-early);color:var(--oh-text)}
+.oh-tp-filter-chip[data-stage="early"].active{color:#3a2612}
+.oh-tp-filter-chip[data-stage="mid"],.oh-tp-filter-chip[data-stage="midgame"]{--c:var(--oh-stage-midgame)}
+.oh-tp-filter-chip[data-stage="late"],.oh-tp-filter-chip[data-stage="lategame"]{--c:var(--oh-stage-lategame)}
+.oh-tp-filter-chip[data-stage="all"]{--c:var(--oh-primary)}
+.oh-tp-map-host{flex:1;min-height:480px;position:relative;background:#e8e4d8}
+.oh-tp-map-toolbar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid var(--oh-border);background:var(--oh-surface);font-size:.8125rem;color:var(--oh-text-secondary)}
+.oh-tp-map-toolbar-spacer{flex:1}
+.oh-tp-map-count{font-family:var(--oh-font-mono);color:var(--oh-text);font-size:.8125rem}
+
+/* Pie pins (SVG built in JS — only positioning + state CSS here) */
+.oh-tp-pin{cursor:pointer;transition:transform .15s ease,filter .15s ease}
+.oh-tp-pin-pie{width:64px;height:64px}
+.oh-tp-pin-pie:hover{transform:scale(1.06);filter:drop-shadow(0 4px 8px rgba(40,25,5,.5));z-index:8}
+.oh-tp-pin-svg{display:block}
+.oh-tp-pin-backing{fill:rgba(245,237,227,.92);stroke:none}
+.oh-tp-pin-ring{fill:none;stroke:var(--oh-card-border,#8B6F47);stroke-width:2.5}
+.oh-tp-pin-inner{fill:rgba(255,248,240,.95);stroke:#6b5a3a;stroke-width:1}
+.oh-tp-pin-num{font:700 .75rem var(--oh-font-mono);fill:var(--oh-text,#2a2a2a);pointer-events:none;dominant-baseline:middle}
+.oh-tp-wedge{transition:opacity .2s}
+.oh-tp-wedge-start{fill:var(--oh-stage-start)}
+.oh-tp-wedge-early{fill:var(--oh-stage-early)}
+.oh-tp-wedge-mid  {fill:var(--oh-stage-midgame)}
+.oh-tp-wedge-late {fill:var(--oh-stage-lategame)}
+.oh-tp-pin-zero{width:10px;height:10px;border-radius:50%;background:var(--c,#666);border:1.5px solid rgba(255,255,255,.85);box-shadow:0 1px 2px rgba(0,0,0,.4);opacity:.85}
+.oh-tp-pin-zero[data-kind="town"]{--c:var(--oh-kind-town)}
+.oh-tp-pin-zero[data-kind="village"]{--c:var(--oh-kind-village)}
+.oh-tp-pin-zero[data-kind="magical"]{--c:var(--oh-kind-magical)}
+.oh-tp-pin-zero[data-kind="hobbit"]{--c:var(--oh-kind-hobbit)}
+.oh-tp-pin-zero[data-kind="wilderness"]{--c:var(--oh-kind-wilderness)}
+.oh-tp-pin-zero[data-kind="pointofinterest"]{--c:var(--oh-kind-town)}
+.oh-tp-pin-zero[data-kind="dungeon"]{--c:var(--oh-kind-magical)}
+.oh-tp-pin-dragtarget{transform:scale(1.18);filter:drop-shadow(0 0 0 4px rgba(212,166,60,.55)) drop-shadow(0 4px 8px rgba(40,25,5,.5));z-index:9;position:relative}
+.oh-tp-pin-dragtarget::after{content:"+";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font:700 1.6rem var(--oh-font-mono);color:var(--oh-stage-early);text-shadow:0 1px 2px rgba(0,0,0,.5);pointer-events:none}
+
+/* Assignment panel ----------------------------------------- */
+.oh-tp-assign-panel{display:flex;flex-direction:column;background:var(--oh-surface);border:1px solid var(--oh-card-border,var(--oh-border));border-radius:var(--oh-radius);box-shadow:var(--oh-shadow);overflow:hidden;min-height:520px}
+.oh-tp-assign-hdr{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--oh-border);background:var(--oh-surface-alt)}
+.oh-tp-assign-hdr h5{margin:0;font:700 1rem var(--oh-font-heading);color:var(--oh-primary);flex:1}
+.oh-tp-assign-hdr .oh-tp-close{background:none;border:none;font-size:1.1rem;cursor:pointer;color:var(--oh-text-secondary);padding:2px 6px;line-height:1}
+.oh-tp-assign-hdr .oh-tp-close:hover{color:var(--oh-primary)}
+.oh-tp-assign-body{flex:1;overflow-y:auto;padding:14px}
+.oh-tp-assign-filters{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.oh-tp-assign-tabs{display:flex;gap:2px;padding:6px 10px 0;border-bottom:1px solid var(--oh-border);background:var(--oh-surface-alt)}
+.oh-tp-assign-tab{font:600 .8125rem var(--oh-font-body);padding:8px 14px;background:none;border:none;border-bottom:3px solid transparent;color:var(--oh-text-secondary);cursor:pointer}
+.oh-tp-assign-tab.active{color:var(--oh-primary);border-bottom-color:var(--oh-primary)}
+
+/* Pool grid (5:7 MTG tiles) -------------------------------- */
+.oh-tp-pool-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}
+.oh-tp-pool-grid.oh-tp-pool-compact{grid-template-columns:repeat(auto-fill,minmax(84px,1fr))}
+.oh-tp-pool-tile{position:relative;aspect-ratio:5/7;border-radius:8px;border:1px solid var(--oh-card-border,var(--oh-border));background:var(--oh-surface-alt);cursor:grab;user-select:none;overflow:hidden;box-shadow:var(--oh-shadow);transition:transform .15s,box-shadow .15s}
+.oh-tp-pool-tile:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(45,80,22,.25);z-index:3}
+.oh-tp-pool-tile:active{cursor:grabbing}
+.oh-tp-pool-tile.selected{border-color:var(--oh-primary);box-shadow:0 0 0 2px var(--oh-primary-light) inset,var(--oh-shadow-lg)}
+.oh-tp-pool-tile-dragging{opacity:.5;transform:rotate(-3deg) scale(.98)}
+.oh-tp-pool-tile-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.oh-tp-pool-tile-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:var(--oh-primary-light);background:var(--oh-surface-alt)}
+.oh-tp-pool-tile-name{position:absolute;left:4px;right:4px;bottom:4px;font:600 .75rem var(--oh-font-body);color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8);line-height:1.15;max-height:2.3em;overflow:hidden}
+.oh-tp-pool-tile-badge{position:absolute;top:4px;right:4px;background:rgba(45,80,22,.92);color:#fff;border-radius:99px;padding:1px 6px;font:600 .6875rem var(--oh-font-mono);letter-spacing:.01em}
+
+/* Drag hint banner */
+.oh-tp-drag-hint{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--oh-stage-early-soft);border:1px dashed var(--oh-stage-early);border-radius:var(--oh-radius-sm);color:var(--oh-text);font-size:.8125rem;margin-bottom:8px}
+.oh-tp-drag-hint i{color:var(--oh-stage-early)}
+
+/* Location focus — Přehled list */
+.oh-tp-focus-summary{display:flex;align-items:center;gap:12px;padding:10px;background:var(--oh-primary-surface);border-radius:var(--oh-radius-sm);margin-bottom:10px}
+.oh-tp-focus-stats{display:flex;flex-wrap:wrap;gap:10px;font-family:var(--oh-font-mono);font-size:.8125rem}
+.oh-tp-focus-stats .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.oh-tp-focus-quest{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--oh-surface);border:1px solid var(--oh-border);border-radius:var(--oh-radius-sm);margin-bottom:6px;cursor:pointer;transition:border-color .15s}
+.oh-tp-focus-quest:hover{border-color:var(--oh-primary-light)}
+.oh-tp-focus-quest-title{flex:1;font:600 .875rem var(--oh-font-body);color:var(--oh-text)}
+.oh-tp-focus-quest-meta{font-size:.75rem;color:var(--oh-text-secondary);font-family:var(--oh-font-mono)}
+.oh-tp-focus-stash-hdr{font:600 .75rem var(--oh-font-body);color:var(--oh-text-secondary);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 6px}
+.oh-tp-focus-group-hdr{display:flex;align-items:center;gap:6px;font:700 .875rem var(--oh-font-heading);color:var(--oh-primary);margin:10px 0 6px}
+.oh-tp-focus-group-hdr .sw{width:10px;height:10px;border-radius:2px}
+
+/* Assignment form */
+.oh-tp-form-row{margin-bottom:12px}
+.oh-tp-form-label{font:600 .8125rem var(--oh-font-body);color:var(--oh-text-secondary);margin-bottom:4px;display:block}
+.oh-tp-stage-picker{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.oh-tp-stage-picker label{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 6px;border:1px solid var(--oh-border);border-radius:var(--oh-radius-sm);background:var(--oh-surface);cursor:pointer;transition:all .15s;font:600 .75rem var(--oh-font-body);color:var(--oh-text-secondary)}
+.oh-tp-stage-picker label:hover{border-color:var(--c);color:var(--oh-text)}
+.oh-tp-stage-picker label[data-stage="start"]{--c:var(--oh-stage-start)}
+.oh-tp-stage-picker label[data-stage="early"]{--c:var(--oh-stage-early)}
+.oh-tp-stage-picker label[data-stage="mid"],.oh-tp-stage-picker label[data-stage="midgame"]{--c:var(--oh-stage-midgame)}
+.oh-tp-stage-picker label[data-stage="late"],.oh-tp-stage-picker label[data-stage="lategame"]{--c:var(--oh-stage-lategame)}
+.oh-tp-stage-picker input{position:absolute;opacity:0;pointer-events:none}
+.oh-tp-stage-picker label:has(input:checked){background:var(--c);color:#fff;border-color:var(--c)}
+.oh-tp-stage-picker label[data-stage="early"]:has(input:checked){color:#3a2612}
+.oh-tp-target-radios{display:flex;gap:10px;align-items:center;padding:8px;background:var(--oh-surface-alt);border-radius:var(--oh-radius-sm)}
+.oh-tp-target-radios label{display:inline-flex;align-items:center;gap:6px;font:600 .8125rem var(--oh-font-body);color:var(--oh-text);cursor:pointer}
+.oh-tp-target-radios input[disabled] + span{color:var(--oh-text-secondary);cursor:not-allowed}
+.oh-tp-unlimited-toggle{display:flex;align-items:center;gap:8px;padding:10px;background:var(--oh-stage-early-soft);border:1px dashed var(--oh-stage-early);border-radius:var(--oh-radius-sm);margin:8px 0}
+.oh-tp-unlimited-toggle i{color:var(--oh-stage-early)}
+.oh-tp-unlimited-pick{display:flex;gap:6px;align-items:end;margin-top:8px}
+.oh-tp-chosen-items{margin-top:10px}
+.oh-tp-chosen-row{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:.8125rem}
+.oh-tp-chosen-row .remove{background:none;border:none;color:var(--oh-error);cursor:pointer;padding:0 4px}
+.oh-tp-form-footer{display:flex;gap:8px;justify-content:flex-end;align-items:center;padding-top:12px;border-top:1px solid var(--oh-border);margin-top:12px}
+.oh-tp-form-footer .spacer{flex:1}
+
+/* Zone 3 — overview ---------------------------------------- */
+.oh-tp-z3{background:var(--oh-surface);border:1px solid var(--oh-card-border,var(--oh-border));border-radius:var(--oh-radius);box-shadow:var(--oh-shadow);overflow:hidden}
+.oh-tp-z3-bar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--oh-surface-alt);border-bottom:1px solid var(--oh-border);cursor:pointer;user-select:none}
+.oh-tp-z3-bar h5{margin:0;flex:1;font:700 .9375rem var(--oh-font-heading);color:var(--oh-primary)}
+.oh-tp-z3-bar i{color:var(--oh-primary);transition:transform .2s}
+.oh-tp-z3.collapsed .oh-tp-z3-bar i{transform:rotate(-90deg)}
+.oh-tp-z3-body{padding:10px}
+
+/* Responsive ----------------------------------------------- */
+@media (max-width:1100px){
+    .oh-tp-pipeline{grid-template-columns:repeat(2,1fr);grid-auto-rows:auto}
+    .oh-tp-workspace{grid-template-columns:1fr;min-height:auto}
+}

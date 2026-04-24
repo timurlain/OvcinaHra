@@ -1,0 +1,251 @@
+@using OvcinaHra.Shared.Dtos
+@using OvcinaHra.Shared.Domain.Enums
+
+<div class="oh-tp-form">
+    <div class="oh-tp-form-row">
+        <label class="oh-tp-form-label">Název</label>
+        <DxTextBox @bind-Text="@title" NullText="např. Poklad v Mlžných horách" />
+    </div>
+
+    <div class="oh-tp-form-row">
+        <label class="oh-tp-form-label">Fáze hry</label>
+        <div class="oh-tp-stage-picker">
+            @foreach (var s in stageKeys)
+            {
+                <label data-stage="@s.Key">
+                    <input type="radio" name="stage" value="@s.Value"
+                           checked="@(difficulty == s.Value)"
+                           @onchange="() => difficulty = s.Value" />
+                    <span>@s.Label</span>
+                </label>
+            }
+        </div>
+    </div>
+
+    <div class="oh-tp-form-row">
+        <label class="oh-tp-form-label">Umístění</label>
+        <div class="oh-tp-target-radios">
+            <label>
+                <input type="radio" name="target" checked="@(!toStash)"
+                       @onchange="() => toStash = false" />
+                <span>Na lokaci</span>
+            </label>
+            <label>
+                <input type="radio" name="target" checked="@toStash"
+                       disabled="@(Stashes.Count == 0)"
+                       @onchange="() => toStash = true" />
+                <span>Do skrýše@(Stashes.Count == 0 ? " (žádná skrýš)" : "")</span>
+            </label>
+        </div>
+        @if (toStash && Stashes.Count > 0)
+        {
+            <div class="mt-2">
+                <DxComboBox Data="@Stashes"
+                            @bind-Value="@stashId"
+                            TextFieldName="Name" ValueFieldName="Id"
+                            NullText="Vyberte skrýš…" />
+            </div>
+        }
+    </div>
+
+    @if (SelectedPool.Count > 0)
+    {
+        <div class="oh-tp-form-row">
+            <label class="oh-tp-form-label">Ze zásobníku (@SelectedPool.Count)</label>
+            <div class="oh-tp-chosen-items">
+                @foreach (var p in SelectedPool)
+                {
+                    <div class="oh-tp-chosen-row">
+                        <i class="bi bi-check-circle text-success"></i>
+                        <span class="flex-grow-1">@p.ItemName</span>
+                        <span class="oh-tp-focus-quest-meta">×@p.Count</span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="oh-tp-unlimited-toggle">
+        <i class="bi bi-infinity"></i>
+        <div class="flex-grow-1">
+            <div style="font-weight:600">Nekonečné předměty</div>
+            <div class="oh-tp-focus-quest-meta">Nespotřebují se ze zásobníku — vhodné pro lektvary, mince, šifry.</div>
+        </div>
+    </div>
+    <div class="oh-tp-unlimited-pick">
+        <DxComboBox Data="@Unlimited" @bind-Value="@newUnlimitedItemId"
+                    TextFieldName="ItemName" ValueFieldName="ItemId"
+                    NullText="Přidat nekonečný předmět…"
+                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
+                    style="flex:1" />
+        <DxSpinEdit @bind-Value="@newUnlimitedCount" MinValue="1" MaxValue="99" style="width:80px" />
+        <button class="btn btn-sm btn-outline-primary"
+                @onclick="AddUnlimited"
+                disabled="@(newUnlimitedItemId is null)">
+            <i class="bi bi-plus-circle"></i>
+        </button>
+    </div>
+    @if (unlimitedItems.Count > 0)
+    {
+        <div class="oh-tp-chosen-items">
+            @foreach (var u in unlimitedItems)
+            {
+                <div class="oh-tp-chosen-row">
+                    <i class="bi bi-infinity" style="color:var(--oh-stage-early)"></i>
+                    <span class="flex-grow-1">@u.Name</span>
+                    <span class="oh-tp-focus-quest-meta">×@u.Count</span>
+                    <button type="button" class="remove" @onclick="() => unlimitedItems.Remove(u)"
+                            aria-label="Odebrat"><i class="bi bi-x-circle"></i></button>
+                </div>
+            }
+        </div>
+    }
+
+    <div class="oh-tp-form-row mt-3">
+        <label class="oh-tp-form-label">Nápověda (volitelné)</label>
+        <DxMemo @bind-Text="@clue" Rows="2" />
+    </div>
+
+    @if (error is not null)
+    {
+        <div class="alert alert-danger mt-2">@error</div>
+    }
+
+    <div class="oh-tp-form-footer">
+        <div class="spacer"></div>
+        <button type="button" class="btn btn-secondary" @onclick="CancelAsync" disabled="@saving">
+            Zrušit
+        </button>
+        <button type="button" class="btn btn-primary" @onclick="SaveAsync" disabled="@(saving || !CanSave())">
+            @if (saving)
+            {
+                <span class="spinner-border spinner-border-sm me-1"></span>
+            }
+            Schovat poklad
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public int GameId { get; set; }
+    [Parameter] public int? LocationId { get; set; }
+    [Parameter] public string? LocationName { get; set; }
+    [Parameter] public List<StashSummaryDto> Stashes { get; set; } = [];
+    [Parameter] public List<TreasurePoolItemDto> SelectedPool { get; set; } = [];
+    [Parameter] public List<UnlimitedItemDto> Unlimited { get; set; } = [];
+    [Parameter] public TreasureQuestDifficulty InitialDifficulty { get; set; } = TreasureQuestDifficulty.Start;
+    [Parameter] public string? InitialTitle { get; set; }
+    [Parameter] public EventCallback<AssignTreasureDto> OnSave { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private string title = "";
+    private string? clue;
+    private TreasureQuestDifficulty difficulty;
+    private bool toStash;
+    private int? stashId;
+    private int? newUnlimitedItemId;
+    private int newUnlimitedCount = 1;
+    private readonly List<UnlimitedChoice> unlimitedItems = [];
+    private bool saving;
+    private string? error;
+
+    private record UnlimitedChoice(int ItemId, string Name, int Count);
+
+    private record StagePick(string Key, TreasureQuestDifficulty Value, string Label);
+
+    private static readonly List<StagePick> stageKeys =
+    [
+        new("start", TreasureQuestDifficulty.Start, "Start"),
+        new("early", TreasureQuestDifficulty.Early, "Rozvoj hry"),
+        new("mid", TreasureQuestDifficulty.Midgame, "Střed hry"),
+        new("late", TreasureQuestDifficulty.Lategame, "Závěr hry")
+    ];
+
+    private bool _initialised;
+    private int? _lastLocationId;
+    private string? _lastInitialTitle;
+
+    protected override void OnParametersSet()
+    {
+        if (!_initialised || _lastLocationId != LocationId || _lastInitialTitle != InitialTitle)
+        {
+            _initialised = true;
+            _lastLocationId = LocationId;
+            _lastInitialTitle = InitialTitle;
+
+            title = InitialTitle ?? BuildDefaultTitle();
+            difficulty = InitialDifficulty;
+            toStash = false;
+            stashId = null;
+            clue = null;
+            newUnlimitedItemId = null;
+            newUnlimitedCount = 1;
+            unlimitedItems.Clear();
+            error = null;
+        }
+    }
+
+    private string BuildDefaultTitle()
+    {
+        var loc = LocationName ?? "lokace";
+        var itemPart = SelectedPool.Count switch
+        {
+            0 => "Poklad",
+            1 => SelectedPool[0].ItemName,
+            _ => $"{SelectedPool.Count} předmětů"
+        };
+        return $"{itemPart} @ {loc}";
+    }
+
+    private void AddUnlimited()
+    {
+        if (newUnlimitedItemId is null) return;
+        var item = Unlimited.FirstOrDefault(u => u.ItemId == newUnlimitedItemId.Value);
+        if (item is null) return;
+        var existing = unlimitedItems.FirstOrDefault(u => u.ItemId == item.ItemId);
+        if (existing is not null) unlimitedItems.Remove(existing);
+        unlimitedItems.Add(new UnlimitedChoice(item.ItemId, item.ItemName, newUnlimitedCount));
+        newUnlimitedItemId = null;
+        newUnlimitedCount = 1;
+    }
+
+    private bool CanSave() =>
+        !string.IsNullOrWhiteSpace(title)
+        && (toStash ? stashId.HasValue : LocationId.HasValue)
+        && (SelectedPool.Count > 0 || unlimitedItems.Count > 0);
+
+    private async Task SaveAsync()
+    {
+        error = null;
+        if (!CanSave())
+        {
+            error = "Vyplň název, cíl a alespoň jeden předmět.";
+            return;
+        }
+        saving = true;
+        try
+        {
+            var dto = new AssignTreasureDto(
+                title.Trim(),
+                difficulty,
+                GameId,
+                string.IsNullOrWhiteSpace(clue) ? null : clue.Trim(),
+                toStash ? null : LocationId,
+                toStash ? stashId : null,
+                SelectedPool.Select(p => p.Id).ToList(),
+                unlimitedItems.Select(u => new UnlimitedItemAssignDto(u.ItemId, u.Count)).ToList());
+
+            await OnSave.InvokeAsync(dto);
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private Task CancelAsync() => OnCancel.InvokeAsync();
+}

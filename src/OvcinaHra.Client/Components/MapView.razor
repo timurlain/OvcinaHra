@@ -14,6 +14,8 @@
     [Parameter] public EventCallback<int> OnMarkerClick { get; set; }
     [Parameter] public EventCallback<OvcinaMarkerDragEventArgs> OnMarkerDrag { get; set; }
     [Parameter] public EventCallback OnStyleLoaded { get; set; }
+    [Parameter] public EventCallback<int> OnPieMarkerClick { get; set; }
+    [Parameter] public EventCallback<PiePayloadEventArgs> OnPieMarkerDrop { get; set; }
 
     private readonly string _elementId = $"map-{Guid.NewGuid():N}";
     private DotNetObjectReference<MapView>? _dotnetRef;
@@ -52,9 +54,38 @@
     public async Task UpdateMarkerPositionAsync(int id, double lat, double lon)
         => await JS.InvokeVoidAsync("ovcinaMap.updateMarkerPosition", id, lat, lon);
 
+    public async Task AddPieMarkerAsync(int id, double lat, double lon, int[] counts, int maxCount)
+        => await JS.InvokeVoidAsync("ovcinaMap.addPieMarker", id, lat, lon, counts, maxCount);
+
+    public async Task UpdatePieMarkerCountsAsync(int id, int[] counts, int maxCount)
+        => await JS.InvokeVoidAsync("ovcinaMap.updatePieMarkerCounts", id, counts, maxCount);
+
+    public async Task RemovePieMarkerAsync(int id)
+        => await JS.InvokeVoidAsync("ovcinaMap.removePieMarker", id);
+
+    public async Task AddZeroMarkerAsync(int id, double lat, double lon, string name, string kind)
+        => await JS.InvokeVoidAsync("ovcinaMap.addZeroMarker", id, lat, lon, name, kind);
+
+    public async Task RemoveZeroMarkerAsync(int id)
+        => await JS.InvokeVoidAsync("ovcinaMap.removeZeroMarker", id);
+
+    public async Task ClearPieMarkersAsync()
+        => await JS.InvokeVoidAsync("ovcinaMap.clearPieMarkers");
+
+    public async Task SetStageFilterAsync(IReadOnlyCollection<string>? stages)
+        => await JS.InvokeVoidAsync("ovcinaMap.setStageFilter", (object?)(stages?.ToArray()));
+
     [JSInvokable]
     public async Task OnMapClicked(double lat, double lng)
         => await OnMapClick.InvokeAsync(new OvcinaMapClickEventArgs(lat, lng));
+
+    [JSInvokable]
+    public async Task OnPieMarkerClicked(int id)
+        => await OnPieMarkerClick.InvokeAsync(id);
+
+    [JSInvokable]
+    public async Task OnPieMarkerDropped(int locationId, string payload)
+        => await OnPieMarkerDrop.InvokeAsync(new PiePayloadEventArgs(locationId, payload));
 
     [JSInvokable]
     public async Task OnMarkerClicked(int id)
