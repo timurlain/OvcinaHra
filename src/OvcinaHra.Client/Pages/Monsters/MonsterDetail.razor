@@ -39,9 +39,9 @@ else
                     <i class="bi @MonsterTypeIcon(monster.MonsterType)"></i>@monster.MonsterType.GetDisplayName()
                 </span>
                 <span class="oh-mon-d-dotsep">·</span>
-                <span class="oh-mon-d-kbadge"><i class="bi bi-bar-chart-steps"></i>K@monster.Category</span>
+                <span class="oh-mon-d-kbadge"><i class="bi bi-bar-chart-steps"></i>K@(monster.Category)</span>
                 <span class="oh-mon-d-dotsep">·</span>
-                <span class="oh-mon-d-id">#M@monster.Id.ToString("D3")</span>
+                <span class="oh-mon-d-id">#M@(monster.Id.ToString("D3"))</span>
             </div>
         </div>
         <div class="oh-mon-d-ts-actions">
@@ -65,9 +65,6 @@ else
         </button>
         <button class="oh-mon-d-tab @(activeTab == "upravit" ? "oh-mon-d-active" : null)" @onclick='() => SetTab("upravit")'>
             <i class="bi bi-pencil"></i> Upravit
-        </button>
-        <button class="oh-mon-d-tab @(activeTab == "bojovka" ? "oh-mon-d-active" : null)" @onclick='() => SetTab("bojovka")'>
-            <i class="bi bi-shield-shaded"></i> Bojovka
         </button>
         <button class="oh-mon-d-tab @(activeTab == "korist" ? "oh-mon-d-active" : null)" @onclick='() => SetTab("korist")'>
             <i class="bi bi-gem"></i> Kořist
@@ -209,7 +206,7 @@ else
                         <ImagePicker EntityType="monsters" EntityId="monster.Id" Alt="Obrázek příšery" AspectRatio="4:3" />
                     </DxFormLayoutItem>
                 </DxFormLayoutGroup>
-                <DxFormLayoutGroup Caption="Bojovka" ColSpanMd="12">
+                <DxFormLayoutGroup Caption="Soubojová karta" ColSpanMd="12">
                     <DxFormLayoutItem Caption="Útok" ColSpanMd="4">
                         <DxSpinEdit @bind-Value="@editAttack" MinValue="0" />
                     </DxFormLayoutItem>
@@ -257,52 +254,6 @@ else
                 <button class="btn btn-secondary" @onclick="CancelEdit" disabled="@isSaving">Zrušit</button>
                 <button class="btn btn-primary" @onclick="SaveAsync"
                         disabled="@(isSaving || string.IsNullOrWhiteSpace(editName))">Uložit</button>
-            </div>
-        }
-        else if (activeTab == "bojovka")
-        {
-            <div class="oh-mon-d-bestiary">
-                <div class="oh-mon-d-bojovka">
-                    <div class="oh-mon-d-hp">
-                        <span class="oh-mon-d-hp-current">Životy: @tempHp / @monster.Health</span>
-                        <button type="button" @onclick="() => tempHp -= 1">−1 Život</button>
-                        <button type="button" @onclick="() => tempHp += 1">+1 Život</button>
-                        <button type="button" @onclick="() => tempHp = monster!.Health">resetovat</button>
-                    </div>
-                    <div class="oh-mon-d-bigstats">
-                        <div class="oh-mon-d-bigstat">
-                            <span class="oh-mon-d-bigstat-lab">Útok</span>
-                            <span class="oh-mon-d-bigstat-val">@monster.Attack</span>
-                        </div>
-                        <div class="oh-mon-d-bigstat">
-                            <span class="oh-mon-d-bigstat-lab">Obrana</span>
-                            <span class="oh-mon-d-bigstat-val">@monster.Defense</span>
-                        </div>
-                        <div class="oh-mon-d-bigstat">
-                            <span class="oh-mon-d-bigstat-lab">Životy</span>
-                            <span class="oh-mon-d-bigstat-val">@monster.Health</span>
-                        </div>
-                    </div>
-                    @if (!string.IsNullOrWhiteSpace(monster.Abilities))
-                    {
-                        <div>
-                            <div class="oh-mon-d-sect-label"><i class="bi bi-magic"></i>Schopnosti</div>
-                            <ol class="oh-mon-d-abilities-list">
-                                @foreach (var line in SplitLines(monster.Abilities))
-                                {
-                                    <li>@line</li>
-                                }
-                            </ol>
-                        </div>
-                    }
-                    @if (!string.IsNullOrWhiteSpace(monster.AiBehavior))
-                    {
-                        <div>
-                            <div class="oh-mon-d-sect-label"><i class="bi bi-cpu"></i>AI chování</div>
-                            <blockquote class="oh-mon-d-ai-quote">@monster.AiBehavior</blockquote>
-                        </div>
-                    }
-                </div>
             </div>
         }
         else if (activeTab == "korist")
@@ -495,9 +446,6 @@ else
     private string? editAbilities, editAiBehavior, editRewardNotes, editNotes;
     private int editRewardXp, editRewardMoney;
 
-    // Bojovka local-only HP counter
-    private int tempHp;
-
     // Kořist tab data
     private List<MonsterLootByGameDto>? lootGroups;
     private Dictionary<int, string?> itemImageUrls = new();
@@ -542,7 +490,6 @@ else
             if (monster is not null)
             {
                 ResetEditFromMonster();
-                tempHp = monster.Health;
                 heroImageFailed = false;
                 heroImageUrl = null;
                 if (!string.IsNullOrWhiteSpace(monster.ImagePath))
@@ -576,11 +523,7 @@ else
     private async Task SetTab(string tab)
     {
         activeTab = tab;
-        if (tab == "bojovka" && monster is not null)
-        {
-            tempHp = monster.Health;
-        }
-        else if (tab == "korist")
+        if (tab == "korist")
         {
             if (lootGroups is null) await LoadLootGroupsAsync();
             if (allItems.Count == 0) allItems = await Api.GetListAsync<ItemListDto>("/api/items");
@@ -751,9 +694,6 @@ else
         }
         catch (Exception ex) { error = ex.Message; isRemoveFromGameVisible = false; }
     }
-
-    private static IEnumerable<string> SplitLines(string s)
-        => s.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line => line.Trim()).Where(line => line.Length > 0);
 
     private static string MonsterTypeIcon(MonsterType t) => t switch
     {
