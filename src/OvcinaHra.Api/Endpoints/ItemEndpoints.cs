@@ -99,14 +99,25 @@ public static class ItemEndpoints
         return TypedResults.Created($"/api/items/{item.Id}", ToDetailDto(item));
     }
 
-    private static async Task<Results<NoContent, NotFound>> Update(int id, UpdateItemDto dto, WorldDbContext db)
+    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> Update(int id, UpdateItemDto dto, WorldDbContext db)
     {
+        // Effect now reachable via inline edit (issue #119) — cap the length
+        // server-side since DevExpress DxTextBox MaxLength isn't reliable in
+        // 25.2.5. 500 chars is a generous ceiling for an in-game item effect
+        // blurb; anything longer probably belongs in the catalog detail.
+        var effect = dto.Effect?.Trim();
+        if (!string.IsNullOrEmpty(effect) && effect.Length > 500)
+            return TypedResults.Problem(
+                title: "Efekt je příliš dlouhý",
+                detail: "Popis efektu nesmí být delší než 500 znaků.",
+                statusCode: StatusCodes.Status400BadRequest);
+
         var item = await db.Items.FindAsync(id);
         if (item is null) return TypedResults.NotFound();
 
         item.Name = dto.Name;
         item.ItemType = dto.ItemType;
-        item.Effect = dto.Effect;
+        item.Effect = string.IsNullOrWhiteSpace(effect) ? null : effect;
         item.PhysicalForm = dto.PhysicalForm;
         item.IsCraftable = dto.IsCraftable;
         item.ClassRequirements = new ClassRequirements(dto.ReqWarrior, dto.ReqArcher, dto.ReqMage, dto.ReqThief);
@@ -206,15 +217,37 @@ public static class ItemEndpoints
             new GameItemDto(gi.GameId, gi.ItemId, itemName, gi.Price, gi.StockCount, gi.IsSold, gi.SaleCondition, gi.IsFindable));
     }
 
-    private static async Task<Results<NoContent, NotFound>> UpdateGameItem(int gameId, int itemId, UpdateGameItemDto dto, WorldDbContext db)
+    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> UpdateGameItem(int gameId, int itemId, UpdateGameItemDto dto, WorldDbContext db)
     {
+        // Inline-edit (issue #119) hits this endpoint directly from the grid,
+        // so validation guards bad inputs with Czech ProblemDetails that the
+        // grid can surface verbatim.
+        if (dto.Price is < 0)
+            return TypedResults.Problem(
+                title: "Neplatná cena",
+                detail: "Cena nesmí být záporná.",
+                statusCode: StatusCodes.Status400BadRequest);
+
+        if (dto.StockCount is < 0)
+            return TypedResults.Problem(
+                title: "Neplatný sklad",
+                detail: "Počet na skladě nesmí být záporný.",
+                statusCode: StatusCodes.Status400BadRequest);
+
+        var saleCondition = dto.SaleCondition?.Trim();
+        if (!string.IsNullOrEmpty(saleCondition) && saleCondition.Length > 200)
+            return TypedResults.Problem(
+                title: "Podmínka prodeje je příliš dlouhá",
+                detail: "Podmínka prodeje nesmí být delší než 200 znaků.",
+                statusCode: StatusCodes.Status400BadRequest);
+
         var gi = await db.GameItems.FindAsync(gameId, itemId);
         if (gi is null) return TypedResults.NotFound();
 
         gi.Price = dto.Price;
         gi.StockCount = dto.StockCount;
         gi.IsSold = dto.IsSold;
-        gi.SaleCondition = dto.SaleCondition;
+        gi.SaleCondition = string.IsNullOrWhiteSpace(saleCondition) ? null : saleCondition;
         gi.IsFindable = dto.IsFindable;
 
         await db.SaveChangesAsync();

@@ -83,7 +83,10 @@ else if (!Catalog && gameItems.Count == 0)
 }
 else if (Catalog)
 {
-    <OvcinaGrid Data="@visibleCatalogItems" KeyFieldName="Id" LayoutKey="grid-layout-items-v4"
+    <OvcinaGrid Data="@visibleCatalogItems" KeyFieldName="Id" LayoutKey="grid-layout-items-v5"
+                EditMode="GridEditMode.EditCell"
+                CustomizeEditModel="OnCatalogCustomizeEdit"
+                EditModelSaving="OnCatalogSaving"
                 RowClick="@(e => OpenQuickPeek((ItemListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             @* Akce — fixed left. Otevřít detail → /items/{id} mirrors the LocationList
@@ -107,7 +110,7 @@ else if (Catalog)
                 </CellDisplayTemplate>
             </DxGridDataColumn>
 
-            <DxGridDataColumn FieldName="Id" Caption="#" Width="60px" Visible="false" />
+            <DxGridDataColumn FieldName="Id" Caption="#" Width="60px" Visible="false" ReadOnly="true" />
 
             @* Foto — 5:7 MTG-card aspect tile per issue #97 (was 4:3). Narrow width
                matches a 48 px row; the tile component handles fail-state itself. *@
@@ -127,9 +130,11 @@ else if (Catalog)
                 </CellDisplayTemplate>
             </DxGridDataColumn>
 
-            <DxGridDataColumn FieldName="Name" Caption="Název" MinWidth="220" />
-            <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="Typ" Width="130px" />
-            <DxGridDataColumn FieldName="PhysicalFormDisplay" Caption="Podoba" Width="150px" />
+            @* ReadOnly on catalog-shape fields — issue #119 limits inline-edit
+               to Effect only. Name/Typ/Podoba changes live in the edit popup. *@
+            <DxGridDataColumn FieldName="Name" Caption="Název" MinWidth="220" ReadOnly="true" />
+            <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="Typ" Width="130px" ReadOnly="true" />
+            <DxGridDataColumn FieldName="PhysicalFormDisplay" Caption="Podoba" Width="150px" ReadOnly="true" />
 
             @* Požadavky — single-column 4-pip cluster (issue #97). Icons light up
                by level; tooltip per pip names the class + level. Default visible. *@
@@ -143,20 +148,30 @@ else if (Catalog)
             @* Individual class columns — just the number, hidden by default. User
                reveals via the column chooser when they want to filter/group on a
                specific class level. No icon here — the pip cluster owns the visual. *@
-            <DxGridDataColumn FieldName="ReqWarrior" Caption="Vál." Width="72px" Visible="false">
+            <DxGridDataColumn FieldName="ReqWarrior" Caption="Vál." Width="72px" Visible="false" ReadOnly="true">
                 <CellDisplayTemplate>@RenderReq((int)context.Value)</CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="ReqArcher" Caption="Luč." Width="72px" Visible="false">
+            <DxGridDataColumn FieldName="ReqArcher" Caption="Luč." Width="72px" Visible="false" ReadOnly="true">
                 <CellDisplayTemplate>@RenderReq((int)context.Value)</CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="ReqMage" Caption="Mág" Width="72px" Visible="false">
+            <DxGridDataColumn FieldName="ReqMage" Caption="Mág" Width="72px" Visible="false" ReadOnly="true">
                 <CellDisplayTemplate>@RenderReq((int)context.Value)</CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="ReqThief" Caption="Zlo." Width="72px" Visible="false">
+            <DxGridDataColumn FieldName="ReqThief" Caption="Zlo." Width="72px" Visible="false" ReadOnly="true">
                 <CellDisplayTemplate>@RenderReq((int)context.Value)</CellDisplayTemplate>
             </DxGridDataColumn>
 
-            <DxGridDataColumn FieldName="Effect" Caption="Efekt" Width="240px" Visible="false" />
+            @* Effect — inline-editable (issue #119). Visible by default so the
+               edit affordance is immediately discoverable; users can still hide
+               via the column chooser. Click the cell → DxTextBox appears,
+               blur/Tab saves via PUT /api/items/{id}. *@
+            <DxGridDataColumn FieldName="Effect" Caption="Efekt" Width="320px">
+                <CellEditTemplate>
+                    <DxTextBox Text="@(((ItemInlineEditBuffer)context.EditModel).Effect)"
+                               TextChanged="@(v => ((ItemInlineEditBuffer)context.EditModel).Effect = v)"
+                               NullText="(žádný efekt)" />
+                </CellEditTemplate>
+            </DxGridDataColumn>
 
             @* Flagy 3-cell box — Unikát/Limit/Craftable in catalog *@
             <DxGridDataColumn Caption="Flagy" Width="96px" AllowSort="false" AllowGroup="false">
@@ -167,7 +182,7 @@ else if (Catalog)
             </DxGridDataColumn>
 
             @* Catalog-only assign-to-current-game pill *@
-            <DxGridDataColumn FieldName="Id" Caption="Hra" Width="130px" AllowSort="false" AllowGroup="false">
+            <DxGridDataColumn FieldName="Id" Caption="Hra" Width="130px" AllowSort="false" AllowGroup="false" ReadOnly="true">
                 <CellDisplayTemplate>
                     @{
                         var itemId = (int)context.Value;
@@ -189,7 +204,10 @@ else if (Catalog)
 }
 else
 {
-    <OvcinaGrid Data="@visibleGameItems" KeyFieldName="Id" LayoutKey="grid-layout-items-game-v4"
+    <OvcinaGrid Data="@visibleGameItems" KeyFieldName="Id" LayoutKey="grid-layout-items-game-v5"
+                EditMode="GridEditMode.EditCell"
+                CustomizeEditModel="OnGameCustomizeEdit"
+                EditModelSaving="OnGameSaving"
                 RowClick="@(e => OpenQuickPeek((GameItemListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             @* Akce — fixed left. Primary "Otevřít detail" button per issue #97.
@@ -223,7 +241,7 @@ else
                 </CellDisplayTemplate>
             </DxGridDataColumn>
 
-            <DxGridDataColumn FieldName="Id" Caption="#" Width="60px" Visible="false" />
+            <DxGridDataColumn FieldName="Id" Caption="#" Width="60px" Visible="false" ReadOnly="true" />
 
             @* Foto — 5:7 MTG-card aspect tile per issue #97 (was 4:3). *@
             <DxGridDataColumn Caption="Foto" Width="58px" AllowSort="false" AllowGroup="false">
@@ -241,9 +259,13 @@ else
                 </CellDisplayTemplate>
             </DxGridDataColumn>
 
-            <DxGridDataColumn FieldName="Name" Caption="Název" MinWidth="220" />
-            <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="Typ" Width="130px" />
-            <DxGridDataColumn FieldName="PhysicalFormDisplay" Caption="Podoba" Width="150px" />
+            @* ReadOnly on catalog-shape fields — issue #119 scopes inline-edit to
+               per-game data only (Price / StockCount / SaleCondition). Changes to
+               the catalog (Name, Typ, Podoba, Effect, Požadavky) go through the
+               catalog grid or the edit popup. *@
+            <DxGridDataColumn FieldName="Name" Caption="Název" MinWidth="220" ReadOnly="true" />
+            <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="Typ" Width="130px" ReadOnly="true" />
+            <DxGridDataColumn FieldName="PhysicalFormDisplay" Caption="Podoba" Width="150px" ReadOnly="true" />
 
             @* Požadavky — single-column 4-pip cluster (issue #97). *@
             <DxGridDataColumn Caption="Požadavky" Width="184px" AllowSort="false" AllowGroup="false">
@@ -255,21 +277,22 @@ else
 
             @* Individual class columns — just the number, hidden by default.
                Revealed via the column chooser for filtering/grouping. *@
-            <DxGridDataColumn FieldName="ReqWarrior" Caption="Vál." Width="72px" Visible="false">
+            <DxGridDataColumn FieldName="ReqWarrior" Caption="Vál." Width="72px" Visible="false" ReadOnly="true">
                 <CellDisplayTemplate>@RenderReq((int)context.Value)</CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="ReqArcher" Caption="Luč." Width="72px" Visible="false">
+            <DxGridDataColumn FieldName="ReqArcher" Caption="Luč." Width="72px" Visible="false" ReadOnly="true">
                 <CellDisplayTemplate>@RenderReq((int)context.Value)</CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="ReqMage" Caption="Mág" Width="72px" Visible="false">
+            <DxGridDataColumn FieldName="ReqMage" Caption="Mág" Width="72px" Visible="false" ReadOnly="true">
                 <CellDisplayTemplate>@RenderReq((int)context.Value)</CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="ReqThief" Caption="Zlo." Width="72px" Visible="false">
+            <DxGridDataColumn FieldName="ReqThief" Caption="Zlo." Width="72px" Visible="false" ReadOnly="true">
                 <CellDisplayTemplate>@RenderReq((int)context.Value)</CellDisplayTemplate>
             </DxGridDataColumn>
 
-            @* Cena coin gold accent — strikethrough when IsSold=false *@
-            <DxGridDataColumn FieldName="Price" Caption="Cena" Width="92px">
+            @* Cena — inline-editable (issue #119). DxSpinEdit MinValue=0 mirrors
+               the edit-popup constraint. Display keeps the coin/strikethrough styling. *@
+            <DxGridDataColumn FieldName="Price" Caption="Cena" Width="110px">
                 <CellDisplayTemplate>
                     @{ var gi = (GameItemListDto)context.DataItem; }
                     @if (gi.Price.HasValue && gi.Price.Value > 0)
@@ -283,9 +306,17 @@ else
                         <span class="oh-it-coin oh-it-coin--empty">—</span>
                     }
                 </CellDisplayTemplate>
+                <CellEditTemplate>
+                    <DxSpinEdit Value="@(((GameItemInlineEditBuffer)context.EditModel).Price)"
+                                ValueExpression="@(() => ((GameItemInlineEditBuffer)context.EditModel).Price)"
+                                ValueChanged="@((int? v) => ((GameItemInlineEditBuffer)context.EditModel).Price = v)"
+                                MinValue="0" NullText="(žádná)" />
+                </CellEditTemplate>
             </DxGridDataColumn>
 
-            @* Sklad — count or ∞ for nil; meter-style is a follow-up (no max field on DTO) *@
+            @* Sklad — inline-editable (issue #119). Null = ∞ (unlimited).
+               Display keeps the ∞ glyph for nil; editor uses NullText so the user
+               can clear a value and get back to unlimited. *@
             <DxGridDataColumn FieldName="StockCount" Caption="Sklad" Width="132px">
                 <CellDisplayTemplate>
                     @{ var gi = (GameItemListDto)context.DataItem; }
@@ -298,9 +329,16 @@ else
                         <span class="oh-it-sklad oh-it-sklad--inf" title="Neomezený sklad">∞</span>
                     }
                 </CellDisplayTemplate>
+                <CellEditTemplate>
+                    <DxSpinEdit Value="@(((GameItemInlineEditBuffer)context.EditModel).StockCount)"
+                                ValueExpression="@(() => ((GameItemInlineEditBuffer)context.EditModel).StockCount)"
+                                ValueChanged="@((int? v) => ((GameItemInlineEditBuffer)context.EditModel).StockCount = v)"
+                                MinValue="0" NullText="(∞ neomezený)" />
+                </CellEditTemplate>
             </DxGridDataColumn>
 
-            @* Flagy — per-hra meaning: Prodává/Nalezitelný/Craftable *@
+            @* Flagy — per-hra meaning: Prodává/Nalezitelný/Craftable.
+               Kept in the dense 3-cell box; users toggle via the edit popup, not inline. *@
             <DxGridDataColumn Caption="Flagy" Width="96px" AllowSort="false" AllowGroup="false">
                 <CellDisplayTemplate>
                     @{ var gi = (GameItemListDto)context.DataItem; }
@@ -308,9 +346,22 @@ else
                 </CellDisplayTemplate>
             </DxGridDataColumn>
 
-            <DxGridDataColumn FieldName="Effect" Caption="Efekt" Width="240px" Visible="false" />
-            <DxGridDataColumn FieldName="RecipeSummary" Caption="Recept" Width="340px" Visible="false" />
-            <DxGridDataColumn FieldName="SaleCondition" Caption="Podmínka prodeje" Width="240px" Visible="false" />
+            <DxGridDataColumn FieldName="Effect" Caption="Efekt" Width="240px" Visible="false" ReadOnly="true" />
+            <DxGridDataColumn FieldName="RecipeSummary" Caption="Recept" Width="340px" Visible="false" ReadOnly="true" />
+
+            @* Podmínka prodeje — inline-editable (issue #119). Hidden by default
+               (rarely used), but when revealed via the column chooser, click to
+               edit. Server caps to 200 chars; we don't set MaxLength client-side
+               because DevExpress 25.2.5's DxTextBox MaxLength isn't reliable
+               (memory rule) — server-side validation returns Czech ProblemDetails
+               on violation, ApiClient surfaces it as a message. *@
+            <DxGridDataColumn FieldName="SaleCondition" Caption="Podmínka prodeje" Width="240px" Visible="false">
+                <CellEditTemplate>
+                    <DxTextBox Text="@(((GameItemInlineEditBuffer)context.EditModel).SaleCondition)"
+                               TextChanged="@(v => ((GameItemInlineEditBuffer)context.EditModel).SaleCondition = v)"
+                               NullText="(bez podmínky)" />
+                </CellEditTemplate>
+            </DxGridDataColumn>
         </Columns>
     </OvcinaGrid>
 
@@ -720,6 +771,112 @@ else
     // Grid cell helper — renders the class-requirement number only when > 0.
     // Empty cells stay clean; filter menus still see the raw int on the DTO.
     private static string RenderReq(int v) => v > 0 ? v.ToString() : "";
+
+    // ---- Inline edit (issue #119) ------------------------------------------
+    //
+    // DxGrid's CellEditTemplate needs a MUTABLE edit model. Both ItemListDto and
+    // GameItemListDto are records with init-only setters — binding @bind-Text to
+    // them wouldn't round-trip. Instead we hand DevExpress a tiny mutable buffer
+    // holding only the inline-editable fields; the catalog/game-shape fields the
+    // user can't touch here are pulled from the original DataItem at save time.
+    //
+    // EditMode=EditCell auto-saves on blur/Tab — EditModelSaving fires, we PUT
+    // the full DTO, then patch the local list in-place so the grid reflects the
+    // change without a full reload round-trip.
+
+    private class ItemInlineEditBuffer
+    {
+        public string? Effect { get; set; }
+    }
+
+    private class GameItemInlineEditBuffer
+    {
+        public int? Price { get; set; }
+        public int? StockCount { get; set; }
+        public string? SaleCondition { get; set; }
+    }
+
+    private void OnCatalogCustomizeEdit(GridCustomizeEditModelEventArgs e)
+    {
+        if (e.IsNew) return;
+        var src = (ItemListDto)e.DataItem;
+        e.EditModel = new ItemInlineEditBuffer { Effect = src.Effect };
+    }
+
+    private async Task OnCatalogSaving(GridEditModelSavingEventArgs e)
+    {
+        if (e.IsNew) return;
+        var src = (ItemListDto)e.DataItem;
+        var buf = (ItemInlineEditBuffer)e.EditModel;
+
+        // No-op short-circuit — don't PUT if the user tabbed through unchanged.
+        if (string.Equals(buf.Effect, src.Effect, StringComparison.Ordinal)) return;
+
+        try
+        {
+            await Api.PutAsync($"/api/items/{src.Id}", new UpdateItemDto(
+                src.Name, src.ItemType, buf.Effect, src.PhysicalForm,
+                src.IsCraftable, src.ReqWarrior, src.ReqArcher, src.ReqMage, src.ReqThief,
+                src.IsUnique, src.IsLimited));
+
+            var idx = catalogItems.FindIndex(i => i.Id == src.Id);
+            if (idx >= 0) catalogItems[idx] = src with { Effect = buf.Effect };
+        }
+        catch (Exception ex)
+        {
+            error = $"Uložení efektu se nezdařilo: {ex.Message}";
+            e.Cancel = true;
+        }
+    }
+
+    private void OnGameCustomizeEdit(GridCustomizeEditModelEventArgs e)
+    {
+        if (e.IsNew) return;
+        var src = (GameItemListDto)e.DataItem;
+        e.EditModel = new GameItemInlineEditBuffer
+        {
+            Price = src.Price,
+            StockCount = src.StockCount,
+            SaleCondition = src.SaleCondition,
+        };
+    }
+
+    private async Task OnGameSaving(GridEditModelSavingEventArgs e)
+    {
+        if (e.IsNew) return;
+        var src = (GameItemListDto)e.DataItem;
+        var buf = (GameItemInlineEditBuffer)e.EditModel;
+        if (GameContext.SelectedGameId is not int gid) { e.Cancel = true; return; }
+
+        if (buf.Price == src.Price
+            && buf.StockCount == src.StockCount
+            && string.Equals(buf.SaleCondition, src.SaleCondition, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.PutAsync($"/api/items/game-item/{gid}/{src.Id}",
+                new UpdateGameItemDto(buf.Price, buf.StockCount, src.IsSold, buf.SaleCondition, src.IsFindable));
+
+            var idx = gameItems.FindIndex(g => g.Id == src.Id);
+            if (idx >= 0)
+            {
+                gameItems[idx] = src with
+                {
+                    Price = buf.Price,
+                    StockCount = buf.StockCount,
+                    SaleCondition = buf.SaleCondition,
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            error = $"Uložení per-hra nastavení se nezdařilo: {ex.Message}";
+            e.Cancel = true;
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
