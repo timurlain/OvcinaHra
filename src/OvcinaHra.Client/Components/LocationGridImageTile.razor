@@ -1,0 +1,45 @@
+@* LocationGridImageTile — primary-image cell inside LocationList's Obrázek
+   column. Mirrors LocationGridStashTile sizing (aspect-ratio 5/7 + the
+   .oh-lg-loc-tile styling) so the row height of a location with images
+   lines up with its neighbouring stash tiles. No name label — the grid's
+   Name column owns the caption. *@
+
+@using OvcinaHra.Shared.Dtos
+
+<div class="oh-lg-loc-tile" title="@Location.Name">
+    @if (!imageLoaded || imageFailed)
+    {
+        <i class="oh-lg-glyph bi bi-image-fill" aria-hidden="true"></i>
+    }
+    @if (!string.IsNullOrEmpty(Location.ImageUrl) && !imageFailed)
+    {
+        <img class="oh-lg-loc-tile-img"
+             src="@Location.ImageUrl"
+             alt="@Location.Name"
+             loading="lazy"
+             @onload="() => imageLoaded = true"
+             @onerror="() => imageFailed = true" />
+        <div class="oh-lg-loc-tile-img-veil"></div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public LocationListDto Location { get; set; } = null!;
+
+    private bool imageLoaded;
+    private bool imageFailed;
+    private string? _lastUrl;
+
+    protected override void OnParametersSet()
+    {
+        // Reset state when the component is reused for a different location —
+        // otherwise a previously-loaded flag would suppress the glyph while
+        // the new src is still fetching.
+        if (_lastUrl != Location.ImageUrl)
+        {
+            _lastUrl = Location.ImageUrl;
+            imageLoaded = false;
+            imageFailed = false;
+        }
+    }
+}

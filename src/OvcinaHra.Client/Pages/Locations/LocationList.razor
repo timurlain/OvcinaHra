@@ -84,9 +84,50 @@ else
 {
     <OvcinaGrid Data="@visibleRows"
                 KeyFieldName="Id"
-                LayoutKey="grid-layout-locations-v4"
+                LayoutKey="grid-layout-locations-v5"
                 RowClick="@OnGridRowClick">
         <Columns>
+            @* Actions — moved to first column per issue #94. Destructive
+               delete lives on the detail page now; list keeps non-destructive
+               actions + Otevřít detail as the explicit navigation affordance. *@
+            <DxGridDataColumn Caption="Akce" Width="170px"
+                              AllowSort="false" AllowGroup="false"
+                              FixedPosition="GridColumnFixedPosition.Left">
+                <CellDisplayTemplate>
+                    @{
+                        var loc = (LocationListDto)context.DataItem;
+                    }
+                    <div class="oh-lg-actions-cell">
+                        <div class="oh-lg-actions">
+                            <button type="button"
+                                    title="Otevřít detail"
+                                    @onclick="() => OpenDetail(loc)"
+                                    @onclick:stopPropagation="true">
+                                <i class="bi bi-box-arrow-up-right"></i>
+                            </button>
+                            <button type="button"
+                                    title="Nastavit GPS"
+                                    @onclick="() => OpenGpsDialog(loc)"
+                                    @onclick:stopPropagation="true">
+                                <i class="bi bi-geo-alt-fill"></i>
+                            </button>
+                            <button type="button"
+                                    title="Přiřadit quest (propojit)"
+                                    @onclick="() => OpenLinkDialog(loc)"
+                                    @onclick:stopPropagation="true">
+                                <i class="bi bi-link-45deg"></i>
+                            </button>
+                            <button type="button"
+                                    title="Otevřít na mapě"
+                                    @onclick="() => OpenOnMap(loc)"
+                                    @onclick:stopPropagation="true">
+                                <i class="bi bi-map-fill"></i>
+                            </button>
+                        </div>
+                    </div>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
             @* Marker dot — 40px, fixed left *@
             <DxGridDataColumn FieldName="LocationKind" Caption="" Width="40px"
                               AllowSort="false" AllowGroup="false"
@@ -195,6 +236,29 @@ else
                             <span class="oh-lg-parent-ref text-muted">—</span>
                         }
                     }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            @* Primary location image — mirrors stash-tile sizing so a row
+               with no stashes but with an image keeps the same height as a
+               row with tiles. Shown by default; organizer can hide via
+               the column chooser. *@
+            <DxGridDataColumn FieldName="ImageUrl" Caption="Obrázek" Width="120px"
+                              AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{
+                        var loc = (LocationListDto)context.DataItem;
+                    }
+                    <div class="oh-lg-loc-cell @(string.IsNullOrEmpty(loc.ImageUrl) ? "oh-lg-none" : "")">
+                        @if (!string.IsNullOrEmpty(loc.ImageUrl))
+                        {
+                            <LocationGridImageTile @key="loc.Id" Location="loc" />
+                        }
+                        else
+                        {
+                            <span>—</span>
+                        }
+                    </div>
                 </CellDisplayTemplate>
             </DxGridDataColumn>
 
@@ -311,47 +375,6 @@ else
                 </CellDisplayTemplate>
             </DxGridDataColumn>
 
-            @* Hover-reveal action icons (replaces 3-dot menu) *@
-            <DxGridDataColumn Caption="Akce" Width="150px"
-                              AllowSort="false" AllowGroup="false"
-                              TextAlignment="GridTextAlignment.Right"
-                              FixedPosition="GridColumnFixedPosition.Right">
-                <CellDisplayTemplate>
-                    @{
-                        var loc = (LocationListDto)context.DataItem;
-                    }
-                    <div class="oh-lg-actions-cell">
-                        <div class="oh-lg-actions">
-                            <button type="button"
-                                    title="Nastavit GPS"
-                                    @onclick="() => OpenGpsDialog(loc)"
-                                    @onclick:stopPropagation="true">
-                                <i class="bi bi-geo-alt-fill"></i>
-                            </button>
-                            <button type="button"
-                                    title="Přiřadit quest (propojit)"
-                                    @onclick="() => OpenLinkDialog(loc)"
-                                    @onclick:stopPropagation="true">
-                                <i class="bi bi-link-45deg"></i>
-                            </button>
-                            <button type="button"
-                                    title="Otevřít na mapě"
-                                    @onclick="() => OpenOnMap(loc)"
-                                    @onclick:stopPropagation="true">
-                                <i class="bi bi-map-fill"></i>
-                            </button>
-                            <button type="button"
-                                    class="oh-lg-danger"
-                                    title="Smazat"
-                                    @onclick="() => RequestDelete(loc)"
-                                    @onclick:stopPropagation="true">
-                                <i class="bi bi-trash-fill"></i>
-                            </button>
-                        </div>
-                    </div>
-                </CellDisplayTemplate>
-            </DxGridDataColumn>
-
             @* Hidden-by-default columns (preserved for column chooser) *@
             <DxGridDataColumn FieldName="Id" Caption="#" Width="50px" Visible="false" />
             <DxGridDataColumn FieldName="Description" Caption="Popis" Width="300px" Visible="false" />
@@ -458,29 +481,10 @@ else
     </BodyContentTemplate>
 </DxPopup>
 
-@* Smazat — destructive action confirmation popup (required per MEMORY) *@
-<DxPopup @bind-Visible="@isDeleteConfirmVisible" HeaderText="Smazat lokaci?" Width="420px">
-    <BodyContentTemplate Context="popupContext">
-        <p class="mb-3">
-            Opravdu chcete smazat lokaci <strong>@deleteTarget?.Name</strong>?
-            Tento krok nelze vrátit zpět.
-        </p>
-        @if (deleteError is not null)
-        {
-            <div class="alert alert-danger py-2">@deleteError</div>
-        }
-        <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" @onclick="() => isDeleteConfirmVisible = false" disabled="@isSaving">Zrušit</button>
-            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync" disabled="@isSaving">
-                @if (isSaving)
-                {
-                    <span class="spinner-border spinner-border-sm me-1"></span>
-                }
-                Smazat
-            </button>
-        </div>
-    </BodyContentTemplate>
-</DxPopup>
+@* Destructive delete now lives on the Location detail page — per issue #94
+   the list no longer ships a delete button, and this confirmation popup is
+   gone with it. If reintroduced, remember the MEMORY destructive-action-
+   confirm rule and keep the Api.DeleteAsync bool-return check. *@
 
 @code {
     [SupplyParameterFromQuery]
@@ -494,7 +498,6 @@ else
     private bool loading = true;
     private bool isGpsVisible;
     private bool isLinkVisible;
-    private bool isDeleteConfirmVisible;
     private bool isSaving;
 
     // Toolbar filter state
@@ -510,10 +513,6 @@ else
     // Precomputed variant counts — cell template runs per rendered row, so
     // pulling `locations.Count(...)` there was O(n²). Filled in LoadDataAsync.
     private Dictionary<int, int> variantCountByParent = new();
-
-    // Delete target
-    private LocationListDto? deleteTarget;
-    private string? deleteError;
 
     // GPS dialog state
     private LocationListDto? gpsTarget;
@@ -608,32 +607,9 @@ else
         Nav.NavigateTo($"/locations/{loc.Id}");
     }
 
-    // Delete flow — confirmation popup first, then Api.DeleteAsync with bool-return check.
-    private void RequestDelete(LocationListDto loc)
+    private void OpenDetail(LocationListDto loc)
     {
-        deleteTarget = loc;
-        deleteError = null;
-        isDeleteConfirmVisible = true;
-    }
-
-    private async Task ConfirmDeleteAsync()
-    {
-        if (deleteTarget is null) return;
-        deleteError = null;
-        isSaving = true;
-        try
-        {
-            var ok = await Api.DeleteAsync($"/api/locations/{deleteTarget.Id}");
-            if (!ok)
-            {
-                deleteError = "Nepodařilo se smazat lokaci. Možná je použita v některé hře.";
-                return;
-            }
-            isDeleteConfirmVisible = false;
-            deleteTarget = null;
-            await LoadDataAsync();
-        }
-        finally { isSaving = false; }
+        Nav.NavigateTo($"/locations/{loc.Id}");
     }
 
     private void OpenOnMap(LocationListDto loc)
