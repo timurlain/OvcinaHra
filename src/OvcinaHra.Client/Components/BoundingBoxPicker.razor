@@ -38,7 +38,7 @@
     </DxFormLayout>
 
     <p class="oh-bbox-picker-help">
-        Souřadnice obdélníku, na který se mapa hry vycentruje. Lze nastavit posunutím mapy a kliknutím na „Použít aktuální pohled", nebo zadat ručně.
+        Souřadnice obdélníku, na který se mapa hry vycentruje. Lze nastavit posunutím mapy a kliknutím na „Použít aktuální pohled“, nebo zadat ručně.
     </p>
 </div>
 
@@ -133,6 +133,17 @@
 
     private async Task CommitAsync(BboxValue next)
     {
+        // If the user typed inverted corners, swap so SW <= NE on both axes
+        // before persisting. Keeps fitBounds + the rectangle overlay sane and
+        // matches the server-side validator on PUT /api/games/{id}.
+        if (next.IsComplete)
+        {
+            var swLat = Math.Min(next.SwLat!.Value, next.NeLat!.Value);
+            var neLat = Math.Max(next.SwLat!.Value, next.NeLat!.Value);
+            var swLng = Math.Min(next.SwLng!.Value, next.NeLng!.Value);
+            var neLng = Math.Max(next.SwLng!.Value, next.NeLng!.Value);
+            next = new BboxValue(swLat, swLng, neLat, neLng);
+        }
         Value = next;
         await ValueChanged.InvokeAsync(next);
     }

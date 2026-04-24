@@ -71,8 +71,32 @@ public static class GameEndpoints
         return TypedResults.Created($"/api/games/{game.Id}", result);
     }
 
-    private static async Task<Results<NoContent, NotFound>> Update(int id, UpdateGameDto dto, WorldDbContext db)
+    private static async Task<Results<NoContent, NotFound, ValidationProblem>> Update(int id, UpdateGameDto dto, WorldDbContext db)
     {
+        // Bounding-box validation: all-or-nothing + SW <= NE on both axes.
+        // Partial corners or inverted SW/NE would later break fitBounds + the
+        // rectangle overlay on the client.
+        var bboxFields = new[] { dto.BoundingBoxSwLat, dto.BoundingBoxSwLng, dto.BoundingBoxNeLat, dto.BoundingBoxNeLng };
+        var bboxNonNullCount = bboxFields.Count(v => v.HasValue);
+        if (bboxNonNullCount is not (0 or 4))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["BoundingBox"] = ["Bounding box musí mít všechny čtyři rohy nastaveny, nebo všechny čtyři prázdné."]
+            });
+        }
+        if (bboxNonNullCount == 4)
+        {
+            if (dto.BoundingBoxSwLat!.Value > dto.BoundingBoxNeLat!.Value
+                || dto.BoundingBoxSwLng!.Value > dto.BoundingBoxNeLng!.Value)
+            {
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["BoundingBox"] = ["Jihozápadní roh musí mít menší souřadnice než severovýchodní (SW.lat ≤ NE.lat, SW.lng ≤ NE.lng)."]
+                });
+            }
+        }
+
         var game = await db.Games.FindAsync(id);
         if (game is null)
             return TypedResults.NotFound();
