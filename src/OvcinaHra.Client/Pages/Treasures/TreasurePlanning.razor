@@ -503,6 +503,7 @@ else
     private async Task LoadAllAsync()
     {
         loading = true;
+        poolRemoveError = null;
         var poolTask       = Api.GetListAsync<TreasurePoolItemDto>($"/api/treasure-planning/pool/{gameId}");
         var cardsTask      = Api.GetListAsync<TreasurePlanningLocationDto>($"/api/treasure-planning/locations/{gameId}");
         var locationsTask  = Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gameId}");

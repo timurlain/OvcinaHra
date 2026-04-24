@@ -15,6 +15,7 @@ public class TreasurePlanningPoolEndpointTests(PostgresFixture postgres) : Integ
     {
         var response = await Client.PostAsJsonAsync("/api/games",
             new CreateGameDto("Zásobník Test", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<GameDetailDto>())!;
     }
 
@@ -22,6 +23,7 @@ public class TreasurePlanningPoolEndpointTests(PostgresFixture postgres) : Integ
     {
         var response = await Client.PostAsJsonAsync("/api/locations",
             new CreateLocationDto("Skála", LocationKind.Wilderness, 49.5m, 17.1m));
+        response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<LocationDetailDto>())!;
     }
 
@@ -29,6 +31,7 @@ public class TreasurePlanningPoolEndpointTests(PostgresFixture postgres) : Integ
     {
         var response = await Client.PostAsJsonAsync("/api/items",
             new CreateItemDto(name, ItemType.Potion));
+        response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<ItemDetailDto>())!;
     }
 

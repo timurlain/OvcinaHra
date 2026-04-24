@@ -37,6 +37,7 @@
             title="Odebrat ze zásobníku"
             aria-label="Odebrat ze zásobníku"
             @onmousedown:stopPropagation="true"
+            @onmousedown:preventDefault="true"
             @onclick="OpenRemoveConfirm"
             @onclick:stopPropagation="true">
         <i class="bi bi-x-lg"></i>
