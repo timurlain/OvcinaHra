@@ -1,0 +1,52 @@
+# Scale ovcinahra-api + ovcinahra-web Container Apps back down to the
+# cheap baseline after the 2026-04-24 performance-boost window.
+#
+# Cron fires at 22:00 UTC on 24 April = 00:00 CEST on 25 April — i.e.,
+# right after midnight local time. workflow_dispatch is also enabled so
+# the scale-down can be triggered manually if the cron slips (GitHub
+# sometimes delays scheduled jobs by up to 15 min under load).
+
+name: Ovcinahra — scale Container Apps back down
+
+on:
+  schedule:
+    - cron: '0 22 24 4 *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scale-down:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Sign in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Scale ovcinahra-api + ovcinahra-web down to baseline
+        run: |
+          for app in ovcinahra-api ovcinahra-web; do
+            echo "Scaling $app back to 0.25 vCPU / 0.5 GiB / 1-1 replicas"
+            az containerapp update -n "$app" -g ovcina \
+              --cpu 0.25 --memory 0.5Gi \
+              --min-replicas 1 --max-replicas 1
+          done
+
+      - name: Verify final sizing
+        run: |
+          az containerapp list \
+            --query "[?starts_with(name,'ovcinahra')].{name:name, cpu:properties.template.containers[0].resources.cpu, mem:properties.template.containers[0].resources.memory, min:properties.template.scale.minReplicas, max:properties.template.scale.maxReplicas}" \
+            -o table
+
+      - name: Ping /api/version to confirm the API is still healthy
+        run: |
+          for i in 1 2 3 4 5; do
+            body=$(curl -sS --max-time 10 https://api.hra.ovcina.cz/api/version || true)
+            echo "attempt $i: $body"
+            if [ -n "$body" ]; then exit 0; fi
+            sleep 15
+          done
+          echo "::warning::API did not respond after scale-down; check Azure portal"
