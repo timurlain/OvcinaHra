@@ -371,4 +371,120 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
         Assert.Equal(2, o.QuestCount);          // 2 distinct quests
         Assert.Equal(8, o.EncounterCount);      // SUM(Quantity) = 5 + 3
     }
+
+    // ===== Issue #111 — save-time validation surface =====
+
+    [Fact]
+    public async Task Create_DuplicateName_Returns400WithCzechDetail()
+    {
+        var first = await Client.PostAsJsonAsync("/api/monsters",
+            new CreateMonsterDto("Bahno z besedného močálu", MonsterCategory.Tier2, MonsterType.Beast, 3, 3, 10));
+        first.EnsureSuccessStatusCode();
+
+        var response = await Client.PostAsJsonAsync("/api/monsters",
+            new CreateMonsterDto("Bahno z besedného močálu", MonsterCategory.Tier3, MonsterType.Undead, 4, 4, 12));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Uložení selhalo", body);
+        Assert.Contains("Bahno z besedného močálu", body);
+        Assert.Contains("už existuje", body);
+
+        // Row-count sanity — the second attempt must not have slipped in.
+        var all = await Client.GetFromJsonAsync<List<MonsterListDto>>("/api/monsters");
+        Assert.NotNull(all);
+        Assert.Single(all, m => m.Name == "Bahno z besedného močálu");
+    }
+
+    [Fact]
+    public async Task Update_CollidingName_Returns400AndLeavesRowIntact()
+    {
+        var aResp = await Client.PostAsJsonAsync("/api/monsters",
+            new CreateMonsterDto("Skřetí lukostřelec", MonsterCategory.Tier2, MonsterType.Goblin, 3, 2, 8));
+        aResp.EnsureSuccessStatusCode();
+
+        var bResp = await Client.PostAsJsonAsync("/api/monsters",
+            new CreateMonsterDto("Skřet válečník", MonsterCategory.Tier3, MonsterType.Goblin, 5, 4, 14));
+        bResp.EnsureSuccessStatusCode();
+        var b = (await bResp.Content.ReadFromJsonAsync<MonsterDetailDto>())!;
+
+        var response = await Client.PutAsJsonAsync($"/api/monsters/{b.Id}",
+            new UpdateMonsterDto("Skřetí lukostřelec", MonsterCategory.Tier3, MonsterType.Goblin, 5, 4, 14,
+                null, null, null, null, null, null));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Skřetí lukostřelec", body);
+        Assert.Contains("už existuje", body);
+
+        // The blocked monster must still carry its original name.
+        var refetched = await Client.GetFromJsonAsync<MonsterDetailDto>($"/api/monsters/{b.Id}");
+        Assert.NotNull(refetched);
+        Assert.Equal("Skřet válečník", refetched!.Name);
+    }
+
+    [Fact]
+    public async Task Update_SameMonsterKeepsOwnName_Succeeds()
+    {
+        var resp = await Client.PostAsJsonAsync("/api/monsters",
+            new CreateMonsterDto("Lesní obluda", MonsterCategory.Tier2, MonsterType.Beast, 3, 2, 8));
+        resp.EnsureSuccessStatusCode();
+        var m = (await resp.Content.ReadFromJsonAsync<MonsterDetailDto>())!;
+
+        // Updating a monster to its own current name must not hit the
+        // duplicate-check (selfId exclusion).
+        var response = await Client.PutAsJsonAsync($"/api/monsters/{m.Id}",
+            new UpdateMonsterDto("Lesní obluda", MonsterCategory.Tier2, MonsterType.Beast, 4, 3, 10,
+                null, null, null, null, null, "Nová poznámka"));
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Create_EmptyName_Returns400(string blankName)
+    {
+        var response = await Client.PostAsJsonAsync("/api/monsters",
+            new CreateMonsterDto(blankName, MonsterCategory.Tier1, MonsterType.Beast, 1, 1, 1));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Název nesmí být prázdný", body);
+    }
+
+    [Fact]
+    public async Task Create_NegativeAttack_Returns400()
+    {
+        var response = await Client.PostAsJsonAsync("/api/monsters",
+            new CreateMonsterDto("Záporný", MonsterCategory.Tier1, MonsterType.Beast, -1, 1, 1));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("záporné", body);
+    }
+
+    [Fact]
+    public async Task Create_ZeroHealth_Returns400()
+    {
+        var response = await Client.PostAsJsonAsync("/api/monsters",
+            new CreateMonsterDto("Mrtvý", MonsterCategory.Tier1, MonsterType.Beast, 1, 1, 0));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Životy", body);
+    }
+
+    [Fact]
+    public async Task Create_UniqueName_StillWorks()
+    {
+        // Regression — the new validation must not break the happy path.
+        var response = await Client.PostAsJsonAsync("/api/monsters",
+            new CreateMonsterDto("Unikátní bestie", MonsterCategory.Tier3, MonsterType.Legend, 10, 8, 30));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<MonsterDetailDto>();
+        Assert.NotNull(created);
+        Assert.Equal("Unikátní bestie", created!.Name);
+    }
 }

@@ -591,9 +591,18 @@ else
         {
             int? xp = editRewardXp > 0 ? editRewardXp : null;
             int? money = editRewardMoney > 0 ? editRewardMoney : null;
-            await Api.PutAsync($"/api/monsters/{monster.Id}",
+            // Issue #111: swap to the ProblemDetails-aware Put so the Czech
+            // "Příšera s názvem „X" už existuje." message (or similar
+            // validation detail) surfaces in the edit-form error banner
+            // instead of a silent Postgres 500.
+            var (ok, problem) = await Api.PutWithProblemAsync($"/api/monsters/{monster.Id}",
                 new UpdateMonsterDto(editName, editCategory, editType, editAttack, editDefense, editHealth,
                     editAbilities, editAiBehavior, xp, money, editRewardNotes, editNotes));
+            if (!ok)
+            {
+                error = problem ?? "Uložení se nezdařilo.";
+                return;
+            }
             await LoadMonsterAsync();
             activeTab = "karta";
         }
