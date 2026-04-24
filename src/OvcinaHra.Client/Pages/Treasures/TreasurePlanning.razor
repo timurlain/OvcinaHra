@@ -95,6 +95,12 @@ else
                         <span class="oh-tp-focus-quest-meta">@selectedPool.Count vybráno</span>
                     </div>
                     <div class="oh-tp-assign-body" id="oh-tp-pool-anchor">
+                        @if (poolRemoveError is not null)
+                        {
+                            <div class="alert alert-danger py-2 mb-2" role="alert">
+                                <i class="bi bi-exclamation-triangle me-1"></i>@poolRemoveError
+                            </div>
+                        }
                         @if (selectedPool.Count > 0)
                         {
                             <div class="oh-tp-drag-hint">
@@ -118,7 +124,8 @@ else
                                     <TreasurePoolTile @key="p.Id"
                                                       Item="p"
                                                       Selected="@IsSelected(p)"
-                                                      OnToggle="TogglePoolSelection" />
+                                                      OnToggle="TogglePoolSelection"
+                                                      OnRemove="HandlePoolRemoveAsync" />
                                 }
                             </div>
                         }
@@ -424,6 +431,11 @@ else
     // ===== Overview =====
     private bool overviewVisible;
 
+    // ===== Pool-remove banner state =====
+    // Surfaced inline above the pool grid when DELETE /pool/{id} returns a
+    // non-success response. Cleared on the next successful remove or reload.
+    private string? poolRemoveError;
+
     // ===== Add-to-pool popup =====
     private bool isAddPoolVisible, poolSaving;
     private int? poolItemId;
@@ -491,6 +503,7 @@ else
     private async Task LoadAllAsync()
     {
         loading = true;
+        poolRemoveError = null;
         var poolTask       = Api.GetListAsync<TreasurePoolItemDto>($"/api/treasure-planning/pool/{gameId}");
         var cardsTask      = Api.GetListAsync<TreasurePlanningLocationDto>($"/api/treasure-planning/locations/{gameId}");
         var locationsTask  = Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gameId}");
@@ -670,6 +683,30 @@ else
         }
         catch (Exception ex) { poolError = ex.Message; }
         finally { poolSaving = false; }
+    }
+
+    // ===== Pool-remove flow =====
+    // Destructive delete per issue #102. The tile already gates this behind
+    // a DxPopup confirm — by the time we run here the user has committed.
+    // ApiClient.DeleteAsync returns false on any non-2xx (it never throws),
+    // so we branch on the bool and leave the item on screen if the server
+    // rejected the request (e.g. 400 when the row is already assigned).
+    private async Task HandlePoolRemoveAsync(TreasurePoolItemDto item)
+    {
+        poolRemoveError = null;
+        var ok = await Api.DeleteAsync($"/api/treasure-planning/pool/{item.Id}");
+        if (!ok)
+        {
+            poolRemoveError = $"Nepodařilo se odebrat „{item.ItemName}“ ze zásobníku. Možná je již přiřazen k pokladu.";
+            StateHasChanged();
+            return;
+        }
+        // Drop any stale selection entry pointing at the removed row so the
+        // drag hint + selection count don't lie after the reload.
+        var sel = selectedPool.FirstOrDefault(s => s.Id == item.Id);
+        if (sel is not null) selectedPool.Remove(sel);
+        await LoadAllAsync();
+        StateHasChanged();
     }
 
     // ===== Overview edit =====
