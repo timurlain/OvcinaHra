@@ -130,7 +130,7 @@ else
                         <span class="oh-mon-mtype">
                             <i class="bi @MonsterRow.MonsterTypeIcon(quickPeekDetail.MonsterType)"></i>@quickPeekDetail.MonsterType.GetDisplayName()
                         </span>
-                        <span class="oh-mon-kbadge"><i class="bi bi-bar-chart-steps"></i>K@quickPeekDetail.CategoryDisplay</span>
+                        <span class="oh-mon-kbadge"><i class="bi bi-bar-chart-steps"></i>K@(quickPeekDetail.CategoryDisplay)</span>
                         @foreach (var t in quickPeekDetail.Tags)
                         {
                             <span class="oh-mon-tag">@t.Name</span>
