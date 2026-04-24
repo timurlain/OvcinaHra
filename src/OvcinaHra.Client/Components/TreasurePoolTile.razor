@@ -1,0 +1,62 @@
+@using System.Text.Json
+@using OvcinaHra.Shared.Dtos
+@inject IJSRuntime JS
+
+<div @ref="elementRef"
+     class="oh-tp-pool-tile @(Selected ? "selected" : "")"
+     title="@($"{Item.ItemName} (×{Item.Count})")"
+     @onclick="OnClickInternal">
+    @if (!imageFailed)
+    {
+        <img class="oh-tp-pool-tile-img"
+             src="@($"/api/images/items/{Item.ItemId}/thumb?size=small")"
+             alt="@Item.ItemName"
+             @onerror="() => imageFailed = true"
+             draggable="false" />
+    }
+    else
+    {
+        <div class="oh-tp-pool-tile-fallback"><i class="bi bi-gem"></i></div>
+    }
+    @if (Item.Count > 1)
+    {
+        <div class="oh-tp-pool-tile-badge">×@Item.Count</div>
+    }
+    <div class="oh-tp-pool-tile-name">@Item.ItemName</div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public TreasurePoolItemDto Item { get; set; } = default!;
+    [Parameter] public bool Selected { get; set; }
+    [Parameter] public EventCallback<TreasurePoolItemDto> OnToggle { get; set; }
+
+    private ElementReference elementRef;
+    private bool imageFailed;
+    private int _wiredForItemId = -1;
+
+    protected override void OnParametersSet()
+    {
+        if (_wiredForItemId != Item.ItemId)
+        {
+            imageFailed = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_wiredForItemId != Item.Id)
+        {
+            _wiredForItemId = Item.Id;
+            var payload = JsonSerializer.Serialize(new
+            {
+                PoolItemId = Item.Id,
+                ItemId = Item.ItemId,
+                ItemName = Item.ItemName,
+                Count = Item.Count
+            });
+            await JS.InvokeVoidAsync("ovcinaDnd.setDraggable", elementRef, payload);
+        }
+    }
+
+    private Task OnClickInternal() => OnToggle.InvokeAsync(Item);
+}

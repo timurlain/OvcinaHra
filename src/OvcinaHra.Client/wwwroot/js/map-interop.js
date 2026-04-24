@@ -339,3 +339,199 @@ window.ovcinaMiniMap = {
         delete this._instances[elementId];
     }
 };
+
+// ----------------------------------------------------------------------
+// Pie-wedge markers for /treasures planning.
+// Fixed-quadrant layout — Start=NE, Early=SE, Mid=SW, Late=NW — with
+// per-stage wedge radius scaled by count / maxCount. Unfilled portion
+// shows a muted parchment disc beneath the coloured wedges. Pie markers
+// are tracked separately from ovcinaMap._markers so the /map and
+// /treasures pages never collide.
+// ----------------------------------------------------------------------
+window.ovcinaMap._pieMarkers = {};
+window.ovcinaMap._zeroMarkers = {};
+window.ovcinaMap._activePieStages = null; // Set<string> | null (null = all active)
+
+window.ovcinaMap._buildPieSvg = function (counts, maxCount) {
+    var c0 = counts[0] | 0, c1 = counts[1] | 0, c2 = counts[2] | 0, c3 = counts[3] | 0;
+    var total = c0 + c1 + c2 + c3;
+    var cap = Math.max(1, maxCount || total);
+    var maxR = 28;
+    var stages = ['start', 'early', 'mid', 'late'];
+    // Each wedge occupies a fixed 90° quadrant. Path uses a small arc.
+    // Paths below are parameterised by `r` (scaled radius per stage).
+    var paths = [
+        function (r) { return 'M0,0 L0,' + (-r) + ' A' + r + ',' + r + ' 0 0 1 ' + r + ',0 Z'; }, // NE / Start
+        function (r) { return 'M0,0 L' + r + ',0 A' + r + ',' + r + ' 0 0 1 0,' + r + ' Z'; }, // SE / Early
+        function (r) { return 'M0,0 L0,' + r + ' A' + r + ',' + r + ' 0 0 1 ' + (-r) + ',0 Z'; }, // SW / Mid
+        function (r) { return 'M0,0 L' + (-r) + ',0 A' + r + ',' + r + ' 0 0 1 0,' + (-r) + ' Z'; } // NW / Late
+    ];
+    var svg = '<svg width="64" height="64" viewBox="-32 -32 64 64" class="oh-tp-pin-svg">';
+    // Parchment backing disc (shows through in unfilled portions).
+    svg += '<circle class="oh-tp-pin-backing" r="' + maxR + '" cx="0" cy="0" />';
+    // Coloured wedges at scaled radius (skip zero-count stages).
+    var cs = [c0, c1, c2, c3];
+    for (var i = 0; i < 4; i++) {
+        if (cs[i] <= 0) continue;
+        var r = Math.max(6, maxR * Math.min(1, cs[i] / cap));
+        svg += '<path class="oh-tp-wedge oh-tp-wedge-' + stages[i] + '" data-stage="' + stages[i] + '" d="' + paths[i](r.toFixed(2)) + '"/>';
+    }
+    // Outer ring + inner numeral disc.
+    svg += '<circle class="oh-tp-pin-ring" r="' + (maxR + 1) + '" cx="0" cy="0" />';
+    svg += '<circle class="oh-tp-pin-inner" r="10" cx="0" cy="0" />';
+    svg += '<text class="oh-tp-pin-num" x="0" y="4" text-anchor="middle">' + total + '</text>';
+    svg += '</svg>';
+    return svg;
+};
+
+window.ovcinaMap._wireDropTarget = function (element, locationId) {
+    var self = this;
+    element.addEventListener('dragover', function (e) {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        element.classList.add('oh-tp-pin-dragtarget');
+    });
+    element.addEventListener('dragleave', function () {
+        element.classList.remove('oh-tp-pin-dragtarget');
+    });
+    element.addEventListener('drop', function (e) {
+        e.preventDefault();
+        element.classList.remove('oh-tp-pin-dragtarget');
+        var payload = e.dataTransfer && e.dataTransfer.getData('application/x-oh-pool-item');
+        if (self._dotnetRef && payload) {
+            self._dotnetRef.invokeMethodAsync('OnPieMarkerDropped', locationId, payload);
+        }
+    });
+};
+
+window.ovcinaMap.addPieMarker = function (id, lat, lon, counts, maxCount) {
+    if (!this._map) return;
+    this.removePieMarker(id);
+    var wrap = document.createElement('div');
+    wrap.className = 'oh-tp-pin oh-tp-pin-pie';
+    wrap.setAttribute('data-pie-id', id);
+    wrap.innerHTML = this._buildPieSvg(counts, maxCount);
+
+    var self = this;
+    wrap.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (self._dotnetRef) self._dotnetRef.invokeMethodAsync('OnPieMarkerClicked', id);
+    });
+    this._wireDropTarget(wrap, id);
+
+    var marker = new maplibregl.Marker({ element: wrap, anchor: 'center' })
+        .setLngLat([lon, lat])
+        .addTo(this._map);
+
+    this._pieMarkers[id] = { marker: marker, element: wrap, counts: counts.slice() };
+    this._applyStageFilterToElement(wrap);
+};
+
+window.ovcinaMap.updatePieMarkerCounts = function (id, counts, maxCount) {
+    var rec = this._pieMarkers[id];
+    if (!rec) return;
+    rec.counts = counts.slice();
+    rec.element.innerHTML = this._buildPieSvg(counts, maxCount);
+    this._applyStageFilterToElement(rec.element);
+};
+
+window.ovcinaMap.removePieMarker = function (id) {
+    var rec = this._pieMarkers[id];
+    if (rec) {
+        try { rec.marker.remove(); } catch (e) { /* ignore */ }
+        delete this._pieMarkers[id];
+    }
+};
+
+window.ovcinaMap.addZeroMarker = function (id, lat, lon, name, kind) {
+    if (!this._map) return;
+    this.removeZeroMarker(id);
+    var dot = document.createElement('div');
+    dot.className = 'oh-tp-pin oh-tp-pin-zero';
+    dot.setAttribute('data-kind', (kind || 'wilderness').toLowerCase());
+    dot.title = name || '';
+    var self = this;
+    dot.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (self._dotnetRef) self._dotnetRef.invokeMethodAsync('OnPieMarkerClicked', id);
+    });
+    this._wireDropTarget(dot, id);
+    var marker = new maplibregl.Marker({ element: dot, anchor: 'center' })
+        .setLngLat([lon, lat])
+        .addTo(this._map);
+    this._zeroMarkers[id] = { marker: marker, element: dot };
+};
+
+window.ovcinaMap.removeZeroMarker = function (id) {
+    var rec = this._zeroMarkers[id];
+    if (rec) {
+        try { rec.marker.remove(); } catch (e) { /* ignore */ }
+        delete this._zeroMarkers[id];
+    }
+};
+
+window.ovcinaMap.clearPieMarkers = function () {
+    for (var id in this._pieMarkers) {
+        try { this._pieMarkers[id].marker.remove(); } catch (e) { /* ignore */ }
+    }
+    this._pieMarkers = {};
+    for (var zid in this._zeroMarkers) {
+        try { this._zeroMarkers[zid].marker.remove(); } catch (e) { /* ignore */ }
+    }
+    this._zeroMarkers = {};
+};
+
+window.ovcinaMap._applyStageFilterToElement = function (el) {
+    var active = this._activePieStages;
+    var wedges = el.querySelectorAll('[data-stage]');
+    for (var i = 0; i < wedges.length; i++) {
+        var s = wedges[i].getAttribute('data-stage');
+        wedges[i].style.opacity = (!active || active.has(s)) ? '1' : '0.15';
+    }
+};
+
+window.ovcinaMap.setStageFilter = function (stages) {
+    this._activePieStages = (stages && stages.length > 0) ? new Set(stages) : null;
+    for (var id in this._pieMarkers) {
+        this._applyStageFilterToElement(this._pieMarkers[id].element);
+    }
+};
+
+// ----------------------------------------------------------------------
+// Tiny HTML5-DnD helper — lets Blazor pool tiles set a payload without
+// round-tripping DataTransfer through C#. Registers a native dragstart
+// on the element; on drop, the pie-marker side reads
+// 'application/x-oh-pool-item'. setDraggable is idempotent.
+// ----------------------------------------------------------------------
+window.ovcinaDnd = {
+    _wired: new WeakMap(),
+
+    setDraggable: function (element, payload) {
+        if (!element) return;
+        if (this._wired.has(element)) {
+            this._wired.set(element, payload);
+            return;
+        }
+        this._wired.set(element, payload);
+        element.setAttribute('draggable', 'true');
+        var self = this;
+        element.addEventListener('dragstart', function (e) {
+            var p = self._wired.get(element);
+            if (!p) return;
+            if (e.dataTransfer) {
+                e.dataTransfer.setData('application/x-oh-pool-item', p);
+                e.dataTransfer.effectAllowed = 'move';
+            }
+            element.classList.add('oh-tp-pool-tile-dragging');
+        });
+        element.addEventListener('dragend', function () {
+            element.classList.remove('oh-tp-pool-tile-dragging');
+        });
+    },
+
+    clear: function (element) {
+        if (!element) return;
+        this._wired.delete(element);
+        element.removeAttribute('draggable');
+    }
+};
