@@ -1,3 +1,17 @@
+@* OvcinaGrid — shared DxGrid wrapper. Two concerns live here:
+   1. Layout persistence (localStorage keyed by LayoutKey — bump the suffix
+      when column schema changes, see MEMORY rule feedback_ovcinagrid_layoutkey_bump).
+   2. Optional **inline editing** (issue #119, v0.15.21). Pages opt in by passing
+      EditMode (and the matching EditModelSaving / CustomizeEditModel callbacks).
+      Everything else stays read-only by default.
+
+   Per-column editability uses DevExpress's native idiom — no attribute system:
+     • Column with <CellEditTemplate> → editable (custom editor)
+     • Column with FieldName + ReadOnly="true" → not editable in edit mode
+     • Unbound column (no FieldName) → never editable (DevExpress handles it)
+   In EditCell mode, clicking an editable cell enters edit; clicking elsewhere
+   still fires RowClick — the row-click handler and inline edit coexist. *@
+
 <DxGrid Data="@Data"
         KeyFieldName="@KeyFieldName"
         SelectionMode="@SelectionMode"
@@ -16,6 +30,9 @@
         SearchText="@SearchText"
         SearchTextChanged="@SearchTextChanged"
         FilterMenuButtonDisplayMode="GridFilterMenuButtonDisplayMode.Always"
+        EditMode="@(EditMode ?? GridEditMode.PopupEditForm)"
+        EditModelSaving="@EditModelSaving"
+        CustomizeEditModel="@CustomizeEditModel"
         LayoutAutoLoading="OnLayoutLoading"
         LayoutAutoSaving="OnLayoutSaving">
     <Columns>
@@ -42,6 +59,17 @@
     [Parameter] public bool ShowSearchBox { get; set; } = true;
     [Parameter] public string? SearchText { get; set; }
     [Parameter] public EventCallback<string> SearchTextChanged { get; set; }
+
+    // Inline editing pass-through (issue #119). EditMode defaults to
+    // PopupEditForm when the consumer passes null — DxGrid's safest fallback:
+    // the popup requires an EditModelSaving handler to actually persist, so
+    // the 9 read-only grids (which don't bind EditModelSaving) stay
+    // non-destructive even if a user triggers an accidental edit action.
+    // Pass an explicit EditMode (e.g. GridEditMode.EditCell) to opt into
+    // inline editing.
+    [Parameter] public GridEditMode? EditMode { get; set; }
+    [Parameter] public EventCallback<GridEditModelSavingEventArgs> EditModelSaving { get; set; }
+    [Parameter] public EventCallback<GridCustomizeEditModelEventArgs> CustomizeEditModel { get; set; }
     private void OnCustomizeElement(GridCustomizeElementEventArgs e)
     {
         if (e.ElementType == GridElementType.DataRow && e.VisibleIndex % 2 == 1)

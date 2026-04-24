@@ -627,9 +627,12 @@ else
         {
             try
             {
-                // Issue #74: aerial photo style + tighter zoom (16, town-scale).
+                // Issue #74: tighter zoom (16, town-scale).
+                // Issue #110: switched default style from "aerial" to "outdoor"
+                // (Mapy.cz turistická). OSM fallback kicks in inside the
+                // mini-map helper when MapyCz:ApiKey isn't configured.
                 await JS.InvokeVoidAsync("ovcinaMiniMap.init",
-                    MiniMapElementId, (double)lat, (double)lon, 16, kindColor, apiKey, "aerial");
+                    MiniMapElementId, (double)lat, (double)lon, 16, kindColor, apiKey, "outdoor");
                 miniMapInited = true;
                 lastMiniMapLat = lat; lastMiniMapLon = lon;
                 lastMiniMapKind = locationKind;
@@ -652,23 +655,32 @@ else
         }
     }
 
-    // Paint every other location with GPS as a small kind-colored dot for
-    // orientation. Issue #74 — organizers want context, not a single isolated pin.
+    // Paint every nearby location with a kind-colored dot + name label for
+    // orientation. Issue #74 — organizers want context, not a single isolated
+    // pin. Issue #110 — added name labels and swapped the client-side allLocations
+    // filter for the new GET /api/locations/nearby endpoint (haversine radius +
+    // server-side cap at 50).
     private async Task PaintContextMarkersAsync()
     {
         if (!miniMapInited) return;
-        var ctx = allLocations
-            .Where(l => l.Id != Id && l.Latitude.HasValue && l.Longitude.HasValue)
-            .Select(l => new
-            {
-                lat = (double)l.Latitude!.Value,
-                lon = (double)l.Longitude!.Value,
-                name = l.Name,
-                color = KindMarkerColors.GetValueOrDefault(l.LocationKind, "#666")
-            })
-            .ToArray();
+        if (lastMiniMapLat is null || lastMiniMapLon is null) return;
+
         try
         {
+            var nearby = await Api.GetListAsync<NearbyLocationDto>(
+                $"/api/locations/nearby?lat={((double)lastMiniMapLat.Value).ToString(System.Globalization.CultureInfo.InvariantCulture)}" +
+                $"&lng={((double)lastMiniMapLon.Value).ToString(System.Globalization.CultureInfo.InvariantCulture)}" +
+                $"&radiusKm=5&excludeId={Id}");
+
+            var ctx = nearby.Select(l => new
+            {
+                lat = (double)l.Latitude,
+                lon = (double)l.Longitude,
+                name = l.Name,
+                color = KindMarkerColors.GetValueOrDefault(l.LocationKind, "#666"),
+                showLabel = true
+            }).ToArray();
+
             await JS.InvokeVoidAsync("ovcinaMiniMap.setContextMarkers", MiniMapElementId, ctx);
         }
         catch { /* ignore — surrounding pins are nice-to-have */ }
