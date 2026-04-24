@@ -1,0 +1,163 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject IConfiguration Config
+
+<div class="oh-bbox-picker">
+    <div class="oh-bbox-picker-map" id="@_mapId"></div>
+
+    <div class="oh-bbox-picker-actions">
+        <button type="button" class="btn btn-primary btn-sm" @onclick="UseCurrentViewAsync" disabled="@(!_mapReady)">
+            <i class="bi bi-crop"></i> Použít aktuální pohled
+        </button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="ClearAsync" disabled="@(!Value.IsAnySet || !_mapReady)">
+            <i class="bi bi-x-lg"></i> Vyčistit
+        </button>
+    </div>
+
+    <DxFormLayout CssClass="oh-bbox-picker-inputs">
+        <DxFormLayoutItem Caption="Jihozápad — šířka (lat)" ColSpanMd="6">
+            <DxSpinEdit TValue="decimal?" Value="@Value.SwLat"
+                        ValueChanged="@((decimal? v) => OnInputChangedAsync(BboxField.SwLat, v))"
+                        Increment="0.01m" MinValue="-90m" MaxValue="90m" />
+        </DxFormLayoutItem>
+        <DxFormLayoutItem Caption="Jihozápad — délka (lng)" ColSpanMd="6">
+            <DxSpinEdit TValue="decimal?" Value="@Value.SwLng"
+                        ValueChanged="@((decimal? v) => OnInputChangedAsync(BboxField.SwLng, v))"
+                        Increment="0.01m" MinValue="-180m" MaxValue="180m" />
+        </DxFormLayoutItem>
+        <DxFormLayoutItem Caption="Severovýchod — šířka (lat)" ColSpanMd="6">
+            <DxSpinEdit TValue="decimal?" Value="@Value.NeLat"
+                        ValueChanged="@((decimal? v) => OnInputChangedAsync(BboxField.NeLat, v))"
+                        Increment="0.01m" MinValue="-90m" MaxValue="90m" />
+        </DxFormLayoutItem>
+        <DxFormLayoutItem Caption="Severovýchod — délka (lng)" ColSpanMd="6">
+            <DxSpinEdit TValue="decimal?" Value="@Value.NeLng"
+                        ValueChanged="@((decimal? v) => OnInputChangedAsync(BboxField.NeLng, v))"
+                        Increment="0.01m" MinValue="-180m" MaxValue="180m" />
+        </DxFormLayoutItem>
+    </DxFormLayout>
+
+    <p class="oh-bbox-picker-help">
+        Souřadnice obdélníku, na který se mapa hry vycentruje. Lze nastavit posunutím mapy a kliknutím na „Použít aktuální pohled“, nebo zadat ručně.
+    </p>
+</div>
+
+@code {
+    public enum BboxField { SwLat, SwLng, NeLat, NeLng }
+
+    public record BboxValue(decimal? SwLat, decimal? SwLng, decimal? NeLat, decimal? NeLng)
+    {
+        public bool IsComplete => SwLat.HasValue && SwLng.HasValue && NeLat.HasValue && NeLng.HasValue;
+        public bool IsAnySet => SwLat.HasValue || SwLng.HasValue || NeLat.HasValue || NeLng.HasValue;
+        public static BboxValue Empty => new(null, null, null, null);
+    }
+
+    [Parameter] public BboxValue Value { get; set; } = BboxValue.Empty;
+    [Parameter] public EventCallback<BboxValue> ValueChanged { get; set; }
+
+    private readonly string _mapId = $"oh-bbox-{Guid.NewGuid():N}";
+    private bool _mapReady;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        var apiKey = Config["MapyCz:ApiKey"];
+        double centerLat = 49.8; double centerLon = 15.4; int zoom = 7;
+        if (Value.IsComplete)
+        {
+            centerLat = ((double)Value.SwLat!.Value + (double)Value.NeLat!.Value) / 2.0;
+            centerLon = ((double)Value.SwLng!.Value + (double)Value.NeLng!.Value) / 2.0;
+        }
+
+        await JS.InvokeVoidAsync("ovcinaBboxMap.init", _mapId, apiKey, centerLat, centerLon, zoom);
+        _mapReady = true;
+
+        if (Value.IsComplete)
+        {
+            await JS.InvokeVoidAsync("ovcinaBboxMap.drawBboxRectangle", _mapId,
+                (double)Value.SwLat!.Value, (double)Value.SwLng!.Value,
+                (double)Value.NeLat!.Value, (double)Value.NeLng!.Value);
+            await JS.InvokeVoidAsync("ovcinaBboxMap.fitToBounds", _mapId,
+                (double)Value.SwLat!.Value, (double)Value.SwLng!.Value,
+                (double)Value.NeLat!.Value, (double)Value.NeLng!.Value, 40);
+        }
+        StateHasChanged();
+    }
+
+    private async Task UseCurrentViewAsync()
+    {
+        var bounds = await JS.InvokeAsync<BoundsJs?>("ovcinaBboxMap.getBounds", _mapId);
+        if (bounds is null) return;
+        var next = new BboxValue(
+            (decimal)bounds.SwLat, (decimal)bounds.SwLng,
+            (decimal)bounds.NeLat, (decimal)bounds.NeLng);
+        await CommitAsync(next);
+        await RedrawOrClearAsync(next);
+    }
+
+    private async Task ClearAsync()
+    {
+        await CommitAsync(BboxValue.Empty);
+        await JS.InvokeVoidAsync("ovcinaBboxMap.clearBboxRectangle", _mapId);
+    }
+
+    private async Task OnInputChangedAsync(BboxField field, decimal? v)
+    {
+        var next = field switch
+        {
+            BboxField.SwLat => Value with { SwLat = v },
+            BboxField.SwLng => Value with { SwLng = v },
+            BboxField.NeLat => Value with { NeLat = v },
+            BboxField.NeLng => Value with { NeLng = v },
+            _ => Value
+        };
+        await CommitAsync(next);
+        await RedrawOrClearAsync(next);
+    }
+
+    private async Task RedrawOrClearAsync(BboxValue next)
+    {
+        if (!_mapReady) return;
+        if (next.IsComplete)
+        {
+            await JS.InvokeVoidAsync("ovcinaBboxMap.drawBboxRectangle", _mapId,
+                (double)next.SwLat!.Value, (double)next.SwLng!.Value,
+                (double)next.NeLat!.Value, (double)next.NeLng!.Value);
+        }
+        else if (!next.IsAnySet)
+        {
+            await JS.InvokeVoidAsync("ovcinaBboxMap.clearBboxRectangle", _mapId);
+        }
+    }
+
+    private async Task CommitAsync(BboxValue next)
+    {
+        // If the user typed inverted corners, swap so SW <= NE on both axes
+        // before persisting. Keeps fitBounds + the rectangle overlay sane and
+        // matches the server-side validator on PUT /api/games/{id}.
+        if (next.IsComplete)
+        {
+            var swLat = Math.Min(next.SwLat!.Value, next.NeLat!.Value);
+            var neLat = Math.Max(next.SwLat!.Value, next.NeLat!.Value);
+            var swLng = Math.Min(next.SwLng!.Value, next.NeLng!.Value);
+            var neLng = Math.Max(next.SwLng!.Value, next.NeLng!.Value);
+            next = new BboxValue(swLat, swLng, neLat, neLng);
+        }
+        Value = next;
+        await ValueChanged.InvokeAsync(next);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("ovcinaBboxMap.dispose", _mapId); } catch { /* teardown best-effort */ }
+    }
+
+    private sealed class BoundsJs
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("swLat")] public double SwLat { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("swLng")] public double SwLng { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("neLat")] public double NeLat { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("neLng")] public double NeLng { get; set; }
+    }
+}

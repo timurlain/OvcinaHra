@@ -563,3 +563,156 @@ window.ovcinaDnd = {
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 };
+
+// ----------------------------------------------------------------------
+// Bounding-box picker map: interactive editor for a game's world bbox.
+// Multi-instance (keyed by elementId) so the picker component can coexist
+// with the main /map view or live in a popup without colliding.
+// Source of truth is the Blazor form model — this helper exposes getBounds
+// (viewport → [sw, ne]) and drawBboxRectangle (rectangle overlay) so the
+// parent component can sync the two. (issue #2)
+// ----------------------------------------------------------------------
+window.ovcinaBboxMap = {
+    _instances: {},
+    _sourceId: 'oh-bbox-overlay',
+    _fillLayerId: 'oh-bbox-overlay-fill',
+    _lineLayerId: 'oh-bbox-overlay-line',
+
+    _styleFor: function (apiKey) {
+        if (apiKey && apiKey.length > 5) {
+            return {
+                version: 8,
+                sources: {
+                    'mapy-cz': {
+                        type: 'raster',
+                        tiles: ['https://api.mapy.cz/v1/maptiles/outdoor/256/{z}/{x}/{y}?apikey=' + apiKey],
+                        tileSize: 256,
+                        maxzoom: 19,
+                        attribution: '&copy; <a href="https://www.mapy.cz">Mapy.cz</a>'
+                    }
+                },
+                layers: [{ id: 'mapy-cz-tiles', type: 'raster', source: 'mapy-cz', minzoom: 0, maxzoom: 19 }]
+            };
+        }
+        return {
+            version: 8,
+            sources: {
+                'osm': {
+                    type: 'raster',
+                    tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                    tileSize: 256,
+                    maxzoom: 19,
+                    attribution: '&copy; OpenStreetMap'
+                }
+            },
+            layers: [{ id: 'osm-tiles', type: 'raster', source: 'osm', minzoom: 0, maxzoom: 19 }]
+        };
+    },
+
+    _rectangleFeature: function (swLat, swLng, neLat, neLng) {
+        // GeoJSON expects [lng, lat]. Rectangle polygon: SW → SE → NE → NW → SW.
+        return {
+            type: 'Feature',
+            geometry: {
+                type: 'Polygon',
+                coordinates: [[
+                    [swLng, swLat],
+                    [neLng, swLat],
+                    [neLng, neLat],
+                    [swLng, neLat],
+                    [swLng, swLat]
+                ]]
+            },
+            properties: {}
+        };
+    },
+
+    _addOrUpdateOverlay: function (map, swLat, swLng, neLat, neLng) {
+        var self = window.ovcinaBboxMap;
+        var feature = self._rectangleFeature(swLat, swLng, neLat, neLng);
+        var src = map.getSource(self._sourceId);
+        if (src) {
+            src.setData(feature);
+            return;
+        }
+        map.addSource(self._sourceId, { type: 'geojson', data: feature });
+        map.addLayer({
+            id: self._fillLayerId,
+            type: 'fill',
+            source: self._sourceId,
+            paint: { 'fill-color': '#4a7c34', 'fill-opacity': 0.18 }
+        });
+        map.addLayer({
+            id: self._lineLayerId,
+            type: 'line',
+            source: self._sourceId,
+            paint: { 'line-color': '#2d5016', 'line-width': 2, 'line-dasharray': [2, 2] }
+        });
+    },
+
+    _removeOverlay: function (map) {
+        var self = window.ovcinaBboxMap;
+        if (map.getLayer(self._lineLayerId)) map.removeLayer(self._lineLayerId);
+        if (map.getLayer(self._fillLayerId)) map.removeLayer(self._fillLayerId);
+        if (map.getSource(self._sourceId)) map.removeSource(self._sourceId);
+    },
+
+    init: function (elementId, apiKey, centerLat, centerLon, zoom) {
+        var el = document.getElementById(elementId);
+        if (!el || typeof maplibregl === 'undefined') return;
+        var existing = this._instances[elementId];
+        if (existing) { return; }
+        var map = new maplibregl.Map({
+            container: el,
+            style: this._styleFor(apiKey),
+            center: [centerLon, centerLat],
+            zoom: zoom || 7
+        });
+        map.addControl(new maplibregl.NavigationControl(), 'top-right');
+        map.addControl(new maplibregl.ScaleControl(), 'bottom-left');
+        map.on('error', function (e) { console.warn('Bbox map tile error:', e.error && e.error.message || e); });
+        this._instances[elementId] = { map: map, hasOverlay: false };
+    },
+
+    getBounds: function (elementId) {
+        var inst = this._instances[elementId];
+        if (!inst) return null;
+        var b = inst.map.getBounds();
+        return {
+            swLat: b.getSouth(),
+            swLng: b.getWest(),
+            neLat: b.getNorth(),
+            neLng: b.getEast()
+        };
+    },
+
+    drawBboxRectangle: function (elementId, swLat, swLng, neLat, neLng) {
+        var inst = this._instances[elementId];
+        if (!inst) return;
+        var map = inst.map;
+        var apply = function () { window.ovcinaBboxMap._addOrUpdateOverlay(map, swLat, swLng, neLat, neLng); };
+        if (map.isStyleLoaded()) apply(); else map.once('styledata', apply);
+        inst.hasOverlay = true;
+    },
+
+    clearBboxRectangle: function (elementId) {
+        var inst = this._instances[elementId];
+        if (!inst) return;
+        window.ovcinaBboxMap._removeOverlay(inst.map);
+        inst.hasOverlay = false;
+    },
+
+    fitToBounds: function (elementId, swLat, swLng, neLat, neLng, paddingPx) {
+        var inst = this._instances[elementId];
+        if (!inst) return;
+        var padding = (paddingPx && paddingPx > 0) ? paddingPx : 40;
+        inst.map.fitBounds([[swLng, swLat], [neLng, neLat]], { padding: padding });
+    },
+
+    dispose: function (elementId) {
+        var inst = this._instances[elementId];
+        if (!inst) return;
+        try { inst.map.remove(); } catch (e) { /* ignore */ }
+        delete this._instances[elementId];
+    }
+};
