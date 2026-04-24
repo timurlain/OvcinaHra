@@ -11,6 +11,7 @@ namespace OvcinaHra.Api.Endpoints;
 public static class MonsterEndpoints
 {
     private const int MaxNotesLength = 1000;
+    private const int MaxNameLength = 200;
 
     public static RouteGroupBuilder MapMonsterEndpoints(this IEndpointRouteBuilder routes)
     {
@@ -164,6 +165,14 @@ public static class MonsterEndpoints
 
         var trimmed = name.Trim();
 
+        if (trimmed.Length > MaxNameLength)
+        {
+            return TypedResults.Problem(
+                title: "Uložení selhalo",
+                detail: $"Název nesmí přesáhnout {MaxNameLength} znaků.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
         if (attack < 0 || defense < 0)
         {
             return TypedResults.Problem(
@@ -188,8 +197,12 @@ public static class MonsterEndpoints
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
+        // Compare against DB-side Trim so legacy rows persisted untrimmed
+        // (before this PR added the Trim() on Create/Update) still collide.
+        // EF translates .Trim() to Postgres TRIM() — index-losing but the
+        // monster table is small (~hundreds), not a hot query.
         var collision = await db.Monsters
-            .Where(x => x.Name == trimmed && (selfId == null || x.Id != selfId.Value))
+            .Where(x => x.Name.Trim() == trimmed && (selfId == null || x.Id != selfId.Value))
             .AnyAsync();
         if (collision)
         {
