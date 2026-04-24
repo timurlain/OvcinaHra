@@ -18,6 +18,49 @@
     </div>
 </div>
 
+@* Toolbar — issue #97: search, type dropdown, quick toggles.
+   Per-hra toggles (Prodávané / Nalezitelné) only render in game mode;
+   Vyrobitelné applies in both. Hidden on the "pick a game first" empty
+   state to match the existing reveal/hide rhythm. *@
+@if (!loading && (Catalog || GameContext.SelectedGameId is not null))
+{
+    <div class="oh-lg-toolbar mb-2">
+        <DxTextBox Text="@searchText"
+                   TextChanged="@(v => { searchText = v; StateHasChanged(); })"
+                   NullText="Hledat název, efekt…"
+                   BindValueMode="BindValueMode.OnDelayedInput"
+                   InputDelay="250"
+                   CssClass="oh-lg-tb-search flex-grow-0" />
+
+        <DxComboBox Data="@itemTypeFilterOptions"
+                    @bind-Value="@filterType"
+                    TextFieldName="Display"
+                    ValueFieldName="Value"
+                    NullText="Všechny typy"
+                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
+                    CssClass="oh-lg-tb-dd" />
+
+        <button type="button"
+                class="oh-lg-tb-toggle @(filterOnlyCraftable ? "oh-lg-on" : "")"
+                @onclick="() => { filterOnlyCraftable = !filterOnlyCraftable; StateHasChanged(); }">
+            <span class="oh-lg-sw"></span>jen vyrobitelné
+        </button>
+        @if (!Catalog)
+        {
+            <button type="button"
+                    class="oh-lg-tb-toggle @(filterOnlyForSale ? "oh-lg-on" : "")"
+                    @onclick="() => { filterOnlyForSale = !filterOnlyForSale; StateHasChanged(); }">
+                <span class="oh-lg-sw"></span>jen prodávané
+            </button>
+            <button type="button"
+                    class="oh-lg-tb-toggle @(filterOnlyFindable ? "oh-lg-on" : "")"
+                    @onclick="() => { filterOnlyFindable = !filterOnlyFindable; StateHasChanged(); }">
+                <span class="oh-lg-sw"></span>jen nalezitelné
+            </button>
+        }
+    </div>
+}
+
 @if (loading)
 {
     <p>Načítám...</p>
@@ -40,31 +83,43 @@ else if (!Catalog && gameItems.Count == 0)
 }
 else if (Catalog)
 {
-    <OvcinaGrid Data="@catalogItems" KeyFieldName="Id" LayoutKey="grid-layout-items-v3"
+    <OvcinaGrid Data="@visibleCatalogItems" KeyFieldName="Id" LayoutKey="grid-layout-items-v4"
                 RowClick="@(e => OpenQuickPeek((ItemListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
-            <DxGridDataColumn FieldName="Id" Caption="#" Width="60px" Visible="false" />
-
-            @* Foto — 78px column, 64x48 4:3 photo inside (issue #74-style: photo IS the artifact) *@
-            <DxGridDataColumn Caption="Foto" Width="78px" AllowSort="false" AllowGroup="false">
+            @* Akce — fixed left. Otevřít detail → /items/{id} mirrors the LocationList
+               pattern (PR #106). Destructive delete stays on the edit popup; not
+               surfaced here. Issue #97 ask: grid needs a direct path to the detail page. *@
+            <DxGridDataColumn Caption="Akce" Width="62px"
+                              AllowSort="false" AllowGroup="false"
+                              FixedPosition="GridColumnFixedPosition.Left">
                 <CellDisplayTemplate>
                     @{ var it = (ItemListDto)context.DataItem; }
-                    <span class="oh-it-photo">
-                        @if (!string.IsNullOrEmpty(it.ImageUrl))
-                        {
-                            <img src="@it.ImageUrl" alt="@it.Name" />
-                        }
-                        else
-                        {
-                            <i class="bi bi-image oh-it-photo-empty" aria-hidden="true"></i>
-                        }
-                    </span>
+                    <div class="oh-lg-actions-cell">
+                        <div class="oh-lg-actions">
+                            <button type="button"
+                                    title="Otevřít detail"
+                                    @onclick="@(() => Nav.NavigateTo($"/items/{it.Id}"))"
+                                    @onclick:stopPropagation="true">
+                                <i class="bi bi-box-arrow-up-right"></i>
+                            </button>
+                        </div>
+                    </div>
                 </CellDisplayTemplate>
             </DxGridDataColumn>
 
-            @* Type-dot 24px — neutral palette per ItemType (NOT kingdom colors).
-               Unbound (no FieldName) so it doesn't collide with the text "Typ" column
-               under DxGrid's layout-persistence keying-by-FieldName. *@
+            <DxGridDataColumn FieldName="Id" Caption="#" Width="60px" Visible="false" />
+
+            @* Foto — 5:7 MTG-card aspect tile per issue #97 (was 4:3). Narrow width
+               matches a 48 px row; the tile component handles fail-state itself. *@
+            <DxGridDataColumn Caption="Foto" Width="58px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{ var it = (ItemListDto)context.DataItem; }
+                    <ItemGridImageTile @key="it.Id" Name="@it.Name" ImageUrl="@it.ImageUrl" />
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            @* Type-dot unbound (no FieldName) so it doesn't collide with the text
+               "Typ" column under DxGrid's layout-persistence keying (Copilot, PR #88). *@
             <DxGridDataColumn Caption="•" Width="24px" AllowSort="false" AllowGroup="false">
                 <CellDisplayTemplate>
                     @{ var it = (ItemListDto)context.DataItem; }
@@ -76,21 +131,31 @@ else if (Catalog)
             <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="Typ" Width="130px" />
             <DxGridDataColumn FieldName="PhysicalFormDisplay" Caption="Podoba" Width="150px" />
 
-            @* 4 class pip cols 64/64/64/88 *@
-            <DxGridDataColumn FieldName="ReqWarrior" Caption="Vál." Width="64px">
-                <CellDisplayTemplate><span class="oh-it-pip @ItemClassPipsHelpers.PipClass((int)context.Value)" title="Válečník: @context.Value"><i class="bi bi-shield-shaded"></i></span></CellDisplayTemplate>
-            </DxGridDataColumn>
-            <DxGridDataColumn FieldName="ReqArcher" Caption="Luč." Width="64px">
-                <CellDisplayTemplate><span class="oh-it-pip @ItemClassPipsHelpers.PipClass((int)context.Value)" title="Lučištník: @context.Value"><i class="bi bi-bullseye"></i></span></CellDisplayTemplate>
-            </DxGridDataColumn>
-            <DxGridDataColumn FieldName="ReqMage" Caption="Mág" Width="64px">
-                <CellDisplayTemplate><span class="oh-it-pip @ItemClassPipsHelpers.PipClass((int)context.Value)" title="Mág: @context.Value"><i class="bi bi-magic"></i></span></CellDisplayTemplate>
-            </DxGridDataColumn>
-            <DxGridDataColumn FieldName="ReqThief" Caption="Zlo." Width="88px">
-                <CellDisplayTemplate><span class="oh-it-pip @ItemClassPipsHelpers.PipClass((int)context.Value)" title="Zloděj: @context.Value"><i class="bi bi-incognito"></i></span></CellDisplayTemplate>
+            @* Požadavky — single-column 4-pip cluster (issue #97). Icons light up
+               by level; tooltip per pip names the class + level. Default visible. *@
+            <DxGridDataColumn Caption="Požadavky" Width="184px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{ var it = (ItemListDto)context.DataItem; }
+                    <ItemClassPips Warrior="it.ReqWarrior" Archer="it.ReqArcher" Mage="it.ReqMage" Thief="it.ReqThief" />
+                </CellDisplayTemplate>
             </DxGridDataColumn>
 
-            @* Cena + Sklad columns — hidden in catalog (no GameItem data; brief acceptance §4) *@
+            @* Individual class columns — just the number, hidden by default. User
+               reveals via the column chooser when they want to filter/group on a
+               specific class level. No icon here — the pip cluster owns the visual. *@
+            <DxGridDataColumn FieldName="ReqWarrior" Caption="Vál." Width="72px" Visible="false">
+                <CellDisplayTemplate>@RenderReq((int)context.Value)</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="ReqArcher" Caption="Luč." Width="72px" Visible="false">
+                <CellDisplayTemplate>@RenderReq((int)context.Value)</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="ReqMage" Caption="Mág" Width="72px" Visible="false">
+                <CellDisplayTemplate>@RenderReq((int)context.Value)</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="ReqThief" Caption="Zlo." Width="72px" Visible="false">
+                <CellDisplayTemplate>@RenderReq((int)context.Value)</CellDisplayTemplate>
+            </DxGridDataColumn>
+
             <DxGridDataColumn FieldName="Effect" Caption="Efekt" Width="240px" Visible="false" />
 
             @* Flagy 3-cell box — Unikát/Limit/Craftable in catalog *@
@@ -124,10 +189,31 @@ else if (Catalog)
 }
 else
 {
-    <OvcinaGrid Data="@gameItems" KeyFieldName="Id" LayoutKey="grid-layout-items-game-v3"
+    <OvcinaGrid Data="@visibleGameItems" KeyFieldName="Id" LayoutKey="grid-layout-items-game-v4"
                 RowClick="@(e => OpenQuickPeek((GameItemListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
-            @* Context-menu column at fixed left edge — preserves Upravit / Odebrat / Smazat / Recept actions *@
+            @* Akce — fixed left. Primary "Otevřít detail" button per issue #97.
+               The 3-dot context menu column below still owns Upravit / Odebrat /
+               Smazat / Otevřít recept — it's the row-level command hub. *@
+            <DxGridDataColumn Caption="Akce" Width="62px"
+                              AllowSort="false" AllowGroup="false"
+                              FixedPosition="GridColumnFixedPosition.Left">
+                <CellDisplayTemplate>
+                    @{ var gi = (GameItemListDto)context.DataItem; }
+                    <div class="oh-lg-actions-cell">
+                        <div class="oh-lg-actions">
+                            <button type="button"
+                                    title="Otevřít detail"
+                                    @onclick="@(() => Nav.NavigateTo($"/items/{gi.Id}"))"
+                                    @onclick:stopPropagation="true">
+                                <i class="bi bi-box-arrow-up-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            @* Context-menu column — preserves Upravit / Odebrat / Smazat / Recept *@
             <DxGridDataColumn FieldName="" Caption="" Width="40px" AllowSort="false" AllowGroup="false" FixedPosition="GridColumnFixedPosition.Left">
                 <CellDisplayTemplate>
                     @{ var gi = (GameItemListDto)context.DataItem; }
@@ -139,26 +225,15 @@ else
 
             <DxGridDataColumn FieldName="Id" Caption="#" Width="60px" Visible="false" />
 
-            @* Foto 78px column, 64x48 4:3 photo *@
-            <DxGridDataColumn Caption="Foto" Width="78px" AllowSort="false" AllowGroup="false">
+            @* Foto — 5:7 MTG-card aspect tile per issue #97 (was 4:3). *@
+            <DxGridDataColumn Caption="Foto" Width="58px" AllowSort="false" AllowGroup="false">
                 <CellDisplayTemplate>
                     @{ var gi = (GameItemListDto)context.DataItem; }
-                    <span class="oh-it-photo">
-                        @if (!string.IsNullOrEmpty(gi.ImageUrl))
-                        {
-                            <img src="@gi.ImageUrl" alt="@gi.Name" />
-                        }
-                        else
-                        {
-                            <i class="bi bi-image oh-it-photo-empty" aria-hidden="true"></i>
-                        }
-                    </span>
+                    <ItemGridImageTile @key="gi.Id" Name="@gi.Name" ImageUrl="@gi.ImageUrl" />
                 </CellDisplayTemplate>
             </DxGridDataColumn>
 
-            @* Type-dot 24px — unbound (no FieldName) per Copilot review on PR #88
-               so it doesn't collide with the text "Typ" column under DxGrid's
-               layout-persistence keying-by-FieldName. *@
+            @* Type-dot unbound — avoids DxGrid layout-key collision w/ Typ column. *@
             <DxGridDataColumn Caption="•" Width="24px" AllowSort="false" AllowGroup="false">
                 <CellDisplayTemplate>
                     @{ var gi = (GameItemListDto)context.DataItem; }
@@ -170,18 +245,27 @@ else
             <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="Typ" Width="130px" />
             <DxGridDataColumn FieldName="PhysicalFormDisplay" Caption="Podoba" Width="150px" />
 
-            @* 4 class pip cols *@
-            <DxGridDataColumn FieldName="ReqWarrior" Caption="Vál." Width="64px">
-                <CellDisplayTemplate><span class="oh-it-pip @ItemClassPipsHelpers.PipClass((int)context.Value)" title="Válečník: @context.Value"><i class="bi bi-shield-shaded"></i></span></CellDisplayTemplate>
+            @* Požadavky — single-column 4-pip cluster (issue #97). *@
+            <DxGridDataColumn Caption="Požadavky" Width="184px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{ var gi = (GameItemListDto)context.DataItem; }
+                    <ItemClassPips Warrior="gi.ReqWarrior" Archer="gi.ReqArcher" Mage="gi.ReqMage" Thief="gi.ReqThief" />
+                </CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="ReqArcher" Caption="Luč." Width="64px">
-                <CellDisplayTemplate><span class="oh-it-pip @ItemClassPipsHelpers.PipClass((int)context.Value)" title="Lučištník: @context.Value"><i class="bi bi-bullseye"></i></span></CellDisplayTemplate>
+
+            @* Individual class columns — just the number, hidden by default.
+               Revealed via the column chooser for filtering/grouping. *@
+            <DxGridDataColumn FieldName="ReqWarrior" Caption="Vál." Width="72px" Visible="false">
+                <CellDisplayTemplate>@RenderReq((int)context.Value)</CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="ReqMage" Caption="Mág" Width="64px">
-                <CellDisplayTemplate><span class="oh-it-pip @ItemClassPipsHelpers.PipClass((int)context.Value)" title="Mág: @context.Value"><i class="bi bi-magic"></i></span></CellDisplayTemplate>
+            <DxGridDataColumn FieldName="ReqArcher" Caption="Luč." Width="72px" Visible="false">
+                <CellDisplayTemplate>@RenderReq((int)context.Value)</CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="ReqThief" Caption="Zlo." Width="88px">
-                <CellDisplayTemplate><span class="oh-it-pip @ItemClassPipsHelpers.PipClass((int)context.Value)" title="Zloděj: @context.Value"><i class="bi bi-incognito"></i></span></CellDisplayTemplate>
+            <DxGridDataColumn FieldName="ReqMage" Caption="Mág" Width="72px" Visible="false">
+                <CellDisplayTemplate>@RenderReq((int)context.Value)</CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="ReqThief" Caption="Zlo." Width="72px" Visible="false">
+                <CellDisplayTemplate>@RenderReq((int)context.Value)</CellDisplayTemplate>
             </DxGridDataColumn>
 
             @* Cena coin gold accent — strikethrough when IsSold=false *@
@@ -585,6 +669,57 @@ else
     private HashSet<int> assignedItemIds = [];
 
     private bool _previousCatalog;
+
+    // Toolbar filter state (issue #97). Per-hra toggles (ForSale/Findable) only
+    // apply in game mode; Craftable + search + type apply to both modes.
+    private string? searchText;
+    private ItemType? filterType;
+    private bool filterOnlyCraftable;
+    private bool filterOnlyForSale;
+    private bool filterOnlyFindable;
+
+    private static readonly List<EnumItem<ItemType?>> itemTypeFilterOptions =
+        Enum.GetValues<ItemType>()
+            .Select(v => new EnumItem<ItemType?>(v, v.GetDisplayName()))
+            .ToList();
+
+    private List<ItemListDto> visibleCatalogItems => catalogItems.Where(MatchesCatalog).ToList();
+    private List<GameItemListDto> visibleGameItems => gameItems.Where(MatchesGame).ToList();
+
+    private bool MatchesCatalog(ItemListDto it)
+    {
+        if (filterType.HasValue && it.ItemType != filterType.Value) return false;
+        if (filterOnlyCraftable && !it.IsCraftable) return false;
+        if (!string.IsNullOrWhiteSpace(searchText))
+        {
+            var needle = searchText.Trim();
+            var nameMatch = it.Name.Contains(needle, StringComparison.OrdinalIgnoreCase);
+            var effectMatch = it.Effect?.Contains(needle, StringComparison.OrdinalIgnoreCase) == true;
+            if (!nameMatch && !effectMatch) return false;
+        }
+        return true;
+    }
+
+    private bool MatchesGame(GameItemListDto gi)
+    {
+        if (filterType.HasValue && gi.ItemType != filterType.Value) return false;
+        if (filterOnlyCraftable && !gi.IsCraftable) return false;
+        if (filterOnlyForSale && !gi.IsSold) return false;
+        if (filterOnlyFindable && !gi.IsFindable) return false;
+        if (!string.IsNullOrWhiteSpace(searchText))
+        {
+            var needle = searchText.Trim();
+            var nameMatch = gi.Name.Contains(needle, StringComparison.OrdinalIgnoreCase);
+            var effectMatch = gi.Effect?.Contains(needle, StringComparison.OrdinalIgnoreCase) == true;
+            var recipeMatch = gi.RecipeSummary?.Contains(needle, StringComparison.OrdinalIgnoreCase) == true;
+            if (!nameMatch && !effectMatch && !recipeMatch) return false;
+        }
+        return true;
+    }
+
+    // Grid cell helper — renders the class-requirement number only when > 0.
+    // Empty cells stay clean; filter menus still see the raw int on the DTO.
+    private static string RenderReq(int v) => v > 0 ? v.ToString() : "";
 
     protected override async Task OnInitializedAsync()
     {

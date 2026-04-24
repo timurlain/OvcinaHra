@@ -1,0 +1,40 @@
+@* ItemGridImageTile — 5:7 MTG-card aspect tile used in the ItemList Foto
+   column (issue #97). Mirrors LocationGridImageTile's fail/load state
+   pattern — @onerror flips a Blazor flag rather than mutating the DOM, so
+   a component reused in @foreach doesn't stay stuck on the previous item's
+   error. Height locked to the row height; aspect-ratio keeps width derived. *@
+
+<span class="oh-it-tile" title="@Name">
+    @if (!imageLoaded || imageFailed)
+    {
+        <i class="oh-it-tile-glyph bi bi-image" aria-hidden="true"></i>
+    }
+    @if (!string.IsNullOrEmpty(ImageUrl) && !imageFailed)
+    {
+        <img class="oh-it-tile-img"
+             src="@ImageUrl"
+             alt="@Name"
+             loading="lazy"
+             @onload="() => imageLoaded = true"
+             @onerror="() => imageFailed = true" />
+    }
+</span>
+
+@code {
+    [Parameter, EditorRequired] public string Name { get; set; } = "";
+    [Parameter] public string? ImageUrl { get; set; }
+
+    private bool imageLoaded;
+    private bool imageFailed;
+    private string? _lastUrl;
+
+    protected override void OnParametersSet()
+    {
+        if (_lastUrl != ImageUrl)
+        {
+            _lastUrl = ImageUrl;
+            imageLoaded = false;
+            imageFailed = false;
+        }
+    }
+}
