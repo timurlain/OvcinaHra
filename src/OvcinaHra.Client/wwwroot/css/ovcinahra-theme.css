@@ -2478,3 +2478,13 @@
     .oh-tp-pipeline{grid-template-columns:repeat(2,1fr);grid-auto-rows:auto}
     .oh-tp-workspace{grid-template-columns:1fr;min-height:auto}
 }
+
+/* ------------------------------------------------------------
+   BoundingBoxPicker — embedded map + 4 DxSpinEdit inputs (issue #2)
+   Scoped to .oh-bbox-picker-* so it doesn't bleed into the main /map.
+   ------------------------------------------------------------ */
+.oh-bbox-picker{display:flex;flex-direction:column;gap:10px}
+.oh-bbox-picker-map{width:100%;height:360px;border-radius:var(--oh-radius);border:1px solid var(--oh-border);overflow:hidden;background:var(--oh-surface-alt)}
+.oh-bbox-picker-actions{display:flex;gap:8px;flex-wrap:wrap}
+.oh-bbox-picker-inputs{margin-top:4px}
+.oh-bbox-picker-help{margin:0;color:var(--oh-text-secondary);font:400 .8125rem var(--oh-font-body);line-height:1.45}

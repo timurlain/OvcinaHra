@@ -18,7 +18,11 @@ public record GameDetailDto(
     DateOnly EndDate,
     GameStatus Status,
     string? ImagePath,
-    int? ExternalGameId);
+    int? ExternalGameId,
+    decimal? BoundingBoxSwLat = null,
+    decimal? BoundingBoxSwLng = null,
+    decimal? BoundingBoxNeLat = null,
+    decimal? BoundingBoxNeLng = null);
 
 public record CreateGameDto(
     string Name,
@@ -32,7 +36,11 @@ public record UpdateGameDto(
     int Edition,
     DateOnly StartDate,
     DateOnly EndDate,
-    GameStatus Status);
+    GameStatus Status,
+    decimal? BoundingBoxSwLat = null,
+    decimal? BoundingBoxSwLng = null,
+    decimal? BoundingBoxNeLat = null,
+    decimal? BoundingBoxNeLng = null);
 
 /// <summary>
 /// Links this game to a game in registrace-ovčina.

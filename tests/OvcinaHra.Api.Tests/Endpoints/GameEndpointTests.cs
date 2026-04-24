@@ -83,4 +83,80 @@ public class GameEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
         var getResponse = await Client.GetAsync($"/api/games/{created.Id}");
         Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
     }
+
+    // ----- Bounding box round-trip + validation (issue #2) -----
+
+    [Fact]
+    public async Task Update_BoundingBox_RoundTripsThroughGet()
+    {
+        var created = await CreateGameAsync("Bbox round-trip");
+
+        var updateDto = new UpdateGameDto(
+            "Bbox round-trip", 1, new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 2), GameStatus.Draft,
+            BoundingBoxSwLat: 49.5m, BoundingBoxSwLng: 17.1m,
+            BoundingBoxNeLat: 49.7m, BoundingBoxNeLng: 17.4m);
+        var response = await Client.PutAsJsonAsync($"/api/games/{created.Id}", updateDto);
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        var fetched = await Client.GetFromJsonAsync<GameDetailDto>($"/api/games/{created.Id}");
+        Assert.Equal(49.5m, fetched!.BoundingBoxSwLat);
+        Assert.Equal(17.1m, fetched.BoundingBoxSwLng);
+        Assert.Equal(49.7m, fetched.BoundingBoxNeLat);
+        Assert.Equal(17.4m, fetched.BoundingBoxNeLng);
+    }
+
+    [Fact]
+    public async Task Update_ClearingBoundingBox_PersistsAllNulls()
+    {
+        var created = await CreateGameAsync("Bbox clear");
+        // Seed a bbox first
+        await Client.PutAsJsonAsync($"/api/games/{created.Id}", new UpdateGameDto(
+            "Bbox clear", 1, new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 2), GameStatus.Draft,
+            BoundingBoxSwLat: 49.5m, BoundingBoxSwLng: 17.1m,
+            BoundingBoxNeLat: 49.7m, BoundingBoxNeLng: 17.4m));
+
+        // Now clear it (all four null)
+        var response = await Client.PutAsJsonAsync($"/api/games/{created.Id}", new UpdateGameDto(
+            "Bbox clear", 1, new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 2), GameStatus.Draft));
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        var fetched = await Client.GetFromJsonAsync<GameDetailDto>($"/api/games/{created.Id}");
+        Assert.Null(fetched!.BoundingBoxSwLat);
+        Assert.Null(fetched.BoundingBoxSwLng);
+        Assert.Null(fetched.BoundingBoxNeLat);
+        Assert.Null(fetched.BoundingBoxNeLng);
+    }
+
+    [Fact]
+    public async Task Update_PartialBoundingBox_ReturnsValidationProblem()
+    {
+        var created = await CreateGameAsync("Partial bbox");
+        // Only 2 of the 4 corners — must be rejected as 400.
+        var response = await Client.PutAsJsonAsync($"/api/games/{created.Id}", new UpdateGameDto(
+            "Partial bbox", 1, new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 2), GameStatus.Draft,
+            BoundingBoxSwLat: 49.5m, BoundingBoxSwLng: 17.1m));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Update_InvertedBoundingBox_ReturnsValidationProblem()
+    {
+        var created = await CreateGameAsync("Inverted bbox");
+        // SW.lat > NE.lat — invalid corners.
+        var response = await Client.PutAsJsonAsync($"/api/games/{created.Id}", new UpdateGameDto(
+            "Inverted bbox", 1, new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 2), GameStatus.Draft,
+            BoundingBoxSwLat: 50.0m, BoundingBoxSwLng: 17.1m,
+            BoundingBoxNeLat: 49.5m, BoundingBoxNeLng: 17.4m));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    private async Task<GameDetailDto> CreateGameAsync(string name)
+    {
+        var dto = new CreateGameDto(name, 1, new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 2));
+        var response = await Client.PostAsJsonAsync("/api/games", dto);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<GameDetailDto>())!;
+    }
 }

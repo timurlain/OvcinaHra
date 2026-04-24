@@ -11,8 +11,16 @@ public class GameFormModel
     public DateOnly EndDate { get; set; } = DateOnly.FromDateTime(DateTime.Today.AddDays(2));
     public GameStatus Status { get; set; } = GameStatus.Draft;
 
+    public decimal? BoundingBoxSwLat { get; set; }
+    public decimal? BoundingBoxSwLng { get; set; }
+    public decimal? BoundingBoxNeLat { get; set; }
+    public decimal? BoundingBoxNeLng { get; set; }
+
     public CreateGameDto ToCreateDto() => new(Name, Edition, StartDate, EndDate, Status);
-    public UpdateGameDto ToUpdateDto() => new(Name, Edition, StartDate, EndDate, Status);
+
+    public UpdateGameDto ToUpdateDto() => new(
+        Name, Edition, StartDate, EndDate, Status,
+        BoundingBoxSwLat, BoundingBoxSwLng, BoundingBoxNeLat, BoundingBoxNeLng);
 
     public static GameFormModel FromDetail(GameDetailDto dto) => new()
     {
@@ -20,6 +28,10 @@ public class GameFormModel
         Edition = dto.Edition,
         StartDate = dto.StartDate,
         EndDate = dto.EndDate,
-        Status = dto.Status
+        Status = dto.Status,
+        BoundingBoxSwLat = dto.BoundingBoxSwLat,
+        BoundingBoxSwLng = dto.BoundingBoxSwLng,
+        BoundingBoxNeLat = dto.BoundingBoxNeLat,
+        BoundingBoxNeLng = dto.BoundingBoxNeLng
     };
 }

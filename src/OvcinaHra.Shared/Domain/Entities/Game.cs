@@ -18,6 +18,15 @@ public class Game
     /// </summary>
     public int? ExternalGameId { get; set; }
 
+    // World bounding box for the map UI — SW corner + NE corner. All four
+    // nullable; games without a bbox fall back to a default view. Precision
+    // matches the GpsCoordinates convention (Location.Latitude/Longitude):
+    // decimal(10,7) via HasPrecision in GameConfiguration.
+    public decimal? BoundingBoxSwLat { get; set; }
+    public decimal? BoundingBoxSwLng { get; set; }
+    public decimal? BoundingBoxNeLat { get; set; }
+    public decimal? BoundingBoxNeLng { get; set; }
+
     public ICollection<GameLocation> GameLocations { get; set; } = [];
     public ICollection<GameItem> GameItems { get; set; } = [];
     public ICollection<GameSecretStash> GameSecretStashes { get; set; } = [];
