@@ -22,18 +22,69 @@
     {
         <div class="oh-tp-pool-tile-badge">×@Item.Count</div>
     }
+
+    @* Unobtrusive remove affordance — unbundled from the draggable surface:
+       `draggable="false"` keeps a click-hold on the × from being treated as
+       a drag source, and `@onmousedown:stopPropagation` prevents the parent
+       tile's HTML5 dragstart from firing when the user starts the click on
+       the button. `@onclick:stopPropagation` prevents the tile's selection-
+       toggle handler from also running. See memory rule
+       `feedback_ovcinahra_destructive_confirm` — handler goes through the
+       popup, not straight to OnRemove. *@
+    <button type="button"
+            class="oh-tp-pool-tile-remove"
+            draggable="false"
+            title="Odebrat ze zásobníku"
+            aria-label="Odebrat ze zásobníku"
+            @onmousedown:stopPropagation="true"
+            @onclick="OpenRemoveConfirm"
+            @onclick:stopPropagation="true">
+        <i class="bi bi-x-lg"></i>
+    </button>
+
     <div class="oh-tp-pool-tile-name">@Item.ItemName</div>
 </div>
+
+<DxPopup @bind-Visible="@isRemoveVisible"
+         HeaderText="Odebrat ze zásobníku?"
+         Width="420px">
+    <BodyContentTemplate Context="popupContext">
+        <p class="mb-3">
+            Opravdu chcete odebrat <strong>@Item.ItemName</strong> ze zásobníku?
+            Tato akce je nevratná.
+        </p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-secondary"
+                    @onclick="() => isRemoveVisible = false"
+                    disabled="@removing">
+                Zrušit
+            </button>
+            <button type="button" class="btn btn-danger"
+                    @onclick="ConfirmRemoveAsync"
+                    disabled="@removing">
+                @if (removing)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                Odebrat
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
 
 @code {
     [Parameter, EditorRequired] public TreasurePoolItemDto Item { get; set; } = default!;
     [Parameter] public bool Selected { get; set; }
     [Parameter] public EventCallback<TreasurePoolItemDto> OnToggle { get; set; }
+    [Parameter] public EventCallback<TreasurePoolItemDto> OnRemove { get; set; }
 
     private ElementReference elementRef;
     private bool imageFailed;
     private int _imageStateForItemId = -1;
     private int _wiredForPoolItemId = -1;
+
+    private bool isRemoveVisible;
+    private bool removing;
 
     protected override void OnParametersSet()
     {
@@ -63,4 +114,24 @@
     }
 
     private Task OnClickInternal() => OnToggle.InvokeAsync(Item);
+
+    private void OpenRemoveConfirm()
+    {
+        isRemoveVisible = true;
+    }
+
+    private async Task ConfirmRemoveAsync()
+    {
+        if (removing) return;
+        removing = true;
+        try
+        {
+            await OnRemove.InvokeAsync(Item);
+            isRemoveVisible = false;
+        }
+        finally
+        {
+            removing = false;
+        }
+    }
 }

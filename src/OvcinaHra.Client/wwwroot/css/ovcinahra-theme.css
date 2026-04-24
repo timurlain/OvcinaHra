@@ -2410,6 +2410,13 @@
 .oh-tp-pool-tile-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:var(--oh-primary-light);background:var(--oh-surface-alt)}
 .oh-tp-pool-tile-name{position:absolute;left:4px;right:4px;bottom:4px;font:600 .75rem var(--oh-font-body);color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8);line-height:1.15;max-height:2.3em;overflow:hidden}
 .oh-tp-pool-tile-badge{position:absolute;top:4px;right:4px;background:rgba(45,80,22,.92);color:#fff;border-radius:99px;padding:1px 6px;font:600 .6875rem var(--oh-font-mono);letter-spacing:.01em}
+/* Remove affordance — sits at top-left so it doesn't collide with the count
+   badge. Always visible but low-opacity; hover bumps to full opacity. Sized
+   small enough to stay unobtrusive on the 5:7 tile. */
+.oh-tp-pool-tile-remove{position:absolute;top:4px;left:4px;z-index:4;width:20px;height:20px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:50%;background:rgba(140,36,35,.78);color:#fff8ec;cursor:pointer;opacity:.55;transition:opacity .15s,transform .15s,background .15s}
+.oh-tp-pool-tile-remove:hover{opacity:1;transform:scale(1.08);background:rgba(140,36,35,.98)}
+.oh-tp-pool-tile-remove:focus-visible{outline:2px solid var(--oh-stage-early);outline-offset:1px;opacity:1}
+.oh-tp-pool-tile-remove i{font-size:.6875rem;line-height:1}
 
 /* Drag hint banner */
 .oh-tp-drag-hint{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--oh-stage-early-soft);border:1px dashed var(--oh-stage-early);border-radius:var(--oh-radius-sm);color:var(--oh-text);font-size:.8125rem;margin-bottom:8px}
