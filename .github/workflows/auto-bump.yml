@@ -20,10 +20,21 @@ on:
 permissions:
   contents: write
 
+# Serialize: two merges landing close together would race on the same
+# <Version>, one would push → other would fail non-fast-forward. The
+# concurrency group makes the second job wait until the first finishes +
+# its auto-bump commit is visible on main. cancel-in-progress is false
+# so neither bump is dropped.
+concurrency:
+  group: auto-bump-version
+  cancel-in-progress: false
+
 jobs:
   bump:
-    # Skip the bump commits themselves — prevents infinite loop.
-    if: ${{ !contains(github.event.head_commit.message, 'Auto-bump') }}
+    # Skip only the auto-bump commits themselves — prevents the infinite
+    # loop without accidentally matching unrelated commits that happen to
+    # mention "Auto-bump" in their body.
+    if: ${{ !startsWith(github.event.head_commit.message, 'Auto-bump:') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout main
@@ -53,10 +64,15 @@ jobs:
           echo "::notice::Bumped $CURRENT → $NEW"
 
       - name: Commit and push
+        # [skip ci] on the message so deploy.yml + build workflows do NOT
+        # re-run for the bump commit (they already ran on the upstream
+        # merge commit that triggered this job). Avoids doubling every
+        # merge's CI + deploy cost. The csproj change still lands on main;
+        # the NEXT non-bump push picks up the new version.
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/OvcinaHra.Client/OvcinaHra.Client.csproj
-          git commit -m "Auto-bump: v${{ steps.bump.outputs.new }}"
+          git commit -m "Auto-bump: v${{ steps.bump.outputs.new }} [skip ci]"
           git push
