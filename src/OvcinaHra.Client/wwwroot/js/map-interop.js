@@ -285,10 +285,20 @@ window.ovcinaMiniMap = {
             attributionControl: false
         });
 
-        var el2 = document.createElement('div');
-        el2.style.cssText = 'width:18px;height:18px;border-radius:50%;background:' +
-            (kindColor || '#2D5016') + ';border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5);';
-        var marker = new maplibregl.Marker({ element: el2 }).setLngLat([lon, lat]).addTo(map);
+        // Issue #110: the focused (current) location stands out vs. surrounding
+        // context labels via a halo ring + larger pin. Two-layer element:
+        // outer translucent ring (kindColor, 30px), inner solid pin (24px).
+        var wrap = document.createElement('div');
+        wrap.style.cssText = 'position:relative;width:30px;height:30px;display:flex;align-items:center;justify-content:center;';
+        var halo = document.createElement('div');
+        halo.style.cssText = 'position:absolute;inset:0;border-radius:50%;background:' +
+            (kindColor || '#2D5016') + ';opacity:.22;';
+        var pin = document.createElement('div');
+        pin.style.cssText = 'width:22px;height:22px;border-radius:50%;background:' +
+            (kindColor || '#2D5016') + ';border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.55);position:relative;';
+        wrap.appendChild(halo);
+        wrap.appendChild(pin);
+        var marker = new maplibregl.Marker({ element: wrap }).setLngLat([lon, lat]).addTo(map);
 
         this._instances[elementId] = { map: map, marker: marker, contextMarkers: [] };
     },
@@ -301,7 +311,10 @@ window.ovcinaMiniMap = {
     },
 
     // Paint a set of small dots around the current location for orientation (issue #74).
-    // Each item: { lat, lon, name, color }.
+    // Each item: { lat, lon, name, color, showLabel }.
+    // Issue #110: each dot now optionally carries a name label next to it
+    // (white halo-shadow for readability on any tile style). Label text is
+    // Czech-safe (no normalization) — diacritics render natively.
     // Replaces the previous context markers (so caller can rebuild on game switch).
     setContextMarkers: function (elementId, markers) {
         var inst = this._instances[elementId];
@@ -317,12 +330,29 @@ window.ovcinaMiniMap = {
         for (var j = 0; j < markers.length; j++) {
             var m = markers[j];
             if (m.lat == null || m.lon == null) continue;
+
+            var wrap = document.createElement('div');
+            wrap.style.cssText = 'display:flex;align-items:center;gap:3px;pointer-events:none;';
+            wrap.title = m.name || '';
+
             var dot = document.createElement('div');
-            dot.title = m.name || '';
             dot.style.cssText = 'width:10px;height:10px;border-radius:50%;background:' +
                 (m.color || '#666') +
-                ';border:1.5px solid rgba(255,255,255,.85);box-shadow:0 1px 2px rgba(0,0,0,.4);opacity:.85;';
-            var ctx = new maplibregl.Marker({ element: dot }).setLngLat([m.lon, m.lat]).addTo(inst.map);
+                ';border:1.5px solid rgba(255,255,255,.85);box-shadow:0 1px 2px rgba(0,0,0,.4);opacity:.85;flex:0 0 auto;';
+            wrap.appendChild(dot);
+
+            if (m.name && m.showLabel !== false) {
+                var label = document.createElement('span');
+                label.textContent = m.name;
+                label.style.cssText = 'font:600 11px -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;' +
+                    'color:#2a2a2a;white-space:nowrap;' +
+                    'text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 2px #fff,0 0 2px #fff;' +
+                    'letter-spacing:.01em;';
+                wrap.appendChild(label);
+            }
+
+            var ctx = new maplibregl.Marker({ element: wrap, anchor: 'left' })
+                .setLngLat([m.lon, m.lat]).addTo(inst.map);
             inst.contextMarkers.push(ctx);
         }
     },

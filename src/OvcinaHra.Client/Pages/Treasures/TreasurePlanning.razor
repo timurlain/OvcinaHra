@@ -555,24 +555,12 @@ else
             .SelectMany(l => new[] { l.StartCount, l.EarlyCount, l.MidgameCount, l.LategameCount })
             .DefaultIfEmpty(0).Max());
 
-        // Fit map to the game's locations.
-        var placed = locations.Where(l => l.Latitude.HasValue && l.Longitude.HasValue).ToList();
-        if (placed.Count > 0)
-        {
-            var minLat = (double)placed.Min(l => l.Latitude!.Value);
-            var maxLat = (double)placed.Max(l => l.Latitude!.Value);
-            var minLon = (double)placed.Min(l => l.Longitude!.Value);
-            var maxLon = (double)placed.Max(l => l.Longitude!.Value);
-            if (Math.Abs(maxLat - minLat) > 0.0005 || Math.Abs(maxLon - minLon) > 0.0005)
-            {
-                await mapView.FitBoundsAsync(minLat, minLon, maxLat, maxLon);
-            }
-            else
-            {
-                await mapView.SetCenterAsync(minLat, minLon, 15);
-            }
-        }
+        // Issue #103: map centers on the game's bounding box when set, else
+        // falls back to a Czech-countryside default. Fetch failures must not
+        // break the treasures page render — best-effort try/catch.
+        await FitMapToGameBoundsOrDefaultAsync();
 
+        var placed = locations.Where(l => l.Latitude.HasValue && l.Longitude.HasValue).ToList();
         foreach (var loc in placed)
         {
             var card = locationCards.FirstOrDefault(c => c.LocationId == loc.Id);
@@ -592,6 +580,30 @@ else
         }
 
         await mapView.SetStageFilterAsync(activeStages);
+    }
+
+    private async Task FitMapToGameBoundsOrDefaultAsync()
+    {
+        if (mapView is null) return;
+
+        // Prefer the game's saved bounding box; fall back to CZ countryside
+        // (mirrors BoundingBoxPicker's default [15.4, 49.8], zoom 7).
+        try
+        {
+            var detail = await Api.GetAsync<GameDetailDto>($"/api/games/{gameId}");
+            if (detail is not null
+                && detail.BoundingBoxSwLat.HasValue && detail.BoundingBoxSwLng.HasValue
+                && detail.BoundingBoxNeLat.HasValue && detail.BoundingBoxNeLng.HasValue)
+            {
+                await mapView.FitBoundsAsync(
+                    (double)detail.BoundingBoxSwLat.Value, (double)detail.BoundingBoxSwLng.Value,
+                    (double)detail.BoundingBoxNeLat.Value, (double)detail.BoundingBoxNeLng.Value);
+                return;
+            }
+        }
+        catch { /* best-effort — fall through to default viewport */ }
+
+        await mapView.SetCenterAsync(49.8, 15.4, 7);
     }
 
     private static string KindSlug(LocationKind k) => k switch

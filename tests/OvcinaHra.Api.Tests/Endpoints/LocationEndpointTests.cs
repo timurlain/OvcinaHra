@@ -298,4 +298,59 @@ public class LocationEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         Assert.Equal(locationTreasureId, dto.LocationTreasureQuests[0].Id);
         Assert.Equal("Poklad v dole", dto.LocationTreasureQuests[0].Title);
     }
+
+    [Fact]
+    public async Task GetNearby_ReturnsLocationsWithinRadius_OrderedByDistance()
+    {
+        // Center: 49.5, 17.1. Near (~10 km), mid (~30 km), far (~150 km).
+        await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Blizko", LocationKind.Village, 49.58m, 17.12m));
+        await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Stredne", LocationKind.Wilderness, 49.75m, 17.15m));
+        await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Daleko", LocationKind.Town, 50.9m, 18.5m));
+
+        var nearby = await Client.GetFromJsonAsync<List<NearbyLocationDto>>(
+            "/api/locations/nearby?lat=49.5&lng=17.1&radiusKm=50");
+
+        Assert.NotNull(nearby);
+        Assert.Equal(2, nearby.Count);
+        Assert.Equal("Blizko", nearby[0].Name);
+        Assert.Equal("Stredne", nearby[1].Name);
+        Assert.True(nearby[0].DistanceKm < nearby[1].DistanceKm);
+    }
+
+    [Fact]
+    public async Task GetNearby_ExcludeId_DropsSubjectLocation()
+    {
+        var selfResp = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Self", LocationKind.Village, 49.50m, 17.10m));
+        var self = await selfResp.Content.ReadFromJsonAsync<LocationDetailDto>();
+        await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Other", LocationKind.Village, 49.52m, 17.11m));
+
+        var nearby = await Client.GetFromJsonAsync<List<NearbyLocationDto>>(
+            $"/api/locations/nearby?lat=49.5&lng=17.1&radiusKm=10&excludeId={self!.Id}");
+
+        Assert.NotNull(nearby);
+        Assert.Single(nearby);
+        Assert.Equal("Other", nearby[0].Name);
+    }
+
+    [Fact]
+    public async Task GetNearby_InvalidRadius_ReturnsBadRequest()
+    {
+        var resp = await Client.GetAsync("/api/locations/nearby?lat=49.5&lng=17.1&radiusKm=0");
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+
+        var resp2 = await Client.GetAsync("/api/locations/nearby?lat=49.5&lng=17.1&radiusKm=500");
+        Assert.Equal(HttpStatusCode.BadRequest, resp2.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetNearby_InvalidLatLng_ReturnsBadRequest()
+    {
+        var resp = await Client.GetAsync("/api/locations/nearby?lat=95&lng=0&radiusKm=5");
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
 }
