@@ -88,20 +88,24 @@ public class ApiClient
         var response = await _http.DeleteAsync(url);
         if (response.IsSuccessStatusCode) return (true, null);
 
-        try
-        {
-            var problem = await response.Content.ReadFromJsonAsync<ProblemDetailsLite>(JsonOptions);
-            if (!string.IsNullOrWhiteSpace(problem?.Detail))
-                return (false, problem.Detail);
-            if (!string.IsNullOrWhiteSpace(problem?.Title))
-                return (false, problem.Title);
-        }
-        catch (JsonException)
-        {
-            // Non-JSON body — fall through to the raw-text path below.
-        }
-
+        // Read the body once, then attempt JSON parse — avoids the stream-consumed
+        // pitfall where ReadFromJsonAsync drains the stream before the raw fallback.
         var raw = await response.Content.ReadAsStringAsync();
+        if (!string.IsNullOrWhiteSpace(raw))
+        {
+            try
+            {
+                var problem = JsonSerializer.Deserialize<ProblemDetailsLite>(raw, JsonOptions);
+                if (!string.IsNullOrWhiteSpace(problem?.Detail))
+                    return (false, problem.Detail);
+                if (!string.IsNullOrWhiteSpace(problem?.Title))
+                    return (false, problem.Title);
+            }
+            catch (JsonException)
+            {
+                // Non-JSON body — fall through to the raw-text return below.
+            }
+        }
         return (false, string.IsNullOrWhiteSpace(raw) ? null : raw);
     }
 

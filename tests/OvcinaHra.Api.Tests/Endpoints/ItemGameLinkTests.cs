@@ -20,6 +20,7 @@ public class ItemGameLinkTests(PostgresFixture postgres) : IntegrationTestBase(p
     {
         var response = await Client.PostAsJsonAsync("/api/games",
             new CreateGameDto("Hra #99", 1, new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 3)));
+        response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<GameDetailDto>())!;
     }
 
@@ -27,6 +28,7 @@ public class ItemGameLinkTests(PostgresFixture postgres) : IntegrationTestBase(p
     {
         var response = await Client.PostAsJsonAsync("/api/locations",
             new CreateLocationDto("Skála", LocationKind.Wilderness, 49.5m, 17.1m));
+        response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<LocationDetailDto>())!;
     }
 
@@ -34,6 +36,7 @@ public class ItemGameLinkTests(PostgresFixture postgres) : IntegrationTestBase(p
     {
         var response = await Client.PostAsJsonAsync("/api/items",
             new CreateItemDto(name, ItemType.Potion));
+        response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<ItemDetailDto>())!;
     }
 
@@ -101,12 +104,12 @@ public class ItemGameLinkTests(PostgresFixture postgres) : IntegrationTestBase(p
         Assert.Contains("Drakův poklad", body);
         Assert.Contains("Položku nelze odebrat", body);
 
-        // Row must still exist — confirm via the usable-items query for the
-        // same game; a missing GameItem wouldn't appear here.
-        var usable = await Client.GetFromJsonAsync<List<ItemListDto>>(
-            $"/api/items/usable?playerClass={(int)PlayerClass.Warrior}&level=1&gameId={game.Id}");
-        Assert.NotNull(usable);
-        Assert.Contains(usable, i => i.Id == item.Id);
+        // Row must still exist — confirm via the by-game item list. Direct
+        // (GameId, ItemId) check, not dependent on class/level rules.
+        var byGame = await Client.GetFromJsonAsync<List<ItemListDto>>(
+            $"/api/items/by-game/{game.Id}");
+        Assert.NotNull(byGame);
+        Assert.Contains(byGame, i => i.Id == item.Id);
     }
 
     // ----- TreasureItem: pool only -----
