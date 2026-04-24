@@ -29,6 +29,16 @@
                            FontSize="@_fontSize" FontSizeChanged="OnFontSizeChanged"
                            OnSave="SaveOverlayAsync"
                            OnCancel="CancelEditAsync" />
+
+        @if (!string.IsNullOrEmpty(_overlayError))
+        {
+            <div class="oh-map-overlay-error alert alert-danger" role="alert">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <span>@_overlayError</span>
+                <button type="button" class="btn-close" aria-label="Zavřít chybu"
+                        @onclick="() => _overlayError = null"></button>
+            </div>
+        }
     }
 </div>
 
@@ -79,18 +89,31 @@
 
         // Load overlay once per game. Repeat on GameId change. Wrapped in
         // try/catch per _review-instincts §11 — a dead overlay fetch mustn't
-        // break the rest of the map page.
+        // break the rest of the map page. Marker is set only after a
+        // successful load so transient failures can retry on the next render.
         if (GameId.HasValue && _loadedOverlayForGameId != GameId)
         {
-            _loadedOverlayForGameId = GameId;
             try
             {
-                var dto = await Api.GetAsync<MapOverlayDto>($"/api/games/{GameId.Value}/overlay");
-                _committedShapes = dto?.Shapes ?? new List<MapOverlayShape>();
-                _stagedShapes = new List<MapOverlayShape>(_committedShapes);
+                List<MapOverlayShape> shapes;
+                try
+                {
+                    var dto = await Api.GetAsync<MapOverlayDto>($"/api/games/{GameId.Value}/overlay");
+                    shapes = dto?.Shapes ?? new List<MapOverlayShape>();
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    // 204 NoContent — empty body can't parse as JSON; treat as
+                    // no overlay. Still rendering below so the preview layers
+                    // are initialised for a future editor session.
+                    shapes = new List<MapOverlayShape>();
+                }
+                _committedShapes = shapes;
+                _stagedShapes = new List<MapOverlayShape>(shapes);
                 await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _committedShapes);
+                _loadedOverlayForGameId = GameId;
             }
-            catch { /* best-effort */ }
+            catch { /* network / JS failure — leave _loadedOverlayForGameId unset so a retry is possible */ }
         }
     }
 
@@ -258,10 +281,25 @@
 
     [JSInvokable]
     public async Task OnStyleLoadedCallback()
-        => await OnStyleLoaded.InvokeAsync();
+    {
+        await OnStyleLoaded.InvokeAsync();
+
+        // `ovcinaMap.switchStyle` wipes all style-dependent layers, including
+        // the overlay source / layers that `ovcinaOverlay.render` added.
+        // Re-render so the saved overlay survives basemap swaps.
+        if (GameId.HasValue && _loadedOverlayForGameId == GameId)
+        {
+            try { await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _committedShapes); }
+            catch { /* best-effort */ }
+        }
+    }
 
     public async ValueTask DisposeAsync()
     {
+        // Release overlay editor state first so the map still has live layers
+        // while we tear them down — avoids orphaned keydown listeners and
+        // stuck `dragPan.disable()` if the user navigated mid-draw.
+        try { await JS.InvokeVoidAsync("ovcinaOverlay.dispose", _elementId); } catch { }
         try { await JS.InvokeVoidAsync("ovcinaMap.dispose"); } catch { }
         _dotnetRef?.Dispose();
     }

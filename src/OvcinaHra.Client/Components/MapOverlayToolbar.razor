@@ -10,9 +10,9 @@
         @foreach (var t in Tools)
         {
             <button type="button" class="oh-mo-tool @(t.Key == Tool ? "is-active" : "")"
-                    title="@t.Label" aria-pressed="@(t.Key == Tool)"
+                    title="@t.Label" aria-label="@t.Label" aria-pressed="@(t.Key == Tool)"
                     @onclick="() => SelectToolAsync(t.Key)">
-                <i class="bi @t.Icon"></i>
+                <i class="bi @t.Icon" aria-hidden="true"></i>
             </button>
         }
     </div>

@@ -218,14 +218,23 @@
     function enterEditMode(mapId, tool, dotnetRef) {
         const map = getMap(mapId);
         if (!map) return;
-        const inst = ensureInstance(mapId);
-        inst.tool = tool;
-        inst.dotnetRef = dotnetRef;
-        map.getCanvas().style.cursor = 'crosshair';
-        // Disable map-level double-click zoom so polyline/polygon "dblclick to
-        // finish" doesn't also zoom the viewport.
-        if (map.doubleClickZoom && map.doubleClickZoom.disable) map.doubleClickZoom.disable();
-        attachHandlers(map, inst);
+        // If the editor is invoked before `render()` has been called (e.g.
+        // game has no saved overlay yet) the source+layer pair is missing and
+        // preview updates would no-op — make sure both exist before wiring
+        // handlers.
+        const setup = () => {
+            ensureLayers(map, SRC_SAVED, LYR_FILLS, LYR_STROKES, LYR_TEXT);
+            ensureLayers(map, SRC_PREVIEW, LYR_PREVIEW_FILLS, LYR_PREVIEW_STROKES, LYR_PREVIEW_TEXT);
+            const inst = ensureInstance(mapId);
+            inst.tool = tool;
+            inst.dotnetRef = dotnetRef;
+            map.getCanvas().style.cursor = 'crosshair';
+            // Disable map-level double-click zoom so polyline/polygon "dblclick
+            // to finish" doesn't also zoom the viewport.
+            if (map.doubleClickZoom && map.doubleClickZoom.disable) map.doubleClickZoom.disable();
+            attachHandlers(map, inst);
+        };
+        if (map.isStyleLoaded()) setup(); else map.once('styledata', setup);
     }
 
     function switchTool(mapId, tool) {
@@ -269,6 +278,11 @@
     }
 
     function detachHandlers(map, inst) {
+        // Always restore map panning — if the user interrupted a freehand,
+        // rectangle, or circle drag mid-stroke (tool switch / exit / nav away),
+        // the matching mouseup never fired and `dragPan` would stay disabled,
+        // leaving the map stuck.
+        if (map && map.dragPan && map.dragPan.enable) map.dragPan.enable();
         for (const h of inst.handlers) {
             try {
                 if (h.target === map) map.off(h.event, h.fn);
@@ -559,11 +573,42 @@
 
     // ---- Exports ----------------------------------------------------------
 
+    function dispose(mapId) {
+        const inst = instances[mapId];
+        if (!inst) return;
+        const map = getMap(mapId);
+        if (map) {
+            // detachHandlers also re-enables dragPan if it was disabled mid-draw.
+            detachHandlers(map, inst);
+            try { teardownPreview(map); } catch (e) { /* map may be gone */ }
+            // Remove overlay source + layers so a subsequent remount starts
+            // clean — avoids orphaned style-dependent layers when the user
+            // navigates away and back.
+            try {
+                for (const lyr of [
+                    LYR_FILLS, LYR_STROKES, LYR_TEXT,
+                    LYR_PREVIEW_FILLS, LYR_PREVIEW_STROKES, LYR_PREVIEW_TEXT
+                ]) {
+                    if (map.getLayer(lyr)) map.removeLayer(lyr);
+                }
+                for (const src of [SRC_SAVED, SRC_PREVIEW]) {
+                    if (map.getSource(src)) map.removeSource(src);
+                }
+            } catch (e) { /* best-effort */ }
+            try {
+                map.getCanvas().style.cursor = '';
+                if (map.doubleClickZoom && map.doubleClickZoom.enable) map.doubleClickZoom.enable();
+            } catch (e) { /* best-effort */ }
+        }
+        delete instances[mapId];
+    }
+
     window.ovcinaOverlay = {
         render: render,
         enterEditMode: enterEditMode,
         switchTool: switchTool,
         exitEditMode: exitEditMode,
+        dispose: dispose,
         setStyle: setStyle,
         // Exposed for unit-testability / future tools; not called by Blazor.
         _circleToPolygonRing: circleToPolygonRing

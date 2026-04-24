@@ -2579,3 +2579,7 @@
 .oh-mo-stroke-val{font-family:var(--oh-font-mono,Menlo,monospace);color:var(--oh-text,#2a2a2a);
     font-size:.75rem;min-width:30px;text-align:right}
 .oh-map-overlay-edit-btn{position:absolute;top:12px;right:12px;z-index:19}
+.oh-map-overlay-error{position:absolute;top:72px;left:50%;transform:translateX(-50%);z-index:21;
+    display:flex;align-items:center;gap:8px;max-width:min(520px,calc(100% - 24px));
+    margin:0;padding:8px 12px;font-size:.875rem}
+.oh-map-overlay-error .btn-close{margin-left:auto}
