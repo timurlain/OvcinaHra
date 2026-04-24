@@ -5,7 +5,7 @@ using OvcinaHra.Shared.Extensions;
 namespace OvcinaHra.Shared.Dtos;
 
 public record MonsterListDto(
-    int Id, string Name, MonsterType MonsterType, int Category,
+    int Id, string Name, MonsterType MonsterType, MonsterCategory Category,
     int Attack, int Defense, int Health,
     int? RewardXp, int? RewardMoney,
     string? Abilities, string? AiBehavior, string? RewardNotes, string? Notes,
@@ -16,13 +16,16 @@ public record MonsterListDto(
     public string MonsterTypeDisplay => MonsterType.GetDisplayName();
 
     [JsonIgnore]
+    public string CategoryDisplay => Category.GetDisplayName();
+
+    [JsonIgnore]
     public string TagsDisplay => string.Join(", ", TagNames);
 }
 
 public record MonsterDetailDto(
     int Id,
     string Name,
-    int Category,
+    MonsterCategory Category,
     MonsterType MonsterType,
     string? Abilities,
     string? AiBehavior,
@@ -34,11 +37,15 @@ public record MonsterDetailDto(
     string? RewardNotes,
     string? Notes,
     string? ImagePath,
-    List<TagDto> Tags);
+    List<TagDto> Tags)
+{
+    [JsonIgnore]
+    public string CategoryDisplay => Category.GetDisplayName();
+}
 
 public record CreateMonsterDto(
     string Name,
-    int Category,
+    MonsterCategory Category,
     MonsterType MonsterType,
     int Attack,
     int Defense,
@@ -52,7 +59,7 @@ public record CreateMonsterDto(
 
 public record UpdateMonsterDto(
     string Name,
-    int Category,
+    MonsterCategory Category,
     MonsterType MonsterType,
     int Attack,
     int Defense,

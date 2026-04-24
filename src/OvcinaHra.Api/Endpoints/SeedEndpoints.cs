@@ -474,7 +474,10 @@ public static class SeedEndpoints
             db.Monsters.Add(new Monster
             {
                 Name = raw.Name,
-                Category = raw.Category,
+                // Legacy seed JSON stores Category as a raw int 1-5;
+                // cast to the new MonsterCategory enum. Data is designer-
+                // clamped to the valid range so no mapping table needed.
+                Category = (MonsterCategory)raw.Category,
                 MonsterType = mType,
                 Abilities = raw.Abilities,
                 AiBehavior = raw.AiBehavior,

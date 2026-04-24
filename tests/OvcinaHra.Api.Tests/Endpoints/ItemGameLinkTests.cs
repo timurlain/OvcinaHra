@@ -50,7 +50,7 @@ public class ItemGameLinkTests(PostgresFixture postgres) : IntegrationTestBase(p
     private async Task<int> CreateMonsterAsync(string name)
     {
         var response = await Client.PostAsJsonAsync("/api/monsters",
-            new CreateMonsterDto(name, 1, MonsterType.Beast, 5, 5, 10));
+            new CreateMonsterDto(name, MonsterCategory.Tier1, MonsterType.Beast, 5, 5, 10));
         response.EnsureSuccessStatusCode();
         var monster = await response.Content.ReadFromJsonAsync<MonsterDetailDto>();
         return monster!.Id;

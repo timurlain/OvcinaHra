@@ -42,7 +42,7 @@ public class QuestCopyTests(PostgresFixture postgres) : IntegrationTestBase(post
     private async Task<MonsterDetailDto> CreateMonsterAsync(string name = "Kostlivec")
     {
         var response = await Client.PostAsJsonAsync("/api/monsters",
-            new CreateMonsterDto(name, 3, MonsterType.Undead, 5, 3, 10));
+            new CreateMonsterDto(name, MonsterCategory.Tier3, MonsterType.Undead, 5, 3, 10));
         return (await response.Content.ReadFromJsonAsync<MonsterDetailDto>())!;
     }
 
