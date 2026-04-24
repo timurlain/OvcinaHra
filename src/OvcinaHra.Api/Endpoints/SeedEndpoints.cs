@@ -474,7 +474,13 @@ public static class SeedEndpoints
             db.Monsters.Add(new Monster
             {
                 Name = raw.Name,
-                Category = raw.Category,
+                // Legacy seed JSON stores Category as a raw int 1-5. Enum.IsDefined
+                // guards against any prod-drift that ever sneaks a 0 / 6+ through —
+                // clamp to Tier1 rather than persisting an undefined enum value
+                // (which would round-trip as a bare number via HasConversion<string>).
+                Category = Enum.IsDefined(typeof(MonsterCategory), raw.Category)
+                    ? (MonsterCategory)raw.Category
+                    : MonsterCategory.Tier1,
                 MonsterType = mType,
                 Abilities = raw.Abilities,
                 AiBehavior = raw.AiBehavior,

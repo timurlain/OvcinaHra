@@ -39,7 +39,7 @@ else
                     <i class="bi @MonsterTypeIcon(monster.MonsterType)"></i>@monster.MonsterType.GetDisplayName()
                 </span>
                 <span class="oh-mon-d-dotsep">·</span>
-                <span class="oh-mon-d-kbadge"><i class="bi bi-bar-chart-steps"></i>K@(monster.Category)</span>
+                <span class="oh-mon-d-kbadge"><i class="bi bi-bar-chart-steps"></i>K@(monster.CategoryDisplay)</span>
                 <span class="oh-mon-d-dotsep">·</span>
                 <span class="oh-mon-d-id">#M@(monster.Id.ToString("D3"))</span>
             </div>
@@ -103,7 +103,7 @@ else
                             }
                         </div>
                         <div class="oh-mon-d-illust-cap">
-                            <span>@monster.MonsterType.GetDisplayName() · Kategorie @monster.Category</span>
+                            <span>@monster.MonsterType.GetDisplayName() · Kategorie @monster.CategoryDisplay</span>
                         </div>
                     </div>
                     <div class="oh-mon-d-stats">
@@ -194,7 +194,8 @@ else
                         <DxTextBox @bind-Text="@editName" />
                     </DxFormLayoutItem>
                     <DxFormLayoutItem Caption="Kategorie" ColSpanMd="4">
-                        <DxSpinEdit @bind-Value="@editCategory" MinValue="0" MaxValue="10" />
+                        <DxComboBox Data="@monsterCategoryValues" @bind-Value="@editCategory"
+                                    TextFieldName="Display" ValueFieldName="Value" />
                     </DxFormLayoutItem>
                     <DxFormLayoutItem Caption="Typ" ColSpanMd="12">
                         <DxComboBox Data="@monsterTypeValues" @bind-Value="@editType"
@@ -440,7 +441,7 @@ else
 
     // Edit form state
     private string editName = "";
-    private int editCategory = 1;
+    private MonsterCategory editCategory = MonsterCategory.Tier1;
     private MonsterType editType = MonsterType.Beast;
     private int editAttack, editDefense, editHealth = 1;
     private string? editAbilities, editAiBehavior, editRewardNotes, editNotes;
@@ -467,6 +468,10 @@ else
 
     private static readonly List<EnumItem<MonsterType>> monsterTypeValues = Enum.GetValues<MonsterType>()
         .Select(v => new EnumItem<MonsterType>(v, v.GetDisplayName())).ToList();
+
+    private static readonly List<EnumItem<MonsterCategory>> monsterCategoryValues = Enum.GetValues<MonsterCategory>()
+        .Select(v => new EnumItem<MonsterCategory>(v, v.GetDisplayName())).ToList();
+
     record EnumItem<T>(T Value, string Display);
 
     protected override async Task OnInitializedAsync()

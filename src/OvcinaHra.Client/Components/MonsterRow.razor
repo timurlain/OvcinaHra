@@ -18,8 +18,8 @@
             <span class="oh-mon-mtype">
                 <i class="bi @MonsterTypeIcon(Monster.MonsterType)"></i>@Monster.MonsterTypeDisplay
             </span>
-            <span class="oh-mon-kbadge" title="Kategorie @Monster.Category">
-                <i class="bi bi-bar-chart-steps"></i>K@Monster.Category
+            <span class="oh-mon-kbadge" title="Kategorie @Monster.CategoryDisplay">
+                <i class="bi bi-bar-chart-steps"></i>K@(Monster.CategoryDisplay)
             </span>
             @foreach (var tag in Monster.TagNames.Take(3))
             {

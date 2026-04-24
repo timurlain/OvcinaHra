@@ -23,7 +23,7 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
     [Fact]
     public async Task Create_ValidMonster_ReturnsCreated()
     {
-        var dto = new CreateMonsterDto("Kostlivec", 3, MonsterType.Undead, 5, 3, 10);
+        var dto = new CreateMonsterDto("Kostlivec", MonsterCategory.Tier3, MonsterType.Undead, 5, 3, 10);
 
         var response = await Client.PostAsJsonAsync("/api/monsters", dto);
 
@@ -31,7 +31,7 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
         var created = await response.Content.ReadFromJsonAsync<MonsterDetailDto>();
         Assert.NotNull(created);
         Assert.Equal("Kostlivec", created.Name);
-        Assert.Equal(3, created.Category);
+        Assert.Equal(MonsterCategory.Tier3, created.Category);
         Assert.Equal(MonsterType.Undead, created.MonsterType);
         Assert.Equal(5, created.Attack);
         Assert.Equal(3, created.Defense);
@@ -42,7 +42,7 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
     public async Task GetById_ExistingMonster_ReturnsMonster()
     {
         var createResponse = await Client.PostAsJsonAsync("/api/monsters",
-            new CreateMonsterDto("Kostlivec", 3, MonsterType.Undead, 5, 3, 10));
+            new CreateMonsterDto("Kostlivec", MonsterCategory.Tier3, MonsterType.Undead, 5, 3, 10));
         var created = await createResponse.Content.ReadFromJsonAsync<MonsterDetailDto>();
 
         var result = await Client.GetFromJsonAsync<MonsterDetailDto>($"/api/monsters/{created!.Id}");
@@ -64,10 +64,10 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
     public async Task Update_ExistingMonster_ReturnsNoContent()
     {
         var createResponse = await Client.PostAsJsonAsync("/api/monsters",
-            new CreateMonsterDto("Kostlivec", 3, MonsterType.Undead, 5, 3, 10));
+            new CreateMonsterDto("Kostlivec", MonsterCategory.Tier3, MonsterType.Undead, 5, 3, 10));
         var created = await createResponse.Content.ReadFromJsonAsync<MonsterDetailDto>();
 
-        var updateDto = new UpdateMonsterDto("Kostlivec Veteran", 4, MonsterType.Undead, 8, 5, 20,
+        var updateDto = new UpdateMonsterDto("Kostlivec Veteran", MonsterCategory.Tier4, MonsterType.Undead, 8, 5, 20,
             Abilities: "Regenerace", AiBehavior: null, RewardXp: 50, RewardMoney: null, RewardNotes: null);
         var response = await Client.PutAsJsonAsync($"/api/monsters/{created!.Id}", updateDto);
 
@@ -75,7 +75,7 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
 
         var updated = await Client.GetFromJsonAsync<MonsterDetailDto>($"/api/monsters/{created.Id}");
         Assert.Equal("Kostlivec Veteran", updated!.Name);
-        Assert.Equal(4, updated.Category);
+        Assert.Equal(MonsterCategory.Tier4, updated.Category);
         Assert.Equal(8, updated.Attack);
         Assert.Equal(50, updated.RewardXp);
     }
@@ -83,7 +83,7 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
     [Fact]
     public async Task Create_WithNotes_PersistsAndReturnsThem()
     {
-        var dto = new CreateMonsterDto("Trolík", 2, MonsterType.Beast, 4, 3, 12, Notes: "Reaguje na světlo.");
+        var dto = new CreateMonsterDto("Trolík", MonsterCategory.Tier2, MonsterType.Beast, 4, 3, 12, Notes: "Reaguje na světlo.");
         var createResp = await Client.PostAsJsonAsync("/api/monsters", dto);
         Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
 
@@ -101,7 +101,7 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
     public async Task Update_ChangesNotes_PersistsNewValue()
     {
         var createResp = await Client.PostAsJsonAsync("/api/monsters",
-            new CreateMonsterDto("Goblin", 1, MonsterType.Goblin, 2, 1, 4, Notes: "původní"));
+            new CreateMonsterDto("Goblin", MonsterCategory.Tier1, MonsterType.Goblin, 2, 1, 4, Notes: "původní"));
         Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
         var created = await createResp.Content.ReadFromJsonAsync<MonsterDetailDto>();
         Assert.NotNull(created);
@@ -122,7 +122,7 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
     {
         var tooLong = new string('a', 1001);
         var resp = await Client.PostAsJsonAsync("/api/monsters",
-            new CreateMonsterDto("Dlouhonotář", 1, MonsterType.Beast, 1, 1, 1, Notes: tooLong));
+            new CreateMonsterDto("Dlouhonotář", MonsterCategory.Tier1, MonsterType.Beast, 1, 1, 1, Notes: tooLong));
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 
@@ -130,7 +130,7 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
     public async Task GetAll_EnrichedListDto_IncludesRewardsAbilitiesAndTags()
     {
         var createResp = await Client.PostAsJsonAsync("/api/monsters",
-            new CreateMonsterDto("Arcimág", 5, MonsterType.Legend, 7, 5, 25,
+            new CreateMonsterDto("Arcimág", MonsterCategory.Tier5, MonsterType.Legend, 7, 5, 25,
                 Abilities: "Kouzlí", AiBehavior: "útočí z dálky",
                 RewardXp: 120, RewardMoney: 30, RewardNotes: "odměna"));
         Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
@@ -160,7 +160,7 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
     public async Task Delete_ExistingMonster_ReturnsNoContent()
     {
         var createResponse = await Client.PostAsJsonAsync("/api/monsters",
-            new CreateMonsterDto("Kostlivec", 3, MonsterType.Undead, 5, 3, 10));
+            new CreateMonsterDto("Kostlivec", MonsterCategory.Tier3, MonsterType.Undead, 5, 3, 10));
         var created = await createResponse.Content.ReadFromJsonAsync<MonsterDetailDto>();
 
         var response = await Client.DeleteAsync($"/api/monsters/{created!.Id}");
@@ -172,7 +172,7 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
     public async Task AddTag_ReturnsOk()
     {
         var createMonsterResponse = await Client.PostAsJsonAsync("/api/monsters",
-            new CreateMonsterDto("Kostlivec", 3, MonsterType.Undead, 5, 3, 10));
+            new CreateMonsterDto("Kostlivec", MonsterCategory.Tier3, MonsterType.Undead, 5, 3, 10));
         var monster = await createMonsterResponse.Content.ReadFromJsonAsync<MonsterDetailDto>();
 
         var createTagResponse = await Client.PostAsJsonAsync("/api/tags",
@@ -190,7 +190,7 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
     public async Task RemoveTag_ReturnsNoContent()
     {
         var createMonsterResponse = await Client.PostAsJsonAsync("/api/monsters",
-            new CreateMonsterDto("Kostlivec", 3, MonsterType.Undead, 5, 3, 10));
+            new CreateMonsterDto("Kostlivec", MonsterCategory.Tier3, MonsterType.Undead, 5, 3, 10));
         var monster = await createMonsterResponse.Content.ReadFromJsonAsync<MonsterDetailDto>();
 
         var createTagResponse = await Client.PostAsJsonAsync("/api/tags",
@@ -216,7 +216,7 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
         var item = await itemResponse.Content.ReadFromJsonAsync<ItemDetailDto>();
 
         var monsterResponse = await Client.PostAsJsonAsync("/api/monsters",
-            new CreateMonsterDto("Kostlivec", 3, MonsterType.Undead, 5, 3, 10));
+            new CreateMonsterDto("Kostlivec", MonsterCategory.Tier3, MonsterType.Undead, 5, 3, 10));
         var monster = await monsterResponse.Content.ReadFromJsonAsync<MonsterDetailDto>();
 
         var dto = new CreateMonsterLootDto(monster!.Id, item!.Id, game!.Id, 1);
@@ -237,7 +237,7 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
         var item = await itemResponse.Content.ReadFromJsonAsync<ItemDetailDto>();
 
         var monsterResponse = await Client.PostAsJsonAsync("/api/monsters",
-            new CreateMonsterDto("Kostlivec", 3, MonsterType.Undead, 5, 3, 10));
+            new CreateMonsterDto("Kostlivec", MonsterCategory.Tier3, MonsterType.Undead, 5, 3, 10));
         var monster = await monsterResponse.Content.ReadFromJsonAsync<MonsterDetailDto>();
 
         await Client.PostAsJsonAsync("/api/monsters/loot",
@@ -252,7 +252,7 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
     public async Task GetLootAllGames_NoData_ReturnsEmpty()
     {
         var monster = await (await Client.PostAsJsonAsync("/api/monsters",
-            new CreateMonsterDto("Pavouk", 1, MonsterType.Beast, 2, 1, 4)))
+            new CreateMonsterDto("Pavouk", MonsterCategory.Tier1, MonsterType.Beast, 2, 1, 4)))
             .Content.ReadFromJsonAsync<MonsterDetailDto>();
 
         var groups = await Client.GetFromJsonAsync<List<MonsterLootByGameDto>>(
@@ -275,7 +275,7 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
             new CreateItemDto("Bylinka", ItemType.Potion)))
             .Content.ReadFromJsonAsync<ItemDetailDto>();
         var monster = await (await Client.PostAsJsonAsync("/api/monsters",
-            new CreateMonsterDto("Skřetí lukostřelec", 2, MonsterType.Goblin, 12, 8, 45)))
+            new CreateMonsterDto("Skřetí lukostřelec", MonsterCategory.Tier2, MonsterType.Goblin, 12, 8, 45)))
             .Content.ReadFromJsonAsync<MonsterDetailDto>();
 
         await Client.PostAsJsonAsync("/api/monsters/game-monster",
@@ -306,7 +306,7 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
             new CreateGameDto("Bez kořisti", 31, new DateOnly(2027, 5, 1), new DateOnly(2027, 5, 3))))
             .Content.ReadFromJsonAsync<GameDetailDto>();
         var monster = await (await Client.PostAsJsonAsync("/api/monsters",
-            new CreateMonsterDto("Krysa", 1, MonsterType.Beast, 2, 1, 4)))
+            new CreateMonsterDto("Krysa", MonsterCategory.Tier1, MonsterType.Beast, 2, 1, 4)))
             .Content.ReadFromJsonAsync<MonsterDetailDto>();
 
         await Client.PostAsJsonAsync("/api/monsters/game-monster",
@@ -325,7 +325,7 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
     public async Task GetOccurrences_NoEncounters_ReturnsEmpty()
     {
         var monster = await (await Client.PostAsJsonAsync("/api/monsters",
-            new CreateMonsterDto("Stín", 4, MonsterType.Undead, 8, 6, 25)))
+            new CreateMonsterDto("Stín", MonsterCategory.Tier4, MonsterType.Undead, 8, 6, 25)))
             .Content.ReadFromJsonAsync<MonsterDetailDto>();
 
         var occurrences = await Client.GetFromJsonAsync<List<MonsterOccurrenceDto>>(
@@ -342,7 +342,7 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
             new CreateGameDto("Hra s questy", 32, new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 3))))
             .Content.ReadFromJsonAsync<GameDetailDto>();
         var monster = await (await Client.PostAsJsonAsync("/api/monsters",
-            new CreateMonsterDto("Vlk", 2, MonsterType.Beast, 8, 4, 18)))
+            new CreateMonsterDto("Vlk", MonsterCategory.Tier2, MonsterType.Beast, 8, 4, 18)))
             .Content.ReadFromJsonAsync<MonsterDetailDto>();
 
         // Seed quests + encounters directly via DbContext (no public encounter endpoint).

@@ -36,7 +36,7 @@ public class SearchEndpointTests(PostgresFixture postgres) : IntegrationTestBase
         await Client.PostAsJsonAsync("/api/locations",
             new CreateLocationDto("Temný hvozd", LocationKind.Wilderness, 49.5m, 17.1m));
         await Client.PostAsJsonAsync("/api/monsters",
-            new CreateMonsterDto("Temný strážce", 3, MonsterType.Undead, 5, 3, 10));
+            new CreateMonsterDto("Temný strážce", MonsterCategory.Tier3, MonsterType.Undead, 5, 3, 10));
 
         var result = await Client.GetFromJsonAsync<SearchResponseDto>("/api/search?q=temný");
         Assert.NotNull(result);

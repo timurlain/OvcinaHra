@@ -265,7 +265,7 @@ public class QuestEndpointTests(PostgresFixture postgres) : IntegrationTestBase(
         var quest = await questResponse.Content.ReadFromJsonAsync<QuestDetailDto>();
 
         var monsterResponse = await Client.PostAsJsonAsync("/api/monsters",
-            new CreateMonsterDto("Kostlivec", 3, MonsterType.Undead, 5, 3, 10));
+            new CreateMonsterDto("Kostlivec", MonsterCategory.Tier3, MonsterType.Undead, 5, 3, 10));
         var monster = await monsterResponse.Content.ReadFromJsonAsync<MonsterDetailDto>();
 
         var response = await Client.PostAsJsonAsync($"/api/quests/{quest!.Id}/encounters",
@@ -289,7 +289,7 @@ public class QuestEndpointTests(PostgresFixture postgres) : IntegrationTestBase(
         var quest = await questResponse.Content.ReadFromJsonAsync<QuestDetailDto>();
 
         var monsterResponse = await Client.PostAsJsonAsync("/api/monsters",
-            new CreateMonsterDto("Kostlivec", 3, MonsterType.Undead, 5, 3, 10));
+            new CreateMonsterDto("Kostlivec", MonsterCategory.Tier3, MonsterType.Undead, 5, 3, 10));
         var monster = await monsterResponse.Content.ReadFromJsonAsync<MonsterDetailDto>();
 
         await Client.PostAsJsonAsync($"/api/quests/{quest!.Id}/encounters", new AddQuestEncounterDto(monster!.Id));

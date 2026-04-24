@@ -12,6 +12,10 @@ public class MonsterConfiguration : IEntityTypeConfiguration<Monster>
         builder.Property(e => e.Name).IsRequired().HasMaxLength(200);
         builder.HasIndex(e => e.Name).IsUnique();
         builder.Property(e => e.MonsterType).HasConversion<string>().HasMaxLength(30);
+        // Category was a raw int (0-10); switched to MonsterCategory enum
+        // (Tier1..Tier5) 2026-04-24 per issue #100 follow-up. Stored as text
+        // per project convention (CLAUDE.md) — matches MonsterType.
+        builder.Property(e => e.Category).HasConversion<string>().HasMaxLength(20);
         builder.Property(e => e.Notes).HasMaxLength(1000);
 
         builder.OwnsOne(e => e.Stats, s =>

@@ -35,11 +35,11 @@ else
         </select>
         <select class="oh-mon-tb-select" @bind="filterCategory">
             <option value="0">Kategorie: vše</option>
-            <option value="1">K1</option>
-            <option value="2">K2</option>
-            <option value="3">K3</option>
-            <option value="4">K4</option>
-            <option value="5">K5</option>
+            <option value="1">KI</option>
+            <option value="2">KII</option>
+            <option value="3">KIII</option>
+            <option value="4">KIV</option>
+            <option value="5">KV</option>
         </select>
         <select class="oh-mon-tb-select" @bind="filterTag">
             <option value="">Tagy: vše</option>
@@ -130,7 +130,7 @@ else
                         <span class="oh-mon-mtype">
                             <i class="bi @MonsterRow.MonsterTypeIcon(quickPeekDetail.MonsterType)"></i>@quickPeekDetail.MonsterType.GetDisplayName()
                         </span>
-                        <span class="oh-mon-kbadge"><i class="bi bi-bar-chart-steps"></i>K@quickPeekDetail.Category</span>
+                        <span class="oh-mon-kbadge"><i class="bi bi-bar-chart-steps"></i>K@(quickPeekDetail.CategoryDisplay)</span>
                         @foreach (var t in quickPeekDetail.Tags)
                         {
                             <span class="oh-mon-tag">@t.Name</span>
@@ -178,7 +178,8 @@ else
                 <DxTextBox @bind-Text="@name" />
             </DxFormLayoutItem>
             <DxFormLayoutItem Caption="Kategorie (1-5)" ColSpanMd="4">
-                <DxSpinEdit @bind-Value="@category" MinValue="1" MaxValue="5" />
+                <DxComboBox Data="@monsterCategoryValues" @bind-Value="@category"
+                            TextFieldName="Display" ValueFieldName="Value" />
             </DxFormLayoutItem>
             <DxFormLayoutItem Caption="Typ" ColSpanMd="12">
                 <DxComboBox Data="@monsterTypeValues" @bind-Value="@monsterType"
@@ -297,11 +298,16 @@ else
     private string? error, abilities, aiBehavior, rewardNotes, notes;
     private int? editingId;
     private MonsterType monsterType = MonsterType.Beast;
-    private int category = 1, attack = 1, defense = 1, health = 5;
+    private MonsterCategory category = MonsterCategory.Tier1;
+    private int attack = 1, defense = 1, health = 5;
     private int rewardXp, rewardMoney;
 
     private static readonly List<EnumItem<MonsterType>> monsterTypeValues = Enum.GetValues<MonsterType>()
         .Select(v => new EnumItem<MonsterType>(v, v.GetDisplayName())).ToList();
+
+    private static readonly List<EnumItem<MonsterCategory>> monsterCategoryValues = Enum.GetValues<MonsterCategory>()
+        .Select(v => new EnumItem<MonsterCategory>(v, v.GetDisplayName())).ToList();
+
     record EnumItem<T>(T Value, string Display);
 
     private List<MonsterLootDto> lootItems = [];
@@ -342,7 +348,11 @@ else
             }
             if (filterCategory > 0)
             {
-                q = q.Where(m => m.Category == filterCategory);
+                // filterCategory is kept as an int (0 = all, 1..5 = tier) to
+                // match the raw <select> binding; cast to the enum for the
+                // predicate since the underlying values line up 1:1.
+                var wantedTier = (MonsterCategory)filterCategory;
+                q = q.Where(m => m.Category == wantedTier);
             }
             if (!string.IsNullOrEmpty(filterTag))
             {
@@ -416,7 +426,7 @@ else
         error = null;
         if (m is null)
         {
-            editingId = null; name = ""; monsterType = MonsterType.Beast; category = 1;
+            editingId = null; name = ""; monsterType = MonsterType.Beast; category = MonsterCategory.Tier1;
             attack = 1; defense = 1; health = 5; abilities = null; aiBehavior = null;
             rewardXp = 0; rewardMoney = 0; rewardNotes = null; notes = null;
             modalTitle = "Nová příšera";

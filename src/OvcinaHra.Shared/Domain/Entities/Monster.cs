@@ -7,7 +7,7 @@ public class Monster
 {
     public int Id { get; set; }
     public required string Name { get; set; }
-    public int Category { get; set; }
+    public MonsterCategory Category { get; set; } = MonsterCategory.Tier1;
     public MonsterType MonsterType { get; set; }
     public string? Abilities { get; set; }
     public string? AiBehavior { get; set; }
