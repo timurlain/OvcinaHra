@@ -2104,6 +2104,12 @@
 .oh-it-photo img{width:100%;height:100%;object-fit:cover;display:block}
 .oh-it-photo-empty{font-size:1.25rem;color:rgba(139,90,43,.4)}
 
+/* Foto tile — 5:7 MTG-card aspect (issue #97). Height locked to the row; width
+   is derived. Narrow by design — "quite small, but that's okay". */
+.oh-it-tile{position:relative;display:inline-block;aspect-ratio:5/7;height:48px;border-radius:3px;overflow:hidden;background:var(--oh-surface-alt);border:1px solid var(--oh-border);vertical-align:middle}
+.oh-it-tile-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.oh-it-tile-glyph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:rgba(139,90,43,.4);font-size:1rem}
+
 /* Type-dot — 10px circle, neutral palette per ItemType (NOT kingdom colors) */
 .oh-it-tdot{display:inline-block;width:10px;height:10px;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.1),inset 0 -1px 1px rgba(0,0,0,.2);vertical-align:middle}
 .oh-it-tdot--weapon{background:#8a7148}
