@@ -1616,6 +1616,14 @@
    ============================================================ */
 .oh-lg-empty-state{padding:64px 40px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px}
 .oh-lg-empty-state .oh-lg-drozd-box{width:120px;height:120px;display:flex;align-items:center;justify-content:center;background:var(--oh-surface-alt);border:1px solid var(--oh-border);border-radius:50%;margin-bottom:6px}
+/* Standalone circle — used on ItemList + CharacterList empty states where
+   the parent container isn't .oh-lg-empty-state. Same look as the scoped
+   variant above so the mascot sits in an identical parchment disc. */
+.oh-lg-drozd-box{width:120px;height:120px;display:flex;align-items:center;justify-content:center;background:var(--oh-surface-alt);border:1px solid var(--oh-border);border-radius:50%}
+/* Drozd mascot sizing — the wrappers already provide the circular canvas;
+   these rules scale the SVG so the bird renders at the same visual weight
+   as the old bi-feather / bi-bug-fill / bi-gem glyphs it replaced. */
+.oh-lg-drozd-box img{width:86px;height:86px;object-fit:contain;display:block}
 .oh-lg-empty-state h3{margin:0;font-size:1.25rem;color:var(--oh-primary)}
 .oh-lg-empty-state p{margin:0;color:var(--oh-text-secondary);font-size:.9375rem;max-width:420px}
 .oh-lg-empty-state .oh-lg-hint{font-size:.8125rem;font-style:italic;color:var(--oh-text-secondary);margin-top:4px}
@@ -2113,6 +2121,7 @@
 /* Empty state */
 .oh-mon-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 16px;gap:14px;text-align:center}
 .oh-mon-empty-icon{width:120px;height:120px;border-radius:50%;background:var(--oh-primary-surface);display:flex;align-items:center;justify-content:center;color:var(--oh-primary);font-size:3rem;border:2px solid rgba(74,124,52,.2)}
+.oh-mon-empty-icon img{width:86px;height:86px;object-fit:contain;display:block}
 .oh-mon-empty-msg{font-size:1rem;color:var(--oh-text-secondary)}
 .oh-mon-empty-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
 
@@ -2348,6 +2357,7 @@
 .oh-tp-loading{padding:48px 16px;text-align:center;color:var(--oh-text-secondary);font-style:italic}
 .oh-tp-empty{padding:48px 16px;text-align:center;color:var(--oh-text-secondary)}
 .oh-tp-empty i{font-size:3rem;color:var(--oh-primary-light);opacity:.6;display:block;margin-bottom:10px}
+.oh-tp-empty img{width:96px;height:96px;object-fit:contain;display:block;margin:0 auto 10px}
 
 /* Zone 1 — pipeline ---------------------------------------- */
 /* Cards halved vs. original 160px container height per issue #103. */
