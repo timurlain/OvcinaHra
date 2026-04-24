@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Mvc;
 using OvcinaHra.Api.Tests.Fixtures;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
@@ -150,6 +151,110 @@ public class GameEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
             BoundingBoxNeLat: 49.5m, BoundingBoxNeLng: 17.4m));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    // ----- Map overlay (issue #96) ---------------------------------------
+
+    [Fact]
+    public async Task Overlay_GetWhenNotSet_Returns204()
+    {
+        var game = await CreateGameAsync("Overlay-None");
+
+        var response = await Client.GetAsync($"/api/games/{game.Id}/overlay");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Overlay_PutThenGet_RoundTripsAllShapeTypes()
+    {
+        var game = await CreateGameAsync("Overlay-RoundTrip");
+        var dto = new MapOverlayDto(new List<MapOverlayShape>
+        {
+            new TextShape("t1", "#242F3D", new OverlayCoord(49.5, 17.1), "Brodeček", 16),
+            new FreehandShape("f1", "#8C2423", 2, new List<OverlayCoord>
+            {
+                new(49.50, 17.10), new(49.51, 17.11), new(49.52, 17.12)
+            }),
+            new PolylineShape("pl1", "#243525", 3, new List<OverlayCoord>
+            {
+                new(49.60, 17.20), new(49.61, 17.21)
+            }),
+            new RectangleShape("r1", "#504B25", "#504B25", 2,
+                new OverlayCoord(49.70, 17.30), new OverlayCoord(49.72, 17.33)),
+            new CircleShape("c1", "#2D5016", null, 2,
+                new OverlayCoord(49.80, 17.40), 250.0),
+            new PolygonShape("p1", "#B26223", "#B26223", 2, new List<OverlayCoord>
+            {
+                new(49.90, 17.50), new(49.91, 17.52), new(49.89, 17.52)
+            })
+        });
+
+        var putResponse = await Client.PutAsJsonAsync($"/api/games/{game.Id}/overlay", dto);
+        Assert.Equal(HttpStatusCode.NoContent, putResponse.StatusCode);
+
+        var getResponse = await Client.GetAsync($"/api/games/{game.Id}/overlay");
+        Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
+
+        var roundTripped = await getResponse.Content.ReadFromJsonAsync<MapOverlayDto>();
+        Assert.NotNull(roundTripped);
+        Assert.Equal(6, roundTripped!.Shapes.Count);
+
+        Assert.IsType<TextShape>(roundTripped.Shapes[0]);
+        var text = (TextShape)roundTripped.Shapes[0];
+        Assert.Equal("Brodeček", text.Text);
+        Assert.Equal(16, text.FontSize);
+
+        Assert.IsType<FreehandShape>(roundTripped.Shapes[1]);
+        Assert.Equal(3, ((FreehandShape)roundTripped.Shapes[1]).Points.Count);
+
+        Assert.IsType<PolylineShape>(roundTripped.Shapes[2]);
+        Assert.IsType<RectangleShape>(roundTripped.Shapes[3]);
+
+        Assert.IsType<CircleShape>(roundTripped.Shapes[4]);
+        Assert.Equal(250.0, ((CircleShape)roundTripped.Shapes[4]).RadiusMeters);
+
+        Assert.IsType<PolygonShape>(roundTripped.Shapes[5]);
+        Assert.Equal(3, ((PolygonShape)roundTripped.Shapes[5]).Points.Count);
+    }
+
+    [Fact]
+    public async Task Overlay_PutOversized_Returns400()
+    {
+        var game = await CreateGameAsync("Overlay-Oversize");
+
+        // Generate enough freehand points to blow past the 256 KiB cap.
+        // Each OverlayCoord serialises to ~28 bytes, so 20_000 points is
+        // comfortably over the limit.
+        var points = new List<OverlayCoord>(20_000);
+        for (int i = 0; i < 20_000; i++)
+            points.Add(new OverlayCoord(49.0 + i * 1e-7, 17.0 + i * 1e-7));
+        var dto = new MapOverlayDto(new List<MapOverlayShape>
+        {
+            new FreehandShape("huge", "#242F3D", 2, points)
+        });
+
+        var response = await Client.PutAsJsonAsync($"/api/games/{game.Id}/overlay", dto);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Překryv je příliš velký", problem!.Title);
+        Assert.Contains("KiB", problem.Detail);
+    }
+
+    [Fact]
+    public async Task Overlay_GameNotFound_Returns404()
+    {
+        var dto = new MapOverlayDto(new List<MapOverlayShape>
+        {
+            new TextShape("t1", "#242F3D", new OverlayCoord(49.5, 17.1), "Test")
+        });
+
+        var putResponse = await Client.PutAsJsonAsync("/api/games/999999/overlay", dto);
+        Assert.Equal(HttpStatusCode.NotFound, putResponse.StatusCode);
+
+        var getResponse = await Client.GetAsync("/api/games/999999/overlay");
+        Assert.Equal(HttpStatusCode.NotFound, getResponse.StatusCode);
     }
 
     private async Task<GameDetailDto> CreateGameAsync(string name)

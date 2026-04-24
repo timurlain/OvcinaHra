@@ -1,6 +1,36 @@
 @implements IAsyncDisposable
+@inject ApiClient Api
 
-<div id="@_elementId" style="width: 100%; height: @Height; border-radius: 4px;"></div>
+<div class="oh-map-host-wrap" style="position:relative;width:100%;height:@Height;">
+    <div id="@_elementId" style="width:100%;height:100%;border-radius:4px;"></div>
+
+    @* Issue #96 — overlay editor controls. Button shown when a GameId is
+       supplied (overlay is a per-game artefact). Toolbar only renders while
+       actively editing. *@
+    @if (GameId.HasValue && !_editMode)
+    {
+        <AuthorizeView>
+            <Authorized>
+                <button type="button" class="btn btn-sm btn-outline-primary oh-map-overlay-edit-btn"
+                        title="Upravit vektorový překryv mapy"
+                        @onclick="EnterEditModeAsync">
+                    <i class="bi bi-vector-pen"></i> Upravit překryv
+                </button>
+            </Authorized>
+        </AuthorizeView>
+    }
+
+    @if (GameId.HasValue && _editMode)
+    {
+        <MapOverlayToolbar Tool="@_tool" ToolChanged="ChangeToolAsync"
+                           Color="@_color" ColorChanged="OnColorChanged"
+                           UseFill="@_useFill" UseFillChanged="OnUseFillChanged"
+                           StrokeWidth="@_strokeWidth" StrokeWidthChanged="OnStrokeWidthChanged"
+                           FontSize="@_fontSize" FontSizeChanged="OnFontSizeChanged"
+                           OnSave="SaveOverlayAsync"
+                           OnCancel="CancelEditAsync" />
+    }
+</div>
 
 @code {
     [Inject] private IJSRuntime JS { get; set; } = null!;
@@ -17,8 +47,26 @@
     [Parameter] public EventCallback<int> OnPieMarkerClick { get; set; }
     [Parameter] public EventCallback<PiePayloadEventArgs> OnPieMarkerDrop { get; set; }
 
+    /// <summary>
+    /// When set, the map loads the game's vector overlay (issue #96) and
+    /// surfaces the "Upravit překryv" editor button.
+    /// </summary>
+    [Parameter] public int? GameId { get; set; }
+
     private readonly string _elementId = $"map-{Guid.NewGuid():N}";
     private DotNetObjectReference<MapView>? _dotnetRef;
+
+    // ---- Overlay editor state ------------------------------------------
+    private List<MapOverlayShape> _committedShapes = new();   // last-saved baseline
+    private List<MapOverlayShape> _stagedShapes = new();      // working copy
+    private bool _editMode;
+    private string _tool = "text";
+    private string _color = "#242F3D";
+    private bool _useFill;
+    private double _strokeWidth = 2;
+    private int _fontSize = 14;
+    private string? _overlayError;
+    private int? _loadedOverlayForGameId;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -27,6 +75,119 @@
             _dotnetRef = DotNetObjectReference.Create(this);
             var apiKey = Config["MapyCz:ApiKey"];
             await JS.InvokeVoidAsync("ovcinaMap.init", _elementId, _dotnetRef, CenterLat, CenterLon, Zoom, apiKey);
+        }
+
+        // Load overlay once per game. Repeat on GameId change. Wrapped in
+        // try/catch per _review-instincts §11 — a dead overlay fetch mustn't
+        // break the rest of the map page.
+        if (GameId.HasValue && _loadedOverlayForGameId != GameId)
+        {
+            _loadedOverlayForGameId = GameId;
+            try
+            {
+                var dto = await Api.GetAsync<MapOverlayDto>($"/api/games/{GameId.Value}/overlay");
+                _committedShapes = dto?.Shapes ?? new List<MapOverlayShape>();
+                _stagedShapes = new List<MapOverlayShape>(_committedShapes);
+                await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _committedShapes);
+            }
+            catch { /* best-effort */ }
+        }
+    }
+
+    // ---- Overlay editor handlers --------------------------------------
+
+    private async Task EnterEditModeAsync()
+    {
+        _editMode = true;
+        _stagedShapes = new List<MapOverlayShape>(_committedShapes);
+        _overlayError = null;
+        await PushStyleToJsAsync();
+        await JS.InvokeVoidAsync("ovcinaOverlay.enterEditMode", _elementId, _tool, _dotnetRef);
+    }
+
+    private async Task CancelEditAsync()
+    {
+        _editMode = false;
+        _stagedShapes = new List<MapOverlayShape>(_committedShapes);
+        await JS.InvokeVoidAsync("ovcinaOverlay.exitEditMode", _elementId);
+        await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _committedShapes);
+    }
+
+    private async Task SaveOverlayAsync()
+    {
+        var dto = new MapOverlayDto(_stagedShapes);
+        var (ok, problem) = await Api.PutWithProblemAsync($"/api/games/{GameId!.Value}/overlay", dto);
+        if (!ok)
+        {
+            _overlayError = problem ?? "Uložení překryvu selhalo.";
+            return;
+        }
+        _committedShapes = new List<MapOverlayShape>(_stagedShapes);
+        _editMode = false;
+        await JS.InvokeVoidAsync("ovcinaOverlay.exitEditMode", _elementId);
+        await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _committedShapes);
+    }
+
+    private async Task ChangeToolAsync(string tool)
+    {
+        _tool = tool;
+        if (_editMode)
+        {
+            await PushStyleToJsAsync();
+            await JS.InvokeVoidAsync("ovcinaOverlay.switchTool", _elementId, _tool);
+        }
+    }
+
+    private async Task OnColorChanged(string color)
+    {
+        _color = color;
+        await PushStyleToJsAsync();
+    }
+
+    private async Task OnUseFillChanged(bool use)
+    {
+        _useFill = use;
+        await PushStyleToJsAsync();
+    }
+
+    private async Task OnStrokeWidthChanged(double w)
+    {
+        _strokeWidth = w;
+        await PushStyleToJsAsync();
+    }
+
+    private async Task OnFontSizeChanged(int size)
+    {
+        _fontSize = size;
+        await PushStyleToJsAsync();
+    }
+
+    private Task PushStyleToJsAsync()
+        => JS.InvokeVoidAsync("ovcinaOverlay.setStyle", new
+        {
+            color = _color,
+            fillColor = _color,       // single colour for both stroke + fill
+            strokeWidth = _strokeWidth,
+            useFill = _useFill,
+            fontSize = _fontSize
+        }).AsTask();
+
+    [JSInvokable]
+    public async Task OnShapeComplete(string shapeJson)
+    {
+        try
+        {
+            var shape = System.Text.Json.JsonSerializer.Deserialize<MapOverlayShape>(
+                shapeJson,
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (shape is null) return;
+            _stagedShapes.Add(shape);
+            await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _stagedShapes);
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            // Shape payload malformed — log, don't surface. User can redraw.
+            Console.WriteLine($"Overlay shape deserialisation failed: {ex.Message}");
         }
     }
 
