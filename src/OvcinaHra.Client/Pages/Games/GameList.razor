@@ -28,7 +28,7 @@ else
 }
 
 @* Detail popup *@
-<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="750px">
+<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="820px">
     <BodyContentTemplate Context="popupContext">
         <DxFormLayout>
             <DxFormLayoutItem Caption="Název hry" ColSpanMd="12">
@@ -48,6 +48,20 @@ else
                             TextFieldName="Display" ValueFieldName="Value" data-testid="game-status" />
             </DxFormLayoutItem>
         </DxFormLayout>
+
+        @* Bounding box picker — only while editing. Create flow doesn't need it
+           because the game record must exist before a bbox is meaningful; the
+           user can set it on first edit. *@
+        @if (editingId.HasValue)
+        {
+            <DxFormLayout CssClass="mt-3">
+                <DxFormLayoutGroup Caption="Oblast hry na mapě" ColSpanMd="12">
+                    <DxFormLayoutItem ColSpanMd="12">
+                        <BoundingBoxPicker Value="@bboxValue" ValueChanged="OnBboxChanged" />
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+            </DxFormLayout>
+        }
 
         @if (error is not null)
         {
@@ -98,6 +112,7 @@ else
     private string? error;
     private int? editingId;
     private GameFormModel model = new();
+    private BoundingBoxPicker.BboxValue bboxValue = BoundingBoxPicker.BboxValue.Empty;
 
     // DateEdit works with DateTime, not DateOnly
     private DateTime startDate
@@ -130,29 +145,42 @@ else
         loading = false;
     }
 
-    private void OpenModal(GameListDto? game)
+    private async Task OpenModal(GameListDto? game)
     {
         error = null;
         if (game is null)
         {
             editingId = null;
             model = new GameFormModel();
+            bboxValue = BoundingBoxPicker.BboxValue.Empty;
             modalTitle = "Nová hra";
         }
         else
         {
             editingId = game.Id;
-            model = new GameFormModel
+            // Fetch full detail to pull bounding-box fields (list DTO omits them).
+            var detail = await Api.GetAsync<GameDetailDto>($"/api/games/{game.Id}");
+            if (detail is null)
             {
-                Name = game.Name,
-                Edition = game.Edition,
-                StartDate = game.StartDate,
-                EndDate = game.EndDate,
-                Status = game.Status
-            };
+                error = $"Hru se nepodařilo načíst (ID {game.Id}).";
+                return;
+            }
+            model = GameFormModel.FromDetail(detail);
+            bboxValue = new BoundingBoxPicker.BboxValue(
+                detail.BoundingBoxSwLat, detail.BoundingBoxSwLng,
+                detail.BoundingBoxNeLat, detail.BoundingBoxNeLng);
             modalTitle = $"Upravit: {game.Name}";
         }
         isModalVisible = true;
+    }
+
+    private void OnBboxChanged(BoundingBoxPicker.BboxValue next)
+    {
+        bboxValue = next;
+        model.BoundingBoxSwLat = next.SwLat;
+        model.BoundingBoxSwLng = next.SwLng;
+        model.BoundingBoxNeLat = next.NeLat;
+        model.BoundingBoxNeLng = next.NeLng;
     }
 
     private void CloseModal() => isModalVisible = false;

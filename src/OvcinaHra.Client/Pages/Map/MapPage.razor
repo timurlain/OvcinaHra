@@ -167,8 +167,28 @@
         if (firstRender)
         {
             await LoadAndDisplayLocationsAsync();
-            await mapView.FitBoundsAsync(49.4504644, 18.0177633, 49.4557139, 18.0229133);
+            await ApplyGameBoundsOrDefaultAsync();
         }
+    }
+
+    private async Task ApplyGameBoundsOrDefaultAsync()
+    {
+        // If the selected game has a bounding box set, center + zoom there.
+        // Otherwise fall back to the original hardcoded default view.
+        if (GameContext.SelectedGameId is int gid)
+        {
+            var detail = await Api.GetAsync<GameDetailDto>($"/api/games/{gid}");
+            if (detail is not null
+                && detail.BoundingBoxSwLat.HasValue && detail.BoundingBoxSwLng.HasValue
+                && detail.BoundingBoxNeLat.HasValue && detail.BoundingBoxNeLng.HasValue)
+            {
+                await mapView.FitBoundsAsync(
+                    (double)detail.BoundingBoxSwLat.Value, (double)detail.BoundingBoxSwLng.Value,
+                    (double)detail.BoundingBoxNeLat.Value, (double)detail.BoundingBoxNeLng.Value);
+                return;
+            }
+        }
+        await mapView.FitBoundsAsync(49.4504644, 18.0177633, 49.4557139, 18.0229133);
     }
 
     private async Task ToggleStyle(string style)
@@ -192,6 +212,7 @@
             isPlaceConfirmVisible = false;
             isPlaceSaving = false;
             await LoadAndDisplayLocationsAsync();
+            await ApplyGameBoundsOrDefaultAsync();
             StateHasChanged();
         }
         catch { /* best-effort */ }

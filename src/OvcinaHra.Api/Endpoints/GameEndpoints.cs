@@ -46,7 +46,8 @@ public static class GameEndpoints
             return TypedResults.NotFound();
 
         return TypedResults.Ok(new GameDetailDto(
-            game.Id, game.Name, game.Edition, game.StartDate, game.EndDate, game.Status, game.ImagePath, game.ExternalGameId));
+            game.Id, game.Name, game.Edition, game.StartDate, game.EndDate, game.Status, game.ImagePath, game.ExternalGameId,
+            game.BoundingBoxSwLat, game.BoundingBoxSwLng, game.BoundingBoxNeLat, game.BoundingBoxNeLng));
     }
 
     private static async Task<Created<GameDetailDto>> Create(CreateGameDto dto, WorldDbContext db)
@@ -64,7 +65,8 @@ public static class GameEndpoints
         await db.SaveChangesAsync();
 
         var result = new GameDetailDto(
-            game.Id, game.Name, game.Edition, game.StartDate, game.EndDate, game.Status, game.ImagePath, game.ExternalGameId);
+            game.Id, game.Name, game.Edition, game.StartDate, game.EndDate, game.Status, game.ImagePath, game.ExternalGameId,
+            game.BoundingBoxSwLat, game.BoundingBoxSwLng, game.BoundingBoxNeLat, game.BoundingBoxNeLng);
 
         return TypedResults.Created($"/api/games/{game.Id}", result);
     }
@@ -80,6 +82,10 @@ public static class GameEndpoints
         game.StartDate = dto.StartDate;
         game.EndDate = dto.EndDate;
         game.Status = dto.Status;
+        game.BoundingBoxSwLat = dto.BoundingBoxSwLat;
+        game.BoundingBoxSwLng = dto.BoundingBoxSwLng;
+        game.BoundingBoxNeLat = dto.BoundingBoxNeLat;
+        game.BoundingBoxNeLng = dto.BoundingBoxNeLng;
 
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
