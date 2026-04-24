@@ -16,6 +16,7 @@
         <img class="oh-lg-loc-tile-img"
              src="@Location.ImageUrl"
              alt="@Location.Name"
+             loading="lazy"
              @onload="() => imageLoaded = true"
              @onerror="() => imageFailed = true" />
         <div class="oh-lg-loc-tile-img-veil"></div>
