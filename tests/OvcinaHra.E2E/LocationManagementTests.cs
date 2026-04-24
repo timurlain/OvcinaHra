@@ -40,8 +40,8 @@ public class LocationManagementTests
         Assert.Single(locations!);
 
         // Update — named args so "Připravit svíčky" lands in SetupNotes, not
-        // GamePotential. Issue #129: the positional form had it falling into
-        // slot 7 (GamePotential) because Details/null pushed it past SetupNotes.
+        // GamePotential. Issue #129: the positional form passed 7 arguments,
+        // so the 7th bound to GamePotential after Details (6th) was set to null.
         var updateDto = new UpdateLocationDto(
             Name: "Bílý kámen v2",
             LocationKind: LocationKind.PointOfInterest,
@@ -79,6 +79,7 @@ public class LocationManagementTests
                 Edition: 30,
                 StartDate: new DateOnly(2026, 5, 1),
                 EndDate: new DateOnly(2026, 5, 3)));
+        gameResp.EnsureSuccessStatusCode();
         var game = await gameResp.Content.ReadFromJsonAsync<GameDetailDto>();
 
         var loc1Resp = await client.PostAsJsonAsync("/api/locations",
@@ -87,6 +88,7 @@ public class LocationManagementTests
                 LocationKind: LocationKind.Town,
                 Latitude: 49.5m,
                 Longitude: 17.1m));
+        loc1Resp.EnsureSuccessStatusCode();
         var loc1 = await loc1Resp.Content.ReadFromJsonAsync<LocationDetailDto>();
 
         var loc2Resp = await client.PostAsJsonAsync("/api/locations",
@@ -95,6 +97,7 @@ public class LocationManagementTests
                 LocationKind: LocationKind.Town,
                 Latitude: 49.6m,
                 Longitude: 17.2m));
+        loc2Resp.EnsureSuccessStatusCode();
         var loc2 = await loc2Resp.Content.ReadFromJsonAsync<LocationDetailDto>();
 
         // Assign both to game
@@ -135,6 +138,7 @@ public class LocationManagementTests
                 Edition: 1,
                 StartDate: new DateOnly(2026, 1, 1),
                 EndDate: new DateOnly(2026, 1, 2)));
+        gameResp.EnsureSuccessStatusCode();
         var game = await gameResp.Content.ReadFromJsonAsync<GameDetailDto>();
 
         var locResp = await client.PostAsJsonAsync("/api/locations",
@@ -143,6 +147,7 @@ public class LocationManagementTests
                 LocationKind: LocationKind.Dungeon,
                 Latitude: 49.5m,
                 Longitude: 17.1m));
+        locResp.EnsureSuccessStatusCode();
         var loc = await locResp.Content.ReadFromJsonAsync<LocationDetailDto>();
 
         // Create 3 catalog stashes and assign — should succeed
@@ -160,6 +165,7 @@ public class LocationManagementTests
         // 4th — should fail with validation error
         var s4Resp = await client.PostAsJsonAsync("/api/secret-stashes",
             new CreateSecretStashDto(Name: "Skrýš 4"));
+        s4Resp.EnsureSuccessStatusCode();
         var s4 = await s4Resp.Content.ReadFromJsonAsync<SecretStashDetailDto>();
         var fourthResp = await client.PostAsJsonAsync("/api/secret-stashes/game-stash",
             new CreateGameSecretStashDto(GameId: game!.Id, SecretStashId: s4!.Id, LocationId: loc!.Id));
