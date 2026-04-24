@@ -494,10 +494,29 @@ else
         {
             int? xp = rewardXp > 0 ? rewardXp : null;
             int? money = rewardMoney > 0 ? rewardMoney : null;
+            // Issue #111: route both PUT (update) and POST (create) through
+            // the ProblemDetails-aware helpers so name collisions and other
+            // server-side validation surface as a Czech banner in the modal
+            // instead of a silent 500.
+            string? problem;
+            bool ok;
             if (editingId.HasValue)
-                await Api.PutAsync($"/api/monsters/{editingId}", new UpdateMonsterDto(name, category, monsterType, attack, defense, health, abilities, aiBehavior, xp, money, rewardNotes, notes));
+            {
+                (ok, problem) = await Api.PutWithProblemAsync(
+                    $"/api/monsters/{editingId}",
+                    new UpdateMonsterDto(name, category, monsterType, attack, defense, health, abilities, aiBehavior, xp, money, rewardNotes, notes));
+            }
             else
-                await Api.PostAsync<CreateMonsterDto, MonsterDetailDto>("/api/monsters", new CreateMonsterDto(name, category, monsterType, attack, defense, health, abilities, aiBehavior, xp, money, rewardNotes, notes));
+            {
+                (ok, _, problem) = await Api.PostWithProblemAsync<CreateMonsterDto, MonsterDetailDto>(
+                    "/api/monsters",
+                    new CreateMonsterDto(name, category, monsterType, attack, defense, health, abilities, aiBehavior, xp, money, rewardNotes, notes));
+            }
+            if (!ok)
+            {
+                error = problem ?? "Uložení se nezdařilo.";
+                return;
+            }
             isModalVisible = false; await LoadAsync();
         }
         catch (Exception ex) { error = ex.Message; }

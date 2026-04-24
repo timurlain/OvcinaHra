@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Mvc;
 using OvcinaHra.Api.Tests.Fixtures;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
@@ -49,6 +50,7 @@ public class ItemInlineEditTests(PostgresFixture postgres) : IntegrationTestBase
             new UpdateGameItemDto(Price: -1, StockCount: null, IsSold: true, SaleCondition: null, IsFindable: false));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        await AssertProblemDetailsAsync(response, "Neplatná cena", "záporná");
     }
 
     [Fact]
@@ -63,6 +65,7 @@ public class ItemInlineEditTests(PostgresFixture postgres) : IntegrationTestBase
             new UpdateGameItemDto(Price: 5, StockCount: -3, IsSold: true, SaleCondition: null, IsFindable: false));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        await AssertProblemDetailsAsync(response, "Neplatný sklad", "záporný");
     }
 
     [Fact]
@@ -78,6 +81,16 @@ public class ItemInlineEditTests(PostgresFixture postgres) : IntegrationTestBase
             new UpdateGameItemDto(Price: 5, StockCount: 1, IsSold: true, SaleCondition: tooLong, IsFindable: false));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        await AssertProblemDetailsAsync(response, "Podmínka prodeje je příliš dlouhá", "200");
+    }
+
+    private static async Task AssertProblemDetailsAsync(HttpResponseMessage response, string expectedTitle, string expectedDetailFragment)
+    {
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal(expectedTitle, problem!.Title);
+        Assert.False(string.IsNullOrWhiteSpace(problem.Detail));
+        Assert.Contains(expectedDetailFragment, problem.Detail, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

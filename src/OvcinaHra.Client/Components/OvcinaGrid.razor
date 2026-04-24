@@ -60,10 +60,13 @@
     [Parameter] public string? SearchText { get; set; }
     [Parameter] public EventCallback<string> SearchTextChanged { get; set; }
 
-    // Inline editing pass-through (issue #119). Null EditMode = no edit UX, which
-    // leaves the 9 read-only grids untouched. DxGrid's own default without
-    // EditModelSaving is non-destructive, but we fall back to PopupEditForm just
-    // so an accidental "edit" action can't corrupt the row quietly.
+    // Inline editing pass-through (issue #119). EditMode defaults to
+    // PopupEditForm when the consumer passes null — DxGrid's safest fallback:
+    // the popup requires an EditModelSaving handler to actually persist, so
+    // the 9 read-only grids (which don't bind EditModelSaving) stay
+    // non-destructive even if a user triggers an accidental edit action.
+    // Pass an explicit EditMode (e.g. GridEditMode.EditCell) to opt into
+    // inline editing.
     [Parameter] public GridEditMode? EditMode { get; set; }
     [Parameter] public EventCallback<GridEditModelSavingEventArgs> EditModelSaving { get; set; }
     [Parameter] public EventCallback<GridCustomizeEditModelEventArgs> CustomizeEditModel { get; set; }

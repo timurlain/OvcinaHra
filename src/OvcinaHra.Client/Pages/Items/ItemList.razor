@@ -809,24 +809,26 @@ else
         var src = (ItemListDto)e.DataItem;
         var buf = (ItemInlineEditBuffer)e.EditModel;
 
+        // Normalize like the server does — trim + whitespace→null — so the
+        // no-op short-circuit and local patch reflect what actually persists.
+        var normalizedEffect = string.IsNullOrWhiteSpace(buf.Effect) ? null : buf.Effect.Trim();
+
         // No-op short-circuit — don't PUT if the user tabbed through unchanged.
-        if (string.Equals(buf.Effect, src.Effect, StringComparison.Ordinal)) return;
+        if (string.Equals(normalizedEffect, src.Effect, StringComparison.Ordinal)) return;
 
-        try
+        var (ok, problem) = await Api.PutWithProblemAsync($"/api/items/{src.Id}", new UpdateItemDto(
+            src.Name, src.ItemType, normalizedEffect, src.PhysicalForm,
+            src.IsCraftable, src.ReqWarrior, src.ReqArcher, src.ReqMage, src.ReqThief,
+            src.IsUnique, src.IsLimited));
+        if (!ok)
         {
-            await Api.PutAsync($"/api/items/{src.Id}", new UpdateItemDto(
-                src.Name, src.ItemType, buf.Effect, src.PhysicalForm,
-                src.IsCraftable, src.ReqWarrior, src.ReqArcher, src.ReqMage, src.ReqThief,
-                src.IsUnique, src.IsLimited));
-
-            var idx = catalogItems.FindIndex(i => i.Id == src.Id);
-            if (idx >= 0) catalogItems[idx] = src with { Effect = buf.Effect };
-        }
-        catch (Exception ex)
-        {
-            error = $"Uložení efektu se nezdařilo: {ex.Message}";
+            error = problem ?? "Uložení efektu se nezdařilo.";
             e.Cancel = true;
+            return;
         }
+
+        var idx = catalogItems.FindIndex(i => i.Id == src.Id);
+        if (idx >= 0) catalogItems[idx] = src with { Effect = normalizedEffect };
     }
 
     private void OnGameCustomizeEdit(GridCustomizeEditModelEventArgs e)
@@ -846,35 +848,42 @@ else
         if (e.IsNew) return;
         var src = (GameItemListDto)e.DataItem;
         var buf = (GameItemInlineEditBuffer)e.EditModel;
-        if (GameContext.SelectedGameId is not int gid) { e.Cancel = true; return; }
+        if (GameContext.SelectedGameId is not int gid)
+        {
+            error = "Žádná hra není vybraná — změnu nelze uložit. Vyber hru v levém panelu a zkus to znovu.";
+            e.Cancel = true;
+            return;
+        }
+
+        // Normalize SaleCondition like the server — trim + whitespace→null —
+        // so the no-op short-circuit and local patch reflect persisted state.
+        var normalizedSale = string.IsNullOrWhiteSpace(buf.SaleCondition) ? null : buf.SaleCondition.Trim();
 
         if (buf.Price == src.Price
             && buf.StockCount == src.StockCount
-            && string.Equals(buf.SaleCondition, src.SaleCondition, StringComparison.Ordinal))
+            && string.Equals(normalizedSale, src.SaleCondition, StringComparison.Ordinal))
         {
             return;
         }
 
-        try
+        var (ok, problem) = await Api.PutWithProblemAsync($"/api/items/game-item/{gid}/{src.Id}",
+            new UpdateGameItemDto(buf.Price, buf.StockCount, src.IsSold, normalizedSale, src.IsFindable));
+        if (!ok)
         {
-            await Api.PutAsync($"/api/items/game-item/{gid}/{src.Id}",
-                new UpdateGameItemDto(buf.Price, buf.StockCount, src.IsSold, buf.SaleCondition, src.IsFindable));
-
-            var idx = gameItems.FindIndex(g => g.Id == src.Id);
-            if (idx >= 0)
-            {
-                gameItems[idx] = src with
-                {
-                    Price = buf.Price,
-                    StockCount = buf.StockCount,
-                    SaleCondition = buf.SaleCondition,
-                };
-            }
-        }
-        catch (Exception ex)
-        {
-            error = $"Uložení per-hra nastavení se nezdařilo: {ex.Message}";
+            error = problem ?? "Uložení per-hra nastavení se nezdařilo.";
             e.Cancel = true;
+            return;
+        }
+
+        var idx = gameItems.FindIndex(g => g.Id == src.Id);
+        if (idx >= 0)
+        {
+            gameItems[idx] = src with
+            {
+                Price = buf.Price,
+                StockCount = buf.StockCount,
+                SaleCondition = normalizedSale,
+            };
         }
     }
 

@@ -101,6 +101,11 @@ public static class ItemEndpoints
 
     private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> Update(int id, UpdateItemDto dto, WorldDbContext db)
     {
+        // Check existence first so a request for a missing id returns 404
+        // (REST contract), not 400 from any downstream length/validation.
+        var item = await db.Items.FindAsync(id);
+        if (item is null) return TypedResults.NotFound();
+
         // Effect now reachable via inline edit (issue #119) — cap the length
         // server-side since DevExpress DxTextBox MaxLength isn't reliable in
         // 25.2.5. 500 chars is a generous ceiling for an in-game item effect
@@ -111,9 +116,6 @@ public static class ItemEndpoints
                 title: "Efekt je příliš dlouhý",
                 detail: "Popis efektu nesmí být delší než 500 znaků.",
                 statusCode: StatusCodes.Status400BadRequest);
-
-        var item = await db.Items.FindAsync(id);
-        if (item is null) return TypedResults.NotFound();
 
         item.Name = dto.Name;
         item.ItemType = dto.ItemType;
@@ -219,6 +221,12 @@ public static class ItemEndpoints
 
     private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> UpdateGameItem(int gameId, int itemId, UpdateGameItemDto dto, WorldDbContext db)
     {
+        // Check existence first — a request for a missing (gameId,itemId) link
+        // must return 404, not 400 from downstream validation. Matches REST
+        // expectations for clients and keeps semantics consistent with Update.
+        var gi = await db.GameItems.FindAsync(gameId, itemId);
+        if (gi is null) return TypedResults.NotFound();
+
         // Inline-edit (issue #119) hits this endpoint directly from the grid,
         // so validation guards bad inputs with Czech ProblemDetails that the
         // grid can surface verbatim.
@@ -240,9 +248,6 @@ public static class ItemEndpoints
                 title: "Podmínka prodeje je příliš dlouhá",
                 detail: "Podmínka prodeje nesmí být delší než 200 znaků.",
                 statusCode: StatusCodes.Status400BadRequest);
-
-        var gi = await db.GameItems.FindAsync(gameId, itemId);
-        if (gi is null) return TypedResults.NotFound();
 
         gi.Price = dto.Price;
         gi.StockCount = dto.StockCount;
