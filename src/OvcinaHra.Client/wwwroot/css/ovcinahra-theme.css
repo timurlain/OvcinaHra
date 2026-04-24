@@ -2162,10 +2162,10 @@
 .oh-it-fcell--lit-gold{background:rgba(249,168,37,.18);border-color:rgba(249,168,37,.55);color:#8a6b0d}
 .oh-it-fcell--lit-bordeaux{background:rgba(140,36,35,.10);border-color:rgba(140,36,35,.40);color:#8c2423}
 
-/* Quick-peek popup — 720x480, 360px hero photo left + fields right */
+/* Quick-peek popup — 720px wide, 360px MTG-card (5:7) hero left + fields right */
 .oh-it-qp-grid{display:grid;grid-template-columns:360px 1fr;gap:20px;padding:4px 4px 14px;align-items:start}
 @media (max-width:768px){.oh-it-qp-grid{grid-template-columns:1fr}}
-.oh-it-qp-hero{width:100%;aspect-ratio:4/3;border-radius:var(--oh-radius);overflow:hidden;background:var(--oh-surface-alt);border:1px solid var(--oh-border);display:flex;align-items:center;justify-content:center}
+.oh-it-qp-hero{width:100%;aspect-ratio:5/7;border-radius:var(--oh-radius);overflow:hidden;background:var(--oh-surface-alt);border:1px solid var(--oh-border);display:flex;align-items:center;justify-content:center}
 .oh-it-qp-hero img{width:100%;height:100%;object-fit:cover;display:block}
 .oh-it-qp-hero .oh-it-photo-empty{font-size:4rem}
 .oh-it-qp-fields{display:flex;flex-direction:column;gap:12px;min-width:0}
