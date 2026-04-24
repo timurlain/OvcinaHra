@@ -116,3 +116,15 @@ public record UpdateLocationDto(
     int? ParentLocationId = null);
 
 public record GameLocationDto(int GameId, int LocationId);
+
+/// <summary>
+/// Compact projection for the LocationDetail orientation map (issue #110).
+/// Returned by GET /api/locations/nearby — filtered by haversine radius.
+/// </summary>
+public record NearbyLocationDto(
+    int Id,
+    string Name,
+    LocationKind LocationKind,
+    decimal Latitude,
+    decimal Longitude,
+    double DistanceKm);

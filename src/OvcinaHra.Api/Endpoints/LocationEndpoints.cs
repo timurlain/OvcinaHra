@@ -15,6 +15,7 @@ public static class LocationEndpoints
         var group = routes.MapGroup("/api/locations").WithTags("Locations");
 
         group.MapGet("/", GetAll);
+        group.MapGet("/nearby", GetNearby);
         group.MapGet("/{id:int}", GetById);
         group.MapPost("/", Create);
         group.MapPut("/{id:int}", Update);
@@ -67,6 +68,72 @@ public static class LocationEndpoints
             StampImageUrl: string.IsNullOrWhiteSpace(r.StampImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locationstamps", r.Id, "small"))).ToList();
 
         return TypedResults.Ok(locations);
+    }
+
+    /// <summary>
+    /// Locations within haversine radius of [lat, lng]. Used by the
+    /// LocationDetail orientation map (issue #110) to render nearby name
+    /// labels. Results cap at 50, ordered by distance. Optional excludeId
+    /// drops the subject location itself so callers don't see their own
+    /// pin twice.
+    /// </summary>
+    private static async Task<Results<Ok<List<NearbyLocationDto>>, BadRequest<string>>> GetNearby(
+        double lat, double lng, WorldDbContext db,
+        double radiusKm = 5.0, int? excludeId = null)
+    {
+        if (radiusKm <= 0 || radiusKm > 200)
+            return TypedResults.BadRequest("radiusKm must be between 0 (exclusive) and 200.");
+        if (lat < -90 || lat > 90 || lng < -180 || lng > 180)
+            return TypedResults.BadRequest("lat/lng out of range.");
+
+        // Rough pre-filter via a lat/lng bounding window to keep the
+        // in-memory haversine pass small. 1° latitude ≈ 111 km everywhere;
+        // 1° longitude ≈ 111*cos(lat) km — narrower near the poles.
+        var latDelta = (decimal)(radiusKm / 111.0);
+        var cosLat = Math.Max(0.01, Math.Cos(lat * Math.PI / 180.0));
+        var lngDelta = (decimal)(radiusKm / (111.0 * cosLat));
+
+        var latM = (decimal)lat;
+        var lngM = (decimal)lng;
+        var swLat = latM - latDelta;
+        var neLat = latM + latDelta;
+        var swLng = lngM - lngDelta;
+        var neLng = lngM + lngDelta;
+
+        var candidates = await db.Locations
+            .Where(l => l.Coordinates != null
+                && l.Coordinates.Latitude >= swLat && l.Coordinates.Latitude <= neLat
+                && l.Coordinates.Longitude >= swLng && l.Coordinates.Longitude <= neLng
+                && (excludeId == null || l.Id != excludeId.Value))
+            .Select(l => new
+            {
+                l.Id, l.Name, l.LocationKind,
+                Latitude = l.Coordinates!.Latitude,
+                Longitude = l.Coordinates!.Longitude
+            })
+            .ToListAsync();
+
+        var results = candidates
+            .Select(c => new NearbyLocationDto(c.Id, c.Name, c.LocationKind, c.Latitude, c.Longitude,
+                HaversineKm(lat, lng, (double)c.Latitude, (double)c.Longitude)))
+            .Where(d => d.DistanceKm <= radiusKm)
+            .OrderBy(d => d.DistanceKm)
+            .Take(50)
+            .ToList();
+
+        return TypedResults.Ok(results);
+    }
+
+    private static double HaversineKm(double lat1, double lng1, double lat2, double lng2)
+    {
+        const double earthKm = 6371.0;
+        var dLat = (lat2 - lat1) * Math.PI / 180.0;
+        var dLng = (lng2 - lng1) * Math.PI / 180.0;
+        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2)
+              + Math.Cos(lat1 * Math.PI / 180.0) * Math.Cos(lat2 * Math.PI / 180.0)
+              * Math.Sin(dLng / 2) * Math.Sin(dLng / 2);
+        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+        return earthKm * c;
     }
 
     private static async Task<Results<Ok<LocationDetailDto>, NotFound>> GetById(int id, WorldDbContext db)

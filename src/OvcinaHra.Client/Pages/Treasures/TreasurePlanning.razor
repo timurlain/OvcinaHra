@@ -555,24 +555,12 @@ else
             .SelectMany(l => new[] { l.StartCount, l.EarlyCount, l.MidgameCount, l.LategameCount })
             .DefaultIfEmpty(0).Max());
 
-        // Fit map to the game's locations.
-        var placed = locations.Where(l => l.Latitude.HasValue && l.Longitude.HasValue).ToList();
-        if (placed.Count > 0)
-        {
-            var minLat = (double)placed.Min(l => l.Latitude!.Value);
-            var maxLat = (double)placed.Max(l => l.Latitude!.Value);
-            var minLon = (double)placed.Min(l => l.Longitude!.Value);
-            var maxLon = (double)placed.Max(l => l.Longitude!.Value);
-            if (Math.Abs(maxLat - minLat) > 0.0005 || Math.Abs(maxLon - minLon) > 0.0005)
-            {
-                await mapView.FitBoundsAsync(minLat, minLon, maxLat, maxLon);
-            }
-            else
-            {
-                await mapView.SetCenterAsync(minLat, minLon, 15);
-            }
-        }
+        // Issue #103: map centers on the game's bounding box when set, else
+        // falls back to a Czech-countryside default. Fetch failures must not
+        // break the treasures page render — best-effort try/catch.
+        await FitMapToGameBoundsOrDefaultAsync();
 
+        var placed = locations.Where(l => l.Latitude.HasValue && l.Longitude.HasValue).ToList();
         foreach (var loc in placed)
         {
             var card = locationCards.FirstOrDefault(c => c.LocationId == loc.Id);
@@ -592,6 +580,47 @@ else
         }
 
         await mapView.SetStageFilterAsync(activeStages);
+    }
+
+    // Cached bbox per gameId so we don't refetch /api/games/{id} on every
+    // FitMapToGameBoundsOrDefaultAsync call (Copilot noticed — marker rebuilds
+    // + style reloads were triggering an extra roundtrip each time). Cache
+    // invalidates automatically when the bound gameId changes (game switch).
+    private int? _cachedBoundsGameId;
+    private (double SwLat, double SwLng, double NeLat, double NeLng)? _cachedBounds;
+
+    private async Task FitMapToGameBoundsOrDefaultAsync()
+    {
+        if (mapView is null) return;
+
+        if (_cachedBoundsGameId != gameId)
+        {
+            _cachedBoundsGameId = gameId;
+            _cachedBounds = null;
+            try
+            {
+                var detail = await Api.GetAsync<GameDetailDto>($"/api/games/{gameId}");
+                if (detail is not null
+                    && detail.BoundingBoxSwLat.HasValue && detail.BoundingBoxSwLng.HasValue
+                    && detail.BoundingBoxNeLat.HasValue && detail.BoundingBoxNeLng.HasValue)
+                {
+                    _cachedBounds = (
+                        (double)detail.BoundingBoxSwLat.Value, (double)detail.BoundingBoxSwLng.Value,
+                        (double)detail.BoundingBoxNeLat.Value, (double)detail.BoundingBoxNeLng.Value);
+                }
+            }
+            catch { /* best-effort — fall through to default viewport below */ }
+        }
+
+        if (_cachedBounds is { } b)
+        {
+            await mapView.FitBoundsAsync(b.SwLat, b.SwLng, b.NeLat, b.NeLng);
+            return;
+        }
+
+        // Fall back to CZ countryside — mirrors BoundingBoxPicker's default.
+        // SetCenterAsync signature is (lat, lon, zoom), NOT MapLibre's [lng,lat] order.
+        await mapView.SetCenterAsync(49.8, 15.4, 7);
     }
 
     private static string KindSlug(LocationKind k) => k switch
