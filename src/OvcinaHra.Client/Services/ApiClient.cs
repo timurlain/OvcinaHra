@@ -109,5 +109,50 @@ public class ApiClient
         return (false, string.IsNullOrWhiteSpace(raw) ? null : raw);
     }
 
+    // Put + Post variants of DeleteWithProblemAsync (see #118 + #124). Same
+    // read-body-once-then-parse shape so a 400 ProblemDetails surface round-
+    // trips verbatim into the caller's error banner. PostWithProblemAsync
+    // also hands back the deserialized response body on success so callers
+    // don't need a second round-trip to read what the server just wrote.
+    public async Task<(bool Ok, TResponse? Value, string? ProblemDetail)> PostWithProblemAsync<TRequest, TResponse>(string url, TRequest data)
+    {
+        var response = await _http.PostAsJsonAsync(url, data, JsonOptions);
+        if (!response.IsSuccessStatusCode)
+            return (false, default, await ReadProblemDetailAsync(response));
+
+        if (response.Content.Headers.ContentLength == 0 || response.StatusCode == HttpStatusCode.NoContent)
+            return (true, default, null);
+
+        var content = await response.Content.ReadAsStringAsync();
+        if (string.IsNullOrEmpty(content))
+            return (true, default, null);
+
+        return (true, JsonSerializer.Deserialize<TResponse>(content, JsonOptions), null);
+    }
+
+    public async Task<(bool Ok, string? ProblemDetail)> PutWithProblemAsync<TRequest>(string url, TRequest data)
+    {
+        var response = await _http.PutAsJsonAsync(url, data, JsonOptions);
+        if (response.IsSuccessStatusCode) return (true, null);
+        return (false, await ReadProblemDetailAsync(response));
+    }
+
+    private static async Task<string?> ReadProblemDetailAsync(HttpResponseMessage response)
+    {
+        var raw = await response.Content.ReadAsStringAsync();
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        try
+        {
+            var problem = JsonSerializer.Deserialize<ProblemDetailsLite>(raw, JsonOptions);
+            if (!string.IsNullOrWhiteSpace(problem?.Detail)) return problem.Detail;
+            if (!string.IsNullOrWhiteSpace(problem?.Title)) return problem.Title;
+        }
+        catch (JsonException)
+        {
+            // Non-JSON body — fall through to the raw-text return below.
+        }
+        return raw;
+    }
+
     private sealed record ProblemDetailsLite(string? Title, string? Detail, int? Status);
 }

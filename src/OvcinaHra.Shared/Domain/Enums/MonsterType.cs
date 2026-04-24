@@ -9,10 +9,10 @@ public enum MonsterType
     [Display(Name = "Nemrtvý")]
     Undead,
 
-    [Display(Name = "Bestie")]
+    [Display(Name = "Zvíře")]
     Beast,
 
-    [Display(Name = "Goblin")]
+    [Display(Name = "Skřet")]
     Goblin,
 
     [Display(Name = "Dobrotivý")]
