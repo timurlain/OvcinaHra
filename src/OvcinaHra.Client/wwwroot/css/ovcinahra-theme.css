@@ -2071,6 +2071,45 @@
 .oh-mon-assign:hover{background:var(--oh-primary-light);border-color:var(--oh-primary-light)}
 .oh-mon-assign.oh-mon-on{background:var(--oh-primary-surface);color:var(--oh-primary);border-color:rgba(74,124,52,.35);cursor:default;opacity:1;transform:none}
 
+/* Issue #113 — narrow-width stacking. At ≤900px the default 4-column grid
+   (thumb | body | stats | actions) crushes the body cell until the
+   MonsterType chip + Kategorie badge visually overlap the flex-wrapped
+   stat pills on the right. Switch to grid-template-areas so stats +
+   actions + assign all land on their own rows underneath the thumb/body
+   header. Hover-reveal actions are forced visible at this breakpoint
+   since the touch-friendly narrow layout has no hover surface. */
+@media (max-width: 900px) {
+    .oh-mon-row,
+    .oh-mon-row.oh-mon-catalog {
+        grid-template-columns: 72px 1fr;
+        grid-template-areas:
+            "thumb body"
+            "stats stats"
+            "actions actions"
+            "assign assign";
+        row-gap: 8px;
+        align-items: start;
+        min-height: 0;
+        padding: 10px;
+    }
+    .oh-mon-row > .oh-mon-thumb { grid-area: thumb; width: 72px; height: 72px; }
+    .oh-mon-row > .oh-mon-body  { grid-area: body; }
+    .oh-mon-row > .oh-mon-stats {
+        grid-area: stats;
+        justify-self: start;
+        padding-top: 2px;
+        border-top: 1px dashed var(--oh-border);
+    }
+    .oh-mon-row > .oh-mon-actions {
+        grid-area: actions;
+        justify-self: start;
+        opacity: 1;
+        transform: none;
+    }
+    .oh-mon-row.oh-mon-catalog > div:last-child { grid-area: assign; justify-self: start; }
+    .oh-mon-row.oh-mon-catalog > div:last-child .oh-mon-assign { opacity: 1; transform: none; }
+}
+
 /* Empty state */
 .oh-mon-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 16px;gap:14px;text-align:center}
 .oh-mon-empty-icon{width:120px;height:120px;border-radius:50%;background:var(--oh-primary-surface);display:flex;align-items:center;justify-content:center;color:var(--oh-primary);font-size:3rem;border:2px solid rgba(74,124,52,.2)}

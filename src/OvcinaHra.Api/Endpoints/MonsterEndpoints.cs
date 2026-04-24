@@ -11,6 +11,7 @@ namespace OvcinaHra.Api.Endpoints;
 public static class MonsterEndpoints
 {
     private const int MaxNotesLength = 1000;
+    private const int MaxNameLength = 200;
 
     public static RouteGroupBuilder MapMonsterEndpoints(this IEndpointRouteBuilder routes)
     {
@@ -91,14 +92,18 @@ public static class MonsterEndpoints
             m.RewardXp, m.RewardMoney, m.RewardNotes, m.Notes, m.ImagePath, tags));
     }
 
-    private static async Task<Results<Created<MonsterDetailDto>, BadRequest<string>>> Create(CreateMonsterDto dto, WorldDbContext db)
+    // Issue #111 — validation surface. Previously a duplicate Name crashed
+    // with a bare Postgres unique-constraint 500; empty Name / negative
+    // stats / over-long Notes were enforced only at the DB layer if at all.
+    // Unified Czech ProblemDetails (title "Uložení selhalo") covers them all.
+    private static async Task<IResult> Create(CreateMonsterDto dto, WorldDbContext db)
     {
-        if (dto.Notes?.Length > MaxNotesLength)
-            return TypedResults.BadRequest($"Notes cannot exceed {MaxNotesLength} characters.");
+        var error = await ValidateMonsterAsync(db, dto.Name, dto.Attack, dto.Defense, dto.Health, dto.Notes, selfId: null);
+        if (error is not null) return error;
 
         var m = new Monster
         {
-            Name = dto.Name,
+            Name = dto.Name.Trim(),
             Category = dto.Category,
             MonsterType = dto.MonsterType,
             Stats = new CombatStats(dto.Attack, dto.Defense, dto.Health),
@@ -118,15 +123,15 @@ public static class MonsterEndpoints
                 m.RewardXp, m.RewardMoney, m.RewardNotes, m.Notes, m.ImagePath, []));
     }
 
-    private static async Task<Results<NoContent, NotFound, BadRequest<string>>> Update(int id, UpdateMonsterDto dto, WorldDbContext db)
+    private static async Task<IResult> Update(int id, UpdateMonsterDto dto, WorldDbContext db)
     {
-        if (dto.Notes?.Length > MaxNotesLength)
-            return TypedResults.BadRequest($"Notes cannot exceed {MaxNotesLength} characters.");
-
         var m = await db.Monsters.FindAsync(id);
         if (m is null) return TypedResults.NotFound();
 
-        m.Name = dto.Name;
+        var error = await ValidateMonsterAsync(db, dto.Name, dto.Attack, dto.Defense, dto.Health, dto.Notes, selfId: id);
+        if (error is not null) return error;
+
+        m.Name = dto.Name.Trim();
         m.Category = dto.Category;
         m.MonsterType = dto.MonsterType;
         m.Stats = new CombatStats(dto.Attack, dto.Defense, dto.Health);
@@ -139,6 +144,75 @@ public static class MonsterEndpoints
 
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
+    }
+
+    // Centralised Czech-facing validation for Create + Update. Returns null
+    // when the payload is clean; otherwise a ProblemDetails(400). Name
+    // uniqueness check ignores selfId so Update of a monster to its own
+    // current name doesn't trip the duplicate check.
+    private static async Task<IResult?> ValidateMonsterAsync(
+        WorldDbContext db,
+        string? name, int attack, int defense, int health, string? notes,
+        int? selfId)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return TypedResults.Problem(
+                title: "Uložení selhalo",
+                detail: "Název nesmí být prázdný.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var trimmed = name.Trim();
+
+        if (trimmed.Length > MaxNameLength)
+        {
+            return TypedResults.Problem(
+                title: "Uložení selhalo",
+                detail: $"Název nesmí přesáhnout {MaxNameLength} znaků.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        if (attack < 0 || defense < 0)
+        {
+            return TypedResults.Problem(
+                title: "Uložení selhalo",
+                detail: "Útok a obrana nesmí být záporné.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        if (health <= 0)
+        {
+            return TypedResults.Problem(
+                title: "Uložení selhalo",
+                detail: "Životy musí být alespoň 1.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        if (notes?.Length > MaxNotesLength)
+        {
+            return TypedResults.Problem(
+                title: "Uložení selhalo",
+                detail: $"Poznámka nesmí přesáhnout {MaxNotesLength} znaků.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        // Compare against DB-side Trim so legacy rows persisted untrimmed
+        // (before this PR added the Trim() on Create/Update) still collide.
+        // EF translates .Trim() to Postgres TRIM() — index-losing but the
+        // monster table is small (~hundreds), not a hot query.
+        var collision = await db.Monsters
+            .Where(x => x.Name.Trim() == trimmed && (selfId == null || x.Id != selfId.Value))
+            .AnyAsync();
+        if (collision)
+        {
+            return TypedResults.Problem(
+                title: "Uložení selhalo",
+                detail: $"Příšera s názvem „{trimmed}\" už existuje. Vyber jiný název.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        return null;
     }
 
     private static async Task<Results<NoContent, NotFound>> Delete(int id, WorldDbContext db)
