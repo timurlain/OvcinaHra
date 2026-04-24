@@ -76,4 +76,34 @@ public class ApiClient
         var response = await _http.DeleteAsync(url);
         return response.IsSuccessStatusCode;
     }
+
+    // Variant of DeleteAsync that reads the server's ProblemDetails on
+    // non-success so the caller can surface the server's Czech `detail`
+    // verbatim in the UI instead of a generic fallback. On success returns
+    // (true, null); on failure returns (false, problemDetailOrNull) where
+    // problemDetailOrNull is the ProblemDetails.detail field or the raw body
+    // if the server did not return an application/problem+json response.
+    public async Task<(bool Ok, string? ProblemDetail)> DeleteWithProblemAsync(string url)
+    {
+        var response = await _http.DeleteAsync(url);
+        if (response.IsSuccessStatusCode) return (true, null);
+
+        try
+        {
+            var problem = await response.Content.ReadFromJsonAsync<ProblemDetailsLite>(JsonOptions);
+            if (!string.IsNullOrWhiteSpace(problem?.Detail))
+                return (false, problem.Detail);
+            if (!string.IsNullOrWhiteSpace(problem?.Title))
+                return (false, problem.Title);
+        }
+        catch (JsonException)
+        {
+            // Non-JSON body — fall through to the raw-text path below.
+        }
+
+        var raw = await response.Content.ReadAsStringAsync();
+        return (false, string.IsNullOrWhiteSpace(raw) ? null : raw);
+    }
+
+    private sealed record ProblemDetailsLite(string? Title, string? Detail, int? Status);
 }
