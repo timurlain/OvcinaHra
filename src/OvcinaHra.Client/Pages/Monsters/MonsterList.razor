@@ -95,7 +95,7 @@ else
                             OnRowClick="@(() => OpenQuickPeekAsync(captured))"
                             OnEdit="@(() => OpenEditModal(captured))"
                             OnAddLoot="@(() => OpenEditModal(captured))"
-                            OnBattle="@(() => Nav.NavigateTo($"/monsters/{captured.Id}?tab=bojovka"))"
+                            OnBattle="@(() => Nav.NavigateTo($"/monsters/{captured.Id}"))"
                             OnDelete="@(() => RequestDeleteFromRow(captured))"
                             OnAssign="@(() => AssignMonsterAsync(captured.Id))" />
             }
