@@ -140,7 +140,7 @@ git add -p && git commit   # [v0.12.x] per skill
 git push -u origin feat/treasures-planning-port
 gh pr create --base main --head feat/treasures-planning-port \
   --title "feat(treasures): planning dashboard — stage pipeline + pie-pin map + drag-drop [v0.12.x]" \
-  --body "Ports the treasures planning mockup. Three-zone dashboard replacing current summary+pool+overview. Extends map-interop.js with pie-wedge markers. Adds stage palette custom properties (user-approved canon). Keeps Nekonečný item path. LayoutKey bumped. See docs/design/dialogs/treasures-planning.md + .claude/restart-prompts/hra-ovcina-treasures-planning-port.md for decisions."
+  --body "Ports the treasures planning mockup. Three-zone dashboard replacing current summary+pool+overview. Extends map-interop.js with pie-wedge markers. Adds stage palette custom properties (user-approved canon). Keeps Nekonečný item path. LayoutKey bumped. See docs/design/dialogs/treasures-planning.md + docs/port-handoffs/hra-ovcina-treasures-planning-port.md for decisions."
 ```
 
 Squash-merge with `gh pr merge <N> --squash --delete-branch` after CI + Copilot. Verify deploy via `curl https://api.hra.ovcina.cz/api/version`.
@@ -170,6 +170,6 @@ Squash-merge with `gh pr merge <N> --squash --delete-branch` after CI + Copilot.
 - Brief: `docs/design/dialogs/treasures-planning.md`
 - Stage palette canon: `~/.claude/skills/hra-ovcina-designer/references/stage-palette.md` (or wherever the skill lives)
 - Design canon running log: `~/.claude/skills/hra-ovcina-designer/references/design-canon.md`
-- MapLibre precedents: `.claude/restart-prompts/hra-ovcina-location-detail-port.md` — inline mini-map uses a separate `ovcinaMiniMap` helper; pie markers extend the primary `ovcinaMap`
+- MapLibre precedents: `docs/port-handoffs/hra-ovcina-location-detail-port.md` — inline mini-map uses a separate `ovcinaMiniMap` helper; pie markers extend the primary `ovcinaMap`
 - Prior drag-and-drop precedent: none yet — this port establishes the pattern
 - Builder template: `docs/design/BUILDER-BRIEF-TEMPLATE.md`

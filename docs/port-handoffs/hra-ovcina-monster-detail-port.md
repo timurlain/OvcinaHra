@@ -108,7 +108,7 @@ git add -p && git commit   # [v0.12.x] tag in commit msg per skill
 git push -u origin feat/monster-detail-port
 gh pr create --base main --head feat/monster-detail-port \
   --title "feat(monsters): /monsters/{id} detail page with 5 tabs + Bojovka presenter [v0.12.x]" \
-  --body "See docs/design/dialogs/monster-detail.md and .claude/restart-prompts/hra-ovcina-monster-detail-port.md for decisions. Illuminated bestiary page with Karta, Upravit, Bojovka (presenter view), Kořist (per-game MTG loot tiles), and Výskyt tabs. Uses existing MonsterDetailDto and MonsterLootDto; add aggregate loot endpoint if needed."
+  --body "See docs/design/dialogs/monster-detail.md and docs/port-handoffs/hra-ovcina-monster-detail-port.md for decisions. Illuminated bestiary page with Karta, Upravit, Bojovka (presenter view), Kořist (per-game MTG loot tiles), and Výskyt tabs. Uses existing MonsterDetailDto and MonsterLootDto; add aggregate loot endpoint if needed."
 ```
 
 Squash-merge with `gh pr merge <N> --squash --delete-branch` after CI + Copilot. Verify deploy via `curl https://api.hra.ovcina.cz/api/version`.
@@ -137,7 +137,7 @@ Squash-merge with `gh pr merge <N> --squash --delete-branch` after CI + Copilot.
 
 - Brief: `docs/design/dialogs/monster-detail.md`
 - Sibling list brief: `docs/design/dialogs/monster-list.md`
-- Prior port for reference: `.claude/restart-prompts/hra-ovcina-monster-list-port.md`
+- Prior port for reference: `docs/port-handoffs/hra-ovcina-monster-list-port.md`
 - MTG tile pattern: `src/OvcinaHra.Client/Components/LocationStashTile.razor`
 - Design system onboarding: `docs/design/CLAUDE-DESIGN-SETUP.md`
 - Builder template: `docs/design/BUILDER-BRIEF-TEMPLATE.md`

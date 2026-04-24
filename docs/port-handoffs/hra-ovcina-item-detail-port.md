@@ -119,7 +119,7 @@ git add -p && git commit   # [v0.12.x] tag in commit msg per skill
 git push -u origin feat/item-detail-port
 gh pr create --base main --head feat/item-detail-port \
   --title "feat(items): /items/{id} detail page with 5 tabs (MTG hero, crafting graph, výskyt, obchod) [v0.12.x]" \
-  --body "See docs/design/dialogs/item-detail.md and .claude/restart-prompts/hra-ovcina-item-detail-port.md for decisions. Hero is 5:7 MTG (pivot from brief's 4:3 — items are physical cards in the LARP). Tvorba tab renders both sides of the recipe graph. Výskyt aggregates MonsterLoot + QuestReward + TreasureItem. Obchod shows per-game GameItem config with coin-accented price."
+  --body "See docs/design/dialogs/item-detail.md and docs/port-handoffs/hra-ovcina-item-detail-port.md for decisions. Hero is 5:7 MTG (pivot from brief's 4:3 — items are physical cards in the LARP). Tvorba tab renders both sides of the recipe graph. Výskyt aggregates MonsterLoot + QuestReward + TreasureItem. Obchod shows per-game GameItem config with coin-accented price."
 ```
 
 Squash-merge with `gh pr merge <N> --squash --delete-branch` after CI + Copilot. Verify deploy via `curl https://api.hra.ovcina.cz/api/version`.
@@ -150,8 +150,8 @@ Squash-merge with `gh pr merge <N> --squash --delete-branch` after CI + Copilot.
 
 - Brief: `docs/design/dialogs/item-detail.md`
 - Sibling list brief: `docs/design/dialogs/item-list.md`
-- List port handoff: `.claude/restart-prompts/hra-ovcina-item-list-port.md`
-- Similar-pattern ports: `.claude/restart-prompts/hra-ovcina-monster-detail-port.md`, `.claude/restart-prompts/hra-ovcina-secret-stash-list-port.md`
+- List port handoff: `docs/port-handoffs/hra-ovcina-item-list-port.md`
+- Similar-pattern ports: `docs/port-handoffs/hra-ovcina-monster-detail-port.md`, `docs/port-handoffs/hra-ovcina-secret-stash-list-port.md`
 - MTG tile precedent: `src/OvcinaHra.Client/Components/LocationStashTile.razor`
 - Design system onboarding: `docs/design/CLAUDE-DESIGN-SETUP.md`
 - Builder template: `docs/design/BUILDER-BRIEF-TEMPLATE.md`

@@ -98,7 +98,7 @@ git add -p && git commit   # [v0.12.x] tag in commit msg per skill
 git push -u origin feat/monster-list-port
 gh pr create --base main --head feat/monster-list-port \
   --title "feat(monsters): card-row bestiary replaces DxGrid + quick-peek popup [v0.12.x]" \
-  --body "See docs/design/dialogs/monster-list.md and .claude/restart-prompts/hra-ovcina-monster-list-port.md for design intent. Drops 13-col DxGrid. New component: MonsterRow. Preserves dual-mode routing."
+  --body "See docs/design/dialogs/monster-list.md and docs/port-handoffs/hra-ovcina-monster-list-port.md for design intent. Drops 13-col DxGrid. New component: MonsterRow. Preserves dual-mode routing."
 ```
 
 Wait for CI + Copilot review. Fixup commit if needed. Merge with `gh pr merge <N> --squash --delete-branch`. Verify deploy via `curl https://api.hra.ovcina.cz/api/version` after ~8 min.
@@ -126,4 +126,4 @@ Wait for CI + Copilot review. Fixup commit if needed. Merge with `gh pr merge <N
 - Sibling detail brief: `docs/design/dialogs/monster-detail.md`
 - Design system onboarding: `docs/design/CLAUDE-DESIGN-SETUP.md`
 - Builder template: `docs/design/BUILDER-BRIEF-TEMPLATE.md`
-- Prior port for reference: `.claude/restart-prompts/hra-ovcina-secret-stash-list-port.md`
+- Prior port for reference: `docs/port-handoffs/hra-ovcina-secret-stash-list-port.md`

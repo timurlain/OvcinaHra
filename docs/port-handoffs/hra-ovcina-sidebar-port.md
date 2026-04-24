@@ -163,7 +163,7 @@ git add -p && git commit   # [v0.12.x] tag in commit msg per skill
 git push -u origin feat/sidebar-redesign
 gh pr create --base main --head feat/sidebar-redesign \
   --title "feat(nav): Tato hra / Katalog tabs in sidebar [v0.12.x]" \
-  --body "Variant C sidebar redesign from Claude Design mockup. Collapses the old duplicate Hra/Katalog sections into a tab switch at the top of the sidebar. Persists mode in localStorage. Přehled+Mapa always visible; Nástroje anchored at bottom. See .claude/restart-prompts/hra-ovcina-sidebar-port.md for the full decision log."
+  --body "Variant C sidebar redesign from Claude Design mockup. Collapses the old duplicate Hra/Katalog sections into a tab switch at the top of the sidebar. Persists mode in localStorage. Přehled+Mapa always visible; Nástroje anchored at bottom. See docs/port-handoffs/hra-ovcina-sidebar-port.md for the full decision log."
 ```
 
 Wait for CI + Copilot review. Fixup commit if needed. Merge with `gh pr merge <N> --squash --delete-branch`. Verify deploy via `curl https://api.hra.ovcina.cz/api/version` after ~8 min.
@@ -191,5 +191,5 @@ Wait for CI + Copilot review. Fixup commit if needed. Merge with `gh pr merge <N
 - Current sidebar CSS: `src/OvcinaHra.Client/Layout/NavMenu.razor.css`
 - Design system onboarding: `docs/design/CLAUDE-DESIGN-SETUP.md`
 - Builder template: `docs/design/BUILDER-BRIEF-TEMPLATE.md`
-- Prior port for reference: `.claude/restart-prompts/hra-ovcina-secret-stash-list-port.md`, `.claude/restart-prompts/hra-ovcina-monster-list-port.md`
+- Prior port for reference: `docs/port-handoffs/hra-ovcina-secret-stash-list-port.md`, `docs/port-handoffs/hra-ovcina-monster-list-port.md`
 - GameContextService (for the meta line under tabs): `src/OvcinaHra.Client/Services/GameContextService.cs`

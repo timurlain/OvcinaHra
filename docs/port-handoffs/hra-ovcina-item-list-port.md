@@ -141,7 +141,7 @@ git add -p && git commit   # [v0.12.x] tag in commit msg per skill
 git push -u origin feat/item-list-port
 gh pr create --base main --head feat/item-list-port \
   --title "feat(items): redesigned /items grid with photo, type-dot, class pips, flags box [v0.12.x]" \
-  --body "Implements the Items grid from the Claude Design mockup. Keeps DxGrid chassis (designer pivot from my original brief — see .claude/restart-prompts/hra-ovcina-item-list-port.md). Adds Foto 4:3 column (hidden when grouping by Typ), Typ-dot, 4 class pips (Válečník/Lučištník/Mág/Zloděj), Cena coin accent, Sklad, 3-cell Flagy box. Quick-peek popup 720 × 480 replaces the current edit popup on row click; 'Otevřít detail →' will 404 until /items/{id} ships in a follow-up."
+  --body "Implements the Items grid from the Claude Design mockup. Keeps DxGrid chassis (designer pivot from my original brief — see docs/port-handoffs/hra-ovcina-item-list-port.md). Adds Foto 4:3 column (hidden when grouping by Typ), Typ-dot, 4 class pips (Válečník/Lučištník/Mág/Zloděj), Cena coin accent, Sklad, 3-cell Flagy box. Quick-peek popup 720 × 480 replaces the current edit popup on row click; 'Otevřít detail →' will 404 until /items/{id} ships in a follow-up."
 ```
 
 Squash-merge with `gh pr merge <N> --squash --delete-branch` after CI + Copilot.
@@ -173,6 +173,6 @@ Squash-merge with `gh pr merge <N> --squash --delete-branch` after CI + Copilot.
 - Design system onboarding: `docs/design/CLAUDE-DESIGN-SETUP.md`
 - Builder template: `docs/design/BUILDER-BRIEF-TEMPLATE.md`
 - Prior ports for reference:
-  - `.claude/restart-prompts/hra-ovcina-monster-list-port.md` (different choice — dropped DxGrid)
-  - `.claude/restart-prompts/hra-ovcina-secret-stash-list-port.md` (different choice — gallery)
-  - `.claude/restart-prompts/hra-ovcina-monster-detail-port.md` (sibling page pattern)
+  - `docs/port-handoffs/hra-ovcina-monster-list-port.md` (different choice — dropped DxGrid)
+  - `docs/port-handoffs/hra-ovcina-secret-stash-list-port.md` (different choice — gallery)
+  - `docs/port-handoffs/hra-ovcina-monster-detail-port.md` (sibling page pattern)
