@@ -221,10 +221,52 @@ public static class ItemEndpoints
         return TypedResults.NoContent();
     }
 
-    private static async Task<Results<NoContent, NotFound>> DeleteGameItem(int gameId, int itemId, WorldDbContext db)
+    // Removing the per-game link must not strand ghost TreasureItem /
+    // MonsterLoot rows that still reference this (GameId, ItemId) pair —
+    // see issue #99. Block the delete with a Czech ProblemDetails(400)
+    // listing the offending TreasureQuest titles / pool count / Monster
+    // names so the organizer knows what to detach first. QuestReward /
+    // PersonalQuestItemReward / CraftingIngredient are catalog-level (not
+    // per-game) and are left alone here; follow-ups can tighten those.
+    private static async Task<IResult> DeleteGameItem(int gameId, int itemId, WorldDbContext db)
     {
         var gi = await db.GameItems.FindAsync(gameId, itemId);
         if (gi is null) return TypedResults.NotFound();
+
+        var treasureQuestTitles = await db.TreasureItems
+            .Where(ti => ti.GameId == gameId && ti.ItemId == itemId && ti.TreasureQuestId != null)
+            .Select(ti => ti.TreasureQuest!.Title)
+            .Distinct()
+            .OrderBy(t => t)
+            .ToListAsync();
+
+        var poolCount = await db.TreasureItems
+            .Where(ti => ti.GameId == gameId && ti.ItemId == itemId && ti.TreasureQuestId == null)
+            .SumAsync(ti => (int?)ti.Count) ?? 0;
+
+        var monsterNames = await db.MonsterLoots
+            .Where(ml => ml.GameId == gameId && ml.ItemId == itemId)
+            .Select(ml => ml.Monster.Name)
+            .Distinct()
+            .OrderBy(n => n)
+            .ToListAsync();
+
+        if (treasureQuestTitles.Count > 0 || poolCount > 0 || monsterNames.Count > 0)
+        {
+            var parts = new List<string>();
+            if (treasureQuestTitles.Count > 0)
+                parts.Add($"je součástí pokladu: {string.Join(", ", treasureQuestTitles)}");
+            if (poolCount > 0)
+                parts.Add($"v zásobníku: {poolCount} ks");
+            if (monsterNames.Count > 0)
+                parts.Add($"kořist příšer: {string.Join(", ", monsterNames)}");
+
+            return TypedResults.Problem(
+                title: "Položku nelze odebrat",
+                detail: $"Tuto položku nelze odebrat — {string.Join("; ", parts)}.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
         db.GameItems.Remove(gi);
         await db.SaveChangesAsync();
         return TypedResults.NoContent();

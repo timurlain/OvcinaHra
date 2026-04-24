@@ -885,10 +885,14 @@ else
         error = null; isSaving = true;
         try
         {
-            var deleted = await Api.DeleteAsync($"/api/items/game-item/{GameContext.SelectedGameId}/{editingId}");
+            var (deleted, problem) = await Api.DeleteWithProblemAsync(
+                $"/api/items/game-item/{GameContext.SelectedGameId}/{editingId}");
             if (!deleted)
             {
-                error = "Odebrání předmětu ze hry se nezdařilo.";
+                // Surface the server's Czech ProblemDetails.detail verbatim —
+                // e.g. the #99 block lists the offending treasures so the user
+                // knows what to detach before retrying.
+                error = problem ?? "Odebrání předmětu ze hry se nezdařilo.";
                 return;
             }
             gameItemExists = false;
@@ -917,10 +921,11 @@ else
         error = null;
         try
         {
-            var deleted = await Api.DeleteAsync($"/api/items/game-item/{GameContext.SelectedGameId}/{itemId}");
+            var (deleted, problem) = await Api.DeleteWithProblemAsync(
+                $"/api/items/game-item/{GameContext.SelectedGameId}/{itemId}");
             if (!deleted)
             {
-                error = "Odebrání předmětu ze hry se nezdařilo.";
+                error = problem ?? "Odebrání předmětu ze hry se nezdařilo.";
                 return;
             }
             await ReloadGameLinkAsync();
