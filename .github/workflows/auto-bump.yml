@@ -1,0 +1,62 @@
+name: Auto-bump version
+
+# Bumps the WASM Client csproj <Version> patch segment on every push to main
+# EXCEPT the bump commits themselves (prevents infinite loop via the if-guard).
+#
+# Why: PRs used to each bump <Version> manually, which made the version line a
+# hotspot for merge conflicts whenever two PRs ran in parallel. Shifting the
+# bump to a post-merge CI step means PRs never touch csproj — zero conflicts on
+# that line, ever.
+#
+# Requires: repo secret VERSION_BUMP_TOKEN = fine-grained PAT with
+# Contents:Read-and-write scope on this repo. Default GITHUB_TOKEN is NOT
+# enough because pushes using it don't trigger downstream workflows
+# (deploy wouldn't re-run on the auto-bump commit).
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    # Skip the bump commits themselves — prevents infinite loop.
+    if: ${{ !contains(github.event.head_commit.message, 'Auto-bump') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.VERSION_BUMP_TOKEN }}
+          fetch-depth: 0
+
+      - name: Bump patch version
+        id: bump
+        run: |
+          set -euo pipefail
+          CSPROJ="src/OvcinaHra.Client/OvcinaHra.Client.csproj"
+          CURRENT=$(grep -oP '(?<=<Version>)[^<]+' "$CSPROJ")
+          if [ -z "$CURRENT" ]; then
+              echo "::error::Could not read <Version> from $CSPROJ"
+              exit 1
+          fi
+          MAJOR=$(echo "$CURRENT" | cut -d. -f1)
+          MINOR=$(echo "$CURRENT" | cut -d. -f2)
+          PATCH=$(echo "$CURRENT" | cut -d. -f3)
+          NEW_PATCH=$((PATCH + 1))
+          NEW="$MAJOR.$MINOR.$NEW_PATCH"
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "new=$NEW" >> "$GITHUB_OUTPUT"
+          sed -i "s|<Version>$CURRENT</Version>|<Version>$NEW</Version>|" "$CSPROJ"
+          echo "::notice::Bumped $CURRENT → $NEW"
+
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/OvcinaHra.Client/OvcinaHra.Client.csproj
+          git commit -m "Auto-bump: v${{ steps.bump.outputs.new }}"
+          git push
