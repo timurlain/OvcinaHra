@@ -582,27 +582,44 @@ else
         await mapView.SetStageFilterAsync(activeStages);
     }
 
+    // Cached bbox per gameId so we don't refetch /api/games/{id} on every
+    // FitMapToGameBoundsOrDefaultAsync call (Copilot noticed — marker rebuilds
+    // + style reloads were triggering an extra roundtrip each time). Cache
+    // invalidates automatically when the bound gameId changes (game switch).
+    private int? _cachedBoundsGameId;
+    private (double SwLat, double SwLng, double NeLat, double NeLng)? _cachedBounds;
+
     private async Task FitMapToGameBoundsOrDefaultAsync()
     {
         if (mapView is null) return;
 
-        // Prefer the game's saved bounding box; fall back to CZ countryside
-        // (mirrors BoundingBoxPicker's default [15.4, 49.8], zoom 7).
-        try
+        if (_cachedBoundsGameId != gameId)
         {
-            var detail = await Api.GetAsync<GameDetailDto>($"/api/games/{gameId}");
-            if (detail is not null
-                && detail.BoundingBoxSwLat.HasValue && detail.BoundingBoxSwLng.HasValue
-                && detail.BoundingBoxNeLat.HasValue && detail.BoundingBoxNeLng.HasValue)
+            _cachedBoundsGameId = gameId;
+            _cachedBounds = null;
+            try
             {
-                await mapView.FitBoundsAsync(
-                    (double)detail.BoundingBoxSwLat.Value, (double)detail.BoundingBoxSwLng.Value,
-                    (double)detail.BoundingBoxNeLat.Value, (double)detail.BoundingBoxNeLng.Value);
-                return;
+                var detail = await Api.GetAsync<GameDetailDto>($"/api/games/{gameId}");
+                if (detail is not null
+                    && detail.BoundingBoxSwLat.HasValue && detail.BoundingBoxSwLng.HasValue
+                    && detail.BoundingBoxNeLat.HasValue && detail.BoundingBoxNeLng.HasValue)
+                {
+                    _cachedBounds = (
+                        (double)detail.BoundingBoxSwLat.Value, (double)detail.BoundingBoxSwLng.Value,
+                        (double)detail.BoundingBoxNeLat.Value, (double)detail.BoundingBoxNeLng.Value);
+                }
             }
+            catch { /* best-effort — fall through to default viewport below */ }
         }
-        catch { /* best-effort — fall through to default viewport */ }
 
+        if (_cachedBounds is { } b)
+        {
+            await mapView.FitBoundsAsync(b.SwLat, b.SwLng, b.NeLat, b.NeLng);
+            return;
+        }
+
+        // Fall back to CZ countryside — mirrors BoundingBoxPicker's default.
+        // SetCenterAsync signature is (lat, lon, zoom), NOT MapLibre's [lng,lat] order.
         await mapView.SetCenterAsync(49.8, 15.4, 7);
     }
 

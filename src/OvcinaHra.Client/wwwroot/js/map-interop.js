@@ -287,7 +287,7 @@ window.ovcinaMiniMap = {
 
         // Issue #110: the focused (current) location stands out vs. surrounding
         // context labels via a halo ring + larger pin. Two-layer element:
-        // outer translucent ring (kindColor, 30px), inner solid pin (24px).
+        // outer translucent ring (kindColor, 30px), inner solid pin (22px).
         var wrap = document.createElement('div');
         wrap.style.cssText = 'position:relative;width:30px;height:30px;display:flex;align-items:center;justify-content:center;';
         var halo = document.createElement('div');
@@ -351,7 +351,11 @@ window.ovcinaMiniMap = {
                 wrap.appendChild(label);
             }
 
-            var ctx = new maplibregl.Marker({ element: wrap, anchor: 'left' })
+            // anchor:'left' + offset:[-5,0] centers the 10px dot on the
+            // coordinate (dot is first child; offset pulls the wrap 5px left
+            // so the dot's centre, not its left edge, sits on the lat/lng).
+            // Label still flows to the right of the dot via the flex layout.
+            var ctx = new maplibregl.Marker({ element: wrap, anchor: 'left', offset: [-5, 0] })
                 .setLngLat([m.lon, m.lat]).addTo(inst.map);
             inst.contextMarkers.push(ctx);
         }
