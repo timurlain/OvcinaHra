@@ -1581,6 +1581,36 @@
 .oh-lg-stash-cell.oh-lg-none{align-items:center !important}
 .oh-lg-stash-cell.oh-lg-none span{color:var(--oh-text-secondary);font-style:italic;font-size:.75rem}
 
+/* Location primary-image tile — sibling of .oh-lg-stash-tile for the
+   Obrázek column in /locations. Same aspect-ratio (5/7) so rows with a
+   location image line up in height with rows that only show stash tiles. */
+.oh-lg-loc-tile{
+  aspect-ratio:5/7;width:100%;max-width:100px;
+  border:1px solid #7a5a3d;border-radius:5px;
+  box-shadow:0 1px 3px rgba(45,80,22,.18), inset 0 0 0 1px rgba(255,248,230,.15);
+  transition:.18s;position:relative;overflow:hidden;min-width:0;
+  background:linear-gradient(145deg,#c8d4a8 0%,#8fab6a 60%,#5a7a3d 100%);
+}
+.oh-lg-loc-tile:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(45,80,22,.3);z-index:5}
+.oh-lg-loc-tile > img.oh-lg-loc-tile-img{
+  position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;z-index:1;display:block;
+}
+.oh-lg-loc-tile > .oh-lg-loc-tile-img-veil{
+  position:absolute;inset:0;pointer-events:none;z-index:2;
+  background:
+    radial-gradient(ellipse at 30% 35%,rgba(255,248,230,.18) 0%,transparent 55%),
+    linear-gradient(180deg,transparent 55%,rgba(20,12,4,.45) 100%);
+}
+.oh-lg-loc-tile > i.oh-lg-glyph{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  color:rgba(255,248,230,.85);font-size:1.6rem;z-index:1;
+  text-shadow:0 1px 3px rgba(0,0,0,.5);
+}
+.oh-lg-loc-cell{padding:8px 10px !important;align-items:flex-start !important}
+.oh-lg-loc-cell.oh-lg-none{align-items:center !important}
+.oh-lg-loc-cell.oh-lg-none span{color:var(--oh-text-secondary);font-style:italic;font-size:.75rem}
+
 /* ============================================================
    EMPTY STATE
    ============================================================ */
