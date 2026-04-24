@@ -6,6 +6,7 @@
 @using OvcinaHra.Shared.Extensions
 @inject ApiClient Api
 @inject GameContextService GameContext
+@inject IJSRuntime JS
 @implements IDisposable
 
 <div class="d-flex justify-content-between align-items-center mb-2">
@@ -40,7 +41,7 @@ else
             <StagePipelineCard StageKey="mid"   Label="Střed hry"  Count="@(summary?.MidgameCount ?? 0)" />
             <StagePipelineCard StageKey="late"  Label="Závěr hry"  Count="@(summary?.LategameCount ?? 0)" />
             <div class="oh-tp-pool-mini @(summary?.PoolRemaining == 0 ? "oh-tp-empty-state" : "")"
-                 @onclick="ScrollToPool">
+                 @onclick="ScrollToPoolAsync">
                 <div class="oh-tp-pool-mini-lbl"><i class="bi bi-bag"></i> Zásobník</div>
                 <div class="oh-tp-pool-mini-num">@(summary?.PoolRemaining ?? 0)</div>
                 <div class="oh-tp-pool-mini-sub">předmětů čeká</div>
@@ -358,7 +359,7 @@ else
 @* ================== DELETE CONFIRM POPUP ================== *@
 <DxPopup @bind-Visible="@isDeleteQuestVisible" HeaderText="Smazat poklad?" Width="420px">
     <BodyContentTemplate Context="popupContext">
-        <p>Opravdu smazat poklad <strong>@editTitle</strong>? Předměty z zásobníku se uvolní zpět.</p>
+        <p>Opravdu smazat poklad <strong>@editTitle</strong>? Předměty ze zásobníku se uvolní zpět.</p>
         <div class="d-flex gap-2 justify-content-end">
             <button class="btn btn-secondary" @onclick="() => isDeleteQuestVisible = false">Zrušit</button>
             <button class="btn btn-danger" @onclick="DeleteQuestAsync">Smazat</button>
@@ -401,7 +402,9 @@ else
     {
         activeStages ??= new HashSet<string>(stageKeys.Select(s => s.Key));
         if (!activeStages.Add(key)) activeStages.Remove(key);
-        if (activeStages.Count == stageKeys.Count) activeStages = null;
+        // Empty and full sets both collapse to null ("all active") so the
+        // filter chip UI and the JS opacity state never disagree.
+        if (activeStages.Count == 0 || activeStages.Count == stageKeys.Count) activeStages = null;
         if (mapView is not null) await mapView.SetStageFilterAsync(activeStages);
     }
 
@@ -582,10 +585,11 @@ else
     {
         LocationKind.Town => "town",
         LocationKind.Village => "village",
-        LocationKind.Wilderness => "wilderness",
         LocationKind.Magical => "magical",
-        LocationKind.PointOfInterest => "hobbit",
-        LocationKind.Dungeon => "magical",
+        LocationKind.Hobbit => "hobbit",
+        LocationKind.Wilderness => "wilderness",
+        LocationKind.Dungeon => "dungeon",
+        LocationKind.PointOfInterest => "pointofinterest",
         _ => "wilderness"
     };
 
@@ -700,7 +704,13 @@ else
 
     private async Task RemoveEditItemAsync(TreasureItemDto item)
     {
-        await Api.DeleteAsync($"/api/treasure-quests/{editQuestId}/items/{item.Id}");
+        var ok = await Api.DeleteAsync($"/api/treasure-quests/{editQuestId}/items/{item.Id}");
+        if (!ok)
+        {
+            editError = "Nepodařilo se odebrat předmět.";
+            StateHasChanged();
+            return;
+        }
         editQuestItems.Remove(item);
         StateHasChanged();
     }
@@ -728,7 +738,14 @@ else
     {
         try
         {
-            await Api.DeleteAsync($"/api/treasure-quests/{editQuestId}");
+            var ok = await Api.DeleteAsync($"/api/treasure-quests/{editQuestId}");
+            if (!ok)
+            {
+                editError = "Smazání pokladu selhalo.";
+                isDeleteQuestVisible = false;
+                StateHasChanged();
+                return;
+            }
             isDeleteQuestVisible = false;
             isEditQuestVisible = false;
             markersPlaced = false;
@@ -755,9 +772,14 @@ else
             .FirstOrDefault(s => s.Id == stashId)?.Name ?? $"skrýš #{stashId}";
     }
 
-    private void ScrollToPool()
+    private async Task ScrollToPoolAsync()
     {
         focusedLocationId = null;
         StateHasChanged();
+        try
+        {
+            await JS.InvokeVoidAsync("ovcinaDnd.scrollIntoViewById", "oh-tp-pool-anchor");
+        }
+        catch { /* best-effort scroll — ignore if JS host missing */ }
     }
 }

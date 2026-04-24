@@ -479,7 +479,28 @@ window.ovcinaMap.clearPieMarkers = function () {
         try { this._zeroMarkers[zid].marker.remove(); } catch (e) { /* ignore */ }
     }
     this._zeroMarkers = {};
+    this._activePieStages = null;
 };
+
+// Wrap switchStyle + dispose so style changes and teardown also wipe pie/zero
+// markers (the original methods only touched ._markers). Prevents DOM leaks
+// when the /treasures page switches map style or the user navigates away.
+(function () {
+    var originalSwitchStyle = window.ovcinaMap.switchStyle;
+    if (typeof originalSwitchStyle === 'function') {
+        window.ovcinaMap.switchStyle = function () {
+            try { this.clearPieMarkers(); } catch (e) { /* ignore */ }
+            return originalSwitchStyle.apply(this, arguments);
+        };
+    }
+    var originalDispose = window.ovcinaMap.dispose;
+    if (typeof originalDispose === 'function') {
+        window.ovcinaMap.dispose = function () {
+            try { this.clearPieMarkers(); } catch (e) { /* ignore */ }
+            return originalDispose.apply(this, arguments);
+        };
+    }
+})();
 
 window.ovcinaMap._applyStageFilterToElement = function (el) {
     var active = this._activePieStages;
@@ -533,5 +554,12 @@ window.ovcinaDnd = {
         if (!element) return;
         this._wired.delete(element);
         element.removeAttribute('draggable');
+    },
+
+    // Generic DOM helper used by pages that want a smooth scroll to a known
+    // anchor id without a full JS interop round-trip per handler.
+    scrollIntoViewById: function (elementId) {
+        var el = document.getElementById(elementId);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 };

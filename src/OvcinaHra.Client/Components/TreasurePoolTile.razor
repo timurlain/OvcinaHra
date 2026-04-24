@@ -32,21 +32,25 @@
 
     private ElementReference elementRef;
     private bool imageFailed;
-    private int _wiredForItemId = -1;
+    private int _imageStateForItemId = -1;
+    private int _wiredForPoolItemId = -1;
 
     protected override void OnParametersSet()
     {
-        if (_wiredForItemId != Item.ItemId)
+        // Reset image-failure state only when the underlying catalog item changes
+        // (image URL is keyed by Item.ItemId, not the pool entry's Id).
+        if (_imageStateForItemId != Item.ItemId)
         {
+            _imageStateForItemId = Item.ItemId;
             imageFailed = false;
         }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_wiredForItemId != Item.Id)
+        if (_wiredForPoolItemId != Item.Id)
         {
-            _wiredForItemId = Item.Id;
+            _wiredForPoolItemId = Item.Id;
             var payload = JsonSerializer.Serialize(new
             {
                 PoolItemId = Item.Id,

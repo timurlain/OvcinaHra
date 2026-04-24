@@ -2408,7 +2408,6 @@
 .oh-tp-stage-picker label[data-stage="mid"],.oh-tp-stage-picker label[data-stage="midgame"]{--c:var(--oh-stage-midgame)}
 .oh-tp-stage-picker label[data-stage="late"],.oh-tp-stage-picker label[data-stage="lategame"]{--c:var(--oh-stage-lategame)}
 .oh-tp-stage-picker input{position:absolute;opacity:0;pointer-events:none}
-.oh-tp-stage-picker input:checked + .oh-tp-stage-picker-chip,
 .oh-tp-stage-picker label:has(input:checked){background:var(--c);color:#fff;border-color:var(--c)}
 .oh-tp-stage-picker label[data-stage="early"]:has(input:checked){color:#3a2612}
 .oh-tp-target-radios{display:flex;gap:10px;align-items:center;padding:8px;background:var(--oh-surface-alt);border-radius:var(--oh-radius-sm)}
