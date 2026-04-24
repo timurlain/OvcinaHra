@@ -3,9 +3,13 @@
    &family=JetBrains+Mono:wght@400;500
    &family=Merriweather:wght@400;700;900&display=swap
    pinned 2026-04-25. All three families ship as variable fonts upstream,
-   so each subset is a single WOFF2 covering every declared weight via
-   the @font-face font-weight descriptor. latin + latin-ext only (Czech
-   diacritics live in latin-ext; cyrillic/greek/vietnamese are dropped). */
+   so every @font-face block within the same (family, subset) pair points
+   at the same underlying WOFF2 — only one file per subset is actually
+   downloaded, and the browser picks the right weight via the @font-face
+   font-weight descriptor. Per-weight blocks are kept verbatim from the
+   upstream CSS2 response so this file stays trivially re-synchable with
+   a future fetch. latin + latin-ext only (Czech diacritics live in
+   latin-ext; cyrillic/greek/vietnamese are dropped). */
 
 /* latin-ext */
 @font-face {
