@@ -56,13 +56,15 @@ public static class ItemEndpoints
                 ReqThief = i.ClassRequirements.Thief,
                 i.IsUnique,
                 i.IsLimited,
-                i.ImagePath
+                i.ImagePath,
+                i.Note
             })
             .ToListAsync();
         var items = rows.Select(r => new ItemListDto(
             r.Id, r.Name, r.ItemType, r.Effect, r.PhysicalForm, r.IsCraftable,
             r.ReqWarrior, r.ReqArcher, r.ReqMage, r.ReqThief,
             r.IsUnique, r.IsLimited, r.ImagePath,
+            Note: r.Note,
             ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "items", r.Id, "small"))).ToList();
         return TypedResults.Ok(items);
     }
@@ -81,8 +83,21 @@ public static class ItemEndpoints
         return TypedResults.Ok(ToDetailDto(item) with { ImageUrl = imageUrl });
     }
 
-    private static async Task<Created<ItemDetailDto>> Create(CreateItemDto dto, WorldDbContext db)
+    // Note cap used on both Create and Update (issue #120). 2000 chars is a
+    // generous ceiling for organizer commentary; anything longer probably
+    // belongs in the wiki. DevExpress DxMemo MaxLength isn't reliable in
+    // 25.2.5 so the cap is enforced server-side.
+    private const int NoteMaxLength = 2000;
+
+    private static async Task<Results<Created<ItemDetailDto>, ProblemHttpResult>> Create(CreateItemDto dto, WorldDbContext db)
     {
+        var note = dto.Note?.Trim();
+        if (!string.IsNullOrEmpty(note) && note.Length > NoteMaxLength)
+            return TypedResults.Problem(
+                title: "Poznámka je příliš dlouhá",
+                detail: $"Poznámka nesmí být delší než {NoteMaxLength} znaků.",
+                statusCode: StatusCodes.Status400BadRequest);
+
         var item = new Item
         {
             Name = dto.Name,
@@ -92,7 +107,8 @@ public static class ItemEndpoints
             IsCraftable = dto.IsCraftable,
             ClassRequirements = new ClassRequirements(dto.ReqWarrior, dto.ReqArcher, dto.ReqMage, dto.ReqThief),
             IsUnique = dto.IsUnique,
-            IsLimited = dto.IsLimited
+            IsLimited = dto.IsLimited,
+            Note = string.IsNullOrWhiteSpace(note) ? null : note
         };
         db.Items.Add(item);
         await db.SaveChangesAsync();
@@ -117,6 +133,14 @@ public static class ItemEndpoints
                 detail: "Popis efektu nesmí být delší než 500 znaků.",
                 statusCode: StatusCodes.Status400BadRequest);
 
+        // Poznámka (issue #120) — same trim + cap pattern as Effect.
+        var note = dto.Note?.Trim();
+        if (!string.IsNullOrEmpty(note) && note.Length > NoteMaxLength)
+            return TypedResults.Problem(
+                title: "Poznámka je příliš dlouhá",
+                detail: $"Poznámka nesmí být delší než {NoteMaxLength} znaků.",
+                statusCode: StatusCodes.Status400BadRequest);
+
         item.Name = dto.Name;
         item.ItemType = dto.ItemType;
         item.Effect = string.IsNullOrWhiteSpace(effect) ? null : effect;
@@ -125,6 +149,7 @@ public static class ItemEndpoints
         item.ClassRequirements = new ClassRequirements(dto.ReqWarrior, dto.ReqArcher, dto.ReqMage, dto.ReqThief);
         item.IsUnique = dto.IsUnique;
         item.IsLimited = dto.IsLimited;
+        item.Note = string.IsNullOrWhiteSpace(note) ? null : note;
 
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
@@ -169,6 +194,7 @@ public static class ItemEndpoints
                 gi.Item.IsUnique, gi.Item.IsLimited, gi.Item.ImagePath,
                 gi.GameId, gi.Price, gi.StockCount, gi.IsSold, gi.SaleCondition, gi.IsFindable,
                 summaryByItemId.GetValueOrDefault(gi.ItemId),
+                Note: gi.Item.Note,
                 ImageUrl: string.IsNullOrWhiteSpace(gi.Item.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "items", gi.Item.Id, "small")))
             .ToList();
 
@@ -334,7 +360,8 @@ public static class ItemEndpoints
             i.Id, i.Name, i.ItemType, i.Effect, i.PhysicalForm, i.IsCraftable,
             i.ClassRequirements.Warrior, i.ClassRequirements.Archer,
             i.ClassRequirements.Mage, i.ClassRequirements.Thief,
-            i.IsUnique, i.IsLimited, i.ImagePath))
+            i.IsUnique, i.IsLimited, i.ImagePath,
+            Note: i.Note))
         .OrderBy(i => i.Name)
         .ToList();
 
@@ -390,7 +417,8 @@ public static class ItemEndpoints
         item.Id, item.Name, item.ItemType, item.Effect, item.PhysicalForm, item.IsCraftable,
         item.ClassRequirements.Warrior, item.ClassRequirements.Archer,
         item.ClassRequirements.Mage, item.ClassRequirements.Thief,
-        item.IsUnique, item.IsLimited, item.ImagePath);
+        item.IsUnique, item.IsLimited, item.ImagePath,
+        Note: item.Note);
 
     // Detail-page aggregate. One round-trip returns:
     //  - CraftedBy:    recipes whose OutputItemId == this item
@@ -412,7 +440,8 @@ public static class ItemEndpoints
                 r.OutputItemId, r.OutputItem.Name,
                 r.LocationId, r.Location != null ? r.Location.Name : null,
                 r.Ingredients.Select(i => new CraftingIngredientDto(i.ItemId, i.Item.Name, i.Quantity)).ToList(),
-                r.BuildingRequirements.Select(b => new CraftingBuildingReqDto(b.BuildingId, b.Building.Name)).ToList()))
+                r.BuildingRequirements.Select(b => new CraftingBuildingReqDto(b.BuildingId, b.Building.Name)).ToList(),
+                r.IngredientNotes))
             .ToListAsync();
 
         var usedIn = await db.CraftingRecipes
@@ -423,7 +452,8 @@ public static class ItemEndpoints
                 r.OutputItemId, r.OutputItem.Name,
                 r.LocationId, r.Location != null ? r.Location.Name : null,
                 r.Ingredients.Select(i => new CraftingIngredientDto(i.ItemId, i.Item.Name, i.Quantity)).ToList(),
-                r.BuildingRequirements.Select(b => new CraftingBuildingReqDto(b.BuildingId, b.Building.Name)).ToList()))
+                r.BuildingRequirements.Select(b => new CraftingBuildingReqDto(b.BuildingId, b.Building.Name)).ToList(),
+                r.IngredientNotes))
             .ToListAsync();
 
         // Project bare path first; resolve thumb URL host-side after materialization.

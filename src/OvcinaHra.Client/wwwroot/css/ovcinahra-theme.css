@@ -1616,6 +1616,14 @@
    ============================================================ */
 .oh-lg-empty-state{padding:64px 40px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px}
 .oh-lg-empty-state .oh-lg-drozd-box{width:120px;height:120px;display:flex;align-items:center;justify-content:center;background:var(--oh-surface-alt);border:1px solid var(--oh-border);border-radius:50%;margin-bottom:6px}
+/* Standalone circle — used on ItemList + CharacterList empty states where
+   the parent container isn't .oh-lg-empty-state. Same look as the scoped
+   variant above so the mascot sits in an identical parchment disc. */
+.oh-lg-drozd-box{width:120px;height:120px;display:flex;align-items:center;justify-content:center;background:var(--oh-surface-alt);border:1px solid var(--oh-border);border-radius:50%}
+/* Drozd mascot sizing — the wrappers already provide the circular canvas;
+   these rules scale the SVG so the bird renders at the same visual weight
+   as the old bi-feather / bi-bug-fill / bi-gem glyphs it replaced. */
+.oh-lg-drozd-box img{width:86px;height:86px;object-fit:contain;display:block}
 .oh-lg-empty-state h3{margin:0;font-size:1.25rem;color:var(--oh-primary)}
 .oh-lg-empty-state p{margin:0;color:var(--oh-text-secondary);font-size:.9375rem;max-width:420px}
 .oh-lg-empty-state .oh-lg-hint{font-size:.8125rem;font-style:italic;color:var(--oh-text-secondary);margin-top:4px}
@@ -2113,6 +2121,7 @@
 /* Empty state */
 .oh-mon-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 16px;gap:14px;text-align:center}
 .oh-mon-empty-icon{width:120px;height:120px;border-radius:50%;background:var(--oh-primary-surface);display:flex;align-items:center;justify-content:center;color:var(--oh-primary);font-size:3rem;border:2px solid rgba(74,124,52,.2)}
+.oh-mon-empty-icon img{width:86px;height:86px;object-fit:contain;display:block}
 .oh-mon-empty-msg{font-size:1rem;color:var(--oh-text-secondary)}
 .oh-mon-empty-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
 
@@ -2348,6 +2357,7 @@
 .oh-tp-loading{padding:48px 16px;text-align:center;color:var(--oh-text-secondary);font-style:italic}
 .oh-tp-empty{padding:48px 16px;text-align:center;color:var(--oh-text-secondary)}
 .oh-tp-empty i{font-size:3rem;color:var(--oh-primary-light);opacity:.6;display:block;margin-bottom:10px}
+.oh-tp-empty img{width:96px;height:96px;object-fit:contain;display:block;margin:0 auto 10px}
 
 /* Zone 1 — pipeline ---------------------------------------- */
 /* Cards halved vs. original 160px container height per issue #103. */
@@ -2529,3 +2539,14 @@
 .oh-bbox-picker-actions{display:flex;gap:8px;flex-wrap:wrap}
 .oh-bbox-picker-inputs{margin-top:4px}
 .oh-bbox-picker-help{margin:0;color:var(--oh-text-secondary);font:400 .8125rem var(--oh-font-body);line-height:1.45}
+
+/* Version-drift banner — issue #127. Inline strip rendered above the
+   sidebar+main flex container in MainLayout when /api/version reports a
+   different commit than the one observed at app boot. Aradhrynd kingdom-
+   seal hex (#243525) per the canon palette memory rule. */
+.oh-version-banner{display:flex;align-items:center;justify-content:center;gap:12px;padding:8px 16px;background:rgba(36,53,37,.94);color:#F5EDE3;font:500 .8125rem var(--oh-font-body);border-bottom:1px solid rgba(245,237,227,.15);box-shadow:0 1px 3px rgba(0,0,0,.18);position:relative;z-index:60}
+.oh-version-banner i{font-size:1rem;color:#A8B892;flex-shrink:0}
+.oh-version-banner-msg{flex:0 1 auto}
+.oh-version-banner-btn{display:inline-flex;align-items:center;gap:4px;padding:4px 14px;background:#F5EDE3;color:#243525;border:1px solid rgba(245,237,227,.4);border-radius:99px;font:600 .8125rem var(--oh-font-body);cursor:pointer;transition:background .15s,transform .15s}
+.oh-version-banner-btn:hover:not(:disabled){background:#fff8f0;transform:translateY(-1px)}
+.oh-version-banner-btn:disabled{opacity:.7;cursor:default}

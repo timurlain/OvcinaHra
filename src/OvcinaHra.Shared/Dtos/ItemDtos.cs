@@ -18,6 +18,7 @@ public record ItemListDto(
     bool IsUnique,
     bool IsLimited,
     string? ImagePath,
+    string? Note = null,
     string? ImageUrl = null)
 {
     [JsonIgnore]
@@ -55,6 +56,7 @@ public record GameItemListDto(
     string? SaleCondition,
     bool IsFindable,
     string? RecipeSummary,
+    string? Note = null,
     string? ImageUrl = null)
 {
     [JsonIgnore]
@@ -81,6 +83,7 @@ public record ItemDetailDto(
     bool IsUnique,
     bool IsLimited,
     string? ImagePath,
+    string? Note = null,
     string? ImageUrl = null);
 
 public record CreateItemDto(
@@ -94,7 +97,8 @@ public record CreateItemDto(
     int ReqMage = 0,
     int ReqThief = 0,
     bool IsUnique = false,
-    bool IsLimited = false);
+    bool IsLimited = false,
+    string? Note = null);
 
 public record UpdateItemDto(
     string Name,
@@ -107,7 +111,8 @@ public record UpdateItemDto(
     int ReqMage,
     int ReqThief,
     bool IsUnique,
-    bool IsLimited);
+    bool IsLimited,
+    string? Note = null);
 
 // Per-game item configuration
 public record GameItemDto(
@@ -160,7 +165,8 @@ public record ItemUsageRecipeDto(
     int? LocationId,
     string? LocationName,
     List<CraftingIngredientDto> Ingredients,
-    List<CraftingBuildingReqDto> BuildingRequirements);
+    List<CraftingBuildingReqDto> BuildingRequirements,
+    string? IngredientNotes = null);
 
 public record ItemUsageMonsterLootDto(
     int MonsterId,

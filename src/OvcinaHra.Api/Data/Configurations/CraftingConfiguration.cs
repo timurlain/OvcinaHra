@@ -12,6 +12,7 @@ public class CraftingRecipeConfiguration : IEntityTypeConfiguration<CraftingReci
         builder.HasOne(e => e.Game).WithMany(g => g.CraftingRecipes).HasForeignKey(e => e.GameId);
         builder.HasOne(e => e.OutputItem).WithMany().HasForeignKey(e => e.OutputItemId);
         builder.HasOne(e => e.Location).WithMany().HasForeignKey(e => e.LocationId);
+        builder.Property(e => e.IngredientNotes).HasMaxLength(2000);
     }
 }
 

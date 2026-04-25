@@ -16,6 +16,10 @@ public class Item
     public bool IsLimited { get; set; }
     public string? ImagePath { get; set; }
 
+    // Free-text organizer note — issue #120. Visible in catalog + game grid
+    // columns and on the detail page. Catalog-scoped (no per-game override).
+    public string? Note { get; set; }
+
     public ICollection<GameItem> GameItems { get; set; } = [];
     public ICollection<CraftingIngredient> CraftingIngredients { get; set; } = [];
     public ICollection<MonsterLoot> MonsterLoots { get; set; } = [];

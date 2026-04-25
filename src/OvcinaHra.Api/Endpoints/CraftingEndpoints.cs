@@ -56,6 +56,11 @@ public static class CraftingEndpoints
         return TypedResults.Ok(ToDetailDto(r));
     }
 
+    // IngredientNotes cap used by Create + Update (issue #121). Matches the
+    // Item.Note ceiling — same rationale: a short free-text annotation on
+    // structured data; longer prose belongs on the wiki.
+    private const int IngredientNotesMaxLength = 2000;
+
     private static async Task<Results<Created<CraftingRecipeDetailDto>, BadRequest<ProblemDetails>, NotFound>> Create(
         CreateCraftingRecipeDto dto, WorldDbContext db, CancellationToken ct)
     {
@@ -63,11 +68,23 @@ public static class CraftingEndpoints
         var problem = await ValidateRequiredSkillsAsync(db, dto.GameId, skillIds, ct);
         if (problem is not null) return TypedResults.BadRequest(problem);
 
+        var ingredientNotes = dto.IngredientNotes?.Trim();
+        if (!string.IsNullOrEmpty(ingredientNotes) && ingredientNotes.Length > IngredientNotesMaxLength)
+        {
+            return TypedResults.BadRequest(new ProblemDetails
+            {
+                Title = "Poznámka je příliš dlouhá",
+                Detail = $"Poznámka k surovinám nesmí být delší než {IngredientNotesMaxLength} znaků.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
         var r = new CraftingRecipe
         {
             GameId = dto.GameId,
             OutputItemId = dto.OutputItemId,
             LocationId = dto.LocationId,
+            IngredientNotes = string.IsNullOrWhiteSpace(ingredientNotes) ? null : ingredientNotes,
             SkillRequirements = skillIds
                 .Select(sid => new CraftingSkillRequirement { GameSkillId = sid })
                 .ToList()
@@ -124,8 +141,20 @@ public static class CraftingEndpoints
         var problem = await ValidateRequiredSkillsAsync(db, recipe.GameId, skillIds, ct);
         if (problem is not null) return TypedResults.BadRequest(problem);
 
+        var ingredientNotes = dto.IngredientNotes?.Trim();
+        if (!string.IsNullOrEmpty(ingredientNotes) && ingredientNotes.Length > IngredientNotesMaxLength)
+        {
+            return TypedResults.BadRequest(new ProblemDetails
+            {
+                Title = "Poznámka je příliš dlouhá",
+                Detail = $"Poznámka k surovinám nesmí být delší než {IngredientNotesMaxLength} znaků.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
         recipe.OutputItemId = dto.OutputItemId;
         recipe.LocationId = dto.LocationId;
+        recipe.IngredientNotes = string.IsNullOrWhiteSpace(ingredientNotes) ? null : ingredientNotes;
 
         // Replace SkillRequirements as a set.
         var currentIds = recipe.SkillRequirements.Select(r => r.GameSkillId).ToHashSet();
@@ -218,6 +247,7 @@ public static class CraftingEndpoints
         r.Ingredients.Select(i => new CraftingIngredientDto(i.ItemId, i.Item.Name, i.Quantity)).ToList(),
         r.BuildingRequirements.Select(br => new CraftingBuildingReqDto(br.BuildingId, br.Building.Name)).ToList())
     {
-        RequiredSkillIds = r.SkillRequirements.Select(sr => sr.GameSkillId).ToList()
+        RequiredSkillIds = r.SkillRequirements.Select(sr => sr.GameSkillId).ToList(),
+        IngredientNotes = r.IngredientNotes
     };
 }

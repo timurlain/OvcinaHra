@@ -1,0 +1,60 @@
+@* Persistent strip rendered at the top of MainLayout when the server's
+   /api/version commit no longer matches what we recorded at app boot.
+   Click "Obnovit" → location.reload(). The PWA service worker may need a
+   second refresh to actually swap shells; that's an inherent SW lifecycle
+   quirk, not a banner bug. *@
+@implements IDisposable
+@inject VersionDriftService Drift
+@inject IJSRuntime JS
+
+@if (Drift.IsDrifted)
+{
+    <div class="oh-version-banner" role="status" aria-live="polite">
+        <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+        <span class="oh-version-banner-msg">Je dostupná nová verze aplikace.</span>
+        <button type="button"
+                class="oh-version-banner-btn"
+                @onclick="ReloadAsync"
+                disabled="@reloading">
+            @if (reloading)
+            {
+                <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+            }
+            Obnovit
+        </button>
+    </div>
+}
+
+@code {
+    private bool _started;
+    private bool reloading;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_started)
+        {
+            _started = true;
+            Drift.StateChanged += OnStateChanged;
+            await Drift.StartAsync();
+        }
+    }
+
+    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+
+    private async Task ReloadAsync()
+    {
+        if (reloading) return;
+        reloading = true;
+        try
+        {
+            await JS.InvokeVoidAsync("location.reload");
+        }
+        catch
+        {
+            // location.reload throws if the page is mid-unload — at which
+            // point the user is already heading toward the new bundle.
+        }
+    }
+
+    public void Dispose() => Drift.StateChanged -= OnStateChanged;
+}
