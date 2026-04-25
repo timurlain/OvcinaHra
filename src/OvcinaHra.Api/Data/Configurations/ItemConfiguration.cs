@@ -13,6 +13,7 @@ public class ItemConfiguration : IEntityTypeConfiguration<Item>
         builder.HasIndex(e => e.Name).IsUnique();
         builder.Property(e => e.ItemType).HasConversion<string>().HasMaxLength(30);
         builder.Property(e => e.PhysicalForm).HasConversion<string>().HasMaxLength(30);
+        builder.Property(e => e.Note).HasMaxLength(2000);
 
         builder.OwnsOne(e => e.ClassRequirements, cr =>
         {
