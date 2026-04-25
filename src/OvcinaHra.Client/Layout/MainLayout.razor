@@ -1,5 +1,7 @@
 @inherits LayoutComponentBase
 
+<VersionDriftBanner />
+
 <div class="page @(sidebarCollapsed ? "sidebar-collapsed" : "")">
     <div class="sidebar">
         <NavMenu Collapsed="sidebarCollapsed" OnToggle="ToggleSidebar" />
