@@ -2539,3 +2539,14 @@
 .oh-bbox-picker-actions{display:flex;gap:8px;flex-wrap:wrap}
 .oh-bbox-picker-inputs{margin-top:4px}
 .oh-bbox-picker-help{margin:0;color:var(--oh-text-secondary);font:400 .8125rem var(--oh-font-body);line-height:1.45}
+
+/* Version-drift banner — issue #127. Inline strip rendered above the
+   sidebar+main flex container in MainLayout when /api/version reports a
+   different commit than the one observed at app boot. Aradhrynd kingdom-
+   seal hex (#243525) per the canon palette memory rule. */
+.oh-version-banner{display:flex;align-items:center;justify-content:center;gap:12px;padding:8px 16px;background:rgba(36,53,37,.94);color:#F5EDE3;font:500 .8125rem var(--oh-font-body);border-bottom:1px solid rgba(245,237,227,.15);box-shadow:0 1px 3px rgba(0,0,0,.18);position:relative;z-index:60}
+.oh-version-banner i{font-size:1rem;color:#A8B892;flex-shrink:0}
+.oh-version-banner-msg{flex:0 1 auto}
+.oh-version-banner-btn{display:inline-flex;align-items:center;gap:4px;padding:4px 14px;background:#F5EDE3;color:#243525;border:1px solid rgba(245,237,227,.4);border-radius:99px;font:600 .8125rem var(--oh-font-body);cursor:pointer;transition:background .15s,transform .15s}
+.oh-version-banner-btn:hover:not(:disabled){background:#fff8f0;transform:translateY(-1px)}
+.oh-version-banner-btn:disabled{opacity:.7;cursor:default}
