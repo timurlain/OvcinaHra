@@ -48,8 +48,16 @@ public static class TimelineEndpoints
         return TypedResults.Ok(rows.Select(ToDto).ToList());
     }
 
-    private static async Task<Created<GameTimeSlotDto>> CreateSlot(CreateGameTimeSlotDto dto, WorldDbContext db)
+    private static async Task<Results<Created<GameTimeSlotDto>, ProblemHttpResult>> CreateSlot(CreateGameTimeSlotDto dto, WorldDbContext db)
     {
+        // Validate linked events belong to the same game BEFORE inserting,
+        // so an invalid id surfaces as a Czech 400 instead of a 500 FK violation.
+        if (dto.LinkedGameEventIds is { Count: > 0 } incoming)
+        {
+            var validation = await ValidateLinkedEventsAsync(dto.GameId, incoming, db);
+            if (validation is { } problem) return problem;
+        }
+
         var stage = NormalizeStage(dto.Stage);
         var s = new GameTimeSlot
         {
@@ -77,21 +85,28 @@ public static class TimelineEndpoints
         return TypedResults.Created($"/api/timeline/slots/{s.Id}", enriched);
     }
 
-    private static async Task<Results<NoContent, NotFound>> UpdateSlot(int id, UpdateGameTimeSlotDto dto, WorldDbContext db)
+    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> UpdateSlot(int id, UpdateGameTimeSlotDto dto, WorldDbContext db)
     {
         var s = await db.GameTimeSlots.FindAsync(id);
         if (s is null) return TypedResults.NotFound();
+
+        if (dto.LinkedGameEventIds is { } incoming)
+        {
+            var validation = await ValidateLinkedEventsAsync(s.GameId, incoming, db);
+            if (validation is { } problem) return problem;
+        }
 
         s.StartTime = DateTime.SpecifyKind(dto.StartTime, DateTimeKind.Utc);
         s.Duration = TimeSpan.FromHours((double)dto.DurationHours);
         s.InGameYear = dto.InGameYear;
         s.Rules = dto.Rules;
         s.BattlefieldBonusId = dto.BattlefieldBonusId;
-        s.Stage = NormalizeStage(dto.Stage);
+        // Null Stage on the DTO means "leave existing Stage alone" (back-compat).
+        if (dto.Stage is { } stage) s.Stage = NormalizeStage(stage);
 
-        if (dto.LinkedGameEventIds is { } incoming)
+        if (dto.LinkedGameEventIds is { } desiredList)
         {
-            var desired = incoming.Distinct().ToHashSet();
+            var desired = desiredList.Distinct().ToHashSet();
             var existing = await db.GameEventTimeSlots
                 .Where(ets => ets.GameTimeSlotId == id)
                 .ToListAsync();
@@ -106,6 +121,28 @@ public static class TimelineEndpoints
 
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
+    }
+
+    /// <summary>
+    /// Returns a 400 ProblemDetails if any incoming GameEvent id is missing or
+    /// belongs to a different game; otherwise null.
+    /// </summary>
+    private static async Task<ProblemHttpResult?> ValidateLinkedEventsAsync(int gameId, IReadOnlyList<int> incomingIds, WorldDbContext db)
+    {
+        var distinct = incomingIds.Distinct().ToList();
+        if (distinct.Count == 0) return null;
+
+        var validIds = await db.GameEvents
+            .Where(e => e.GameId == gameId && distinct.Contains(e.Id))
+            .Select(e => e.Id)
+            .ToListAsync();
+
+        if (validIds.Count == distinct.Count) return null;
+
+        return TypedResults.Problem(
+            title: "Uložení selhalo",
+            detail: "Některé události nepatří k této hře nebo neexistují.",
+            statusCode: StatusCodes.Status400BadRequest);
     }
 
     private static async Task<Results<NoContent, NotFound>> DeleteSlot(int id, WorldDbContext db)

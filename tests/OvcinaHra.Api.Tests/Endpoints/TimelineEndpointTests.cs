@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OvcinaHra.Api.Data;
@@ -324,10 +325,88 @@ public class TimelineEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         Assert.True(await db.GameEvents.AnyAsync(e => e.Id == ev.Id));
     }
 
+    [Fact]
+    public async Task CreateSlot_WithCrossGameEventId_Returns400Problem()
+    {
+        var gameA = await CreateTestGameAsync();
+        var gameB = await CreateTestGameAsync();
+        var foreignEvent = await CreateEventAsync(gameB.Id, "Patří do jiné hry");
+
+        var response = await Client.PostAsJsonAsync("/api/timeline/slots",
+            new CreateGameTimeSlotDto(
+                GameId: gameA.Id,
+                StartTime: new DateTime(2026, 5, 1, 10, 0, 0, DateTimeKind.Utc),
+                DurationHours: 2,
+                LinkedGameEventIds: [foreignEvent.Id]));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Uložení selhalo", problem!.Title);
+        Assert.Contains("nepatří", problem.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task UpdateSlot_WithCrossGameEventId_Returns400Problem()
+    {
+        var gameA = await CreateTestGameAsync();
+        var gameB = await CreateTestGameAsync();
+        var foreignEvent = await CreateEventAsync(gameB.Id, "Cizí událost");
+
+        var create = await Client.PostAsJsonAsync("/api/timeline/slots",
+            new CreateGameTimeSlotDto(gameA.Id, new DateTime(2026, 5, 1, 10, 0, 0, DateTimeKind.Utc), 2));
+        var slot = await create.Content.ReadFromJsonAsync<GameTimeSlotDto>();
+
+        var update = await Client.PutAsJsonAsync($"/api/timeline/slots/{slot!.Id}",
+            new UpdateGameTimeSlotDto(
+                StartTime: slot.StartTime,
+                DurationHours: slot.DurationHours,
+                InGameYear: null,
+                Rules: null,
+                BattlefieldBonusId: null,
+                LinkedGameEventIds: [foreignEvent.Id]));
+
+        Assert.Equal(HttpStatusCode.BadRequest, update.StatusCode);
+        var problem = await update.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Uložení selhalo", problem!.Title);
+    }
+
+    [Fact]
+    public async Task UpdateSlot_WithNullStage_PreservesExistingStage()
+    {
+        var game = await CreateTestGameAsync();
+        var create = await Client.PostAsJsonAsync("/api/timeline/slots",
+            new CreateGameTimeSlotDto(game.Id, new DateTime(2026, 5, 1, 10, 0, 0, DateTimeKind.Utc), 2,
+                Stage: TreasureQuestDifficulty.Midgame));
+        var slot = await create.Content.ReadFromJsonAsync<GameTimeSlotDto>();
+
+        // Older client: no Stage in payload — null means "leave it alone".
+        var update = await Client.PutAsJsonAsync($"/api/timeline/slots/{slot!.Id}",
+            new UpdateGameTimeSlotDto(
+                StartTime: slot.StartTime,
+                DurationHours: slot.DurationHours,
+                InGameYear: 1500,
+                Rules: "Aktualizovaná pravidla",
+                BattlefieldBonusId: null));
+        Assert.Equal(HttpStatusCode.NoContent, update.StatusCode);
+
+        var fetched = await Client.GetFromJsonAsync<List<GameTimeSlotDto>>($"/api/timeline/slots/by-game/{game.Id}");
+        var thisSlot = fetched!.Single(s => s.Id == slot.Id);
+        Assert.Equal(TreasureQuestDifficulty.Midgame, thisSlot.Stage);
+        Assert.Equal(1500, thisSlot.InGameYear);
+        Assert.Equal("Aktualizovaná pravidla", thisSlot.Rules);
+    }
+
+    private int _editionSeq;
+
     private async Task<GameDetailDto> CreateTestGameAsync()
     {
+        // Some tests create multiple games in a single run; use unique
+        // (Name, Edition) pairs so any uniqueness constraint on Edition holds.
+        _editionSeq++;
         var response = await Client.PostAsJsonAsync("/api/games",
-            new CreateGameDto("Test Hra", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+            new CreateGameDto($"Test Hra {_editionSeq}", _editionSeq, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<GameDetailDto>())!;
     }

@@ -252,7 +252,13 @@
 
     private async Task Close()
     {
+        // Reset transient state so the popup can't be reopened with a stale
+        // confirm dialog still on screen, a leftover error banner, or a
+        // mid-flight `saving` flag from a prior open.
         isVisible = false;
+        isDeleteConfirmVisible = false;
+        error = null;
+        saving = false;
         if (Visible)
         {
             await VisibleChanged.InvokeAsync(false);

@@ -286,6 +286,13 @@ else
     {
         if (gameId == 0)
         {
+            // No game selected — clear stale collections and close any open popup
+            // so the empty banner renders against an honest state.
+            slots = [];
+            bonuses = [];
+            gameEvents = [];
+            isEditOpen = false;
+            editSlot = null;
             loading = false;
             return;
         }

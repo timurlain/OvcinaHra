@@ -33,13 +33,16 @@ public record CreateGameTimeSlotDto(
     TreasureQuestDifficulty Stage = TreasureQuestDifficulty.Start,
     IReadOnlyList<int>? LinkedGameEventIds = null);
 
+// Stage is nullable for backward compatibility — older PUT payloads omit it
+// and we don't want to silently overwrite an existing Stage with `Start`.
+// Same semantic as LinkedGameEventIds: null means "don't change".
 public record UpdateGameTimeSlotDto(
     DateTime StartTime,
     decimal DurationHours,
     int? InGameYear,
     string? Rules,
     int? BattlefieldBonusId,
-    TreasureQuestDifficulty Stage = TreasureQuestDifficulty.Start,
+    TreasureQuestDifficulty? Stage = null,
     IReadOnlyList<int>? LinkedGameEventIds = null);
 
 public record BattlefieldBonusDto(int Id, string? Name, int AttackBonus, int DefenseBonus, string? Description, string? ImagePath, int GameId);
