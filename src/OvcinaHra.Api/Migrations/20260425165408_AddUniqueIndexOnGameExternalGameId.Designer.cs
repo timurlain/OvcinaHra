@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using NpgsqlTypes;
@@ -12,9 +13,11 @@ using OvcinaHra.Api.Data;
 namespace OvcinaHra.Api.Migrations
 {
     [DbContext(typeof(WorldDbContext))]
-    partial class WorldDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260425165408_AddUniqueIndexOnGameExternalGameId")]
+    partial class AddUniqueIndexOnGameExternalGameId
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1645,9 +1648,6 @@ namespace OvcinaHra.Api.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
-                    b.Property<int?>("ScrollItemId")
-                        .HasColumnType("integer");
-
                     b.Property<NpgsqlTsVector>("SearchVector")
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("tsvector")
@@ -1657,8 +1657,6 @@ namespace OvcinaHra.Api.Migrations
 
                     b.HasIndex("Name")
                         .IsUnique();
-
-                    b.HasIndex("ScrollItemId");
 
                     b.HasIndex("SearchVector");
 
@@ -2616,16 +2614,6 @@ namespace OvcinaHra.Api.Migrations
                     b.Navigation("Building");
 
                     b.Navigation("Skill");
-                });
-
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.Spell", b =>
-                {
-                    b.HasOne("OvcinaHra.Shared.Domain.Entities.Item", "ScrollItem")
-                        .WithMany()
-                        .HasForeignKey("ScrollItemId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("ScrollItem");
                 });
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.TreasureItem", b =>

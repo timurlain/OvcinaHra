@@ -47,6 +47,23 @@ public record UpdateGameDto(
 /// </summary>
 public record LinkGameDto(int ExternalGameId);
 
+/// <summary>
+/// Issue #3 — picker payload for the "Propojit s registrací" UI. Shape
+/// matches registrace's <c>/api/v1/games</c> response verbatim so future
+/// fields are forward-compatible without re-mapping. Registrace already
+/// filters this list to <c>IsPublished == true</c>; the flag is included
+/// for UI labelling only.
+/// </summary>
+public record RegistraceGameDto(
+    int Id,
+    string Name,
+    string? Description,
+    DateTime StartsAtUtc,
+    DateTime EndsAtUtc,
+    DateTime? RegistrationClosesAtUtc,
+    int? TargetPlayerCountTotal,
+    bool IsPublished);
+
 public record GameSkillDto(
     int Id,
     int GameId,
