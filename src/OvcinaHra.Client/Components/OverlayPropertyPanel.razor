@@ -1,0 +1,262 @@
+@* Sidecar property panel for the map overlay editor (issue #96, Phase 3).
+   Anchored top-right of the map host while a shape is selected. Edits emit a
+   new MapOverlayShape via OnChange so the parent (MapView) can swap it in
+   the staged list and re-render the map.
+
+   Records are immutable — every callback produces a new concrete shape via
+   `with`-mutation and bubbles it up. The panel is purely presentational. *@
+
+@using OvcinaHra.Shared.Dtos
+
+<div class="oh-overlay-property-panel" role="region" aria-label="Vlastnosti vybraného tvaru">
+    <div class="oh-overlay-property-panel-header">
+        <strong><i class="bi bi-sliders" aria-hidden="true"></i> Vlastnosti</strong>
+        <button type="button" class="btn-close" aria-label="Zavřít panel" @onclick="OnClose"></button>
+    </div>
+
+    <div class="oh-overlay-property-panel-body">
+        <div class="oh-overlay-pp-type">@TypeLabel</div>
+
+        <label class="oh-overlay-pp-label">Barva tahu
+            <input type="color" class="oh-overlay-pp-color" value="@Shape.Color"
+                   @onchange="OnColorChangedAsync" />
+        </label>
+
+        @if (Shape is not TextShape && Shape is not IconShape)
+        {
+            <label class="oh-overlay-pp-label">Tloušťka tahu
+                <input type="range" min="1" max="8" step="1" value="@StrokeWidthOrDefault"
+                       @onchange="OnStrokeWidthChangedAsync" />
+                <span class="oh-overlay-pp-val">@(((int)StrokeWidthOrDefault))px</span>
+            </label>
+        }
+
+        @switch (Shape)
+        {
+            case TextShape t:
+                <label class="oh-overlay-pp-label">Text
+                    <input type="text" class="form-control form-control-sm" value="@t.Text"
+                           @onchange="OnTextChangedAsync" />
+                </label>
+                <label class="oh-overlay-pp-label">Velikost písma
+                    <input type="range" min="10" max="32" step="1" value="@t.FontSize"
+                           @onchange="OnFontSizeChangedAsync" />
+                    <span class="oh-overlay-pp-val">@t.FontSize px</span>
+                </label>
+                break;
+
+            case RectangleShape:
+            case CircleShape:
+            case PolygonShape:
+                <label class="oh-overlay-pp-label oh-overlay-pp-check">
+                    <input type="checkbox" checked="@HasFill" @onchange="OnUseFillChangedAsync" />
+                    Vyplnit tvar
+                </label>
+                @if (HasFill)
+                {
+                    <label class="oh-overlay-pp-label">Barva výplně
+                        <input type="color" class="oh-overlay-pp-color"
+                               value="@(FillColorOrColor)"
+                               @onchange="OnFillColorChangedAsync" />
+                    </label>
+                }
+                break;
+
+            case IconShape ic:
+                <label class="oh-overlay-pp-label">Ikona</label>
+                <div class="oh-overlay-pp-icon-row">
+                    @foreach (var key in IconAssets)
+                    {
+                        <button type="button"
+                                class="oh-overlay-pp-icon @(string.Equals(key, ic.AssetKey, StringComparison.Ordinal) ? "is-active" : "")"
+                                title="@IconLabel(key)" aria-label="@IconLabel(key)"
+                                @onclick="() => OnIconAssetChangedAsync(key)">
+                            <img src="@($"/img/overlay-icons/{key}.svg")" alt="@IconLabel(key)" style="color:@ic.Color" />
+                        </button>
+                    }
+                </div>
+                <label class="oh-overlay-pp-label">Otočení
+                    <input type="range" min="0" max="359" step="1" value="@ic.Rotation"
+                           @onchange="OnRotationChangedAsync" />
+                    <span class="oh-overlay-pp-val">@(((int)ic.Rotation))°</span>
+                </label>
+                <label class="oh-overlay-pp-label">Velikost
+                    <input type="range" min="0.5" max="3" step="0.1" value="@ic.Scale"
+                           @onchange="OnScaleChangedAsync" />
+                    <span class="oh-overlay-pp-val">@ic.Scale.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)×</span>
+                </label>
+                break;
+        }
+
+        <div class="oh-overlay-pp-drozd" role="note">
+            <i class="bi bi-cloud-fill" aria-hidden="true"></i>
+            <span><strong>Drozd radí:</strong> změny se projeví v náhledu hned, ale uloží se až po stisku „Uložit překryv".</span>
+        </div>
+    </div>
+
+    <div class="oh-overlay-property-panel-footer">
+        <button type="button" class="btn btn-sm btn-outline-danger" title="Smazat tvar"
+                @onclick="OnDelete">
+            <i class="bi bi-trash"></i> Smazat
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MapOverlayShape Shape { get; set; } = null!;
+    [Parameter] public EventCallback<MapOverlayShape> OnChange { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    // Must mirror ICON_ASSETS in overlay-interop.js + IconAssets in MapOverlayToolbar.
+    private static readonly string[] IconAssets = new[]
+    {
+        "flag", "tent", "chest", "skull", "door", "fire"
+    };
+
+    private static string IconLabel(string key) => key switch
+    {
+        "flag" => "Vlajka",
+        "tent" => "Stan",
+        "chest" => "Truhla",
+        "skull" => "Lebka",
+        "door" => "Dveře",
+        "fire" => "Oheň",
+        _ => key
+    };
+
+    private string TypeLabel => Shape switch
+    {
+        TextShape => "Text",
+        FreehandShape => "Kresba",
+        PolylineShape => "Čára",
+        RectangleShape => "Obdélník",
+        CircleShape => "Kruh",
+        PolygonShape => "Mnohoúhelník",
+        IconShape => "Ikona",
+        _ => Shape.GetType().Name
+    };
+
+    private double StrokeWidthOrDefault => Shape switch
+    {
+        FreehandShape f => f.StrokeWidth,
+        PolylineShape p => p.StrokeWidth,
+        RectangleShape r => r.StrokeWidth,
+        CircleShape c => c.StrokeWidth,
+        PolygonShape pg => pg.StrokeWidth,
+        _ => 2
+    };
+
+    private bool HasFill => Shape switch
+    {
+        RectangleShape r => !string.IsNullOrEmpty(r.FillColor),
+        CircleShape c => !string.IsNullOrEmpty(c.FillColor),
+        PolygonShape p => !string.IsNullOrEmpty(p.FillColor),
+        _ => false
+    };
+
+    private string FillColorOrColor => Shape switch
+    {
+        RectangleShape r => r.FillColor ?? r.Color,
+        CircleShape c => c.FillColor ?? c.Color,
+        PolygonShape p => p.FillColor ?? p.Color,
+        _ => Shape.Color
+    };
+
+    private async Task OnColorChangedAsync(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(v)) return;
+        MapOverlayShape next = Shape switch
+        {
+            TextShape t => t with { Color = v },
+            FreehandShape f => f with { Color = v },
+            PolylineShape p => p with { Color = v },
+            RectangleShape r => r with { Color = v },
+            CircleShape c => c with { Color = v },
+            PolygonShape pg => pg with { Color = v },
+            IconShape ic => ic with { Color = v },
+            _ => Shape
+        };
+        await OnChange.InvokeAsync(next);
+    }
+
+    private async Task OnStrokeWidthChangedAsync(ChangeEventArgs e)
+    {
+        if (!double.TryParse(e.Value?.ToString(), System.Globalization.CultureInfo.InvariantCulture, out var w)) return;
+        MapOverlayShape next = Shape switch
+        {
+            FreehandShape f => f with { StrokeWidth = w },
+            PolylineShape p => p with { StrokeWidth = w },
+            RectangleShape r => r with { StrokeWidth = w },
+            CircleShape c => c with { StrokeWidth = w },
+            PolygonShape pg => pg with { StrokeWidth = w },
+            _ => Shape
+        };
+        await OnChange.InvokeAsync(next);
+    }
+
+    private async Task OnTextChangedAsync(ChangeEventArgs e)
+    {
+        if (Shape is not TextShape t) return;
+        var txt = e.Value?.ToString();
+        if (string.IsNullOrEmpty(txt)) return;
+        await OnChange.InvokeAsync(t with { Text = txt });
+    }
+
+    private async Task OnFontSizeChangedAsync(ChangeEventArgs e)
+    {
+        if (Shape is not TextShape t) return;
+        if (!int.TryParse(e.Value?.ToString(), out var n)) return;
+        await OnChange.InvokeAsync(t with { FontSize = n });
+    }
+
+    private async Task OnUseFillChangedAsync(ChangeEventArgs e)
+    {
+        var on = e.Value is bool b && b;
+        // Toggle between null (no fill) and current stroke color so users get
+        // a sensible default they can override with the next picker.
+        MapOverlayShape next = Shape switch
+        {
+            RectangleShape r => r with { FillColor = on ? r.FillColor ?? r.Color : null },
+            CircleShape c => c with { FillColor = on ? c.FillColor ?? c.Color : null },
+            PolygonShape p => p with { FillColor = on ? p.FillColor ?? p.Color : null },
+            _ => Shape
+        };
+        await OnChange.InvokeAsync(next);
+    }
+
+    private async Task OnFillColorChangedAsync(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(v)) return;
+        MapOverlayShape next = Shape switch
+        {
+            RectangleShape r => r with { FillColor = v },
+            CircleShape c => c with { FillColor = v },
+            PolygonShape p => p with { FillColor = v },
+            _ => Shape
+        };
+        await OnChange.InvokeAsync(next);
+    }
+
+    private async Task OnIconAssetChangedAsync(string key)
+    {
+        if (Shape is not IconShape ic) return;
+        await OnChange.InvokeAsync(ic with { AssetKey = key });
+    }
+
+    private async Task OnRotationChangedAsync(ChangeEventArgs e)
+    {
+        if (Shape is not IconShape ic) return;
+        if (!double.TryParse(e.Value?.ToString(), System.Globalization.CultureInfo.InvariantCulture, out var r)) return;
+        await OnChange.InvokeAsync(ic with { Rotation = r });
+    }
+
+    private async Task OnScaleChangedAsync(ChangeEventArgs e)
+    {
+        if (Shape is not IconShape ic) return;
+        if (!double.TryParse(e.Value?.ToString(), System.Globalization.CultureInfo.InvariantCulture, out var s)) return;
+        await OnChange.InvokeAsync(ic with { Scale = s });
+    }
+}

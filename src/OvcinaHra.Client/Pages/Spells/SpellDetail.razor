@@ -1,0 +1,528 @@
+@page "/spells/{Id:int}"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Extensions
+
+<div class="d-flex align-items-center gap-3 mb-3">
+    <button class="btn btn-sm btn-outline-secondary" type="button"
+            @onclick='() => Nav.NavigateTo("/spells")'>
+        <i class="bi bi-arrow-left"></i> Zpět
+    </button>
+    <h1 class="mb-0">@(spell?.Name ?? "Kouzlo")</h1>
+</div>
+
+@if (loading)
+{
+    <p class="text-muted">Načítám…</p>
+}
+else if (spell is null && error is not null)
+{
+    <div class="alert alert-danger d-flex align-items-center gap-2">
+        <i class="bi bi-wifi-off"></i>
+        <span>Nepodařilo se načíst kouzlo: @error</span>
+        <button type="button" class="btn btn-sm btn-outline-primary ms-auto" @onclick="LoadAsync">Zkusit znovu</button>
+    </div>
+}
+else if (spell is null)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-emoji-frown fs-1 d-block mb-2"></i>
+        <p>Kouzlo nenalezeno.</p>
+    </div>
+}
+else
+{
+    <div class="d-flex gap-2 mb-3">
+        <button class="btn btn-sm @(activeTab == "karta" ? "btn-primary" : "btn-outline-primary")"
+                @onclick='() => activeTab = "karta"'>
+            <i class="bi bi-bookmark-fill"></i> Karta
+        </button>
+        <button class="btn btn-sm @(activeTab == "upravit" ? "btn-primary" : "btn-outline-primary")"
+                @onclick='() => activeTab = "upravit"'>
+            <i class="bi bi-pencil"></i> Upravit
+        </button>
+        <button class="btn btn-sm @(activeTab == "obchod" ? "btn-primary" : "btn-outline-primary")"
+                @onclick='() => activeTab = "obchod"'>
+            <i class="bi bi-coin"></i> Obchod
+        </button>
+    </div>
+
+    @if (activeTab == "karta")
+    {
+        <div class="oh-sp-karta-grid">
+            <article class="oh-sp-karta" style="@KartaStyle(spell.School)">
+                <div class="oh-sp-karta-name-row">
+                    <h2 class="oh-sp-karta-name">@spell.Name</h2>
+                    <span class="oh-sp-lvl-badge oh-sp-lvl-badge--lg @(spell.IsScroll ? "oh-sp-lvl-scroll" : "oh-sp-lvl-roman")"
+                          title="@($"Úroveň {spell.Level}")">
+                        @LevelRoman(spell.Level)
+                    </span>
+                </div>
+                <div class="oh-sp-karta-meta">
+                    <SpellSchoolChip School="@spell.School" />
+                    @if (spell.IsReaction)
+                    {
+                        <span class="oh-sp-reaction"><i class="bi bi-lightning-charge-fill"></i>Reakce</span>
+                    }
+                </div>
+                <div class="oh-sp-karta-mana-row">
+                    <span class="oh-sp-karta-mana-lab">Mana</span>
+                    <ManaRings Cost="@spell.ManaCost" Size="ManaRings.RingSize.Lg" IsScroll="@spell.IsScroll" />
+                </div>
+                @if (spell.MinMageLevel > 1)
+                {
+                    <p class="oh-sp-karta-min">Minimální úroveň mága: @LevelRoman(spell.MinMageLevel)</p>
+                }
+                <hr class="oh-sp-karta-sep" />
+                <p class="oh-sp-karta-fx">@spell.Effect</p>
+                @if (!string.IsNullOrWhiteSpace(spell.Description))
+                {
+                    <p class="oh-sp-karta-desc">@spell.Description</p>
+                }
+            </article>
+
+            <aside class="oh-sp-karta-side">
+                <div class="oh-sp-karta-side-block">
+                    <div class="oh-sp-karta-price-row">
+                        <span>Cena naučení</span>
+                        @if (spell.IsScroll)
+                        {
+                            <span class="text-muted">—</span>
+                        }
+                        else if (spell.Price.HasValue)
+                        {
+                            <span class="oh-sp-karta-price-coin"><i class="bi bi-coin"></i>@spell.Price gr</span>
+                        }
+                        else
+                        {
+                            <span class="oh-sp-karta-price-coin">Zdarma</span>
+                        }
+                    </div>
+                    <div class="oh-sp-karta-badges">
+                        <span class="oh-sp-karta-badge @(spell.IsLearnable ? "oh-sp-karta-badge--on" : "")">
+                            @(spell.IsLearnable ? "Naučitelné" : "Nenaučitelné")
+                        </span>
+                        @if (spell.IsScroll)
+                        {
+                            <span class="oh-sp-karta-badge oh-sp-karta-badge--on">Svitek</span>
+                        }
+                        @if (spell.IsReaction)
+                        {
+                            <span class="oh-sp-karta-badge oh-sp-karta-badge--on">Reakce</span>
+                        }
+                    </div>
+                </div>
+
+                @* Scroll → Item callout (issue #148, follow-up flagged for proper FK).
+                   Fuzz-matches case-insensitive on Name — disabled with explanatory
+                   title when no item matches. *@
+                @if (spell.IsScroll)
+                {
+                    <div class="oh-sp-karta-scroll-callout">
+                        <h6><i class="bi bi-link-45deg"></i> Svitek je také předmět</h6>
+                        <p>Tento svitek existuje i v katalogu předmětů jako <em>Svitek</em>. Detail položky obsahuje cenu, sklad a možnosti prodeje.</p>
+                        <button class="btn btn-sm btn-outline-primary" type="button"
+                                @onclick="OpenAsItemAsync" disabled="@isLookingUpItem">
+                            @if (isLookingUpItem)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            Zobrazit jako předmět <i class="bi bi-arrow-right"></i>
+                        </button>
+                        @if (!string.IsNullOrEmpty(scrollItemError))
+                        {
+                            <p class="mt-2 mb-0 text-danger small"><i class="bi bi-exclamation-triangle"></i> @scrollItemError</p>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="oh-sp-karta-side-block">
+                        <button class="btn btn-sm btn-outline-secondary w-100" type="button" disabled
+                                title="Plánováno — vytvoří odpovídající Svitek v katalogu předmětů">
+                            <i class="bi bi-plus-square"></i> Vytvořit svitek k tomuto kouzlu
+                        </button>
+                    </div>
+                }
+            </aside>
+        </div>
+    }
+    else if (activeTab == "upravit")
+    {
+        <div class="oh-sp-edit-grid">
+            <DxFormLayout>
+                <DxFormLayoutGroup Caption="Identita" ColSpanMd="12">
+                    <DxFormLayoutItem Caption="Název" ColSpanMd="8">
+                        <DxTextBox @bind-Text="@editModel.Name" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Úroveň (0=svitek, 1-5=mág)" ColSpanMd="4">
+                        <DxSpinEdit @bind-Value="@editModel.Level" MinValue="0" MaxValue="5"
+                                    Enabled="@(!editModel.IsScroll)" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Škola" ColSpanMd="12">
+                        <DxComboBox Data="@schoolValues" @bind-Value="@editModel.School"
+                                    TextFieldName="Display" ValueFieldName="Value" />
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+
+                <DxFormLayoutGroup Caption="Mechanika" ColSpanMd="12">
+                    <DxFormLayoutItem Caption="Mana" ColSpanMd="3">
+                        <DxSpinEdit @bind-Value="@editModel.ManaCost" MinValue="0" MaxValue="9"
+                                    Enabled="@(!editModel.IsScroll)" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Min. úroveň mága" ColSpanMd="3">
+                        <DxSpinEdit @bind-Value="@editModel.MinMageLevel" MinValue="0" MaxValue="5"
+                                    Enabled="@(!editModel.IsScroll)" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Cena (groše)" ColSpanMd="3">
+                        <DxSpinEdit @bind-Value="@editModel.Price" MinValue="0" MaxValue="9999"
+                                    Enabled="@(!editModel.IsScroll)"
+                                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Reakce" ColSpanMd="3">
+                        <DxCheckBox @bind-Checked="@editModel.IsReaction" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Naučitelné" ColSpanMd="6">
+                        <DxCheckBox @bind-Checked="@editModel.IsLearnable" Enabled="@(!editModel.IsScroll)" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Svitek" ColSpanMd="6">
+                        <DxCheckBox @bind-Checked="@editModel.IsScroll" />
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+
+                <DxFormLayoutGroup Caption="Obsah" ColSpanMd="12">
+                    <DxFormLayoutItem Caption="Efekt (text karty — verbatim)" ColSpanMd="12">
+                        <DxMemo @bind-Text="@editModel.Effect" Rows="4" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Popis / flavor" ColSpanMd="12">
+                        <DxMemo @bind-Text="@editModel.Description" Rows="3" />
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+            </DxFormLayout>
+
+            <div class="oh-sp-edit-preview-stage">
+                <h6>Náhled karty</h6>
+                <article class="oh-sp-karta" style="@KartaStyle(editModel.School)">
+                    <div class="oh-sp-karta-name-row">
+                        <h2 class="oh-sp-karta-name">@(string.IsNullOrWhiteSpace(editModel.Name) ? "Bez názvu" : editModel.Name)</h2>
+                        <span class="oh-sp-lvl-badge oh-sp-lvl-badge--lg @(editModel.IsScroll ? "oh-sp-lvl-scroll" : "oh-sp-lvl-roman")">
+                            @LevelRoman(editModel.EffectiveLevel)
+                        </span>
+                    </div>
+                    <div class="oh-sp-karta-meta">
+                        <SpellSchoolChip School="@editModel.School" />
+                        @if (editModel.IsReaction)
+                        {
+                            <span class="oh-sp-reaction"><i class="bi bi-lightning-charge-fill"></i>Reakce</span>
+                        }
+                    </div>
+                    <div class="oh-sp-karta-mana-row">
+                        <span class="oh-sp-karta-mana-lab">Mana</span>
+                        <ManaRings Cost="@editModel.EffectiveManaCost" Size="ManaRings.RingSize.Lg" IsScroll="@editModel.IsScroll" />
+                    </div>
+                    @if (editModel.EffectiveMinMageLevel > 1)
+                    {
+                        <p class="oh-sp-karta-min">Minimální úroveň mága: @LevelRoman(editModel.EffectiveMinMageLevel)</p>
+                    }
+                    <hr class="oh-sp-karta-sep" />
+                    <p class="oh-sp-karta-fx">@(string.IsNullOrWhiteSpace(editModel.Effect) ? "(text karty zatím prázdný)" : editModel.Effect)</p>
+                    @if (!string.IsNullOrWhiteSpace(editModel.Description))
+                    {
+                        <p class="oh-sp-karta-desc">@editModel.Description</p>
+                    }
+                </article>
+            </div>
+        </div>
+
+        @if (saveError is not null)
+        {
+            <div class="alert alert-danger mt-3">@saveError</div>
+        }
+
+        <div class="d-flex gap-2 mt-3">
+            <button class="btn btn-outline-danger" type="button"
+                    @onclick="() => isDeleteVisible = true" disabled="@isSaving">
+                <i class="bi bi-trash"></i> Smazat
+            </button>
+            <div style="flex:1"></div>
+            <button class="btn btn-secondary" type="button" @onclick='() => activeTab = "karta"' disabled="@isSaving">Zrušit</button>
+            <button class="btn btn-primary" type="button" @onclick="SaveAsync"
+                    disabled="@(isSaving || string.IsNullOrWhiteSpace(editModel.Name))">
+                @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Uložit
+            </button>
+        </div>
+    }
+    else if (activeTab == "obchod")
+    {
+        @if (gameSpells is null)
+        {
+            <p class="text-muted">Načítám per-hru data…</p>
+        }
+        else if (gameSpells.Count == 0)
+        {
+            <div class="text-center text-muted py-5">
+                <i class="bi bi-controller fs-1 d-block mb-2"></i>
+                <p>Toto kouzlo není přiřazeno k žádné hře.</p>
+                <p class="small">Přiřazení / per-hru ceny se konfigurují přes detail hry.</p>
+            </div>
+        }
+        else
+        {
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Hra</th>
+                        <th>Cena (per-hru)</th>
+                        <th>K nalezení</th>
+                        <th>Poznámky k dostupnosti</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var gs in gameSpells)
+                    {
+                        <tr>
+                            <td>Hra #@gs.GameId</td>
+                            <td>
+                                @if (gs.PriceInherited)
+                                {
+                                    <span class="text-muted small">(z katalogu) @(gs.EffectivePrice?.ToString() ?? "—") gr</span>
+                                }
+                                else
+                                {
+                                    <strong>@gs.Price gr</strong>
+                                }
+                            </td>
+                            <td>@(gs.IsFindable ? "Ano" : "Ne")</td>
+                            <td class="text-muted">@(gs.AvailabilityNotes ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    }
+}
+
+@* Delete confirm — destructive action through DxPopup per
+   feedback_ovcinahra_destructive_confirm. *@
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Smazat kouzlo?" Width="400px">
+    <BodyContentTemplate Context="dCtx">
+        <p>Opravdu chcete smazat kouzlo <strong>@spell?.Name</strong>?</p>
+        <p class="text-muted small">Tato akce odebere kouzlo z katalogu i ze všech přiřazených her.</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" type="button" @onclick="() => isDeleteVisible = false" disabled="@isSaving">Zrušit</button>
+            <button class="btn btn-danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private SpellDetailDto? spell;
+    private bool loading = true;
+    private string? error;
+    private string activeTab = "karta";
+
+    private EditForm editModel = new();
+    private bool isSaving;
+    private bool isDeleteVisible;
+    private string? saveError;
+
+    // Scroll → Item callout (issue #148, follow-up #1: replace with proper FK).
+    // Lookup is lazy on button click, NOT eager on detail load — fetching
+    // the entire /api/items catalog just to render one button would scale
+    // poorly as the catalog grows.
+    private bool isLookingUpItem;
+    private string? scrollItemError;
+
+    // Obchod tab — per-game configuration list. Spell-side projection rolled
+    // up from /api/spells/by-game/{gameId} hits across all games would be a
+    // chunky N+1; for Phase 1 we only show what's exposed via the spell-id
+    // join already on the server. Followup: add /api/spells/{id}/games.
+    private List<GameSpellDto>? gameSpells;
+
+    private static readonly List<SchoolOption> schoolValues = Enum.GetValues<SpellSchool>()
+        .Select(v => new SchoolOption(v, v.GetDisplayName())).ToList();
+
+    private record SchoolOption(SpellSchool Value, string Display);
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        error = null;
+        try
+        {
+            var detail = await Api.GetAsync<SpellDetailDto>($"/api/spells/{Id}");
+            if (detail is null)
+            {
+                spell = null;
+                return;
+            }
+            spell = detail;
+            editModel = EditForm.FromDetail(detail);
+            scrollItemError = null;
+
+            // Obchod data — best-effort. List endpoint per game not provided
+            // for spells-by-spellId yet (followup); leave empty for now.
+            gameSpells = new List<GameSpellDto>();
+        }
+        catch (Exception ex) { error = ex.Message; spell = null; }
+        finally { loading = false; }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(editModel.Name)) return;
+        saveError = null;
+        isSaving = true;
+        try
+        {
+            // PutWithProblemAsync forwards 4xx ProblemDetails (e.g. duplicate
+            // name) into the inline banner instead of swallowing the body.
+            var (ok, problem) = await Api.PutWithProblemAsync($"/api/spells/{Id}", editModel.ToUpdateDto());
+            if (!ok)
+            {
+                saveError = problem ?? "Uložení kouzla se nepodařilo.";
+                return;
+            }
+            await LoadAsync();
+            activeTab = "karta";
+        }
+        catch (Exception ex) { saveError = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    /// <summary>
+    /// Lazy fuzz-match by Name against /api/items when the user clicks
+    /// "Zobrazit jako předmět". No eager fetch on detail load — the catalog
+    /// can grow and this lookup is only useful on scroll detail pages.
+    /// Replaced by the proper Spell.ScrollItemId FK in follow-up #1.
+    /// </summary>
+    private async Task OpenAsItemAsync()
+    {
+        if (spell is null || !spell.IsScroll) return;
+        scrollItemError = null;
+        isLookingUpItem = true;
+        try
+        {
+            var items = await Api.GetListAsync<ItemListDto>("/api/items");
+            var hit = items.FirstOrDefault(i =>
+                string.Equals(i.Name?.Trim(), spell.Name.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (hit is null)
+            {
+                scrollItemError = "Položka stejného názvu nenalezena. Vytvořte svitek v katalogu předmětů a propojení vznikne automaticky.";
+                return;
+            }
+            Nav.NavigateTo($"/items/{hit.Id}");
+        }
+        catch (Exception ex) { scrollItemError = $"Nepodařilo se prohledat katalog: {ex.Message}"; }
+        finally { isLookingUpItem = false; }
+    }
+
+    private async Task DeleteAsync()
+    {
+        saveError = null;
+        isSaving = true;
+        try
+        {
+            // ApiClient.DeleteAsync returns bool; do NOT close popup on false.
+            var ok = await Api.DeleteAsync($"/api/spells/{Id}");
+            if (!ok)
+            {
+                saveError = "Smazání kouzla se nepodařilo.";
+                return;
+            }
+            isDeleteVisible = false;
+            Nav.NavigateTo("/spells");
+        }
+        catch (Exception ex) { saveError = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private static string KartaStyle(SpellSchool s) => $"--oh-school-c: var(--oh-school-{SchoolKey(s)});";
+
+    private static string SchoolKey(SpellSchool s) => s switch
+    {
+        SpellSchool.Fire    => "fire",
+        SpellSchool.Frost   => "frost",
+        SpellSchool.Water   => "water",
+        SpellSchool.Earth   => "earth",
+        SpellSchool.Wind    => "wind",
+        SpellSchool.Poison  => "poison",
+        SpellSchool.Mental  => "mental",
+        SpellSchool.Support => "support",
+        SpellSchool.Utility => "utility",
+        _ => "utility"
+    };
+
+    private static string LevelRoman(int n) => n switch
+    {
+        0 => "S",
+        1 => "I",
+        2 => "II",
+        3 => "III",
+        4 => "IV",
+        5 => "V",
+        _ => n.ToString(System.Globalization.CultureInfo.InvariantCulture)
+    };
+
+    private sealed class EditForm
+    {
+        public string Name { get; set; } = "";
+        public int Level { get; set; }
+        public int ManaCost { get; set; }
+        public SpellSchool School { get; set; } = SpellSchool.Fire;
+        public bool IsScroll { get; set; }
+        public bool IsReaction { get; set; }
+        public bool IsLearnable { get; set; } = true;
+        public int MinMageLevel { get; set; }
+        public int? Price { get; set; }
+        public string Effect { get; set; } = "";
+        public string? Description { get; set; }
+
+        // ── Effective values — single source of truth for both preview and
+        // persistence. MAG-005/006 says scrolls are Level 0, ManaCost 0,
+        // MinMageLevel 0, not learnable, no learning price. The UI can let
+        // the user toggle IsScroll while leaving stale numbers in adjacent
+        // fields; these getters squash that inconsistency before render
+        // and persist. ──
+        public int EffectiveLevel => IsScroll ? 0 : Level;
+        public int EffectiveManaCost => IsScroll ? 0 : ManaCost;
+        public int EffectiveMinMageLevel => IsScroll ? 0 : MinMageLevel;
+        public bool EffectiveIsLearnable => !IsScroll && IsLearnable;
+        public int? EffectivePrice => IsScroll ? null : Price;
+
+        public static EditForm FromDetail(SpellDetailDto d) => new()
+        {
+            Name = d.Name,
+            Level = d.Level,
+            ManaCost = d.ManaCost,
+            School = d.School,
+            IsScroll = d.IsScroll,
+            IsReaction = d.IsReaction,
+            IsLearnable = d.IsLearnable,
+            MinMageLevel = d.MinMageLevel,
+            Price = d.Price,
+            Effect = d.Effect,
+            Description = d.Description
+        };
+
+        public UpdateSpellDto ToUpdateDto() => new(
+            Name.Trim(),
+            EffectiveLevel,
+            EffectiveManaCost,
+            School,
+            IsScroll,
+            IsReaction,
+            EffectiveIsLearnable,
+            EffectiveMinMageLevel,
+            EffectivePrice,
+            string.IsNullOrWhiteSpace(Effect) ? "—" : Effect.Trim(),
+            string.IsNullOrWhiteSpace(Description) ? null : Description.Trim());
+    }
+}

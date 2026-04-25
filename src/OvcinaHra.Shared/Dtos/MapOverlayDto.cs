@@ -28,6 +28,7 @@ public record OverlayCoord(double Lat, double Lng);
 [JsonDerivedType(typeof(RectangleShape), "rectangle")]
 [JsonDerivedType(typeof(CircleShape),    "circle")]
 [JsonDerivedType(typeof(PolygonShape),   "polygon")]
+[JsonDerivedType(typeof(IconShape),      "icon")]
 public abstract record MapOverlayShape(string Id, string Color);
 
 public record TextShape(
@@ -76,4 +77,20 @@ public record PolygonShape(
     string? FillColor,
     double StrokeWidth,
     List<OverlayCoord> Points)
+    : MapOverlayShape(Id, Color);
+
+/// <summary>
+/// Curated-asset icon dropped at a point. <see cref="AssetKey"/> is one of
+/// the slugs in <c>wwwroot/img/overlay-icons/</c> (flag, tent, chest, skull,
+/// door, fire). <see cref="Color"/> tints the SVG via <c>currentColor</c>;
+/// rotation is degrees clockwise from north, scale multiplies the base
+/// 32-px viewBox. #96 Phase 3.
+/// </summary>
+public record IconShape(
+    string Id,
+    string Color,
+    string AssetKey,
+    OverlayCoord Coord,
+    double Rotation = 0,
+    double Scale = 1.0)
     : MapOverlayShape(Id, Color);

@@ -1,0 +1,70 @@
+@* A5 spellbook tile — ~70×100mm on paper, no JS, print-stable (issue #148).
+   Renders ONE learnable spell. School palette token drives both the 2px left
+   stripe and the drop-cap colour via inline style. *@
+
+<article class="oh-sp-print-tile" style="@($"--oh-school-c: var(--oh-school-{SchoolKey(Spell.School)});")">
+    <header class="oh-sp-print-tile-head">
+        <h3 class="oh-sp-print-tile-name">@Spell.Name</h3>
+        <span class="oh-sp-lvl-badge oh-sp-lvl-roman" title="@($"Úroveň {Spell.Level}")">
+            @LevelRoman(Spell.Level)
+        </span>
+    </header>
+
+    <div class="oh-sp-print-tile-meta">
+        <SpellSchoolChip School="@Spell.School" />
+        <ManaRings Cost="@Spell.ManaCost" Size="ManaRings.RingSize.Sm" IsScroll="@Spell.IsScroll" />
+        @if (Spell.IsReaction)
+        {
+            <span class="oh-sp-reaction"><i class="bi bi-lightning-charge-fill"></i>Reakce</span>
+        }
+    </div>
+
+    <p class="oh-sp-print-tile-fx">@Spell.Effect</p>
+
+    <footer class="oh-sp-print-tile-foot">
+        @if (Spell.MinMageLevel > 1)
+        {
+            <span title="Minimální úroveň mága">Min. mág @LevelRoman(Spell.MinMageLevel)</span>
+        }
+        else
+        {
+            <span></span>
+        }
+        @if (Spell.Price.HasValue && !Spell.IsScroll)
+        {
+            <span><i class="bi bi-coin"></i> @Spell.Price gr</span>
+        }
+    </footer>
+</article>
+
+@code {
+    [Parameter] public SpellListDto Spell { get; set; } = null!;
+
+    private static string SchoolKey(SpellSchool s) => s switch
+    {
+        SpellSchool.Fire    => "fire",
+        SpellSchool.Frost   => "frost",
+        SpellSchool.Water   => "water",
+        SpellSchool.Earth   => "earth",
+        SpellSchool.Wind    => "wind",
+        SpellSchool.Poison  => "poison",
+        SpellSchool.Mental  => "mental",
+        SpellSchool.Support => "support",
+        SpellSchool.Utility => "utility",
+        _ => "utility"
+    };
+
+    /// <summary>Roman numeral for spell levels 1-5; 0 → "S" (scroll). Anything
+    /// outside that range falls back to the Arabic numeral so a future
+    /// rule-change doesn't crash the renderer.</summary>
+    private static string LevelRoman(int n) => n switch
+    {
+        0 => "S",
+        1 => "I",
+        2 => "II",
+        3 => "III",
+        4 => "IV",
+        5 => "V",
+        _ => n.ToString(System.Globalization.CultureInfo.InvariantCulture)
+    };
+}
