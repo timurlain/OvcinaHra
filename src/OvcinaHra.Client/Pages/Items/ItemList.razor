@@ -95,6 +95,15 @@ else if (!Catalog && gameItems.Count == 0)
 }
 else if (Catalog)
 {
+    @* INLINE EDIT WIRING — DO NOT REMOVE WITHOUT TESTING (issue #119, PR #128).
+       Effect is inline-editable from this catalog grid. The trio
+         EditMode + CustomizeEditModel + EditModelSaving
+       below is the contract OvcinaGrid forwards to DxGrid; dropping any of
+       them silently regresses the feature with NO compile error and NO
+       runtime crash — just a read-only grid.
+       Coverage: tests/OvcinaHra.Api.Tests/Endpoints/ItemInlineEditTests.cs
+       (UpdateItem_* facts). The handlers + buffer classes live in @code
+       under the "Inline edit (issue #119)" header. *@
     <OvcinaGrid Data="@visibleCatalogItems" KeyFieldName="Id" LayoutKey="grid-layout-items-v6"
                 EditMode="GridEditMode.EditCell"
                 CustomizeEditModel="OnCatalogCustomizeEdit"
@@ -227,6 +236,16 @@ else if (Catalog)
 }
 else
 {
+    @* INLINE EDIT WIRING — DO NOT REMOVE WITHOUT TESTING (issue #119, PR #128).
+       Cena / Sklad / Podmínka prodeje are inline-editable from this per-game
+       grid. The trio
+         EditMode + CustomizeEditModel + EditModelSaving
+       below is the contract OvcinaGrid forwards to DxGrid; dropping any of
+       them silently regresses the feature with NO compile error and NO
+       runtime crash — just a read-only grid.
+       Coverage: tests/OvcinaHra.Api.Tests/Endpoints/ItemInlineEditTests.cs
+       (UpdateGameItem_* facts). The handlers + buffer classes live in @code
+       under the "Inline edit (issue #119)" header. *@
     <OvcinaGrid Data="@visibleGameItems" KeyFieldName="Id" LayoutKey="grid-layout-items-game-v6"
                 EditMode="GridEditMode.EditCell"
                 CustomizeEditModel="OnGameCustomizeEdit"
