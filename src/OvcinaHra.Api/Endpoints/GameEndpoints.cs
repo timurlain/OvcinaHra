@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Domain.Entities;
@@ -185,12 +186,26 @@ public static class GameEndpoints
     /// <summary>
     /// Issue #3 — returns the registrace games available for linking.
     /// Filters out games already linked locally so the picker only shows
-    /// candidates the organizer can actually pick.
+    /// candidates the organizer can actually pick. Wraps upstream
+    /// failures in a 502 so callers can distinguish "registrace
+    /// unreachable/unauthorized" from an internal 500.
     /// </summary>
-    private static async Task<Ok<List<RegistraceGameDto>>> GetRegistraceAvailable(
+    private static async Task<Results<Ok<List<RegistraceGameDto>>, ProblemHttpResult>> GetRegistraceAvailable(
         RegistraceGameService registrace, WorldDbContext db, CancellationToken ct)
     {
-        var upstream = await registrace.GetAvailableAsync(ct);
+        IReadOnlyList<RegistraceGameDto> upstream;
+        try
+        {
+            upstream = await registrace.GetAvailableAsync(ct);
+        }
+        catch (HttpRequestException ex)
+        {
+            return TypedResults.Problem(
+                detail: ex.Message,
+                title: "Registrace nedostupná.",
+                statusCode: StatusCodes.Status502BadGateway);
+        }
+
         var alreadyLinked = await db.Games
             .Where(g => g.ExternalGameId != null)
             .Select(g => g.ExternalGameId!.Value)
@@ -200,16 +215,14 @@ public static class GameEndpoints
         return TypedResults.Ok(filtered);
     }
 
-    private static bool IsUniqueViolation(DbUpdateException ex)
-    {
-        // Npgsql surfaces unique-violation as PostgresException SqlState 23505.
-        // Inspect the inner exception instead of binding to the Npgsql type
-        // here so the endpoint stays provider-agnostic for tests.
-        var inner = ex.InnerException;
-        return inner is not null
-            && inner.GetType().Name == "PostgresException"
-            && (inner.GetType().GetProperty("SqlState")?.GetValue(inner) as string) == "23505";
-    }
+    private static bool IsUniqueViolation(DbUpdateException ex) =>
+        // Npgsql surfaces unique-violation as PostgresException with SqlState
+        // 23505 (PostgresErrorCodes.UniqueViolation). Direct type check is
+        // compile-time safe — the migration's filtered UNIQUE INDEX is
+        // Postgres-specific anyway, so binding to the Npgsql type here is
+        // honest, not a leak.
+        ex.InnerException is PostgresException pg
+        && pg.SqlState == PostgresErrorCodes.UniqueViolation;
 
     // ----- Map overlay (issue #96) ----------------------------------------
 

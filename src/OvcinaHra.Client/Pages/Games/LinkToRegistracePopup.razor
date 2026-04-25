@@ -91,7 +91,6 @@
 
     public override async Task SetParametersAsync(ParameterView parameters)
     {
-        var prev = Visible;
         await base.SetParametersAsync(parameters);
         if (Visible && !_wasVisible)
         {

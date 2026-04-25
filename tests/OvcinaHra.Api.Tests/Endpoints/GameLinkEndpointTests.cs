@@ -11,7 +11,8 @@ namespace OvcinaHra.Api.Tests.Endpoints;
 // /api/games/registrace-available endpoint is a thin proxy over the
 // registrace integration API; covering it here would require mocking
 // HttpClient — out of scope, that path is integration-tested by hand.
-public class GameLinkEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
+public class GameLinkEndpointTests(PostgresFixture postgres)
+    : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
     private async Task<GameDetailDto> CreateGameAsync(string name)
     {
