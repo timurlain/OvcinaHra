@@ -2155,7 +2155,10 @@
 /* Foto tile — 5:7 MTG-card aspect (issue #97). Height locked to the row; width
    is derived. Narrow by design — "quite small, but that's okay". */
 .oh-it-tile{position:relative;display:inline-block;aspect-ratio:5/7;height:48px;border-radius:3px;overflow:hidden;background:var(--oh-surface-alt);border:1px solid var(--oh-border);vertical-align:middle}
-.oh-it-tile-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+/* Issue #155 — was object-fit: cover (cropped tall portraits / landscapes).
+   contain lets the whole image fit; the parent .oh-it-tile already paints
+   the parchment-tone background so the letterbox reads as intentional. */
+.oh-it-tile-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block}
 .oh-it-tile-glyph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:rgba(139,90,43,.4);font-size:1rem}
 
 /* Type-dot — 10px circle, neutral palette per ItemType (NOT kingdom colors) */

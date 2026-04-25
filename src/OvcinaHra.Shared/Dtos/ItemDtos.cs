@@ -19,7 +19,8 @@ public record ItemListDto(
     bool IsLimited,
     string? ImagePath,
     string? Note = null,
-    string? ImageUrl = null)
+    string? ImageUrl = null,
+    bool HasRecipe = false)
 {
     [JsonIgnore]
     public string ItemTypeDisplay => ItemType.GetDisplayName();
@@ -67,6 +68,12 @@ public record GameItemListDto(
 
     [JsonIgnore]
     public bool HasImage => !string.IsNullOrEmpty(ImagePath);
+
+    /// <summary>Issue #154 — true when this game has at least one recipe
+    /// producing this item. Computed at the client from <see cref="RecipeSummary"/>
+    /// so we don't need a server-side breaking change.</summary>
+    [JsonIgnore]
+    public bool HasRecipe => !string.IsNullOrWhiteSpace(RecipeSummary);
 }
 
 public record ItemDetailDto(
@@ -84,7 +91,8 @@ public record ItemDetailDto(
     bool IsLimited,
     string? ImagePath,
     string? Note = null,
-    string? ImageUrl = null);
+    string? ImageUrl = null,
+    bool HasRecipe = false);
 
 public record CreateItemDto(
     string Name,

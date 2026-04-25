@@ -60,12 +60,23 @@ public static class ItemEndpoints
                 i.Note
             })
             .ToListAsync();
+
+        // Issue #154 — collect ItemIds that have at least one CraftingRecipe
+        // (in any game) so the catalog tile only shows the IsCraftable badge
+        // when there's actually a recipe somewhere; one query, not N.
+        var craftedItemIds = await db.CraftingRecipes
+            .Select(r => r.OutputItemId)
+            .Distinct()
+            .ToListAsync();
+        var craftedSet = craftedItemIds.ToHashSet();
+
         var items = rows.Select(r => new ItemListDto(
             r.Id, r.Name, r.ItemType, r.Effect, r.PhysicalForm, r.IsCraftable,
             r.ReqWarrior, r.ReqArcher, r.ReqMage, r.ReqThief,
             r.IsUnique, r.IsLimited, r.ImagePath,
             Note: r.Note,
-            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "items", r.Id, "small"))).ToList();
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "items", r.Id, "small"),
+            HasRecipe: craftedSet.Contains(r.Id))).ToList();
         return TypedResults.Ok(items);
     }
 
@@ -80,7 +91,12 @@ public static class ItemEndpoints
         var imageUrl = string.IsNullOrWhiteSpace(item.ImagePath)
             ? null
             : ImageEndpoints.ThumbUrl(http, "items", item.Id, "small");
-        return TypedResults.Ok(ToDetailDto(item) with { ImageUrl = imageUrl });
+
+        // Issue #154 — same flag as the catalog list, populated here so the
+        // quick-peek popup can gate the IsCraftable badge consistently.
+        var hasRecipe = await db.CraftingRecipes.AnyAsync(r => r.OutputItemId == id);
+
+        return TypedResults.Ok(ToDetailDto(item) with { ImageUrl = imageUrl, HasRecipe = hasRecipe });
     }
 
     // Note cap used on both Create and Update (issue #120). 2000 chars is a
