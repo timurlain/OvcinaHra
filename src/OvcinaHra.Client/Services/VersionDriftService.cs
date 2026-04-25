@@ -36,21 +36,22 @@ public sealed class VersionDriftService : IDisposable
     }
 
     /// <summary>
-    /// Idempotent — first call records the baseline commit and starts the
-    /// poll loop. Subsequent calls are no-ops so the banner component can
-    /// safely call this from <c>OnAfterRenderAsync(firstRender:true)</c>
-    /// without race-arming the loop twice.
+    /// Idempotent — first call attempts to capture the baseline commit and
+    /// always arms the poll loop. Subsequent calls are no-ops so the banner
+    /// component can safely call this from
+    /// <c>OnAfterRenderAsync(firstRender:true)</c> without race-arming the
+    /// loop twice. If the boot-time fetch fails (rolling deploy, cold start,
+    /// transient hiccup), <see cref="BaselineCommit"/> stays <c>null</c> and
+    /// the poll loop captures it lazily on the first successful tick — so
+    /// drift detection isn't disabled by a single startup-window glitch.
     /// </summary>
     public async Task StartAsync()
     {
         if (_started) return;
         _started = true;
 
-        var first = await FetchCommitAsync();
-        if (first is null) return;
-
-        BaselineCommit = first;
-        LatestCommit = first;
+        BaselineCommit = await FetchCommitAsync();   // may be null on transient failure
+        LatestCommit = BaselineCommit;
 
         _cts = new CancellationTokenSource();
         _ = PollLoopAsync(_cts.Token);
@@ -64,7 +65,19 @@ public sealed class VersionDriftService : IDisposable
             while (!IsDrifted && await timer.WaitForNextTickAsync(ct))
             {
                 var current = await FetchCommitAsync();
-                if (current is null || current == BaselineCommit) continue;
+                if (current is null) continue;
+
+                // Recover the baseline if the boot-time fetch was lost to a
+                // transient hiccup. First successful tick records it; we
+                // start watching for drift on the next tick onward.
+                if (BaselineCommit is null)
+                {
+                    BaselineCommit = current;
+                    LatestCommit = current;
+                    continue;
+                }
+
+                if (current == BaselineCommit) continue;
 
                 LatestCommit = current;
                 IsDrifted = true;
