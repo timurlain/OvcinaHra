@@ -22,7 +22,11 @@ public class LocationManagementTests
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
         // Create
-        var createDto = new CreateLocationDto("Bílý kámen", LocationKind.Magical, 49.75123m, 17.25456m,
+        var createDto = new CreateLocationDto(
+            Name: "Bílý kámen",
+            LocationKind: LocationKind.Magical,
+            Latitude: 49.75123m,
+            Longitude: 17.25456m,
             Description: "Magical stone in the meadow");
         var createResponse = await client.PostAsJsonAsync("/api/locations", createDto);
         createResponse.EnsureSuccessStatusCode();
@@ -35,9 +39,16 @@ public class LocationManagementTests
         var locations = await client.GetFromJsonAsync<List<LocationListDto>>("/api/locations");
         Assert.Single(locations!);
 
-        // Update
-        var updateDto = new UpdateLocationDto("Bílý kámen v2", LocationKind.PointOfInterest,
-            49.76m, 17.26m, "Updated description", null, "Připravit svíčky");
+        // Update — named args so "Připravit svíčky" lands in SetupNotes, not
+        // GamePotential. Issue #129: the positional form passed 7 arguments,
+        // so the 7th bound to GamePotential after Details (6th) was set to null.
+        var updateDto = new UpdateLocationDto(
+            Name: "Bílý kámen v2",
+            LocationKind: LocationKind.PointOfInterest,
+            Latitude: 49.76m,
+            Longitude: 17.26m,
+            Description: "Updated description",
+            SetupNotes: "Připravit svíčky");
         var updateResponse = await client.PutAsJsonAsync($"/api/locations/{created.Id}", updateDto);
         updateResponse.EnsureSuccessStatusCode();
 
@@ -63,22 +74,37 @@ public class LocationManagementTests
 
         // Create game and locations
         var gameResp = await client.PostAsJsonAsync("/api/games",
-            new CreateGameDto("Test Game", 30, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+            new CreateGameDto(
+                Name: "Test Game",
+                Edition: 30,
+                StartDate: new DateOnly(2026, 5, 1),
+                EndDate: new DateOnly(2026, 5, 3)));
+        gameResp.EnsureSuccessStatusCode();
         var game = await gameResp.Content.ReadFromJsonAsync<GameDetailDto>();
 
         var loc1Resp = await client.PostAsJsonAsync("/api/locations",
-            new CreateLocationDto("Město A", LocationKind.Town, 49.5m, 17.1m));
+            new CreateLocationDto(
+                Name: "Město A",
+                LocationKind: LocationKind.Town,
+                Latitude: 49.5m,
+                Longitude: 17.1m));
+        loc1Resp.EnsureSuccessStatusCode();
         var loc1 = await loc1Resp.Content.ReadFromJsonAsync<LocationDetailDto>();
 
         var loc2Resp = await client.PostAsJsonAsync("/api/locations",
-            new CreateLocationDto("Město B", LocationKind.Town, 49.6m, 17.2m));
+            new CreateLocationDto(
+                Name: "Město B",
+                LocationKind: LocationKind.Town,
+                Latitude: 49.6m,
+                Longitude: 17.2m));
+        loc2Resp.EnsureSuccessStatusCode();
         var loc2 = await loc2Resp.Content.ReadFromJsonAsync<LocationDetailDto>();
 
         // Assign both to game
         await client.PostAsJsonAsync("/api/locations/by-game",
-            new GameLocationDto(game!.Id, loc1!.Id));
+            new GameLocationDto(GameId: game!.Id, LocationId: loc1!.Id));
         await client.PostAsJsonAsync("/api/locations/by-game",
-            new GameLocationDto(game.Id, loc2!.Id));
+            new GameLocationDto(GameId: game.Id, LocationId: loc2!.Id));
 
         // Get locations for game
         var gameLocations = await client.GetFromJsonAsync<List<LocationListDto>>(
@@ -107,31 +133,42 @@ public class LocationManagementTests
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
         var gameResp = await client.PostAsJsonAsync("/api/games",
-            new CreateGameDto("Stash Test", 1, new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 2)));
+            new CreateGameDto(
+                Name: "Stash Test",
+                Edition: 1,
+                StartDate: new DateOnly(2026, 1, 1),
+                EndDate: new DateOnly(2026, 1, 2)));
+        gameResp.EnsureSuccessStatusCode();
         var game = await gameResp.Content.ReadFromJsonAsync<GameDetailDto>();
 
         var locResp = await client.PostAsJsonAsync("/api/locations",
-            new CreateLocationDto("Stash Loc", LocationKind.Dungeon, 49.5m, 17.1m));
+            new CreateLocationDto(
+                Name: "Stash Loc",
+                LocationKind: LocationKind.Dungeon,
+                Latitude: 49.5m,
+                Longitude: 17.1m));
+        locResp.EnsureSuccessStatusCode();
         var loc = await locResp.Content.ReadFromJsonAsync<LocationDetailDto>();
 
         // Create 3 catalog stashes and assign — should succeed
         for (int i = 1; i <= 3; i++)
         {
             var stashResp = await client.PostAsJsonAsync("/api/secret-stashes",
-                new CreateSecretStashDto($"Skrýš {i}"));
+                new CreateSecretStashDto(Name: $"Skrýš {i}"));
             stashResp.EnsureSuccessStatusCode();
             var stash = await stashResp.Content.ReadFromJsonAsync<SecretStashDetailDto>();
             var assignResp = await client.PostAsJsonAsync("/api/secret-stashes/game-stash",
-                new CreateGameSecretStashDto(game!.Id, stash!.Id, loc!.Id));
+                new CreateGameSecretStashDto(GameId: game!.Id, SecretStashId: stash!.Id, LocationId: loc!.Id));
             assignResp.EnsureSuccessStatusCode();
         }
 
         // 4th — should fail with validation error
         var s4Resp = await client.PostAsJsonAsync("/api/secret-stashes",
-            new CreateSecretStashDto("Skrýš 4"));
+            new CreateSecretStashDto(Name: "Skrýš 4"));
+        s4Resp.EnsureSuccessStatusCode();
         var s4 = await s4Resp.Content.ReadFromJsonAsync<SecretStashDetailDto>();
         var fourthResp = await client.PostAsJsonAsync("/api/secret-stashes/game-stash",
-            new CreateGameSecretStashDto(game!.Id, s4!.Id, loc!.Id));
+            new CreateGameSecretStashDto(GameId: game!.Id, SecretStashId: s4!.Id, LocationId: loc!.Id));
         Assert.False(fourthResp.IsSuccessStatusCode);
     }
 }
