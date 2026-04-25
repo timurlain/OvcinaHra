@@ -6,7 +6,7 @@ using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Tests.Endpoints;
 
-public class SecretStashEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
+public class SecretStashEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
     // --- Catalog CRUD ---
 

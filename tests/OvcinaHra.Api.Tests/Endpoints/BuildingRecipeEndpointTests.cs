@@ -11,7 +11,7 @@ namespace OvcinaHra.Api.Tests.Endpoints;
 // for the Item-side recipe model. Validation rules in lock-step:
 // MoneyCost ≥ 0, IngredientNotes ≤ 2000 chars, prerequisite cannot reference
 // the recipe's own output building, skills must be present in the game.
-public class BuildingRecipeEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
+public class BuildingRecipeEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
     private async Task<GameDetailDto> CreateGameAsync()
     {

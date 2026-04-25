@@ -12,7 +12,7 @@ using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Tests.Endpoints;
 
-public class ImageEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
+public class ImageEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
     // 1x1 transparent PNG
     private static readonly byte[] ValidPng = Convert.FromBase64String(

@@ -11,7 +11,7 @@ using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Tests.Endpoints;
 
-public class SpellEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
+public class SpellEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
     [Fact]
     public async Task Create_ValidSpell_ReturnsCreated()

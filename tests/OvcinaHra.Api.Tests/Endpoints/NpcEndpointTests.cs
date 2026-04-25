@@ -6,7 +6,7 @@ using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Tests.Endpoints;
 
-public class NpcEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
+public class NpcEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
     // --- Catalog CRUD ---
 

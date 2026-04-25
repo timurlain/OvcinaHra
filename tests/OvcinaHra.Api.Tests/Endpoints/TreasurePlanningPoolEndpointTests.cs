@@ -9,7 +9,7 @@ namespace OvcinaHra.Api.Tests.Endpoints;
 // Covers DELETE /api/treasure-planning/pool/{id} per issue #102.
 // The endpoint pre-dates the issue; these tests codify the contract so the
 // UI-facing Odebrat action can trust the 204 / 400 / 404 split.
-public class TreasurePlanningPoolEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
+public class TreasurePlanningPoolEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
     private async Task<GameDetailDto> CreateGameAsync()
     {

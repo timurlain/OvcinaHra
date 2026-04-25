@@ -6,7 +6,7 @@ using OvcinaHra.Api.Tests.Fixtures;
 
 namespace OvcinaHra.Api.Tests.Endpoints;
 
-public class AuthEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
+public class AuthEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
     [Fact]
     public async Task DevToken_ReturnsValidToken()
