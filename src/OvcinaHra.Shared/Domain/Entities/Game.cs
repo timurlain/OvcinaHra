@@ -27,6 +27,13 @@ public class Game
     public decimal? BoundingBoxNeLat { get; set; }
     public decimal? BoundingBoxNeLng { get; set; }
 
+    /// <summary>
+    /// Vector overlay drawn on top of the map — freeform text, freehand,
+    /// lines, shapes. Persisted as a JSON string of <c>MapOverlayDto</c>.
+    /// Null = no overlay drawn yet. See issue #96.
+    /// </summary>
+    public string? OverlayJson { get; set; }
+
     public ICollection<GameLocation> GameLocations { get; set; } = [];
     public ICollection<GameItem> GameItems { get; set; } = [];
     public ICollection<GameSecretStash> GameSecretStashes { get; set; } = [];

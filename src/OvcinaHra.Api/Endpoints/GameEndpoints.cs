@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +21,10 @@ public static class GameEndpoints
         group.MapPut("/{id:int}", Update);
         group.MapPost("/{id:int}/link", LinkToRegistrace);
         group.MapDelete("/{id:int}/link", UnlinkFromRegistrace);
+
+        // Map overlay (issue #96) — free-draw shapes per game, stored as JSON blob.
+        group.MapGet("/{id:int}/overlay", GetOverlay);
+        group.MapPut("/{id:int}/overlay", UpdateOverlay);
 
         group.MapGet("/{gameId:int}/skills", GetGameSkills);
         group.MapGet("/{gameId:int}/skills/{gameSkillId:int}", GetGameSkillById);
@@ -133,6 +139,65 @@ public static class GameEndpoints
             return TypedResults.NotFound();
 
         game.ExternalGameId = null;
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
+    }
+
+    // ----- Map overlay (issue #96) ----------------------------------------
+
+    /// <summary>Max serialized overlay payload — 256 KiB, enough for ~3000 freehand points.</summary>
+    private const int OverlayMaxBytes = 256 * 1024;
+
+    /// <summary>
+    /// JsonSerializerOptions scoped to the overlay endpoints. Defaults are
+    /// fine — the <see cref="MapOverlayShape"/> hierarchy carries its own
+    /// JsonPolymorphic attributes so the discriminator is written/read
+    /// automatically. Shared instance avoids per-request allocation.
+    /// </summary>
+    private static readonly JsonSerializerOptions OverlayJsonOptions = new() { WriteIndented = false };
+
+    private static async Task<Results<Ok<MapOverlayDto>, NoContent, NotFound>> GetOverlay(int id, WorldDbContext db)
+    {
+        var game = await db.Games.FindAsync(id);
+        if (game is null)
+            return TypedResults.NotFound();
+
+        if (string.IsNullOrWhiteSpace(game.OverlayJson))
+            return TypedResults.NoContent();
+
+        // Best-effort deserialize: if a stored overlay is corrupt (e.g. schema
+        // drift from a future Phase 3 adding new shape types), treat as empty
+        // rather than 500 — the client can then re-save a valid overlay.
+        try
+        {
+            var dto = JsonSerializer.Deserialize<MapOverlayDto>(game.OverlayJson, OverlayJsonOptions);
+            return dto is null ? TypedResults.NoContent() : TypedResults.Ok(dto);
+        }
+        catch (JsonException)
+        {
+            return TypedResults.NoContent();
+        }
+    }
+
+    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> UpdateOverlay(
+        int id, MapOverlayDto dto, WorldDbContext db)
+    {
+        // § _review-instincts #1: resource lookup BEFORE validation.
+        var game = await db.Games.FindAsync(id);
+        if (game is null)
+            return TypedResults.NotFound();
+
+        var serialized = JsonSerializer.Serialize(dto, OverlayJsonOptions);
+        var byteCount = Encoding.UTF8.GetByteCount(serialized);
+        if (byteCount > OverlayMaxBytes)
+        {
+            return TypedResults.Problem(
+                title: "Překryv je příliš velký",
+                detail: $"Maximální velikost překryvu je {OverlayMaxBytes / 1024} KiB, odeslaná data mají {byteCount / 1024} KiB.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        game.OverlayJson = serialized;
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
     }

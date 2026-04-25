@@ -1,0 +1,143 @@
+@* Floating toolbar for the map overlay editor (issue #96, Phase 1+2).
+   Hosted by MapView when edit mode is active. No state of its own — every
+   change bubbles up through EventCallbacks so the parent keeps the single
+   source of truth (Tool, Color, StrokeWidth, …). *@
+
+<div class="oh-mo-toolbar" role="toolbar" aria-label="Nástroje překryvu mapy">
+
+    @* Tool palette — 6 primitives. Icons per brief. *@
+    <div class="oh-mo-tools" role="group" aria-label="Nástroje">
+        @foreach (var t in Tools)
+        {
+            <button type="button" class="oh-mo-tool @(t.Key == Tool ? "is-active" : "")"
+                    title="@t.Label" aria-label="@t.Label" aria-pressed="@(t.Key == Tool)"
+                    @onclick="() => SelectToolAsync(t.Key)">
+                <i class="bi @t.Icon" aria-hidden="true"></i>
+            </button>
+        }
+    </div>
+
+    @* Colour palette — 8 kingdom-seal presets + arbitrary. Preset hex taken
+       verbatim from feedback_ovcina_kingdom_seal_palette memory; do not
+       re-saturate. *@
+    <div class="oh-mo-colors" role="group" aria-label="Barva">
+        @foreach (var hex in PresetColors)
+        {
+            <button type="button" class="oh-mo-swatch @(string.Equals(hex, Color, StringComparison.OrdinalIgnoreCase) ? "is-active" : "")"
+                    style="background-color:@hex"
+                    title="@hex" aria-label="@hex"
+                    @onclick="() => SetColorAsync(hex)"></button>
+        }
+        <input type="color" class="oh-mo-color-custom" value="@Color"
+               title="Vlastní barva"
+               @onchange="OnCustomColorChangedAsync" />
+    </div>
+
+    @* Stroke width + fill toggle + font size. *@
+    <div class="oh-mo-stroke" role="group" aria-label="Nastavení tahu a výplně">
+        <label class="oh-mo-label">Tah
+            <input type="range" min="1" max="8" step="1" value="@StrokeWidth"
+                   @onchange="OnStrokeChangedAsync" />
+            <span class="oh-mo-stroke-val">@(((int)StrokeWidth))px</span>
+        </label>
+
+        <label class="oh-mo-label" title="Vyplnit tvar barvou (platí pro obdélník, kruh, mnohoúhelník)">
+            <input type="checkbox" checked="@UseFill"
+                   @onchange="OnUseFillChangedAsync" />
+            Výplň
+        </label>
+
+        @if (Tool == "text")
+        {
+            <label class="oh-mo-label">Písmo
+                <input type="range" min="10" max="32" step="1" value="@FontSize"
+                       @onchange="OnFontSizeChangedAsync" />
+                <span class="oh-mo-stroke-val">@FontSize px</span>
+            </label>
+        }
+    </div>
+
+    @* Save / Cancel. *@
+    <div class="oh-mo-actions" role="group" aria-label="Akce">
+        <button type="button" class="btn btn-outline-secondary btn-sm" title="Zahodit změny"
+                @onclick="OnCancel">
+            Zrušit
+        </button>
+        <button type="button" class="btn btn-primary btn-sm" title="Uložit překryv"
+                @onclick="OnSave">
+            <i class="bi bi-check2-circle"></i> Uložit
+        </button>
+    </div>
+</div>
+
+@code {
+    // Kingdom-seal presets (feedback_ovcina_kingdom_seal_palette) — 4 heraldic
+    // + 4 utility. Do NOT re-saturate; these are wife-approved canonical hex.
+    private static readonly string[] PresetColors = new[]
+    {
+        "#242F3D", // Esgaroth
+        "#243525", // Aradhryand
+        "#8C2423", // Azanulinbar
+        "#504B25", // Arnor
+        "#2D5016", // forest green
+        "#B26223", // autumn amber
+        "#2C1810", // ink
+        "#8B7D5C"  // parchment
+    };
+
+    private sealed record ToolItem(string Key, string Label, string Icon);
+
+    // Czech tool labels. Phase 3 adds "ikona"/"šipka" here too.
+    private static readonly ToolItem[] Tools = new[]
+    {
+        new ToolItem("text",      "Text",         "bi-fonts"),
+        new ToolItem("freehand",  "Kresba",       "bi-vector-pen"),
+        new ToolItem("polyline",  "Čára",         "bi-slash-lg"),
+        new ToolItem("rectangle", "Obdélník",     "bi-square"),
+        new ToolItem("circle",    "Kruh",         "bi-circle"),
+        new ToolItem("polygon",   "Mnohoúhelník", "bi-pentagon")
+    };
+
+    [Parameter] public string Tool { get; set; } = "text";
+    [Parameter] public EventCallback<string> ToolChanged { get; set; }
+
+    [Parameter] public string Color { get; set; } = "#242F3D";
+    [Parameter] public EventCallback<string> ColorChanged { get; set; }
+
+    [Parameter] public bool UseFill { get; set; }
+    [Parameter] public EventCallback<bool> UseFillChanged { get; set; }
+
+    [Parameter] public double StrokeWidth { get; set; } = 2;
+    [Parameter] public EventCallback<double> StrokeWidthChanged { get; set; }
+
+    [Parameter] public int FontSize { get; set; } = 14;
+    [Parameter] public EventCallback<int> FontSizeChanged { get; set; }
+
+    [Parameter] public EventCallback OnSave { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private Task SelectToolAsync(string key) => ToolChanged.InvokeAsync(key);
+    private Task SetColorAsync(string hex) => ColorChanged.InvokeAsync(hex);
+
+    private async Task OnCustomColorChangedAsync(ChangeEventArgs e)
+    {
+        var hex = e.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(hex))
+            await ColorChanged.InvokeAsync(hex);
+    }
+
+    private async Task OnStrokeChangedAsync(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), System.Globalization.CultureInfo.InvariantCulture, out var w))
+            await StrokeWidthChanged.InvokeAsync(w);
+    }
+
+    private Task OnUseFillChangedAsync(ChangeEventArgs e)
+        => UseFillChanged.InvokeAsync(e.Value is bool b && b);
+
+    private async Task OnFontSizeChangedAsync(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var n))
+            await FontSizeChanged.InvokeAsync(n);
+    }
+}

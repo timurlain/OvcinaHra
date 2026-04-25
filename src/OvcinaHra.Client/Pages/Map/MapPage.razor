@@ -28,6 +28,7 @@
 <div style="position: relative;">
     <MapView @ref="mapView"
              CenterLat="49.4532461" CenterLon="18.0203242" Zoom="16"
+             GameId="@GameContext.SelectedGameId"
              OnMapClick="HandleMapClick"
              OnMarkerClick="HandleMarkerClick"
              OnMarkerDrag="HandleMarkerDrag"
