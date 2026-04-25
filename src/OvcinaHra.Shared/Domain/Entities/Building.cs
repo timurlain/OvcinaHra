@@ -13,4 +13,10 @@ public class Building
     public Location? Location { get; set; }
     public ICollection<GameBuilding> GameBuildings { get; set; } = [];
     public ICollection<CraftingBuildingRequirement> CraftingRequirements { get; set; } = [];
+
+    // Issue #142 — building crafting recipes. "AsOutput" lists BuildingRecipes
+    // whose OutputBuilding is this Building. "AsPrerequisite" covers the
+    // inverse: other buildings whose recipe requires this one as a prerequisite.
+    public ICollection<BuildingRecipe> BuildingRecipesAsOutput { get; set; } = [];
+    public ICollection<BuildingRecipePrerequisite> BuildingRecipesAsPrerequisite { get; set; } = [];
 }
