@@ -90,8 +90,22 @@ else
     }
     else if (filtered.Count == 0)
     {
+        @* Drozd confused — filter-empty pass per #144. Same .oh-mon-empty-icon
+           wrapper as the game-empty surface above so the existing 86×86 img
+           sizing carries through; on SVG load failure the bi-funnel glyph
+           reverts at the wrapper's 3rem font-size — pre-swap markup intact. *@
         <div class="oh-mon-empty">
-            <div class="oh-mon-empty-icon"><i class="bi bi-funnel"></i></div>
+            <div class="oh-mon-empty-icon">
+                @if (!confusedFailed)
+                {
+                    <img src="/img/drozd/drozd-confused.svg" alt=""
+                         @onerror="() => confusedFailed = true" />
+                }
+                else
+                {
+                    <i class="bi bi-funnel"></i>
+                }
+            </div>
             <div class="oh-mon-empty-msg">Žádné příšery neodpovídají filtrům.</div>
         </div>
     }
@@ -306,7 +320,7 @@ else
     public bool Catalog { get; set; }
 
     private List<MonsterListDto> monsters = [];
-    private bool loading = true, isModalVisible, isDeleteVisible, isSaving, drozdFailed;
+    private bool loading = true, isModalVisible, isDeleteVisible, isSaving, drozdFailed, confusedFailed;
     private string modalTitle = "", name = "";
     private string? error, abilities, aiBehavior, rewardNotes, notes;
     private int? editingId;
