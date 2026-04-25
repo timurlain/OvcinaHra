@@ -41,7 +41,10 @@ else
                     <span class="oh-it-ichip">@item.PhysicalForm.Value.GetDisplayName()</span>
                 }
                 <span class="oh-it-d-dotsep">·</span>
-                <span class="oh-it-d-id">#I@item.Id.ToString("D3")</span>
+                @* Parenthesise the @() expression so Razor's email-detector
+                   doesn't see `I@item.Id` as a letter@word.word email pattern
+                   and render the @item.Id literally — see #147 sub-fix (a). *@
+                <span class="oh-it-d-id">#I@(item.Id.ToString("D3"))</span>
             </div>
         </div>
         <div class="oh-it-d-ts-actions">
@@ -136,12 +139,12 @@ else
                         </div>
                         <div class="oh-it-d-statrow">
                             <i class="oh-it-d-stat-icon bi bi-gem"></i>
-                            <span class="oh-it-d-stat-lbl">Unikát</span>
+                            <span class="oh-it-d-stat-lbl">Unikátní</span>
                             <span class="oh-it-d-stat-val @(item.IsUnique ? "" : "oh-it-d-stat-val--off")">@(item.IsUnique ? "Ano" : "Ne")</span>
                         </div>
                         <div class="oh-it-d-statrow">
                             <i class="oh-it-d-stat-icon bi bi-hourglass-split"></i>
-                            <span class="oh-it-d-stat-lbl">Limit</span>
+                            <span class="oh-it-d-stat-lbl">Limitovaný</span>
                             <span class="oh-it-d-stat-val @(item.IsLimited ? "" : "oh-it-d-stat-val--off")">@(item.IsLimited ? "Ano" : "Ne")</span>
                         </div>
                         <div class="oh-it-d-statrow">
@@ -149,6 +152,22 @@ else
                             <span class="oh-it-d-stat-lbl">Vyrobitelný</span>
                             <span class="oh-it-d-stat-val @(item.IsCraftable ? "" : "oh-it-d-stat-val--off")">@(item.IsCraftable ? "Ano" : "Ne")</span>
                         </div>
+                        @* Per-game IsFindable for the active GameContext — only
+                           shown when the user has a game selected AND this item
+                           is assigned to it. #147 sub-fix (c). *@
+                        @{
+                            var currentShop = GameContext.SelectedGameId.HasValue
+                                ? usage?.Shops.FirstOrDefault(s => s.Game.GameId == GameContext.SelectedGameId.Value)
+                                : null;
+                        }
+                        @if (currentShop is not null)
+                        {
+                            <div class="oh-it-d-statrow">
+                                <i class="oh-it-d-stat-icon bi bi-search"></i>
+                                <span class="oh-it-d-stat-lbl">Nalezitelný</span>
+                                <span class="oh-it-d-stat-val @(currentShop.IsFindable ? "" : "oh-it-d-stat-val--off")">@(currentShop.IsFindable ? "Ano" : "Ne")</span>
+                            </div>
+                        }
                     </div>
                 </div>
 
@@ -430,6 +449,7 @@ else
                             <th class="oh-it-d-num">Sklad</th>
                             <th>Stav</th>
                             <th>Podmínka</th>
+                            <th class="oh-it-d-num">Akce</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -464,6 +484,16 @@ else
                                         <span class="oh-it-d-shop-cond">@s.SaleCondition</span>
                                     }
                                 </td>
+                                <td class="oh-it-d-num">
+                                    @* Per-game setter affordance — restores Price/Stock/IsSold/
+                                       IsFindable editing on the detail page (#147 sub-fix (e)).
+                                       Save POSTs UpdateGameItemDto to the existing endpoint. *@
+                                    <button class="btn btn-sm btn-outline-primary"
+                                            title="Upravit nastavení v této hře"
+                                            @onclick="() => OpenShopEdit(s)">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                </td>
                             </tr>
                         }
                     </tbody>
@@ -480,6 +510,54 @@ else
         <div class="d-flex gap-2 justify-content-end">
             <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
             <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@* Per-game shop-row editor — restores Price/Stock/IsSold/IsFindable/SaleCondition
+   editing on the detail page (#147 sub-fix (e)). Mirrors the form layout from
+   the /items grid's per-game edit popup so the two surfaces stay coherent. *@
+<DxPopup @bind-Visible="@isShopEditVisible"
+         HeaderText="@($"Nastavení v hře: {shopEditGameName}")"
+         Width="520px">
+    <BodyContentTemplate Context="ctx">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Cena" ColSpanMd="6">
+                <DxSpinEdit Value="@shopEditPrice"
+                            ValueExpression="@(() => shopEditPrice)"
+                            ValueChanged="@((int? v) => { shopEditPrice = v; if (v.HasValue) shopEditIsSold = true; })"
+                            MinValue="0" NullText="(žádná)" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Počet na skladě" ColSpanMd="6">
+                <DxSpinEdit @bind-Value="@shopEditStockCount" MinValue="0" NullText="(neomezeno)" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="" ColSpanMd="12">
+                <div class="d-flex flex-column gap-1 pt-1">
+                    <DxCheckBox @bind-Checked="@shopEditIsSold">Prodávaný</DxCheckBox>
+                    <DxCheckBox @bind-Checked="@shopEditIsFindable">Nalezitelný</DxCheckBox>
+                </div>
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Podmínka prodeje" ColSpanMd="12">
+                <DxTextBox @bind-Text="@shopEditSaleCondition" NullText="(bez podmínky)" />
+            </DxFormLayoutItem>
+        </DxFormLayout>
+        @if (shopEditError is not null)
+        {
+            <div class="alert alert-danger mt-2">@shopEditError</div>
+        }
+        <div class="d-flex gap-2 justify-content-end mt-3">
+            <button class="btn btn-secondary"
+                    @onclick="() => isShopEditVisible = false"
+                    disabled="@shopEditSaving">Zrušit</button>
+            <button class="btn btn-primary"
+                    @onclick="SaveShopEditAsync"
+                    disabled="@shopEditSaving">
+                @if (shopEditSaving)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                Uložit
+            </button>
         </div>
     </BodyContentTemplate>
 </DxPopup>
@@ -506,6 +584,18 @@ else
     private string? editNote;
     private bool editIsUnique, editIsLimited, editIsCraftable;
     private int editReqWarrior, editReqArcher, editReqMage, editReqThief;
+
+    // Per-game shop-row edit state (Obchod tab popup) — #147 sub-fix (e).
+    private bool isShopEditVisible;
+    private bool shopEditSaving;
+    private int shopEditGameId;
+    private string? shopEditGameName;
+    private int? shopEditPrice;
+    private int? shopEditStockCount;
+    private bool shopEditIsSold;
+    private bool shopEditIsFindable;
+    private string? shopEditSaleCondition;
+    private string? shopEditError;
 
     private static readonly List<EnumItem<ItemType>> itemTypeValues = Enum.GetValues<ItemType>()
         .Select(v => new EnumItem<ItemType>(v, v.GetDisplayName())).ToList();
@@ -618,6 +708,52 @@ else
         }
         catch (Exception ex) { error = ex.Message; }
         finally { isSaving = false; }
+    }
+
+    // ===== Per-game shop-row edit (#147 sub-fix (e)) =====
+
+    private void OpenShopEdit(ItemUsageShopDto s)
+    {
+        shopEditError = null;
+        shopEditGameId = s.Game.GameId;
+        shopEditGameName = s.Game.GameName;
+        shopEditPrice = s.Price;
+        shopEditStockCount = s.StockCount;
+        shopEditIsSold = s.IsSold;
+        shopEditIsFindable = s.IsFindable;
+        shopEditSaleCondition = s.SaleCondition;
+        isShopEditVisible = true;
+    }
+
+    private async Task SaveShopEditAsync()
+    {
+        if (item is null || shopEditSaving) return;
+        shopEditSaving = true;
+        shopEditError = null;
+        try
+        {
+            // Mirrors the /items grid pattern (ItemList.razor:1320) — same
+            // endpoint, same DTO shape; the orchestrator is paid the same
+            // server validation either way (#99 block respected).
+            var (ok, problem) = await Api.PutWithProblemAsync(
+                $"/api/items/game-item/{shopEditGameId}/{item.Id}",
+                new UpdateGameItemDto(
+                    shopEditPrice,
+                    shopEditStockCount,
+                    shopEditIsSold,
+                    string.IsNullOrWhiteSpace(shopEditSaleCondition) ? null : shopEditSaleCondition.Trim(),
+                    shopEditIsFindable));
+            if (!ok)
+            {
+                shopEditError = problem ?? "Uložení nastavení selhalo.";
+                return;
+            }
+            isShopEditVisible = false;
+            // Reload usage so the table + Karta "Nalezitelný" row reflect the new values.
+            usage = await Api.GetAsync<ItemUsageDto>($"/api/items/{item.Id}/usage");
+        }
+        catch (Exception ex) { shopEditError = ex.Message; }
+        finally { shopEditSaving = false; }
     }
 
     private async Task ConfirmDeleteAsync()

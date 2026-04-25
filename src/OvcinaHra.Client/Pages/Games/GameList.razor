@@ -69,12 +69,9 @@ else
         }
 
         <div class="d-flex gap-2 mt-3">
-            @if (editingId.HasValue)
-            {
-                <button class="btn btn-outline-primary" @onclick="GoToSkills" disabled="@isSaving">
-                    <i class="bi bi-star"></i> Dovednosti
-                </button>
-            }
+            @* Dovednosti button removed per #146 — it didn't belong in the
+               Game edit popup; /games/{id}/skills is reachable via its own
+               nav surfaces. *@
             <div style="flex: 1"></div>
             <button class="btn btn-secondary" @onclick="CloseModal" disabled="@isSaving">Zrušit</button>
             <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving" data-testid="save-game">
@@ -184,14 +181,6 @@ else
     }
 
     private void CloseModal() => isModalVisible = false;
-
-    private void GoToSkills()
-    {
-        if (editingId.HasValue)
-        {
-            Nav.NavigateTo($"/games/{editingId.Value}/skills");
-        }
-    }
 
     private async Task SaveAsync()
     {
