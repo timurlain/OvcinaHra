@@ -7,7 +7,7 @@ public class TreasureQuest
     public int Id { get; set; }
     public required string Title { get; set; }
     public string? Clue { get; set; }
-    public TreasureQuestDifficulty Difficulty { get; set; }
+    public GameTimePhase Difficulty { get; set; }
     public int? LocationId { get; set; }
     public int? SecretStashId { get; set; }
     public int GameId { get; set; }

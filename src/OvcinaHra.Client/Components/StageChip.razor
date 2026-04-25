@@ -4,15 +4,16 @@
 <span class="oh-stage-chip @CssClass(Difficulty)">@(Text ?? Difficulty.GetDisplayName())</span>
 
 @code {
-    [Parameter, EditorRequired] public TreasureQuestDifficulty Difficulty { get; set; }
+    [Parameter, EditorRequired] public GameTimePhase Difficulty { get; set; }
     [Parameter] public string? Text { get; set; }
 
-    private static string CssClass(TreasureQuestDifficulty d) => d switch
+    private static string CssClass(GameTimePhase d) => d switch
     {
-        TreasureQuestDifficulty.Start => "oh-stage-chip-start",
-        TreasureQuestDifficulty.Early => "oh-stage-chip-early",
-        TreasureQuestDifficulty.Midgame => "oh-stage-chip-mid",
-        TreasureQuestDifficulty.Lategame => "oh-stage-chip-late",
-        _ => "oh-stage-chip-start"
+        GameTimePhase.Start => "oh-stage-chip-start",
+        GameTimePhase.Early => "oh-stage-chip-early",
+        GameTimePhase.Midgame => "oh-stage-chip-mid",
+        GameTimePhase.Lategame => "oh-stage-chip-late",
+        GameTimePhase.EndGame => "oh-stage-chip-endgame",
+        _ => throw new ArgumentOutOfRangeException(nameof(d), d, null)
     };
 }

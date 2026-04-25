@@ -91,7 +91,7 @@ public class ItemGameLinkTests(PostgresFixture postgres) : IntegrationTestBase(p
         var assignResponse = await Client.PostAsJsonAsync("/api/treasure-planning/assign",
             new AssignTreasureDto(
                 Title: "Drakův poklad",
-                Difficulty: TreasureQuestDifficulty.Lategame,
+                Difficulty: GameTimePhase.Lategame,
                 GameId: game.Id,
                 LocationId: location.Id,
                 TreasureItemIds: new List<int> { pool!.Id }));

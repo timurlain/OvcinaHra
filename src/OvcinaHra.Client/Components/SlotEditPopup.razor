@@ -113,7 +113,7 @@
     private DateTime startTime = DateTime.Now;
     private decimal durationHours = 2m;
     private int? inGameYear;
-    private TreasureQuestDifficulty stage = TreasureQuestDifficulty.Start;
+    private GameTimePhase stage = GameTimePhase.Start;
     private int? bonusId;
     private string? rules;
     private HashSet<int> linkedEventIds = [];
@@ -121,9 +121,9 @@
     private IReadOnlyList<BattlefieldBonusDto> bonuses = [];
     private IReadOnlyList<GameEventListDto> gameEvents = [];
 
-    private record StageChoice(TreasureQuestDifficulty Value, string Display);
+    private record StageChoice(GameTimePhase Value, string Display);
     private static readonly IReadOnlyList<StageChoice> stageChoices =
-        Enum.GetValues<TreasureQuestDifficulty>()
+        Enum.GetValues<GameTimePhase>()
             .Select(v => new StageChoice(v, v.GetDisplayName()))
             .ToList();
 
@@ -160,7 +160,7 @@
             startTime = DateTime.Now.Date.AddHours(10);
             durationHours = 2m;
             inGameYear = null;
-            stage = TreasureQuestDifficulty.Start;
+            stage = GameTimePhase.Start;
             bonusId = null;
             rules = null;
             linkedEventIds = [];

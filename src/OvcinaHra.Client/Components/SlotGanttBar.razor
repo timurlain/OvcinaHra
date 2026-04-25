@@ -5,11 +5,12 @@
 @{
     var stageMod = Slot.Stage switch
     {
-        TreasureQuestDifficulty.Start => "start",
-        TreasureQuestDifficulty.Early => "early",
-        TreasureQuestDifficulty.Midgame => "midgame",
-        TreasureQuestDifficulty.Lategame => "lategame",
-        _ => "start"
+        GameTimePhase.Start => "start",
+        GameTimePhase.Early => "early",
+        GameTimePhase.Midgame => "midgame",
+        GameTimePhase.Lategame => "lategame",
+        GameTimePhase.EndGame => "endgame",
+        _ => throw new ArgumentOutOfRangeException(nameof(Slot.Stage), Slot.Stage, null)
     };
     var classes = $"oh-tl-gbar oh-tl-gbar--{stageMod}"
         + (IsActive ? " oh-tl-gbar--active" : "")

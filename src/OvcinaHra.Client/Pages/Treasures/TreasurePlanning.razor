@@ -533,7 +533,7 @@ else
     // ===== Focus state =====
     private int? focusedLocationId;
     private string focusTab = "prehled";
-    private TreasureQuestDifficulty lastUsedDifficulty = TreasureQuestDifficulty.Start;
+    private GameTimePhase lastUsedDifficulty = GameTimePhase.Start;
 
     // ===== Game context =====
     private int gameId => GameContext.SelectedGameId ?? 1;
@@ -569,7 +569,7 @@ else
     private int? editQuestId;
     private string editTitle = "", editQuestTitle = "";
     private string? editClue, editError;
-    private TreasureQuestDifficulty editDifficulty;
+    private GameTimePhase editDifficulty;
     private int? editLocationId, editStashId;
     private bool editToStash;
     private List<TreasureItemDto> editQuestItems = [];
@@ -581,17 +581,18 @@ else
             : editStashes;
 
     // ===== Stage metadata =====
-    private record StageInfo(string Key, string SoftKey, TreasureQuestDifficulty Value, string Label);
+    private record StageInfo(string Key, string SoftKey, GameTimePhase Value, string Label);
     private static readonly List<StageInfo> stageKeys =
     [
-        new("start", "start",    TreasureQuestDifficulty.Start,    "Start"),
-        new("early", "early",    TreasureQuestDifficulty.Early,    "Rozvoj hry"),
-        new("mid",   "midgame",  TreasureQuestDifficulty.Midgame,  "Střed hry"),
-        new("late",  "lategame", TreasureQuestDifficulty.Lategame, "Závěr hry"),
+        new("start", "start",    GameTimePhase.Start,    "Start"),
+        new("early", "early",    GameTimePhase.Early,    "Rozvoj hry"),
+        new("mid",   "midgame",  GameTimePhase.Midgame,  "Střed hry"),
+        new("late",  "lategame", GameTimePhase.Lategame, "Závěr hry"),
+        new("end",   "endgame",  GameTimePhase.EndGame,  "Konec hry"),
     ];
 
-    private static readonly List<EnumItem<TreasureQuestDifficulty>> difficultyValues = Enum.GetValues<TreasureQuestDifficulty>()
-        .Select(v => new EnumItem<TreasureQuestDifficulty>(v, v.GetDisplayName())).ToList();
+    private static readonly List<EnumItem<GameTimePhase>> difficultyValues = Enum.GetValues<GameTimePhase>()
+        .Select(v => new EnumItem<GameTimePhase>(v, v.GetDisplayName())).ToList();
     private record EnumItem<T>(T Value, string Display);
 
     private static string Pluralize(int n) => n switch

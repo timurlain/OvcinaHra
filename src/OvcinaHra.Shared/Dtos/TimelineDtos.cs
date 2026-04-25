@@ -12,7 +12,7 @@ public record GameTimeSlotDto(
     string? Rules,
     int? BattlefieldBonusId,
     int GameId,
-    TreasureQuestDifficulty Stage = TreasureQuestDifficulty.Start,
+    GameTimePhase Stage = GameTimePhase.Start,
     string? BattlefieldBonusName = null)
 {
     public IReadOnlyList<LinkedGameEventDto> LinkedEvents { get; init; } = [];
@@ -30,7 +30,7 @@ public record CreateGameTimeSlotDto(
     int? InGameYear = null,
     string? Rules = null,
     int? BattlefieldBonusId = null,
-    TreasureQuestDifficulty Stage = TreasureQuestDifficulty.Start,
+    GameTimePhase Stage = GameTimePhase.Start,
     IReadOnlyList<int>? LinkedGameEventIds = null);
 
 // Stage is nullable for backward compatibility — older PUT payloads omit it
@@ -42,7 +42,7 @@ public record UpdateGameTimeSlotDto(
     int? InGameYear,
     string? Rules,
     int? BattlefieldBonusId,
-    TreasureQuestDifficulty? Stage = null,
+    GameTimePhase? Stage = null,
     IReadOnlyList<int>? LinkedGameEventIds = null);
 
 public record BattlefieldBonusDto(int Id, string? Name, int AttackBonus, int DefenseBonus, string? Description, string? ImagePath, int GameId);

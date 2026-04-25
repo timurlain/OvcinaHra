@@ -437,7 +437,7 @@ else
     private string modalTitle = "", name = "";
     private string? error, description, questCardText, rewardCardText, rewardNote, notes;
     private int? editingId;
-    private TreasureQuestDifficulty difficulty = TreasureQuestDifficulty.Start;
+    private GameTimePhase difficulty = GameTimePhase.Start;
     private int xpCost;
     private bool allowWarrior, allowArcher, allowMage, allowThief;
 
@@ -456,9 +456,9 @@ else
     private int? gpqXpCost;
     private int? gpqPerKingdomLimit;
 
-    private static readonly List<EnumItem<TreasureQuestDifficulty>> difficultyValues =
-        Enum.GetValues<TreasureQuestDifficulty>()
-            .Select(v => new EnumItem<TreasureQuestDifficulty>(v, v.GetDisplayName())).ToList();
+    private static readonly List<EnumItem<GameTimePhase>> difficultyValues =
+        Enum.GetValues<GameTimePhase>()
+            .Select(v => new EnumItem<GameTimePhase>(v, v.GetDisplayName())).ToList();
 
     record EnumItem<T>(T Value, string Display);
 
@@ -568,7 +568,7 @@ else
         editingId = null;
         name = "";
         description = null;
-        difficulty = TreasureQuestDifficulty.Start;
+        difficulty = GameTimePhase.Start;
         xpCost = 0;
         allowWarrior = allowArcher = allowMage = allowThief = false;
         questCardText = rewardCardText = rewardNote = notes = null;

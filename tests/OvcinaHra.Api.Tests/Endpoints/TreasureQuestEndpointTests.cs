@@ -39,7 +39,7 @@ public class TreasureQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         var game = await CreateGameAsync();
         var location = await CreateLocationAsync();
 
-        var dto = new CreateTreasureQuestDto("Ztracený poklad", TreasureQuestDifficulty.Early, game.Id, LocationId: location.Id);
+        var dto = new CreateTreasureQuestDto("Ztracený poklad", GameTimePhase.Early, game.Id, LocationId: location.Id);
 
         var response = await Client.PostAsJsonAsync("/api/treasure-quests", dto);
 
@@ -47,7 +47,7 @@ public class TreasureQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         var created = await response.Content.ReadFromJsonAsync<TreasureQuestListDto>();
         Assert.NotNull(created);
         Assert.Equal("Ztracený poklad", created.Title);
-        Assert.Equal(TreasureQuestDifficulty.Early, created.Difficulty);
+        Assert.Equal(GameTimePhase.Early, created.Difficulty);
         Assert.Equal(game.Id, created.GameId);
         Assert.True(created.Id > 0);
     }
@@ -57,7 +57,7 @@ public class TreasureQuestEndpointTests(PostgresFixture postgres) : IntegrationT
     {
         var game = await CreateGameAsync();
 
-        var dto = new CreateTreasureQuestDto("Špatný poklad", TreasureQuestDifficulty.Start, game.Id);
+        var dto = new CreateTreasureQuestDto("Špatný poklad", GameTimePhase.Start, game.Id);
 
         var response = await Client.PostAsJsonAsync("/api/treasure-quests", dto);
 
@@ -71,14 +71,14 @@ public class TreasureQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         var location = await CreateLocationAsync();
 
         var createResponse = await Client.PostAsJsonAsync("/api/treasure-quests",
-            new CreateTreasureQuestDto("Ztracený poklad", TreasureQuestDifficulty.Early, game.Id, LocationId: location.Id));
+            new CreateTreasureQuestDto("Ztracený poklad", GameTimePhase.Early, game.Id, LocationId: location.Id));
         var created = await createResponse.Content.ReadFromJsonAsync<TreasureQuestListDto>();
 
         var treasureQuest = await Client.GetFromJsonAsync<TreasureQuestDetailDto>($"/api/treasure-quests/{created!.Id}");
 
         Assert.NotNull(treasureQuest);
         Assert.Equal("Ztracený poklad", treasureQuest.Title);
-        Assert.Equal(TreasureQuestDifficulty.Early, treasureQuest.Difficulty);
+        Assert.Equal(GameTimePhase.Early, treasureQuest.Difficulty);
         Assert.NotNull(treasureQuest.Items);
         Assert.Empty(treasureQuest.Items);
     }
@@ -97,17 +97,17 @@ public class TreasureQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         var location = await CreateLocationAsync();
 
         var createResponse = await Client.PostAsJsonAsync("/api/treasure-quests",
-            new CreateTreasureQuestDto("Starý název", TreasureQuestDifficulty.Start, game.Id, LocationId: location.Id));
+            new CreateTreasureQuestDto("Starý název", GameTimePhase.Start, game.Id, LocationId: location.Id));
         var created = await createResponse.Content.ReadFromJsonAsync<TreasureQuestListDto>();
 
-        var updateDto = new UpdateTreasureQuestDto("Nový název", "Hledej u staré studny", TreasureQuestDifficulty.Midgame, location.Id, null);
+        var updateDto = new UpdateTreasureQuestDto("Nový název", "Hledej u staré studny", GameTimePhase.Midgame, location.Id, null);
         var response = await Client.PutAsJsonAsync($"/api/treasure-quests/{created!.Id}", updateDto);
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
         var updated = await Client.GetFromJsonAsync<TreasureQuestDetailDto>($"/api/treasure-quests/{created.Id}");
         Assert.Equal("Nový název", updated!.Title);
-        Assert.Equal(TreasureQuestDifficulty.Midgame, updated.Difficulty);
+        Assert.Equal(GameTimePhase.Midgame, updated.Difficulty);
         Assert.Equal("Hledej u staré studny", updated.Clue);
     }
 
@@ -118,7 +118,7 @@ public class TreasureQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         var location = await CreateLocationAsync();
 
         var createResponse = await Client.PostAsJsonAsync("/api/treasure-quests",
-            new CreateTreasureQuestDto("Smazaný poklad", TreasureQuestDifficulty.Lategame, game.Id, LocationId: location.Id));
+            new CreateTreasureQuestDto("Smazaný poklad", GameTimePhase.Lategame, game.Id, LocationId: location.Id));
         var created = await createResponse.Content.ReadFromJsonAsync<TreasureQuestListDto>();
 
         var response = await Client.DeleteAsync($"/api/treasure-quests/{created!.Id}");
@@ -135,7 +135,7 @@ public class TreasureQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         var location = await CreateLocationAsync();
 
         var tqResponse = await Client.PostAsJsonAsync("/api/treasure-quests",
-            new CreateTreasureQuestDto("Ztracený poklad", TreasureQuestDifficulty.Early, game.Id, LocationId: location.Id));
+            new CreateTreasureQuestDto("Ztracený poklad", GameTimePhase.Early, game.Id, LocationId: location.Id));
         var tq = await tqResponse.Content.ReadFromJsonAsync<TreasureQuestListDto>();
 
         var itemResponse = await Client.PostAsJsonAsync("/api/items", new CreateItemDto("Meč", ItemType.Weapon));
@@ -157,7 +157,7 @@ public class TreasureQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         var location = await CreateLocationAsync();
 
         var tqResponse = await Client.PostAsJsonAsync("/api/treasure-quests",
-            new CreateTreasureQuestDto("Ztracený poklad", TreasureQuestDifficulty.Early, game.Id, LocationId: location.Id));
+            new CreateTreasureQuestDto("Ztracený poklad", GameTimePhase.Early, game.Id, LocationId: location.Id));
         var tq = await tqResponse.Content.ReadFromJsonAsync<TreasureQuestListDto>();
 
         var itemResponse = await Client.PostAsJsonAsync("/api/items", new CreateItemDto("Meč", ItemType.Weapon));
@@ -174,5 +174,28 @@ public class TreasureQuestEndpointTests(PostgresFixture postgres) : IntegrationT
 
         var updated = await Client.GetFromJsonAsync<TreasureQuestDetailDto>($"/api/treasure-quests/{tq.Id}");
         Assert.DoesNotContain(updated!.Items, i => i.ItemId == item.Id);
+    }
+
+    // Issue #182 — verify the new EndGame value persists through the wire
+    // and back. Backed by string-based HasConversion, so no schema change is
+    // needed; this test is the smoke that proves the conversion accepts the
+    // new name.
+    [Fact]
+    public async Task Create_TreasureQuest_WithEndGameDifficulty_RoundTrips()
+    {
+        var game = await CreateGameAsync();
+        var location = await CreateLocationAsync();
+
+        var createResponse = await Client.PostAsJsonAsync("/api/treasure-quests",
+            new CreateTreasureQuestDto("Závěrečný poklad", GameTimePhase.EndGame, game.Id, LocationId: location.Id));
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        var created = await createResponse.Content.ReadFromJsonAsync<TreasureQuestListDto>();
+        Assert.NotNull(created);
+        Assert.Equal(GameTimePhase.EndGame, created.Difficulty);
+
+        // Re-fetch via detail endpoint to confirm DB → DTO round-trip.
+        var detail = await Client.GetFromJsonAsync<TreasureQuestDetailDto>($"/api/treasure-quests/{created.Id}");
+        Assert.NotNull(detail);
+        Assert.Equal(GameTimePhase.EndGame, detail.Difficulty);
     }
 }

@@ -243,7 +243,7 @@ public class SecretStashEndpointTests(PostgresFixture postgres) : IntegrationTes
             new CreateItemDto("Mapa", ItemType.Scroll))).Content.ReadFromJsonAsync<ItemDetailDto>();
 
         var tqResp = await Client.PostAsJsonAsync("/api/treasure-quests",
-            new CreateTreasureQuestDto("Hledání mapy", TreasureQuestDifficulty.Early, game.Id,
+            new CreateTreasureQuestDto("Hledání mapy", GameTimePhase.Early, game.Id,
                 Clue: "Pod mechovým kamenem", SecretStashId: stash.Id));
         var tq = (await tqResp.Content.ReadFromJsonAsync<TreasureQuestDetailDto>())!;
 
@@ -263,7 +263,7 @@ public class SecretStashEndpointTests(PostgresFixture postgres) : IntegrationTes
         var t = detail.Treasures[0];
         Assert.Equal("Hledání mapy", t.Title);
         Assert.Equal("Pod mechovým kamenem", t.Clue);
-        Assert.Equal(TreasureQuestDifficulty.Early, t.Difficulty);
+        Assert.Equal(GameTimePhase.Early, t.Difficulty);
         Assert.Equal(2, t.Items.Count);
         Assert.Contains(t.Items, ti => ti.ItemName == "Stříbrný klíč" && ti.Count == 1);
         Assert.Contains(t.Items, ti => ti.ItemName == "Mapa" && ti.Count == 3);

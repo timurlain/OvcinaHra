@@ -211,7 +211,7 @@ public class ItemEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
         var monster = await (await Client.PostAsJsonAsync("/api/monsters",
             new CreateMonsterDto("Vlk", MonsterCategory.Tier2, MonsterType.Beast, 8, 4, 18))).Content.ReadFromJsonAsync<MonsterDetailDto>();
         var tq = await (await Client.PostAsJsonAsync("/api/treasure-quests",
-            new CreateTreasureQuestDto("Hledání", TreasureQuestDifficulty.Early, game!.Id))).Content.ReadFromJsonAsync<TreasureQuestDetailDto>();
+            new CreateTreasureQuestDto("Hledání", GameTimePhase.Early, game!.Id))).Content.ReadFromJsonAsync<TreasureQuestDetailDto>();
 
         // GameItem (shop) + MonsterLoot via API
         await Client.PostAsJsonAsync("/api/items/game-item",

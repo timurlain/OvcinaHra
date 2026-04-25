@@ -60,7 +60,7 @@ public record LocationTreasureQuestDto(
     int Id,
     string Title,
     string? Clue,
-    TreasureQuestDifficulty Difficulty)
+    GameTimePhase Difficulty)
 {
     [JsonIgnore]
     public string DifficultyDisplay => Difficulty.GetDisplayName();

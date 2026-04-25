@@ -7,7 +7,7 @@ public class PersonalQuest
     public int Id { get; set; }
     public required string Name { get; set; }
     public string? Description { get; set; }
-    public TreasureQuestDifficulty Difficulty { get; set; }
+    public GameTimePhase Difficulty { get; set; }
 
     public bool AllowWarrior { get; set; }
     public bool AllowArcher { get; set; }

@@ -8,7 +8,7 @@ public class GameTimeSlot
     public int? InGameYear { get; set; }
     public DateTime StartTime { get; set; }
     public TimeSpan Duration { get; set; }
-    public TreasureQuestDifficulty Stage { get; set; } = TreasureQuestDifficulty.Start;
+    public GameTimePhase Stage { get; set; } = GameTimePhase.Start;
     public string? Rules { get; set; }
     public int? BattlefieldBonusId { get; set; }
     public int GameId { get; set; }

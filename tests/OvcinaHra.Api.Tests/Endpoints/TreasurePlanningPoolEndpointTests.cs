@@ -83,7 +83,7 @@ public class TreasurePlanningPoolEndpointTests(PostgresFixture postgres) : Integ
         var assignResponse = await Client.PostAsJsonAsync("/api/treasure-planning/assign",
             new AssignTreasureDto(
                 Title: "Přiřazený poklad",
-                Difficulty: TreasureQuestDifficulty.Early,
+                Difficulty: GameTimePhase.Early,
                 GameId: game.Id,
                 LocationId: location.Id,
                 TreasureItemIds: new List<int> { pool.Id }));

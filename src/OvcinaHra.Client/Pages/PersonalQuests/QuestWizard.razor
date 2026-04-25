@@ -287,9 +287,9 @@
     private string progressLabel = "";
     private bool isSaving;
 
-    private static readonly List<EnumItem<TreasureQuestDifficulty>> difficultyValues =
-        Enum.GetValues<TreasureQuestDifficulty>()
-            .Select(v => new EnumItem<TreasureQuestDifficulty>(v, v.GetDisplayName()))
+    private static readonly List<EnumItem<GameTimePhase>> difficultyValues =
+        Enum.GetValues<GameTimePhase>()
+            .Select(v => new EnumItem<GameTimePhase>(v, v.GetDisplayName()))
             .ToList();
 
     private record EnumItem<T>(T Value, string Display);
@@ -491,7 +491,7 @@
     private sealed class WizardModel
     {
         public string Name { get; set; } = "";
-        public TreasureQuestDifficulty Difficulty { get; set; } = TreasureQuestDifficulty.Early;
+        public GameTimePhase Difficulty { get; set; } = GameTimePhase.Early;
         public int XpCost { get; set; }
         public bool AllowWarrior { get; set; }
         public bool AllowArcher { get; set; }

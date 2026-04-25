@@ -48,7 +48,7 @@
     {
         <div class="oh-tl-filter-row">
             <span><i class="bi bi-funnel"></i> Filtrovat:</span>
-            @foreach (var stage in Enum.GetValues<TreasureQuestDifficulty>())
+            @foreach (var stage in Enum.GetValues<GameTimePhase>())
             {
                 <label style="display:inline-flex;align-items:center;gap:4px">
                     <input type="checkbox" checked="@stageFilter[stage]"
@@ -90,7 +90,7 @@ else
     <div class="oh-tl-agenda">
         @{
             DateTime? lastDay = null;
-            TreasureQuestDifficulty? prevStage = null;
+            GameTimePhase? prevStage = null;
         }
         @foreach (var s in FilteredSlots)
         {
@@ -214,8 +214,8 @@ else
     private int gameId => GameContext.SelectedGameId ?? 0;
 
     // Filters
-    private readonly Dictionary<TreasureQuestDifficulty, bool> stageFilter =
-        Enum.GetValues<TreasureQuestDifficulty>().ToDictionary(s => s, _ => true);
+    private readonly Dictionary<GameTimePhase, bool> stageFilter =
+        Enum.GetValues<GameTimePhase>().ToDictionary(s => s, _ => true);
     private bool onlyWithBonus;
     private bool onlyWithEvents;
 
@@ -238,11 +238,11 @@ else
 
     private bool gameRunning => slots.Any(s => s.StartTime.ToLocalTime() <= _now);
 
-    private TreasureQuestDifficulty? currentStage =>
+    private GameTimePhase? currentStage =>
         slots
             .Where(s => s.StartTime.ToLocalTime() <= _now)
             .OrderByDescending(s => s.StartTime)
-            .Select(s => (TreasureQuestDifficulty?)s.Stage)
+            .Select(s => (GameTimePhase?)s.Stage)
             .FirstOrDefault();
 
     private List<GameTimeSlotDto> FilteredSlots =>
@@ -338,7 +338,7 @@ else
         catch { /* non-fatal */ }
     }
 
-    private void ToggleStage(TreasureQuestDifficulty stage, bool on) => stageFilter[stage] = on;
+    private void ToggleStage(GameTimePhase stage, bool on) => stageFilter[stage] = on;
 
     private void OpenCreate()
     {
@@ -367,13 +367,14 @@ else
     private bool IsPast(GameTimeSlotDto s) =>
         s.StartTime.ToLocalTime().Add(TimeSpan.FromHours((double)s.DurationHours)) < _now;
 
-    private static string StageColor(TreasureQuestDifficulty d) => d switch
+    private static string StageColor(GameTimePhase d) => d switch
     {
-        TreasureQuestDifficulty.Start => "#7FA657",
-        TreasureQuestDifficulty.Early => "#D4A63C",
-        TreasureQuestDifficulty.Midgame => "#C17B3D",
-        TreasureQuestDifficulty.Lategame => "#8C2423",
-        _ => "#7FA657"
+        GameTimePhase.Start => "#7FA657",
+        GameTimePhase.Early => "#D4A63C",
+        GameTimePhase.Midgame => "#C17B3D",
+        GameTimePhase.Lategame => "#8C2423",
+        GameTimePhase.EndGame => "#4A1D24",
+        _ => throw new ArgumentOutOfRangeException(nameof(d), d, null)
     };
 
     // --- Bonus CRUD (preserved from prior page) ---

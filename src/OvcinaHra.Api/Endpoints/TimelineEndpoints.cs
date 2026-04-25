@@ -240,12 +240,12 @@ public static class TimelineEndpoints
     // Guard against malformed integer payloads — JsonStringEnumConverter
     // catches strings, but a raw int from a non-conforming client would
     // persist as an undefined enum value (per review-instincts §5.3).
-    private static TreasureQuestDifficulty NormalizeStage(TreasureQuestDifficulty stage) =>
-        Enum.IsDefined(typeof(TreasureQuestDifficulty), stage) ? stage : TreasureQuestDifficulty.Start;
+    private static GameTimePhase NormalizeStage(GameTimePhase stage) =>
+        Enum.IsDefined(typeof(GameTimePhase), stage) ? stage : GameTimePhase.Start;
 
     private record SlotProjection(
         int Id, int? InGameYear, DateTime StartTime, TimeSpan Duration,
-        TreasureQuestDifficulty Stage, string? Rules,
+        GameTimePhase Stage, string? Rules,
         int? BattlefieldBonusId, int GameId, string? BonusName,
         List<EventProjection> Events);
 
