@@ -95,7 +95,7 @@ else if (!Catalog && gameItems.Count == 0)
 }
 else if (Catalog)
 {
-    <OvcinaGrid Data="@visibleCatalogItems" KeyFieldName="Id" LayoutKey="grid-layout-items-v5"
+    <OvcinaGrid Data="@visibleCatalogItems" KeyFieldName="Id" LayoutKey="grid-layout-items-v6"
                 EditMode="GridEditMode.EditCell"
                 CustomizeEditModel="OnCatalogCustomizeEdit"
                 EditModelSaving="OnCatalogSaving"
@@ -185,6 +185,16 @@ else if (Catalog)
                 </CellEditTemplate>
             </DxGridDataColumn>
 
+            @* Poznámka — issue #120. Catalog-scoped free-text. Inline-editable
+               via the same pattern as Effect. Server caps at 2000 chars. *@
+            <DxGridDataColumn FieldName="Note" Caption="Poznámka" Width="240px">
+                <CellEditTemplate>
+                    <DxTextBox Text="@(((ItemInlineEditBuffer)context.EditModel).Note)"
+                               TextChanged="@(v => ((ItemInlineEditBuffer)context.EditModel).Note = v)"
+                               NullText="(žádná poznámka)" />
+                </CellEditTemplate>
+            </DxGridDataColumn>
+
             @* Flagy 3-cell box — Unikát/Limit/Craftable in catalog *@
             <DxGridDataColumn Caption="Flagy" Width="96px" AllowSort="false" AllowGroup="false">
                 <CellDisplayTemplate>
@@ -216,7 +226,7 @@ else if (Catalog)
 }
 else
 {
-    <OvcinaGrid Data="@visibleGameItems" KeyFieldName="Id" LayoutKey="grid-layout-items-game-v5"
+    <OvcinaGrid Data="@visibleGameItems" KeyFieldName="Id" LayoutKey="grid-layout-items-game-v6"
                 EditMode="GridEditMode.EditCell"
                 CustomizeEditModel="OnGameCustomizeEdit"
                 EditModelSaving="OnGameSaving"
@@ -360,6 +370,17 @@ else
 
             <DxGridDataColumn FieldName="Effect" Caption="Efekt" Width="240px" Visible="false" ReadOnly="true" />
             <DxGridDataColumn FieldName="RecipeSummary" Caption="Recept" Width="340px" Visible="false" ReadOnly="true" />
+
+            @* Poznámka — issue #120. Same catalog-scoped Note as the catalog grid.
+               Edit lands on /api/items/{id} (catalog endpoint) — see OnGameSaving
+               for the dispatch logic. Hidden by default; user reveals via chooser. *@
+            <DxGridDataColumn FieldName="Note" Caption="Poznámka" Width="240px" Visible="false">
+                <CellEditTemplate>
+                    <DxTextBox Text="@(((GameItemInlineEditBuffer)context.EditModel).Note)"
+                               TextChanged="@(v => ((GameItemInlineEditBuffer)context.EditModel).Note = v)"
+                               NullText="(žádná poznámka)" />
+                </CellEditTemplate>
+            </DxGridDataColumn>
 
             @* Podmínka prodeje — inline-editable (issue #119). Hidden by default
                (rarely used), but when revealed via the column chooser, click to
@@ -546,6 +567,24 @@ else
                             <button class="btn btn-sm btn-outline-primary" style="height:34px" disabled="@(newIngItemId is null)" @onclick="AddIngredientAsync"><i class="bi bi-plus"></i></button>
                         </div>
                     </div>
+                    @* Poznámka k surovinám — issue #121. Belongs after the
+                       ingredient list (per the issue text), before Buildings/Skills.
+                       Free-text annotation that's not tied to any one ingredient
+                       — e.g. "Byliny — 3× stejný druh". Save explicitly via
+                       the Uložit poznámku button so a stray click in the memo
+                       doesn't trigger a stale PUT. *@
+                    <div class="mb-2">
+                        <strong class="small">Poznámka k surovinám:</strong>
+                        <DxMemo @bind-Text="@recipeIngredientNotes" Rows="2"
+                                NullText="(žádná poznámka, např. „Byliny — 3× stejný druh“)" />
+                        <div class="d-flex gap-2 mt-1">
+                            <button class="btn btn-sm btn-outline-primary"
+                                    disabled="@(string.Equals(recipeIngredientNotes ?? "", recipe.IngredientNotes ?? "", StringComparison.Ordinal))"
+                                    @onclick="SaveRecipeNotesAsync">
+                                Uložit poznámku
+                            </button>
+                        </div>
+                    </div>
                     <div class="mb-2">
                         <strong class="small">Požadované budovy:</strong>
                         @if (recipe.BuildingRequirements.Count > 0)
@@ -694,6 +733,11 @@ else
     private bool contextMenuTargetIsCraftable;
     private string modalTitle = "", name = "";
     private string? error, effect;
+    // Modal preserves Note transparently — there's no UI for it in the popup
+    // (use the inline column or ItemDetail.razor for free-text editing). Loaded
+    // by LoadDetailAsync and passed through SaveAsync so the legacy modal
+    // doesn't accidentally null an existing note (Copilot review on PR #141).
+    private string? note;
     private int? editingId;
     private ItemType itemType = ItemType.Weapon;
     private PhysicalForm? physicalForm;
@@ -716,6 +760,10 @@ else
     private int newIngQuantity = 1;
     private int? newBuildingId;
     private int? newSkillId;
+    // Issue #121 — locally-bound editor copy for IngredientNotes. Server is
+    // the source of truth (LoadRecipeAsync re-reads after saves); this is just
+    // the DxMemo's binding target while the user types.
+    private string? recipeIngredientNotes;
 
     private List<GameSkillDto> AvailableGameSkills =>
         recipe is null
@@ -799,6 +847,10 @@ else
     private class ItemInlineEditBuffer
     {
         public string? Effect { get; set; }
+
+        // Issue #120 — catalog-scoped free-text organizer note. Editable from
+        // the catalog grid's Poznámka column.
+        public string? Note { get; set; }
     }
 
     private class GameItemInlineEditBuffer
@@ -806,13 +858,22 @@ else
         public int? Price { get; set; }
         public int? StockCount { get; set; }
         public string? SaleCondition { get; set; }
+
+        // Note is on the catalog Item, not the per-game GameItem. The buffer
+        // still carries it because the game grid's Poznámka column edits the
+        // shared catalog value — see OnGameSaving for the dispatch logic.
+        public string? Note { get; set; }
     }
 
     private void OnCatalogCustomizeEdit(GridCustomizeEditModelEventArgs e)
     {
         if (e.IsNew) return;
         var src = (ItemListDto)e.DataItem;
-        e.EditModel = new ItemInlineEditBuffer { Effect = src.Effect };
+        e.EditModel = new ItemInlineEditBuffer
+        {
+            Effect = src.Effect,
+            Note = src.Note,
+        };
     }
 
     private async Task OnCatalogSaving(GridEditModelSavingEventArgs e)
@@ -824,23 +885,29 @@ else
         // Normalize like the server does — trim + whitespace→null — so the
         // no-op short-circuit and local patch reflect what actually persists.
         var normalizedEffect = string.IsNullOrWhiteSpace(buf.Effect) ? null : buf.Effect.Trim();
+        var normalizedNote = string.IsNullOrWhiteSpace(buf.Note) ? null : buf.Note.Trim();
 
         // No-op short-circuit — don't PUT if the user tabbed through unchanged.
-        if (string.Equals(normalizedEffect, src.Effect, StringComparison.Ordinal)) return;
+        if (string.Equals(normalizedEffect, src.Effect, StringComparison.Ordinal)
+            && string.Equals(normalizedNote, src.Note, StringComparison.Ordinal))
+        {
+            return;
+        }
 
         var (ok, problem) = await Api.PutWithProblemAsync($"/api/items/{src.Id}", new UpdateItemDto(
             src.Name, src.ItemType, normalizedEffect, src.PhysicalForm,
             src.IsCraftable, src.ReqWarrior, src.ReqArcher, src.ReqMage, src.ReqThief,
-            src.IsUnique, src.IsLimited));
+            src.IsUnique, src.IsLimited,
+            Note: normalizedNote));
         if (!ok)
         {
-            error = problem ?? "Uložení efektu se nezdařilo.";
+            error = problem ?? "Uložení se nezdařilo.";
             e.Cancel = true;
             return;
         }
 
         var idx = catalogItems.FindIndex(i => i.Id == src.Id);
-        if (idx >= 0) catalogItems[idx] = src with { Effect = normalizedEffect };
+        if (idx >= 0) catalogItems[idx] = src with { Effect = normalizedEffect, Note = normalizedNote };
     }
 
     private void OnGameCustomizeEdit(GridCustomizeEditModelEventArgs e)
@@ -852,6 +919,7 @@ else
             Price = src.Price,
             StockCount = src.StockCount,
             SaleCondition = src.SaleCondition,
+            Note = src.Note,
         };
     }
 
@@ -867,24 +935,62 @@ else
             return;
         }
 
-        // Normalize SaleCondition like the server — trim + whitespace→null —
-        // so the no-op short-circuit and local patch reflect persisted state.
+        // Normalize free-text fields like the server — trim + whitespace→null —
+        // so the no-op short-circuits and local patch reflect persisted state.
         var normalizedSale = string.IsNullOrWhiteSpace(buf.SaleCondition) ? null : buf.SaleCondition.Trim();
+        var normalizedNote = string.IsNullOrWhiteSpace(buf.Note) ? null : buf.Note.Trim();
 
-        if (buf.Price == src.Price
-            && buf.StockCount == src.StockCount
-            && string.Equals(normalizedSale, src.SaleCondition, StringComparison.Ordinal))
+        var perGameChanged = buf.Price != src.Price
+            || buf.StockCount != src.StockCount
+            || !string.Equals(normalizedSale, src.SaleCondition, StringComparison.Ordinal);
+        var noteChanged = !string.Equals(normalizedNote, src.Note, StringComparison.Ordinal);
+
+        if (!perGameChanged && !noteChanged) return;
+
+        // Track which save legs actually persisted so a partial failure (e.g.
+        // catalog Note PUT succeeds but per-game PUT 400s on bad Price) still
+        // patches the local list with what the server now holds — otherwise
+        // the grid would display stale "Note edited" while the server already
+        // has the new note, drifting from reality (Copilot review on PR #141).
+        var notePersisted = false;
+
+        // Catalog-scoped Note edit goes to /api/items/{id} (the catalog endpoint),
+        // not /api/items/game-item — the field lives on Item, shared across games.
+        if (noteChanged)
         {
-            return;
+            var catalogResult = await Api.PutWithProblemAsync($"/api/items/{src.Id}", new UpdateItemDto(
+                src.Name, src.ItemType, src.Effect, src.PhysicalForm,
+                src.IsCraftable, src.ReqWarrior, src.ReqArcher, src.ReqMage, src.ReqThief,
+                src.IsUnique, src.IsLimited,
+                Note: normalizedNote));
+            if (!catalogResult.Ok)
+            {
+                error = catalogResult.ProblemDetail ?? "Uložení poznámky se nezdařilo.";
+                e.Cancel = true;
+                return;
+            }
+            notePersisted = true;
         }
 
-        var (ok, problem) = await Api.PutWithProblemAsync($"/api/items/game-item/{gid}/{src.Id}",
-            new UpdateGameItemDto(buf.Price, buf.StockCount, src.IsSold, normalizedSale, src.IsFindable));
-        if (!ok)
+        if (perGameChanged)
         {
-            error = problem ?? "Uložení per-hra nastavení se nezdařilo.";
-            e.Cancel = true;
-            return;
+            var (ok, problem) = await Api.PutWithProblemAsync($"/api/items/game-item/{gid}/{src.Id}",
+                new UpdateGameItemDto(buf.Price, buf.StockCount, src.IsSold, normalizedSale, src.IsFindable));
+            if (!ok)
+            {
+                error = problem ?? "Uložení per-hra nastavení se nezdařilo.";
+                e.Cancel = true;
+
+                // Per-game leg failed but the Note leg already persisted —
+                // reflect that in the local list so the grid matches the server.
+                if (notePersisted)
+                {
+                    var noteIdx = gameItems.FindIndex(g => g.Id == src.Id);
+                    if (noteIdx >= 0)
+                        gameItems[noteIdx] = src with { Note = normalizedNote };
+                }
+                return;
+            }
         }
 
         var idx = gameItems.FindIndex(g => g.Id == src.Id);
@@ -895,6 +1001,7 @@ else
                 Price = buf.Price,
                 StockCount = buf.StockCount,
                 SaleCondition = normalizedSale,
+                Note = normalizedNote,
             };
         }
     }
@@ -949,7 +1056,7 @@ else
         error = null;
         if (item is null)
         {
-            editingId = null; name = ""; effect = null; itemType = ItemType.Weapon; physicalForm = null;
+            editingId = null; name = ""; effect = null; note = null; itemType = ItemType.Weapon; physicalForm = null;
             isCraftable = false; isUnique = false; isLimited = false;
             reqWarrior = 0; reqArcher = 0; reqMage = 0; reqThief = 0;
             modalTitle = "Nový předmět";
@@ -1016,6 +1123,7 @@ else
         {
             effect = d.Effect; physicalForm = d.PhysicalForm;
             reqWarrior = d.ReqWarrior; reqArcher = d.ReqArcher; reqMage = d.ReqMage; reqThief = d.ReqThief;
+            note = d.Note;
         }
         await LoadGameItemAsync(id);
         await LoadRecipeAsync(id);
@@ -1025,6 +1133,7 @@ else
     private async Task LoadRecipeAsync(int itemId)
     {
         recipe = null;
+        recipeIngredientNotes = null;
         newIngItemId = null; newIngQuantity = 1; newBuildingId = null; newSkillId = null;
         var gameId = GameContext.SelectedGameId;
         if (gameId is null || !isCraftable) return;
@@ -1034,7 +1143,10 @@ else
         var recipes = await Api.GetListAsync<CraftingRecipeListDto>($"/api/crafting/by-game/{gameId}");
         var match = recipes.FirstOrDefault(r => r.OutputItemId == itemId);
         if (match is not null)
+        {
             recipe = await Api.GetAsync<CraftingRecipeDetailDto>($"/api/crafting/{match.Id}");
+            recipeIngredientNotes = recipe?.IngredientNotes;
+        }
     }
 
     private async Task AddSkillReqAsync()
@@ -1058,10 +1170,31 @@ else
         if (recipe is null) return;
         try
         {
+            // Preserve IngredientNotes — without it, this PUT would null out the
+            // recipe's note (the DTO defaults the param to null on omission).
             await Api.PutAsync($"/api/crafting/{recipe.Id}",
-                new UpdateCraftingRecipeDto(recipe.OutputItemId, recipe.LocationId, desiredSkillIds));
+                new UpdateCraftingRecipeDto(recipe.OutputItemId, recipe.LocationId, desiredSkillIds,
+                    IngredientNotes: recipe.IngredientNotes));
             newSkillId = null;
             await LoadRecipeAsync(editingId!.Value);
+            StateHasChanged();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task SaveRecipeNotesAsync()
+    {
+        if (recipe is null || editingId is null) return;
+        // Normalize like the server — trim + whitespace→null — so the local
+        // UI state matches what actually persists. Issue #121.
+        var normalized = string.IsNullOrWhiteSpace(recipeIngredientNotes) ? null : recipeIngredientNotes.Trim();
+        try
+        {
+            await Api.PutAsync($"/api/crafting/{recipe.Id}",
+                new UpdateCraftingRecipeDto(recipe.OutputItemId, recipe.LocationId,
+                    recipe.RequiredSkillIds.ToList(),
+                    IngredientNotes: normalized));
+            await LoadRecipeAsync(editingId.Value);
             StateHasChanged();
         }
         catch (Exception ex) { error = ex.Message; }
@@ -1266,10 +1399,14 @@ else
         try
         {
             if (editingId.HasValue)
-                await Api.PutAsync($"/api/items/{editingId}", new UpdateItemDto(name, itemType, effect, physicalForm, isCraftable, reqWarrior, reqArcher, reqMage, reqThief, isUnique, isLimited));
+                await Api.PutAsync($"/api/items/{editingId}",
+                    new UpdateItemDto(name, itemType, effect, physicalForm, isCraftable, reqWarrior, reqArcher, reqMage, reqThief, isUnique, isLimited,
+                        Note: note));
             else
             {
-                var created = await Api.PostAsync<CreateItemDto, ItemDetailDto>("/api/items", new CreateItemDto(name, itemType, effect, physicalForm, isCraftable, reqWarrior, reqArcher, reqMage, reqThief, isUnique, isLimited));
+                var created = await Api.PostAsync<CreateItemDto, ItemDetailDto>("/api/items",
+                    new CreateItemDto(name, itemType, effect, physicalForm, isCraftable, reqWarrior, reqArcher, reqMage, reqThief, isUnique, isLimited,
+                        Note: note));
                 if (!Catalog && GameContext.SelectedGameId is int gid && created is not null)
                     await Api.PostAsync<CreateGameItemDto, GameItemDto>("/api/items/game-item", new CreateGameItemDto(gid, created.Id));
             }
@@ -1309,10 +1446,16 @@ else
     private void OpenQuickPeek(GameItemListDto gi)
     {
         // Reuse ItemListDto shape for the popup body — they share all the catalog fields.
+        // Named args for the optional tail (Note, ImageUrl) so future field
+        // insertions don't silently shift values into the wrong slot
+        // (Copilot review on PR #141 — Note was inserted before ImageUrl in
+        // ItemListDto's ctor, breaking positional construction here).
         quickPeekItem = new ItemListDto(
             gi.Id, gi.Name, gi.ItemType, gi.Effect, gi.PhysicalForm, gi.IsCraftable,
             gi.ReqWarrior, gi.ReqArcher, gi.ReqMage, gi.ReqThief,
-            gi.IsUnique, gi.IsLimited, gi.ImagePath, gi.ImageUrl);
+            gi.IsUnique, gi.IsLimited, gi.ImagePath,
+            Note: gi.Note,
+            ImageUrl: gi.ImageUrl);
         quickPeekIsPerGame = true;
         quickPeekIsSold = gi.IsSold;
         quickPeekIsFindable = gi.IsFindable;

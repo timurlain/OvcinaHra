@@ -165,6 +165,16 @@ else
                         }
                     </div>
                 </div>
+                @* Poznámka — issue #120. Hidden when null so we don't reserve
+                   visual space for empty content. Pre-line whitespace preserves
+                   the user's manual line breaks from the DxMemo edit. *@
+                @if (!string.IsNullOrWhiteSpace(item.Note))
+                {
+                    <div class="oh-it-d-sect">
+                        <div class="oh-it-d-sect-label"><i class="bi bi-sticky"></i>Poznámka</div>
+                        <div class="oh-it-d-sect-body" style="white-space: pre-line">@item.Note</div>
+                    </div>
+                }
                 <div class="oh-it-d-sect">
                     <div class="oh-it-d-sect-label"><i class="bi bi-box-seam"></i>Fyzická podoba</div>
                     <div class="oh-it-d-sect-body">
@@ -204,6 +214,11 @@ else
                 <DxFormLayoutGroup Caption="Vlastnosti" ColSpanMd="12">
                     <DxFormLayoutItem Caption="Efekt" ColSpanMd="12">
                         <DxMemo @bind-Text="@editEffect" Rows="3" />
+                    </DxFormLayoutItem>
+                    @* Poznámka — issue #120. Catalog-scoped free-text. Server caps
+                       at 2000 chars; DxMemo MaxLength is unreliable in 25.2.5. *@
+                    <DxFormLayoutItem Caption="Poznámka" ColSpanMd="12">
+                        <DxMemo @bind-Text="@editNote" Rows="3" />
                     </DxFormLayoutItem>
                     <DxFormLayoutItem ColSpanMd="4">
                         <DxCheckBox @bind-Checked="@editIsUnique">Unikátní</DxCheckBox>
@@ -488,6 +503,7 @@ else
     private ItemType editType = ItemType.Weapon;
     private PhysicalForm? editPhysicalForm;
     private string? editEffect;
+    private string? editNote;
     private bool editIsUnique, editIsLimited, editIsCraftable;
     private int editReqWarrior, editReqArcher, editReqMage, editReqThief;
 
@@ -567,6 +583,7 @@ else
         editType = item.ItemType;
         editPhysicalForm = item.PhysicalForm;
         editEffect = item.Effect;
+        editNote = item.Note;
         editIsUnique = item.IsUnique;
         editIsLimited = item.IsLimited;
         editIsCraftable = item.IsCraftable;
@@ -594,7 +611,8 @@ else
             await Api.PutAsync($"/api/items/{item.Id}",
                 new UpdateItemDto(editName, editType, editEffect, editPhysicalForm,
                     editIsCraftable, editReqWarrior, editReqArcher, editReqMage, editReqThief,
-                    editIsUnique, editIsLimited));
+                    editIsUnique, editIsLimited,
+                    Note: editNote));
             await LoadAsync();
             activeTab = "karta";
         }
@@ -648,6 +666,15 @@ else
                         </a>
                     </div>
                 }
+            }
+            @* Poznámka k surovinám — issue #121. Rendered AFTER the ingredient
+               list (the brief is explicit) and styled muted because it's
+               annotation, not a structured ingredient. Hidden when null. *@
+            @if (!string.IsNullOrWhiteSpace(r.IngredientNotes))
+            {
+                <div class="oh-it-d-recipe-notes text-muted small mt-2" style="white-space: pre-line">
+                    <i class="bi bi-info-circle me-1"></i>@r.IngredientNotes
+                </div>
             }
             @if (r.BuildingRequirements.Count > 0)
             {
