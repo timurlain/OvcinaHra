@@ -6,8 +6,18 @@ window.ovcinaMap = {
     _elementId: null,
     _apiKey: null,
 
+    // Glyph URL — required by MapLibre for any layer with `text-field` in
+    // its layout (e.g. the overlay editor's `oh-overlay-preview-text` text
+    // primitive, #96). Without `glyphs`, MapLibre logs:
+    //   "layers.X.layout.text-field: use of 'text-field' requires a style 'glyphs' property"
+    // and the text never renders. We use the MapLibre demo glyph endpoint
+    // for now — TODO(prod): self-host on Azure Blob alongside the rest of
+    // the map assets before the next prod rollout. Tracked in #159 follow-up.
+    _glyphsUrl: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+
     _rasterStyle: {
         version: 8,
+        glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
         sources: {
             'osm': {
                 type: 'raster',
@@ -139,7 +149,11 @@ window.ovcinaMap = {
         var popup = new maplibregl.Popup({ offset: 10 })
             .setHTML('<strong>' + this._escapeHtml(name) + '</strong><br><small>' + this._escapeHtml(kind) + '</small>');
 
-        var marker = new maplibregl.Marker({ element: wrapper, anchor: 'top', draggable: true })
+        // Honour overlay edit-mode (#159 sub-fix 5): if the user toggles
+        // overlay edit-mode and then a stage filter / search re-adds markers,
+        // the freshly-created markers should also come up locked.
+        var initiallyDraggable = !window.__ovcinaOverlayEditMode;
+        var marker = new maplibregl.Marker({ element: wrapper, anchor: 'top', draggable: initiallyDraggable })
             .setLngLat([lon, lat])
             .setPopup(popup)
             .addTo(this._map);
@@ -159,6 +173,20 @@ window.ovcinaMap = {
         });
 
         this._markers[id] = marker;
+    },
+
+    /// <summary>
+    /// Toggle the draggable property on every location marker — called by the
+    /// overlay editor on enter/exit edit-mode (#159 sub-fix 5) so the user
+    /// can't accidentally relocate a pin while drawing on top of it.
+    /// Idempotent; safe to call when no markers are present.
+    /// </summary>
+    setLocationMarkersDraggable: function (enabled) {
+        var on = !!enabled;
+        for (var id in this._markers) {
+            try { this._markers[id].setDraggable(on); }
+            catch (e) { /* MapLibre version differences — best-effort */ }
+        }
     },
 
     removeMarker: function (id) {
@@ -193,6 +221,8 @@ window.ovcinaMap = {
     _makeRasterStyle: function (styleName, apiKey) {
         return {
             version: 8,
+            // See _glyphsUrl above — required for the overlay editor text layer.
+            glyphs: this._glyphsUrl,
             sources: {
                 'mapy-cz': {
                     type: 'raster',

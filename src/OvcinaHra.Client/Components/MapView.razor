@@ -132,11 +132,14 @@
                     var dto = await Api.GetAsync<MapOverlayDto>($"/api/games/{GameId.Value}/overlay");
                     shapes = dto?.Shapes ?? new List<MapOverlayShape>();
                 }
-                catch (System.Text.Json.JsonException)
+                catch (Exception ex) when (ex is System.Text.Json.JsonException or NotSupportedException)
                 {
-                    // 204 NoContent — empty body can't parse as JSON; treat as
-                    // no overlay. Still rendering below so the preview layers
-                    // are initialised for a future editor session.
+                    // 204 NoContent → empty body can't parse as JSON → JsonException.
+                    // Unknown polymorphic discriminator (server returned a shape
+                    // type a stale client doesn't know yet) → NotSupportedException.
+                    // Either way: treat as no overlay so the editor can still
+                    // open and the user can re-save. Preview layers initialise
+                    // below regardless.
                     shapes = new List<MapOverlayShape>();
                 }
                 _committedShapes = shapes;
@@ -417,10 +420,21 @@
 
         // `ovcinaMap.switchStyle` wipes all style-dependent layers, including
         // the overlay source / layers that `ovcinaOverlay.render` added.
-        // Re-render so the saved overlay survives basemap swaps.
+        // Re-render so the overlay survives basemap swaps. While editing,
+        // honour the in-memory staged list (with unsaved edits) and re-apply
+        // the active selection highlight — committed-only would silently
+        // discard the user's work.
         if (GameId.HasValue && _loadedOverlayForGameId == GameId)
         {
-            try { await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _committedShapes); }
+            var shapes = _editMode ? _stagedShapes : _committedShapes;
+            try
+            {
+                await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, shapes);
+                if (_editMode && _selectedShape is not null)
+                {
+                    await JS.InvokeVoidAsync("ovcinaOverlay.selectShape", _elementId, _selectedShape);
+                }
+            }
             catch { /* best-effort */ }
         }
     }

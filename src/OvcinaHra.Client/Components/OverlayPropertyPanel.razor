@@ -71,7 +71,12 @@
                                 class="oh-overlay-pp-icon @(string.Equals(key, ic.AssetKey, StringComparison.Ordinal) ? "is-active" : "")"
                                 title="@IconLabel(key)" aria-label="@IconLabel(key)"
                                 @onclick="() => OnIconAssetChangedAsync(key)">
-                            <img src="@($"/img/overlay-icons/{key}.svg")" alt="@IconLabel(key)" style="color:@ic.Color" />
+                            @* mask-image to actually tint the SVG silhouette —
+                               `currentColor` doesn't propagate into an <img>
+                               element's externally-loaded SVG. *@
+                            <span class="oh-overlay-pp-icon-glyph"
+                                  style="@($"-webkit-mask-image:url('/img/overlay-icons/{key}.svg');mask-image:url('/img/overlay-icons/{key}.svg');background-color:{ic.Color};")"
+                                  role="img" aria-label="@IconLabel(key)"></span>
                         </button>
                     }
                 </div>
@@ -199,8 +204,10 @@
     private async Task OnTextChangedAsync(ChangeEventArgs e)
     {
         if (Shape is not TextShape t) return;
-        var txt = e.Value?.ToString();
-        if (string.IsNullOrEmpty(txt)) return;
+        // Empty string is a valid edit — user may want to clear the text
+        // before retyping. Treat null (no event payload at all) as a no-op.
+        if (e.Value is null) return;
+        var txt = e.Value.ToString() ?? string.Empty;
         await OnChange.InvokeAsync(t with { Text = txt });
     }
 

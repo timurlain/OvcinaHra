@@ -2781,6 +2781,10 @@
 .oh-mo-icon:hover{border-color:#504B25}
 .oh-mo-icon.is-active{border-color:#504B25;box-shadow:0 0 0 2px rgba(80,75,37,0.25)}
 .oh-mo-icon img{width:22px;height:22px;display:block}
+.oh-mo-icon-glyph{display:block;width:22px;height:22px;
+    -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+    -webkit-mask-position:center;mask-position:center;
+    -webkit-mask-size:contain;mask-size:contain}
 
 /* Sidecar property panel — anchored top-right of map host. Above MapLibre
    controls (z-index:20) but below the error banner (z-index:21). */
@@ -2819,6 +2823,10 @@
 .oh-overlay-pp-icon:hover{border-color:#504B25}
 .oh-overlay-pp-icon.is-active{border-color:#504B25;box-shadow:0 0 0 2px rgba(80,75,37,0.25)}
 .oh-overlay-pp-icon img{width:22px;height:22px;display:block}
+.oh-overlay-pp-icon-glyph{display:block;width:22px;height:22px;
+    -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+    -webkit-mask-position:center;mask-position:center;
+    -webkit-mask-size:contain;mask-size:contain}
 
 /* Drozd radí inline hint — mascot-attributed advice block. Soft amber band
    so users notice the guidance without reading it as an error. */
