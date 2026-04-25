@@ -88,6 +88,26 @@ else
             </DxGridDataColumn>
             <DxGridDataColumn FieldName="ExternalPersonId" Caption="ID v registraci" Width="140px" />
         </Columns>
+        @* Issue #149 — drozd-confused for in-grid no-rows. The page short-circuits
+           to a non-grid empty surface when `characters.Count == 0`, so this
+           template only renders when the user filters/searches via DxGrid's
+           own row UI down to zero matches. *@
+        <EmptyDataAreaTemplate>
+            <div class="text-center text-muted py-5">
+                <div class="oh-lg-drozd-box mx-auto mb-3" aria-hidden="true">
+                    @if (!confusedFailed)
+                    {
+                        <img src="/img/drozd/drozd-confused.svg" alt=""
+                             @onerror="() => confusedFailed = true" />
+                    }
+                    else
+                    {
+                        <i class="bi bi-funnel" style="font-size:90px;color:var(--oh-text-secondary);"></i>
+                    }
+                </div>
+                <p class="mb-0">Žádné postavy neodpovídají filtrům.</p>
+            </div>
+        </EmptyDataAreaTemplate>
     </OvcinaGrid>
 }
 
@@ -280,7 +300,7 @@ else
     private List<CharacterListDto> characters = [];
     private List<CharacterListDto> allCharacters = [];
     private List<KingdomDto> kingdoms = [];
-    private bool loading = true, isModalVisible, isDeleteVisible, isSaving, isImporting, drozdFailed;
+    private bool loading = true, isModalVisible, isDeleteVisible, isSaving, isImporting, drozdFailed, confusedFailed;
     private string modalTitle = "", name = "";
     private string? error, notes, playerFirstName, playerLastName;
     private Race? race;

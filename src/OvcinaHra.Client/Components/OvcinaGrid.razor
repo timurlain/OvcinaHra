@@ -12,6 +12,13 @@
    In EditCell mode, clicking an editable cell enters edit; clicking elsewhere
    still fires RowClick — the row-click handler and inline edit coexist. *@
 
+@* EmptyDataAreaTemplate passthrough — issue #149. Razor's compile-time
+   child-content validator rejects a conditional `@if` wrapping the named
+   `<EmptyDataAreaTemplate>` child element, so we forward the template via
+   the **property attribute** form instead. When the consumer doesn't pass
+   anything, the property stays null and DevExpress falls back to its stock
+   "No data" text — no behavior change for the read-only grids that
+   haven't opted in yet. *@
 <DxGrid Data="@Data"
         KeyFieldName="@KeyFieldName"
         SelectionMode="@SelectionMode"
@@ -33,6 +40,7 @@
         EditMode="@(EditMode ?? GridEditMode.PopupEditForm)"
         EditModelSaving="@EditModelSaving"
         CustomizeEditModel="@CustomizeEditModel"
+        EmptyDataAreaTemplate="@EmptyDataAreaTemplate"
         LayoutAutoLoading="OnLayoutLoading"
         LayoutAutoSaving="OnLayoutSaving">
     <Columns>
@@ -70,6 +78,12 @@
     [Parameter] public GridEditMode? EditMode { get; set; }
     [Parameter] public EventCallback<GridEditModelSavingEventArgs> EditModelSaving { get; set; }
     [Parameter] public EventCallback<GridCustomizeEditModelEventArgs> CustomizeEditModel { get; set; }
+
+    // Issue #149: optional no-rows surface (e.g. drozd-confused). When null,
+    // DxGrid renders its stock "No data" text — same as before this passthrough
+    // existed. DxGrid types this slot as a typed `RenderFragment<TContext>`,
+    // so the wrapper parameter mirrors it; pages typically ignore the context.
+    [Parameter] public RenderFragment<GridEmptyDataAreaTemplateContext>? EmptyDataAreaTemplate { get; set; }
     private void OnCustomizeElement(GridCustomizeElementEventArgs e)
     {
         if (e.ElementType == GridElementType.DataRow && e.VisibleIndex % 2 == 1)

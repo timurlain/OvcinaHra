@@ -222,6 +222,27 @@ else if (Catalog)
                 </CellDisplayTemplate>
             </DxGridDataColumn>
         </Columns>
+        @* Issue #149 — drozd-confused fires when DxGrid filters/search produce
+           zero rows (the page-level @if branches above intercept the genuinely-
+           empty catalog and the no-game state, so this surface is reachable
+           only via in-grid filters). Reuses .oh-lg-drozd-box circle that the
+           game-empty surface uses, fallback bi-funnel at 90px per the brief. *@
+        <EmptyDataAreaTemplate>
+            <div class="text-center text-muted py-5">
+                <div class="oh-lg-drozd-box mx-auto mb-3" aria-hidden="true">
+                    @if (!confusedFailed)
+                    {
+                        <img src="/img/drozd/drozd-confused.svg" alt=""
+                             @onerror="() => confusedFailed = true" />
+                    }
+                    else
+                    {
+                        <i class="bi bi-funnel" style="font-size:90px;color:var(--oh-text-secondary);"></i>
+                    }
+                </div>
+                <p class="mb-0">Žádné předměty neodpovídají filtrům.</p>
+            </div>
+        </EmptyDataAreaTemplate>
     </OvcinaGrid>
 }
 else
@@ -396,6 +417,25 @@ else
                 </CellEditTemplate>
             </DxGridDataColumn>
         </Columns>
+        @* Issue #149 — drozd-confused for in-grid no-rows. Same pattern as the
+           catalog grid above; shares the confusedFailed flag (one SVG load
+           failure flips both grids to the bi-funnel fallback). *@
+        <EmptyDataAreaTemplate>
+            <div class="text-center text-muted py-5">
+                <div class="oh-lg-drozd-box mx-auto mb-3" aria-hidden="true">
+                    @if (!confusedFailed)
+                    {
+                        <img src="/img/drozd/drozd-confused.svg" alt=""
+                             @onerror="() => confusedFailed = true" />
+                    }
+                    else
+                    {
+                        <i class="bi bi-funnel" style="font-size:90px;color:var(--oh-text-secondary);"></i>
+                    }
+                </div>
+                <p class="mb-0">Žádné předměty neodpovídají filtrům.</p>
+            </div>
+        </EmptyDataAreaTemplate>
     </OvcinaGrid>
 
     <DxContextMenu @ref="contextMenu" ItemClick="OnContextMenuItemClick">
@@ -716,7 +756,7 @@ else
 
     private List<ItemListDto> catalogItems = [];
     private List<GameItemListDto> gameItems = [];
-    private bool loading = true, isModalVisible, isDeleteVisible, isSaving, drozdFailed;
+    private bool loading = true, isModalVisible, isDeleteVisible, isSaving, drozdFailed, confusedFailed;
 
     // Quick-peek popup state (issue: replaces edit-modal-on-row-click per the brief).
     private bool isQuickPeekVisible;
