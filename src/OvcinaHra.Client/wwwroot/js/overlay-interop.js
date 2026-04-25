@@ -261,7 +261,16 @@
     }
 
     function ensureIconsLoaded(map) {
-        if (map.__ovcinaOverlayIconsLoaded) return Promise.resolve();
+        // Re-check the registry every call: a basemap `setStyle()` wipes
+        // `map.images`, so a once-cached promise would short-circuit and the
+        // icons never re-register on the new style. If every asset is already
+        // present we hand back the cached promise (resolved); otherwise a
+        // fresh Promise.all repopulates only the missing keys (loadIconImage
+        // is itself guarded by `map.hasImage`).
+        const allRegistered = ICON_ASSETS.every(function (k) { return map.hasImage(k); });
+        if (allRegistered && map.__ovcinaOverlayIconsLoaded) {
+            return map.__ovcinaOverlayIconsLoaded;
+        }
         map.__ovcinaOverlayIconsLoaded = Promise.all(ICON_ASSETS.map(function (k) {
             return loadIconImage(map, k);
         }));
@@ -651,21 +660,30 @@
     // ---- Tool: select (hit-test → emit shapeId to .NET) -------------------
 
     function attachSelectTool(map, inst) {
-        // Cursor turns to pointer over any shape layer for affordance. We
-        // hit-test against all four saved layers (fills, strokes, text, icons).
-        // queryRenderedFeatures honors layer filters, so unrelated map layers
-        // are ignored automatically.
-        const layers = [LYR_FILLS, LYR_STROKES, LYR_TEXT, LYR_ICONS]
-            .filter(function (id) { return map.getLayer(id) != null; });
+        // Resolve the hit-test layer list per-call, not at attach time. A
+        // basemap style switch removes/re-adds the overlay layers; capturing
+        // IDs once would leave queryRenderedFeatures referencing missing
+        // layers and throw, breaking selection.
+        function activeLayers() {
+            return [LYR_FILLS, LYR_STROKES, LYR_TEXT, LYR_ICONS]
+                .filter(function (id) { return map.getLayer(id) != null; });
+        }
 
         const onMove = function (e) {
+            const layers = activeLayers();
             if (layers.length === 0) return;
-            const f = map.queryRenderedFeatures(e.point, { layers: layers });
-            map.getCanvas().style.cursor = (f && f.length > 0) ? 'pointer' : '';
+            try {
+                const f = map.queryRenderedFeatures(e.point, { layers: layers });
+                map.getCanvas().style.cursor = (f && f.length > 0) ? 'pointer' : '';
+            } catch (err) { /* layer disappeared mid-frame — best-effort */ }
         };
         const onClick = function (e) {
+            const layers = activeLayers();
             if (layers.length === 0) return;
-            const features = map.queryRenderedFeatures(e.point, { layers: layers });
+            let features;
+            try {
+                features = map.queryRenderedFeatures(e.point, { layers: layers });
+            } catch (err) { return; }
             if (!features || features.length === 0) {
                 emitSelection(inst, null);
                 return;
@@ -679,15 +697,24 @@
         onMap(map, inst, 'mousemove', onMove);
         onMap(map, inst, 'click', onClick);
         // Delete key fires while the select tool is active and a shape is
-        // selected — .NET decides whether to confirm + remove.
+        // selected — .NET decides whether to confirm + remove. Bail if the
+        // user is typing in a text field (e.g. property panel TextShape input)
+        // so Backspace doesn't double as "delete shape".
         inst.keydownHandler = function (ev) {
-            if (ev.key === 'Delete' || ev.key === 'Backspace') {
-                if (!inst.dotnetRef) return;
-                try { inst.dotnetRef.invokeMethodAsync('OnDeleteRequested'); }
-                catch (e) { /* swallow */ }
-            }
+            if (ev.key !== 'Delete' && ev.key !== 'Backspace') return;
+            if (isEditableTarget(ev.target) || isEditableTarget(document.activeElement)) return;
+            if (!inst.dotnetRef) return;
+            try { inst.dotnetRef.invokeMethodAsync('OnDeleteRequested'); }
+            catch (e) { /* swallow */ }
         };
         window.addEventListener('keydown', inst.keydownHandler);
+    }
+
+    function isEditableTarget(el) {
+        if (!el || !el.tagName) return false;
+        const tag = el.tagName.toUpperCase();
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+        return el.isContentEditable === true;
     }
 
     function emitSelection(inst, shapeId) {

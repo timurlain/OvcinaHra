@@ -417,10 +417,21 @@
 
         // `ovcinaMap.switchStyle` wipes all style-dependent layers, including
         // the overlay source / layers that `ovcinaOverlay.render` added.
-        // Re-render so the saved overlay survives basemap swaps.
+        // Re-render so the overlay survives basemap swaps. While editing,
+        // honour the in-memory staged list (with unsaved edits) and re-apply
+        // the active selection highlight — committed-only would silently
+        // discard the user's work.
         if (GameId.HasValue && _loadedOverlayForGameId == GameId)
         {
-            try { await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _committedShapes); }
+            var shapes = _editMode ? _stagedShapes : _committedShapes;
+            try
+            {
+                await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, shapes);
+                if (_editMode && _selectedShape is not null)
+                {
+                    await JS.InvokeVoidAsync("ovcinaOverlay.selectShape", _elementId, _selectedShape);
+                }
+            }
             catch { /* best-effort */ }
         }
     }

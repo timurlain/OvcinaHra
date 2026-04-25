@@ -70,7 +70,12 @@
                         title="@IconLabel(key)" aria-label="@IconLabel(key)"
                         aria-pressed="@(string.Equals(key, IconAsset, StringComparison.Ordinal))"
                         @onclick="() => SetIconAssetAsync(key)">
-                    <img src="@($"/img/overlay-icons/{key}.svg")" alt="@IconLabel(key)" style="color:@Color" />
+                    @* mask-image swap so the SVG silhouette inherits the chosen
+                       stroke color — `currentColor` inside an externally-loaded
+                       <img> doesn't inherit from the host element's `color`. *@
+                    <span class="oh-mo-icon-glyph"
+                          style="@($"-webkit-mask-image:url('/img/overlay-icons/{key}.svg');mask-image:url('/img/overlay-icons/{key}.svg');background-color:{Color};")"
+                          role="img" aria-label="@IconLabel(key)"></span>
                 </button>
             }
             <label class="oh-mo-label">Otočení
