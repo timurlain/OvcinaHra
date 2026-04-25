@@ -264,14 +264,21 @@ public static class CharacterEndpoints
             var result = await importService.ImportAsync(gameId);
             return TypedResults.Ok(result);
         }
+        catch (GameNotFoundException)
+        {
+            return TypedResults.Problem(
+                detail: RegistraceImportProblems.NotFoundDetail(gameId),
+                title: RegistraceImportProblems.NotFoundTitle,
+                statusCode: StatusCodes.Status404NotFound);
+        }
         catch (GameNotLinkedToRegistraceException)
         {
             // Issue #191 — pre-empt the upstream call when the local game
             // has no registrace counterpart. The Czech detail string is
             // surfaced verbatim by ApiClient.PostWithProblemAsync.
             return TypedResults.Problem(
-                detail: "Tato hra ještě není propojená s registrací. Otevřete Správu her, otevřete tuto hru a klikněte na tlačítko Propojit s registrací.",
-                title: "Hra není propojená s registrací.",
+                detail: RegistraceImportProblems.NotLinkedDetail,
+                title: RegistraceImportProblems.NotLinkedTitle,
                 statusCode: StatusCodes.Status400BadRequest);
         }
     }

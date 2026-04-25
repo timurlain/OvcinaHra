@@ -39,12 +39,20 @@ public static class NpcEndpoints
             var adults = await registrace.FetchAdultsAsync(gameId);
             return TypedResults.Ok(adults);
         }
+        catch (GameNotFoundException)
+        {
+            return TypedResults.Problem(
+                detail: RegistraceImportProblems.NotFoundDetail(gameId),
+                title: RegistraceImportProblems.NotFoundTitle,
+                statusCode: StatusCodes.Status404NotFound);
+        }
         catch (GameNotLinkedToRegistraceException)
         {
-            // Issue #191 — same shape as the character import 400 path.
+            // Issue #191 — same shape as the character import 400 path,
+            // sourced from the shared helper to avoid copy drift.
             return TypedResults.Problem(
-                detail: "Tato hra ještě není propojená s registrací. Otevřete Správu her, otevřete tuto hru a klikněte na tlačítko Propojit s registrací.",
-                title: "Hra není propojená s registrací.",
+                detail: RegistraceImportProblems.NotLinkedDetail,
+                title: RegistraceImportProblems.NotLinkedTitle,
                 statusCode: StatusCodes.Status400BadRequest);
         }
         catch (HttpRequestException ex)

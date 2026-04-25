@@ -21,6 +21,34 @@ public sealed class GameNotLinkedToRegistraceException(int localGameId)
     public int LocalGameId { get; } = localGameId;
 }
 
+/// <summary>
+/// Thrown when the import service is asked to operate on a local game
+/// that doesn't exist (#191). Distinct from
+/// <see cref="GameNotLinkedToRegistraceException"/> so endpoints can
+/// return 404 vs 400 — Copilot flagged the original conflation.
+/// </summary>
+public sealed class GameNotFoundException(int localGameId)
+    : Exception($"Local game {localGameId} does not exist.")
+{
+    public int LocalGameId { get; } = localGameId;
+}
+
+/// <summary>
+/// Issue #191 — single source of truth for the Czech ProblemDetails
+/// strings the import endpoints surface. Lets us tweak copy or wire a
+/// new CTA without hunting both endpoints.
+/// </summary>
+public static class RegistraceImportProblems
+{
+    public const string NotLinkedTitle = "Hra není propojená s registrací.";
+    public const string NotLinkedDetail =
+        "Tato hra ještě není propojená s registrací. Otevřete Správu her, otevřete tuto hru a klikněte na tlačítko Propojit s registrací.";
+
+    public const string NotFoundTitle = "Hra nenalezena.";
+    public static string NotFoundDetail(int localGameId) =>
+        $"Hra s ID {localGameId} v této instanci OvčinaHra neexistuje.";
+}
+
 public class RegistraceImportService(HttpClient httpClient, IConfiguration configuration, WorldDbContext db)
 {
     private readonly string _baseUrl = configuration["IntegrationApi:BaseUrl"] ?? "https://registrace.ovcina.cz";
@@ -28,18 +56,30 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
 
     /// <summary>
     /// Issue #191 — resolve the registrace counterpart id for a local game.
-    /// Throws <see cref="GameNotLinkedToRegistraceException"/> when not linked
-    /// rather than silently using the wrong id (the pre-#191 behavior).
+    /// Three outcomes:
+    /// <list type="bullet">
+    ///   <item>game exists + linked → returns <c>ExternalGameId</c></item>
+    ///   <item>game exists + unlinked → throws <see cref="GameNotLinkedToRegistraceException"/></item>
+    ///   <item>game does not exist → throws <see cref="GameNotFoundException"/></item>
+    /// </list>
+    /// The two exception types let endpoints return 400 vs 404 distinctly
+    /// — pre-fixup the missing-game case was masquerading as not-linked.
     /// </summary>
     private async Task<int> ResolveExternalGameIdAsync(int localGameId)
     {
-        var externalId = await db.Games
+        // Fetch a wrapper struct so a null ExternalGameId on an existing
+        // game doesn't collapse to the same "no row" sentinel. Without
+        // this projection the FirstOrDefault would return 0/null both
+        // when the game is missing and when it's unlinked.
+        var row = await db.Games
             .Where(g => g.Id == localGameId)
-            .Select(g => g.ExternalGameId)
+            .Select(g => new { g.ExternalGameId })
             .FirstOrDefaultAsync();
-        if (externalId is null)
+        if (row is null)
+            throw new GameNotFoundException(localGameId);
+        if (row.ExternalGameId is null)
             throw new GameNotLinkedToRegistraceException(localGameId);
-        return externalId.Value;
+        return row.ExternalGameId.Value;
     }
 
     /// <summary>
