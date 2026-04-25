@@ -300,16 +300,38 @@ public static class CharacterEndpoints
     private static async Task<Results<Ok<ReimportCharactersResponse>, ProblemHttpResult>> ReimportFromRegistrace(
         int gameId, RegistraceImportService importService, WorldDbContext db)
     {
+        // Pre-validate BEFORE opening the SERIALIZABLE transaction. A bogus
+        // gameId would otherwise hold locks on Characters / CharacterAssignments
+        // for the duration of the rolled-back work — wasteful and contention-
+        // hostile. Same exceptions as ImportAsync so the same catches apply.
         try
         {
+            // Round-trip ResolveExternalGameIdAsync via ImportOrThrowAsync's
+            // path would actually fetch — too expensive. Inline a cheap check
+            // here that mirrors the resolver shape.
+            var preCheck = await db.Games
+                .Where(g => g.Id == gameId)
+                .Select(g => new { g.ExternalGameId })
+                .FirstOrDefaultAsync();
+            if (preCheck is null)
+                throw new GameNotFoundException(gameId);
+            if (preCheck.ExternalGameId is null)
+                throw new GameNotLinkedToRegistraceException(gameId);
+
             await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
 
-            // 1. Null self-references on imported characters so step 3 can
-            //    delete parents and children in any order without violating
-            //    the optional Character → ParentCharacter FK.
+            // 1. Null parent self-references ONLY on imported characters that
+            //    are about to be wiped in step 3 (i.e. those whose only
+            //    assignments are for this game). Untouched characters keep
+            //    their ParentCharacter links intact — Copilot caught the
+            //    original blanket-NULL dropping cross-edition history.
             await db.Characters
                 .IgnoreQueryFilters()
-                .Where(c => c.ExternalPersonId != null && c.ParentCharacterId != null)
+                .Where(c => c.ExternalPersonId != null
+                    && c.ParentCharacterId != null
+                    && db.CharacterAssignments
+                        .Where(a => a.CharacterId == c.Id)
+                        .All(a => a.GameId == gameId))
                 .ExecuteUpdateAsync(s => s.SetProperty(c => c.ParentCharacterId, _ => (int?)null));
 
             // 2. Hard-delete this game's assignments. Cascades CharacterEvents

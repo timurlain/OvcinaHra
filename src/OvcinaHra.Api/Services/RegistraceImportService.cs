@@ -87,8 +87,11 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
     /// <paramref name="localGameId"/>. Resolves the registrace counterpart
     /// from <c>Game.ExternalGameId</c> internally — callers no longer need
     /// to (and should not) hand over a registrace id directly.
-    /// Network/upstream failures are swallowed into <c>ImportResultDto.Errors</c>
+    /// Network/parse failures are folded into <c>ImportResultDto.Errors</c>
     /// — the original behavior the standalone "Importovat" button relies on.
+    /// Catches <see cref="HttpRequestException"/>, <see cref="TaskCanceledException"/>
+    /// (timeouts), and <see cref="System.Text.Json.JsonException"/> (malformed
+    /// upstream payload) so the button surfaces a Czech error rather than a 500.
     /// </summary>
     public async Task<ImportResultDto> ImportAsync(int localGameId)
     {
@@ -99,6 +102,14 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
         catch (HttpRequestException ex)
         {
             return new ImportResultDto(0, 0, 0, [$"Failed to fetch from registrace: {ex.Message}"]);
+        }
+        catch (TaskCanceledException ex)
+        {
+            return new ImportResultDto(0, 0, 0, [$"Timed out while fetching from registrace: {ex.Message}"]);
+        }
+        catch (JsonException ex)
+        {
+            return new ImportResultDto(0, 0, 0, [$"Failed to parse registrace response: {ex.Message}"]);
         }
     }
 

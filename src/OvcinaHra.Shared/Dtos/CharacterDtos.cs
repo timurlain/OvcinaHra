@@ -85,7 +85,7 @@ public record ScanCharacterDto(
 public record ImportResultDto(int Created, int Updated, int Skipped, List<string> Errors);
 
 /// <summary>
-/// Issue #192 — result of <c>POST /api/games/{id}/characters/reimport</c>.
+/// Issue #192 — result of <c>POST /api/characters/reimport/{gameId}</c>.
 /// The wipe deletes every <see cref="CharacterAssignment"/> for the game
 /// plus every imported (<c>ExternalPersonId IS NOT NULL</c>) Character
 /// row that has no remaining assignment after the wipe; the import then
