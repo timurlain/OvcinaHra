@@ -487,11 +487,13 @@ else
                                 <td class="oh-it-d-num">
                                     @* Per-game setter affordance — restores Price/Stock/IsSold/
                                        IsFindable editing on the detail page (#147 sub-fix (e)).
-                                       Save POSTs UpdateGameItemDto to the existing endpoint. *@
+                                       Save uses PUT /api/items/game-item/{gid}/{itemId} with
+                                       UpdateGameItemDto via the ProblemDetails-aware helper. *@
                                     <button class="btn btn-sm btn-outline-primary"
                                             title="Upravit nastavení v této hře"
+                                            aria-label="Upravit nastavení v této hře"
                                             @onclick="() => OpenShopEdit(s)">
-                                        <i class="bi bi-pencil"></i>
+                                        <i class="bi bi-pencil" aria-hidden="true"></i>
                                     </button>
                                 </td>
                             </tr>
@@ -732,9 +734,11 @@ else
         shopEditError = null;
         try
         {
-            // Mirrors the /items grid pattern (ItemList.razor:1320) — same
-            // endpoint, same DTO shape; the orchestrator is paid the same
-            // server validation either way (#99 block respected).
+            // PutWithProblemAsync surfaces the server's Czech ProblemDetails
+            // verbatim into shopEditError (e.g. the #99 GameItem-in-use block
+            // when something downstream still references it). Same endpoint
+            // + DTO shape as ItemList.razor's per-row inline edit, so the two
+            // surfaces stay coherent.
             var (ok, problem) = await Api.PutWithProblemAsync(
                 $"/api/items/game-item/{shopEditGameId}/{item.Id}",
                 new UpdateGameItemDto(
