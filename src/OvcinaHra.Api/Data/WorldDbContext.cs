@@ -21,6 +21,11 @@ public class WorldDbContext(DbContextOptions<WorldDbContext> options) : DbContex
     public DbSet<GameSkill> GameSkills => Set<GameSkill>();
     public DbSet<GameSkillBuildingRequirement> GameSkillBuildingRequirements => Set<GameSkillBuildingRequirement>();
     public DbSet<CraftingSkillRequirement> CraftingSkillRequirements => Set<CraftingSkillRequirement>();
+    // Issue #142 — Building crafting cost (parallel to CraftingRecipe).
+    public DbSet<BuildingRecipe> BuildingRecipes => Set<BuildingRecipe>();
+    public DbSet<BuildingRecipeIngredient> BuildingRecipeIngredients => Set<BuildingRecipeIngredient>();
+    public DbSet<BuildingRecipePrerequisite> BuildingRecipePrerequisites => Set<BuildingRecipePrerequisite>();
+    public DbSet<BuildingRecipeSkillRequirement> BuildingRecipeSkillRequirements => Set<BuildingRecipeSkillRequirement>();
     public DbSet<Spell> Spells => Set<Spell>();
     public DbSet<GameSpell> GameSpells => Set<GameSpell>();
     public DbSet<Monster> Monsters => Set<Monster>();

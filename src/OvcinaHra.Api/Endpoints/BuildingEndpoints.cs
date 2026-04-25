@@ -68,11 +68,30 @@ public static class BuildingEndpoints
                 gb.Building.ImagePath
             })
             .ToListAsync();
+
+        // Issue #142 — pull this game's BuildingRecipes so we can attach a
+        // compact RecipeSummary to each row. AsNoTracking() because we only
+        // read the entities to format a string; tracking the graph wastes
+        // change-detection CPU + memory (Copilot review on PR #164).
+        // GroupBy is defensive — schema doesn't enforce one recipe per
+        // (game, building) so a duplicate wouldn't blow up ToDictionary.
+        var recipes = await db.BuildingRecipes
+            .AsNoTracking()
+            .Where(r => r.GameId == gameId)
+            .Include(r => r.Ingredients)
+            .Include(r => r.PrerequisiteBuildings)
+            .Include(r => r.SkillRequirements)
+            .ToListAsync();
+        var summaryByBuildingId = recipes
+            .GroupBy(r => r.OutputBuildingId)
+            .ToDictionary(g => g.Key, g => BuildingRecipeEndpoints.BuildRecipeSummary(g.First()));
+
         var buildings = rows.Select(r => new BuildingListDto(
             r.Id, r.Name, r.Description, r.Notes,
             r.LocationId, r.LocationName, r.IsPrebuilt,
             ImagePath: r.ImagePath,
-            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "buildings", r.Id, "small"))).ToList();
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "buildings", r.Id, "small"),
+            RecipeSummary: summaryByBuildingId.GetValueOrDefault(r.Id))).ToList();
         return TypedResults.Ok(buildings);
     }
 
