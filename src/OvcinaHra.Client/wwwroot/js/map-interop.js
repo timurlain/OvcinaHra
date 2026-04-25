@@ -10,43 +10,54 @@ window.ovcinaMap = {
     // its layout (e.g. the overlay editor's `oh-overlay-preview-text` text
     // primitive, #96). Without `glyphs`, MapLibre logs:
     //   "layers.X.layout.text-field: use of 'text-field' requires a style 'glyphs' property"
-    // and the text never renders. We use the MapLibre demo glyph endpoint
-    // for now — TODO(prod): self-host on Azure Blob alongside the rest of
-    // the map assets before the next prod rollout. Tracked in #159 follow-up.
+    // and the text never renders. The actual URL comes from
+    // `MapLibre:GlyphsUrl` in appsettings (prod points at our Azure Blob,
+    // dev at demotiles). The constant below is the safety fallback if the
+    // setting is missing — never relied on by prod (#166).
+    _defaultGlyphsUrl: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
     _glyphsUrl: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
 
-    _rasterStyle: {
-        version: 8,
-        glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
-        sources: {
-            'osm': {
+    _buildRasterStyle: function () {
+        return {
+            version: 8,
+            glyphs: this._glyphsUrl,
+            sources: {
+                'osm': {
+                    type: 'raster',
+                    tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                    tileSize: 256,
+                    maxzoom: 19,
+                    attribution: '&copy; <a href="https://www.openstreetmap.org">OpenStreetMap</a>'
+                }
+            },
+            layers: [{
+                id: 'osm-tiles',
                 type: 'raster',
-                tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-                tileSize: 256,
-                maxzoom: 19,
-                attribution: '&copy; <a href="https://www.openstreetmap.org">OpenStreetMap</a>'
-            }
-        },
-        layers: [{
-            id: 'osm-tiles',
-            type: 'raster',
-            source: 'osm',
-            minzoom: 0,
-            maxzoom: 19
-        }]
+                source: 'osm',
+                minzoom: 0,
+                maxzoom: 19
+            }]
+        };
     },
 
     _mapyCzRasterStyle: function (apiKey) {
         return this._makeRasterStyle('outdoor', apiKey);
     },
 
-    init: function (elementId, dotnetRef, centerLat, centerLon, zoom, mapyCzApiKey) {
+    init: function (elementId, dotnetRef, centerLat, centerLon, zoom, mapyCzApiKey, glyphsUrl) {
         this._dotnetRef = dotnetRef;
         this._elementId = elementId;
         this._apiKey = (mapyCzApiKey && mapyCzApiKey.length > 5) ? mapyCzApiKey : null;
+        // Resolved at init so every style construction below picks up the
+        // environment-specific URL (#166). Empty/missing/whitespace-only →
+        // fall back to the demotiles dev URL so local smoke testing still
+        // works AND a stray space in appsettings.json doesn't ship a broken
+        // URL to MapLibre.
+        var trimmedGlyphsUrl = (typeof glyphsUrl === 'string') ? glyphsUrl.trim() : '';
+        this._glyphsUrl = trimmedGlyphsUrl.length > 0 ? trimmedGlyphsUrl : this._defaultGlyphsUrl;
 
         // Start with Mapy.cz raster (tourist), fall back to OSM
-        var initialStyle = this._apiKey ? this._mapyCzRasterStyle(this._apiKey) : this._rasterStyle;
+        var initialStyle = this._apiKey ? this._mapyCzRasterStyle(this._apiKey) : this._buildRasterStyle();
         this._map = new maplibregl.Map({
             container: elementId,
             style: initialStyle,
@@ -84,7 +95,7 @@ window.ovcinaMap = {
         } else if (styleKey === 'basic' && this._apiKey) {
             style = this._makeRasterStyle('basic', this._apiKey);
         } else {
-            style = this._rasterStyle; // OSM fallback
+            style = this._buildRasterStyle(); // OSM fallback
         }
 
         // Clear markers before style change

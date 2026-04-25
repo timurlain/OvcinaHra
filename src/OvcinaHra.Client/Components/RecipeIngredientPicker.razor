@@ -1,0 +1,85 @@
+@* Issue #163 — leaf component shared by ItemList and BuildingList recipe
+   editors. Renders the ingredient table + add-row, emits semantic events.
+   Caller owns persistence + DTO-specific endpoint calls. *@
+
+@using OvcinaHra.Shared.Dtos
+
+<div class="mb-2">
+    <strong class="small">Ingredience:</strong>
+    @if (Ingredients.Count > 0)
+    {
+        <table class="table table-sm mb-1">
+            <tbody>
+                @foreach (var ing in Ingredients)
+                {
+                    <tr>
+                        <td>@ing.ItemName</td>
+                        <td style="width:60px">×@ing.Quantity</td>
+                        <td style="width:40px">
+                            <button class="btn btn-sm btn-link text-danger p-0"
+                                    title="Odebrat ingredienci"
+                                    aria-label="@($"Odebrat ingredienci {ing.ItemName}")"
+                                    @onclick="() => OnRemove.InvokeAsync(ing.ItemId)">
+                                <i class="bi bi-x-circle" aria-hidden="true"></i>
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <p class="text-muted small mb-1">Žádné ingredience.</p>
+    }
+    <div class="d-flex gap-2 align-items-end">
+        <div style="flex:1">
+            <DxComboBox Data="@AvailableItems" @bind-Value="@_newItemId"
+                        TextFieldName="Name" ValueFieldName="Id"
+                        NullText="(přidat ingredienci)" SearchMode="ListSearchMode.AutoSearch" />
+        </div>
+        <div style="width:70px">
+            <DxSpinEdit @bind-Value="@_newQuantity" MinValue="1" />
+        </div>
+        <button class="btn btn-sm btn-outline-primary" style="height:34px"
+                title="Přidat ingredienci"
+                aria-label="Přidat ingredienci"
+                disabled="@(_newItemId is null)"
+                @onclick="AddAsync">
+            <i class="bi bi-plus" aria-hidden="true"></i>
+        </button>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Flat ingredient row used by both <c>CraftingIngredientDto</c> and
+    /// <c>BuildingRecipeIngredientDto</c>. Each parent maps its own DTO into
+    /// this shape on render — they're structurally identical.
+    /// </summary>
+    public sealed record IngredientRow(int ItemId, string ItemName, int Quantity);
+
+    [Parameter, EditorRequired] public IReadOnlyList<IngredientRow> Ingredients { get; set; } = [];
+
+    /// <summary>List of items the picker may add. <c>ItemListDto</c>
+    /// (or any record with <c>Id</c> + <c>Name</c>) so the combo binds.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<ItemListDto> AvailableItems { get; set; } = [];
+
+    [Parameter] public EventCallback<(int ItemId, int Quantity)> OnAdd { get; set; }
+    [Parameter] public EventCallback<int> OnRemove { get; set; }
+
+    private int? _newItemId;
+    private int _newQuantity = 1;
+
+    private async Task AddAsync()
+    {
+        if (_newItemId is null) return;
+        var id = _newItemId.Value;
+        var qty = _newQuantity > 0 ? _newQuantity : 1;
+        // Reset form first so a slow callback doesn't double-fire on a second
+        // click — same idempotency stance as the original inline editor.
+        _newItemId = null;
+        _newQuantity = 1;
+        await OnAdd.InvokeAsync((id, qty));
+    }
+}

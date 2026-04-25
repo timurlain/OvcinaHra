@@ -1,0 +1,66 @@
+@* Issue #163 — required-skills badge list + add control. The list of
+   GameSkillDtos passed in must be the per-game subset (already created
+   for this game). Stale skill IDs (deleted GameSkill rows) render as
+   "[Neznámá dovednost #N]" so partial data still displays. *@
+
+@using OvcinaHra.Shared.Dtos
+
+<div class="mb-2">
+    <strong class="small">Požadované dovednosti:</strong>
+    @if (SelectedSkillIds.Count > 0)
+    {
+        @foreach (var skillId in SelectedSkillIds)
+        {
+            var gs = AllGameSkills.FirstOrDefault(g => g.Id == skillId);
+            <span class="badge bg-secondary me-1">
+                @(gs?.Name ?? $"[Neznámá dovednost #{skillId}]")
+                <button class="btn btn-sm btn-link text-white p-0 ms-1"
+                        title="Odebrat dovednost"
+                        aria-label="@($"Odebrat dovednost {gs?.Name ?? skillId.ToString()}")"
+                        @onclick="() => OnRemove.InvokeAsync(skillId)">
+                    <i class="bi bi-x" aria-hidden="true"></i>
+                </button>
+            </span>
+        }
+    }
+    else
+    {
+        <span class="text-muted small">Žádné.</span>
+    }
+    @if (AvailableSkills.Count > 0)
+    {
+        <div class="d-flex gap-2 align-items-end mt-1">
+            <div style="flex:1">
+                <DxComboBox Data="@AvailableSkills" @bind-Value="@_newSkillId"
+                            TextFieldName="Name" ValueFieldName="Id"
+                            NullText="(přidat dovednost)" SearchMode="ListSearchMode.AutoSearch" />
+            </div>
+            <button class="btn btn-sm btn-outline-primary" style="height:34px"
+                    title="Přidat dovednost"
+                    aria-label="Přidat dovednost"
+                    disabled="@(_newSkillId is null)"
+                    @onclick="AddAsync">
+                <i class="bi bi-plus" aria-hidden="true"></i>
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<int> SelectedSkillIds { get; set; } = [];
+    [Parameter, EditorRequired] public IReadOnlyList<GameSkillDto> AllGameSkills { get; set; } = [];
+    [Parameter, EditorRequired] public IReadOnlyList<GameSkillDto> AvailableSkills { get; set; } = [];
+
+    [Parameter] public EventCallback<int> OnAdd { get; set; }
+    [Parameter] public EventCallback<int> OnRemove { get; set; }
+
+    private int? _newSkillId;
+
+    private async Task AddAsync()
+    {
+        if (_newSkillId is null) return;
+        var id = _newSkillId.Value;
+        _newSkillId = null;
+        await OnAdd.InvokeAsync(id);
+    }
+}
