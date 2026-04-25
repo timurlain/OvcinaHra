@@ -1,124 +1,244 @@
 @page "/spells"
 @attribute [Authorize]
 @inject ApiClient Api
+@inject NavigationManager Nav
 @using OvcinaHra.Shared.Domain.Enums
 @using OvcinaHra.Shared.Extensions
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="mb-0">Katalog kouzel</h1>
-    <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nové kouzlo</button>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary" type="button"
+                @onclick='() => Nav.NavigateTo("/spells/print")'
+                title="Otevřít A5 Knihu kouzel pro tisk">
+            <i class="bi bi-book-half"></i> Kniha kouzel
+        </button>
+        <button class="btn btn-primary" type="button" @onclick="OpenCreateModal">
+            <i class="bi bi-plus-lg"></i> Nové kouzlo
+        </button>
+    </div>
 </div>
 
 @if (loading)
 {
-    <p>Načítám...</p>
+    <p class="text-muted">Načítám…</p>
 }
 else
 {
-    <OvcinaGrid Data="@spells" KeyFieldName="Id" LayoutKey="grid-layout-spells"
-                RowClick="@(async e => await OpenDetailAsync((SpellListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+    @* LayoutKey bumped grid-layout-spells → grid-layout-spells-v2 because the
+       column schema changed (new chip / rings / flags cells, new field names).
+       Memory rule: feedback_ovcinagrid_layoutkey_bump. *@
+    <OvcinaGrid Data="@spells" KeyFieldName="Id" LayoutKey="grid-layout-spells-v2"
+                RowClick="@(e => OpenPeek((SpellListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
-            @* Default visible — the common "at-a-glance" set *@
-            <DxGridDataColumn FieldName="Id" Caption="#" Width="60px" />
-            <DxGridDataColumn FieldName="Name" Caption="Název" Width="200px" />
-            <DxGridDataColumn FieldName="Level" Caption="Úroveň" Width="90px" />
-            <DxGridDataColumn FieldName="SchoolDisplay" Caption="Typ" Width="130px" />
-            <DxGridDataColumn FieldName="ManaCost" Caption="Mana" Width="80px" />
-            <DxGridDataColumn FieldName="MinMageLevel" Caption="Min. mág" Width="100px" />
-            <DxGridDataColumn FieldName="Price" Caption="Cena (gr)" Width="100px" />
-            <DxGridDataColumn FieldName="IsScroll" Caption="Svitek" Width="80px" />
-            <DxGridDataColumn FieldName="IsReaction" Caption="Reakce" Width="90px" />
-            <DxGridDataColumn FieldName="IsLearnable" Caption="Naučitelné" Width="110px" />
-            <DxGridDataColumn FieldName="Effect" Caption="Efekt" Width="420px" />
+            @* Level Roman / "S" chip — 60px *@
+            <DxGridDataColumn FieldName="Level" Caption="Úr." Width="64px">
+                <CellDisplayTemplate>
+                    @{ var s = (SpellListDto)context.DataItem; }
+                    <span class="oh-sp-lvl-badge @(s.IsScroll ? "oh-sp-lvl-scroll" : "oh-sp-lvl-roman")"
+                          style="@($"--oh-c: var(--oh-school-{SchoolKey(s.School)});")">
+                        @LevelRoman(s.Level)
+                    </span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            <DxGridDataColumn FieldName="Name" Caption="Název" MinWidth="220">
+                <CellDisplayTemplate>
+                    @{ var s = (SpellListDto)context.DataItem; }
+                    <div class="oh-sp-c-name">
+                        <span>@s.Name</span>
+                        @if (s.IsReaction)
+                        {
+                            <span class="oh-sp-reaction" title="Reakce — kouzlí se mimo tah">
+                                <i class="bi bi-lightning-charge-fill"></i>Reakce
+                            </span>
+                        }
+                    </div>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            <DxGridDataColumn FieldName="SchoolDisplay" Caption="Škola" Width="150px">
+                <CellDisplayTemplate>
+                    @{ var s = (SpellListDto)context.DataItem; }
+                    <SpellSchoolChip School="@s.School" />
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            <DxGridDataColumn FieldName="ManaCost" Caption="Mana" Width="100px">
+                <CellDisplayTemplate>
+                    @{ var s = (SpellListDto)context.DataItem; }
+                    <ManaRings Cost="@s.ManaCost" Size="ManaRings.RingSize.Md" IsScroll="@s.IsScroll" />
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            <DxGridDataColumn FieldName="Price" Caption="Cena" Width="90px">
+                <CellDisplayTemplate>
+                    @{ var s = (SpellListDto)context.DataItem; }
+                    @if (s.IsScroll)
+                    {
+                        <span class="oh-sp-c-price oh-sp-c-price--free">—</span>
+                    }
+                    else if (s.Price.HasValue)
+                    {
+                        <span class="oh-sp-c-price oh-sp-c-price-coin"><i class="bi bi-coin"></i>@s.Price gr</span>
+                    }
+                    else
+                    {
+                        <span class="oh-sp-c-price oh-sp-c-price--free">Zdarma</span>
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            @* Flags box — IsLearnable / IsReaction / IsScroll *@
+            <DxGridDataColumn Caption="Flagy" Width="110px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{ var s = (SpellListDto)context.DataItem; }
+                    <div class="d-flex gap-1 align-items-center">
+                        <i class="bi @(s.IsLearnable ? "bi-mortarboard-fill text-success" : "bi-mortarboard text-muted")"
+                           title="@(s.IsLearnable ? "Lze se naučit" : "Nelze se naučit")"></i>
+                        <i class="bi @(s.IsReaction ? "bi-lightning-charge-fill text-warning" : "bi-lightning-charge text-muted")"
+                           title="@(s.IsReaction ? "Reakce" : "Akce")"></i>
+                        <i class="bi @(s.IsScroll ? "bi-file-earmark-text-fill" : "bi-file-earmark-text text-muted")"
+                           title="@(s.IsScroll ? "Svitek" : "Klasické kouzlo")"></i>
+                    </div>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            <DxGridDataColumn FieldName="Effect" Caption="Efekt" MinWidth="280">
+                <CellDisplayTemplate>
+                    @{ var s = (SpellListDto)context.DataItem; }
+                    @* Full text in DOM (no truncation in markup); CSS line-clamp
+                       gives the ellipsis. Card text stays sacred per
+                       feedback_ovcina_card_text_sacred. *@
+                    <span class="oh-sp-c-fx" title="@s.Effect">@s.Effect</span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
 
             @* Hidden by default — reveal via column chooser *@
-            <DxGridDataColumn FieldName="Description" Caption="Popis" Width="360px" Visible="false" />
+            <DxGridDataColumn FieldName="MinMageLevel" Caption="Min. mág" Width="100px" Visible="false" />
+            <DxGridDataColumn FieldName="Description" Caption="Popis" Width="320px" Visible="false" />
         </Columns>
     </OvcinaGrid>
 }
 
-<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="760px" MinHeight="640px">
-    <BodyContentTemplate Context="popupContext">
-        <DxFormLayout>
-            <DxFormLayoutItem Caption="Název" ColSpanMd="12">
-                <DxTextBox @bind-Text="@model.Name" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Typ (škola)" ColSpanMd="12">
-                <DxComboBox Data="@schoolValues" @bind-Value="@model.School"
-                            TextFieldName="Display" ValueFieldName="Value" />
-            </DxFormLayoutItem>
-
-            <DxFormLayoutItem Caption="Úroveň (0=svitek, 1-5=mág)" ColSpanMd="4">
-                <DxSpinEdit @bind-Value="@model.Level" MinValue="0" MaxValue="5" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Mana" ColSpanMd="4">
-                <DxSpinEdit @bind-Value="@model.ManaCost" MinValue="0" MaxValue="5" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Min. úroveň mága" ColSpanMd="4">
-                <DxSpinEdit @bind-Value="@model.MinMageLevel" MinValue="0" MaxValue="5" />
-            </DxFormLayoutItem>
-
-            <DxFormLayoutItem Caption="Svitek" ColSpanMd="4">
-                <DxCheckBox @bind-Checked="@model.IsScroll" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Reakce" ColSpanMd="4">
-                <DxCheckBox @bind-Checked="@model.IsReaction" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Standartní" ColSpanMd="4">
-                <span title="Toto kouzlo se dá naučit ve městě dle standartních pravidel.">
-                    <DxCheckBox @bind-Checked="@model.IsLearnable" />
-                </span>
-            </DxFormLayoutItem>
-
-            <DxFormLayoutItem Caption="Cena naučení (groše)" ColSpanMd="12">
-                <DxSpinEdit @bind-Value="@model.Price" MinValue="0" MaxValue="9999" ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
-            </DxFormLayoutItem>
-
-            <DxFormLayoutItem Caption="Efekt (text karty)" ColSpanMd="12">
-                <DxMemo @bind-Text="@model.Effect" Rows="4" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Popis / flavor (volitelný)" ColSpanMd="12">
-                <DxMemo @bind-Text="@model.Description" Rows="4" />
-            </DxFormLayoutItem>
-        </DxFormLayout>
-
-        @if (error is not null)
+@* Quick-peek popup — 720×420. Row click → peek. Footer has
+   "Otevřít detail →" navigating to /spells/{id}. *@
+<DxPopup @bind-Visible="@isPeekVisible" HeaderText="@(peekItem?.Name ?? "Kouzlo")" Width="720px">
+    <BodyContentTemplate Context="qpCtx">
+        @if (peekItem is null)
         {
-            <div class="alert alert-danger mt-2">@error</div>
+            <p class="text-muted">Načítám…</p>
         }
-
-        <div class="d-flex gap-2 mt-3">
-            @if (editingId.HasValue)
-            {
-                <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true" disabled="@isSaving">Smazat</button>
-            }
-            <div style="flex: 1"></div>
-            <button class="btn btn-secondary" @onclick="() => isModalVisible = false" disabled="@isSaving">Zrušit</button>
-            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving">
-                @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                Uložit
-            </button>
-        </div>
+        else
+        {
+            <div class="oh-sp-peek-grid">
+                <div>
+                    <div class="oh-sp-peek-meta">
+                        <SpellSchoolChip School="@peekItem.School" />
+                        <ManaRings Cost="@peekItem.ManaCost" Size="ManaRings.RingSize.Md" IsScroll="@peekItem.IsScroll" />
+                        @if (peekItem.IsReaction)
+                        {
+                            <span class="oh-sp-reaction"><i class="bi bi-lightning-charge-fill"></i>Reakce</span>
+                        }
+                    </div>
+                    <p class="oh-sp-peek-fx" style="@($"--oh-school-c: var(--oh-school-{SchoolKey(peekItem.School)});")">@peekItem.Effect</p>
+                    @if (!string.IsNullOrWhiteSpace(peekItem.Description))
+                    {
+                        <p class="oh-sp-peek-desc">@peekItem.Description</p>
+                    }
+                </div>
+                <div class="oh-sp-peek-side">
+                    <div class="oh-sp-peek-side-row">
+                        <span>Úroveň</span>
+                        <strong>@LevelRoman(peekItem.Level)</strong>
+                    </div>
+                    @if (peekItem.MinMageLevel > 1)
+                    {
+                        <div class="oh-sp-peek-side-row">
+                            <span>Min. mág</span>
+                            <strong>@LevelRoman(peekItem.MinMageLevel)</strong>
+                        </div>
+                    }
+                    <div class="oh-sp-peek-side-row">
+                        <span>Cena</span>
+                        @if (peekItem.IsScroll)
+                        {
+                            <strong>—</strong>
+                        }
+                        else if (peekItem.Price.HasValue)
+                        {
+                            <strong>@(peekItem.Price.Value) gr</strong>
+                        }
+                        else
+                        {
+                            <strong>Zdarma</strong>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="oh-sp-peek-foot">
+                <button class="btn btn-secondary" type="button" @onclick="() => isPeekVisible = false">Zavřít</button>
+                <button class="btn btn-primary" type="button"
+                        @onclick="@(() => Nav.NavigateTo($"/spells/{peekItem!.Id}"))">
+                    Otevřít detail <i class="bi bi-arrow-right"></i>
+                </button>
+            </div>
+        }
     </BodyContentTemplate>
 </DxPopup>
 
-<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Smazat kouzlo?" Width="400px">
-    <BodyContentTemplate Context="popupContext">
-        <p>Opravdu chcete smazat kouzlo <strong>@model.Name</strong>?</p>
-        <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
-            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync" disabled="@isSaving">Smazat</button>
+@* "+ Nové kouzlo" create modal — the only place this list creates new
+   spells. Edit-existing flow lives on /spells/{id}'s Upravit tab. *@
+<DxPopup AllowResize="true" @bind-Visible="@isCreateVisible" HeaderText="Nové kouzlo" Width="640px">
+    <BodyContentTemplate Context="cCtx">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Název" ColSpanMd="12">
+                <DxTextBox @bind-Text="@createModel.Name" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Škola" ColSpanMd="6">
+                <DxComboBox Data="@schoolValues" @bind-Value="@createModel.School"
+                            TextFieldName="Display" ValueFieldName="Value" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Úroveň (0=svitek)" ColSpanMd="3">
+                <DxSpinEdit @bind-Value="@createModel.Level" MinValue="0" MaxValue="5" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Mana" ColSpanMd="3">
+                <DxSpinEdit @bind-Value="@createModel.ManaCost" MinValue="0" MaxValue="9" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Efekt" ColSpanMd="12">
+                <DxMemo @bind-Text="@createModel.Effect" Rows="3" />
+            </DxFormLayoutItem>
+        </DxFormLayout>
+
+        @if (createError is not null)
+        {
+            <div class="alert alert-danger mt-2">@createError</div>
+        }
+
+        <div class="d-flex gap-2 justify-content-end mt-3">
+            <button class="btn btn-secondary" type="button" @onclick="() => isCreateVisible = false" disabled="@isCreating">Zrušit</button>
+            <button class="btn btn-primary" type="button" @onclick="CreateAsync"
+                    disabled="@(isCreating || string.IsNullOrWhiteSpace(createModel.Name))">
+                @if (isCreating) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Vytvořit a otevřít
+            </button>
         </div>
     </BodyContentTemplate>
 </DxPopup>
 
 @code {
     private List<SpellListDto> spells = [];
-    private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
-    private string modalTitle = "";
-    private string? error;
-    private int? editingId;
-    private SpellFormModel model = new();
+    private bool loading = true;
+
+    // Quick-peek (row click)
+    private bool isPeekVisible;
+    private SpellListDto? peekItem;
+
+    // Create modal
+    private bool isCreateVisible;
+    private bool isCreating;
+    private string? createError;
+    private CreateForm createModel = new();
 
     private static readonly List<SchoolOption> schoolValues = Enum.GetValues<SpellSchool>()
         .Select(v => new SchoolOption(v, v.GetDisplayName())).ToList();
@@ -134,103 +254,84 @@ else
         loading = false;
     }
 
-    private void OpenModal(SpellListDto? _)
+    private void OpenPeek(SpellListDto s)
     {
-        error = null;
-        editingId = null;
-        model = new SpellFormModel();
-        modalTitle = "Nové kouzlo";
-        isModalVisible = true;
+        peekItem = s;
+        isPeekVisible = true;
     }
 
-    private async Task OpenDetailAsync(SpellListDto s)
+    private void OpenCreateModal()
     {
-        error = null;
-        var detail = await Api.GetAsync<SpellDetailDto>($"/api/spells/{s.Id}");
-        if (detail is null) return;
-
-        editingId = detail.Id;
-        model = SpellFormModel.FromDetail(detail);
-        modalTitle = $"Upravit: {detail.Name}";
-        isModalVisible = true;
+        createModel = new CreateForm();
+        createError = null;
+        isCreateVisible = true;
     }
 
-    private async Task SaveAsync()
+    private async Task CreateAsync()
     {
-        error = null;
-        isSaving = true;
+        if (string.IsNullOrWhiteSpace(createModel.Name)) return;
+        createError = null;
+        isCreating = true;
         try
         {
-            if (editingId.HasValue)
-            {
-                await Api.PutAsync($"/api/spells/{editingId}", model.ToUpdateDto());
-            }
+            var dto = new CreateSpellDto(
+                createModel.Name.Trim(),
+                createModel.Level,
+                createModel.ManaCost,
+                createModel.School,
+                IsScroll: createModel.Level == 0,
+                IsReaction: false,
+                IsLearnable: createModel.Level > 0,
+                MinMageLevel: 0,
+                Price: null,
+                Effect: string.IsNullOrWhiteSpace(createModel.Effect) ? "—" : createModel.Effect.Trim(),
+                Description: null);
+
+            var created = await Api.PostAsync<CreateSpellDto, SpellDetailDto>("/api/spells", dto);
+            isCreateVisible = false;
+            // Land on the new spell's detail so the user can fill in the rest
+            // of the fields on the Upravit tab without a round-trip through
+            // the catalog list.
+            if (created is not null)
+                Nav.NavigateTo($"/spells/{created.Id}");
             else
-            {
-                await Api.PostAsync<CreateSpellDto, SpellDetailDto>("/api/spells", model.ToCreateDto());
-            }
-            isModalVisible = false;
-            await LoadAsync();
+                await LoadAsync();
         }
-        catch (Exception ex) { error = ex.Message; }
-        finally { isSaving = false; }
+        catch (Exception ex) { createError = ex.Message; }
+        finally { isCreating = false; }
     }
 
-    private async Task ConfirmDeleteAsync()
+    private static string SchoolKey(SpellSchool s) => s switch
     {
-        error = null;
-        isSaving = true;
-        try
-        {
-            // ApiClient.DeleteAsync returns bool — it does not throw on non-success.
-            // Ignoring the value would close the dialog even on a failed delete.
-            var ok = await Api.DeleteAsync($"/api/spells/{editingId}");
-            if (!ok)
-            {
-                error = "Smazání kouzla se nepodařilo.";
-                return;
-            }
-            isDeleteVisible = false;
-            isModalVisible = false;
-            await LoadAsync();
-        }
-        catch (Exception ex) { error = ex.Message; }
-        finally { isSaving = false; }
-    }
+        SpellSchool.Fire    => "fire",
+        SpellSchool.Frost   => "frost",
+        SpellSchool.Water   => "water",
+        SpellSchool.Earth   => "earth",
+        SpellSchool.Wind    => "wind",
+        SpellSchool.Poison  => "poison",
+        SpellSchool.Mental  => "mental",
+        SpellSchool.Support => "support",
+        SpellSchool.Utility => "utility",
+        _ => "utility"
+    };
 
-    private sealed class SpellFormModel
+    private static string LevelRoman(int n) => n switch
+    {
+        0 => "S",
+        1 => "I",
+        2 => "II",
+        3 => "III",
+        4 => "IV",
+        5 => "V",
+        _ => n.ToString(System.Globalization.CultureInfo.InvariantCulture)
+    };
+
+    private sealed class CreateForm
     {
         public string Name { get; set; } = "";
-        public int Level { get; set; }
+        public int Level { get; set; } = 1;
         public int ManaCost { get; set; }
         public SpellSchool School { get; set; } = SpellSchool.Fire;
-        public bool IsScroll { get; set; }
-        public bool IsReaction { get; set; }
-        public bool IsLearnable { get; set; } = true;
-        public int MinMageLevel { get; set; }
-        public int? Price { get; set; }
         public string Effect { get; set; } = "";
-        public string? Description { get; set; }
-
-        public static SpellFormModel FromDetail(SpellDetailDto d) => new()
-        {
-            Name = d.Name,
-            Level = d.Level,
-            ManaCost = d.ManaCost,
-            School = d.School,
-            IsScroll = d.IsScroll,
-            IsReaction = d.IsReaction,
-            IsLearnable = d.IsLearnable,
-            MinMageLevel = d.MinMageLevel,
-            Price = d.Price,
-            Effect = d.Effect,
-            Description = d.Description
-        };
-
-        public CreateSpellDto ToCreateDto() => new(
-            Name, Level, ManaCost, School, IsScroll, IsReaction, IsLearnable, MinMageLevel, Price, Effect, Description);
-
-        public UpdateSpellDto ToUpdateDto() => new(
-            Name, Level, ManaCost, School, IsScroll, IsReaction, IsLearnable, MinMageLevel, Price, Effect, Description);
     }
 }

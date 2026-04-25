@@ -1,0 +1,154 @@
+@page "/spells/print"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@using OvcinaHra.Shared.Domain.Enums
+
+@* Kniha kouzel — A5 landscape spread (297×210mm), one or more spreads of
+   learnable non-scroll spells (issue #148). Toolbar (screen-only) hosts the
+   Tisk action; @media print rules in ovcinahra-theme.css strip the chrome. *@
+
+<div class="oh-sp-tisk-toolbar">
+    <div class="oh-sp-tisk-toolbar-info">
+        <i class="bi bi-book-half"></i> Kniha kouzel — @spreads.Count spread(ů), @learnable.Count kouzel
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-outline-secondary" type="button"
+                @onclick='() => Nav.NavigateTo("/spells")'>
+            <i class="bi bi-arrow-left"></i> Zpět na katalog
+        </button>
+        <button class="btn btn-sm btn-primary" type="button" @onclick="PrintAsync">
+            <i class="bi bi-printer-fill"></i> Tisk
+        </button>
+    </div>
+</div>
+
+@if (loading)
+{
+    <p class="text-muted text-center mt-5">Načítám…</p>
+}
+else if (learnable.Count == 0)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-book fs-1 d-block mb-2"></i>
+        <p>Žádná naučitelná kouzla v katalogu.</p>
+    </div>
+}
+else
+{
+    <div class="oh-sp-print-stage">
+        @foreach (var spread in spreads)
+        {
+            <section class="oh-sp-print-spread">
+                @if (spread.IsFirst)
+                {
+                    <header class="oh-sp-print-banner">
+                        <h1>Kniha kouzel</h1>
+                        <p class="oh-sp-print-banner-sub">— Sbírka naučitelných kouzel —</p>
+                    </header>
+                }
+                @if (!string.IsNullOrEmpty(spread.LevelLabel))
+                {
+                    <div class="oh-sp-print-level-hdr">@spread.LevelLabel</div>
+                }
+                @* Each spread is a 2-col grid (left page / right page); within
+                   each page, three tiles stack vertically — the .oh-sp-print-tile
+                   handles its own page-break-inside avoid. *@
+                <div class="oh-sp-print-page" style="display:flex;flex-direction:column;gap:5mm">
+                    @foreach (var s in spread.LeftPage)
+                    {
+                        <SpellPrintCard Spell="@s" />
+                    }
+                </div>
+                <div class="oh-sp-print-page" style="display:flex;flex-direction:column;gap:5mm">
+                    @foreach (var s in spread.RightPage)
+                    {
+                        <SpellPrintCard Spell="@s" />
+                    }
+                </div>
+            </section>
+        }
+    </div>
+}
+
+@code {
+    private bool loading = true;
+    private List<SpellListDto> learnable = [];
+    private List<Spread> spreads = [];
+
+    /// <summary>Tiles per A5 page side (3 portrait pages stack vertically per
+    /// half of the landscape spread). Two pages × 3 tiles = 6 tiles per
+    /// spread. Designer hint was "~12 tiles per spread (3×2 per page)" but
+    /// realistic A5 portrait fits 3 stacked ~70×100mm tiles — go with that
+    /// and add more spreads if a level overflows.</summary>
+    private const int TilesPerPage = 3;
+    private const int TilesPerSpread = TilesPerPage * 2;
+
+    protected override async Task OnInitializedAsync()
+    {
+        loading = true;
+        try
+        {
+            var all = await Api.GetListAsync<SpellListDto>("/api/spells");
+            // Client-side filter (chosen over a server `?learnable=true` —
+            // small dataset, simpler, no endpoint churn). Flagged in PR body.
+            learnable = all
+                .Where(s => s.IsLearnable && !s.IsScroll)
+                .OrderBy(s => s.Level)
+                .ThenBy(s => s.Name)
+                .ToList();
+            spreads = BuildSpreads(learnable);
+        }
+        finally { loading = false; }
+    }
+
+    private async Task PrintAsync()
+    {
+        try { await JS.InvokeVoidAsync("print"); } catch { /* user rejected; no-op */ }
+    }
+
+    /// <summary>Group spells by level, then chunk each group into spreads of
+    /// 6 tiles. Each spread carries its level label so the printed reader
+    /// sees clear headings I.–V. The first spread also gets the book banner.</summary>
+    private static List<Spread> BuildSpreads(List<SpellListDto> spells)
+    {
+        var result = new List<Spread>();
+        var first = true;
+        foreach (var levelGroup in spells.GroupBy(s => s.Level).OrderBy(g => g.Key))
+        {
+            var label = $"Úroveň {LevelRoman(levelGroup.Key)}";
+            var batch = levelGroup.ToList();
+            for (var i = 0; i < batch.Count; i += TilesPerSpread)
+            {
+                var slab = batch.Skip(i).Take(TilesPerSpread).ToList();
+                var left = slab.Take(TilesPerPage).ToList();
+                var right = slab.Skip(TilesPerPage).Take(TilesPerPage).ToList();
+                result.Add(new Spread(
+                    IsFirst: first,
+                    LevelLabel: i == 0 ? label : $"{label} (pokračování)",
+                    LeftPage: left,
+                    RightPage: right));
+                first = false;
+            }
+        }
+        return result;
+    }
+
+    private static string LevelRoman(int n) => n switch
+    {
+        0 => "S",
+        1 => "I",
+        2 => "II",
+        3 => "III",
+        4 => "IV",
+        5 => "V",
+        _ => n.ToString(System.Globalization.CultureInfo.InvariantCulture)
+    };
+
+    private sealed record Spread(
+        bool IsFirst,
+        string LevelLabel,
+        List<SpellListDto> LeftPage,
+        List<SpellListDto> RightPage);
+}
