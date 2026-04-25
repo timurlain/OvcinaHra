@@ -22,7 +22,7 @@
 <DxGrid Data="@Data"
         KeyFieldName="@KeyFieldName"
         SelectionMode="@SelectionMode"
-        AllowSelectRowByClick="true"
+        AllowSelectRowByClick="@(EditMode != GridEditMode.EditCell)"
         SelectedDataItems="@SelectedDataItems"
         SelectedDataItemsChanged="@SelectedDataItemsChanged"
         RowClick="@RowClick"
