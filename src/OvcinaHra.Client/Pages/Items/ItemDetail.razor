@@ -225,12 +225,21 @@ else
                                     TextFieldName="Display" ValueFieldName="Value" />
                     </DxFormLayoutItem>
                 </DxFormLayoutGroup>
-                <DxFormLayoutGroup Caption="Vizuál" ColSpanMd="12">
-                    <DxFormLayoutItem Caption="Obrázek" ColSpanMd="12">
+                @* Issue #185 ask 3: image left, 3 flag checkboxes stacked right
+                   so the page reads top-down without horizontal scroll. *@
+                <DxFormLayoutGroup Caption="Vizuál a vlastnosti" ColSpanMd="12">
+                    <DxFormLayoutItem Caption="Obrázek" ColSpanMd="6">
                         <ImagePicker EntityType="items" EntityId="item.Id" Alt="Obrázek předmětu" AspectRatio="5:7" />
                     </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Příznaky" ColSpanMd="6">
+                        <div class="d-flex flex-column gap-2">
+                            <DxCheckBox @bind-Checked="@editIsCraftable">Vyrobitelný</DxCheckBox>
+                            <DxCheckBox @bind-Checked="@editIsUnique">Unikátní</DxCheckBox>
+                            <DxCheckBox @bind-Checked="@editIsLimited">Limitovaný</DxCheckBox>
+                        </div>
+                    </DxFormLayoutItem>
                 </DxFormLayoutGroup>
-                <DxFormLayoutGroup Caption="Vlastnosti" ColSpanMd="12">
+                <DxFormLayoutGroup Caption="Obsah" ColSpanMd="12">
                     <DxFormLayoutItem Caption="Efekt" ColSpanMd="12">
                         <DxMemo @bind-Text="@editEffect" Rows="3" />
                     </DxFormLayoutItem>
@@ -239,36 +248,76 @@ else
                     <DxFormLayoutItem Caption="Poznámka" ColSpanMd="12">
                         <DxMemo @bind-Text="@editNote" Rows="3" />
                     </DxFormLayoutItem>
-                    <DxFormLayoutItem ColSpanMd="4">
-                        <DxCheckBox @bind-Checked="@editIsUnique">Unikátní</DxCheckBox>
-                    </DxFormLayoutItem>
-                    <DxFormLayoutItem ColSpanMd="4">
-                        <DxCheckBox @bind-Checked="@editIsLimited">Limitovaný</DxCheckBox>
-                    </DxFormLayoutItem>
-                    <DxFormLayoutItem ColSpanMd="4">
-                        <DxCheckBox @bind-Checked="@editIsCraftable">Vyrobitelný</DxCheckBox>
-                    </DxFormLayoutItem>
                 </DxFormLayoutGroup>
-                <DxFormLayoutGroup Caption="Požadavky" ColSpanMd="12">
-                    <DxFormLayoutItem Caption="Válečník" ColSpanMd="3">
-                        <DxSpinEdit @bind-Value="@editReqWarrior" MinValue="0" MaxValue="10" />
-                    </DxFormLayoutItem>
-                    <DxFormLayoutItem Caption="Lučištník" ColSpanMd="3">
-                        <DxSpinEdit @bind-Value="@editReqArcher" MinValue="0" MaxValue="10" />
-                    </DxFormLayoutItem>
-                    <DxFormLayoutItem Caption="Mág" ColSpanMd="3">
-                        <DxSpinEdit @bind-Value="@editReqMage" MinValue="0" MaxValue="10" />
-                    </DxFormLayoutItem>
-                    <DxFormLayoutItem Caption="Zloděj" ColSpanMd="3">
-                        <DxSpinEdit @bind-Value="@editReqThief" MinValue="0" MaxValue="10" />
-                    </DxFormLayoutItem>
+                @* Issue #185 ask 2: collapsible Požadavky — when all four are
+                   zero the box compresses to a single chevron line so the form
+                   doesn't carry empty inputs. Once the user clicks to expand,
+                   stay expanded for this session even if they zero them again. *@
+                <DxFormLayoutGroup Caption="Požadavky tříd" ColSpanMd="12">
+                    @{
+                        var allReqsZero = editReqWarrior == 0 && editReqArcher == 0 && editReqMage == 0 && editReqThief == 0;
+                    }
+                    @if (allReqsZero && !showReqsExpanded)
+                    {
+                        <DxFormLayoutItem ColSpanMd="12">
+                            <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none"
+                                    @onclick="() => showReqsExpanded = true">
+                                <i class="bi bi-chevron-down me-1"></i>
+                                <span class="text-muted small">Žádné třídní požadavky · klikni pro úpravu</span>
+                            </button>
+                        </DxFormLayoutItem>
+                    }
+                    else
+                    {
+                        <DxFormLayoutItem Caption="Válečník" ColSpanMd="3">
+                            <DxSpinEdit @bind-Value="@editReqWarrior" MinValue="0" MaxValue="10" />
+                        </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="Lučištník" ColSpanMd="3">
+                            <DxSpinEdit @bind-Value="@editReqArcher" MinValue="0" MaxValue="10" />
+                        </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="Mág" ColSpanMd="3">
+                            <DxSpinEdit @bind-Value="@editReqMage" MinValue="0" MaxValue="10" />
+                        </DxFormLayoutItem>
+                        <DxFormLayoutItem Caption="Zloděj" ColSpanMd="3">
+                            <DxSpinEdit @bind-Value="@editReqThief" MinValue="0" MaxValue="10" />
+                        </DxFormLayoutItem>
+                    }
                 </DxFormLayoutGroup>
-                <DxFormLayoutGroup Caption="Obsah" ColSpanMd="12">
-                    @* Reserved for future per-game content (price/stock from /items grid edit popup) *@
-                    <DxFormLayoutItem ColSpanMd="12">
-                        <p class="text-muted small mb-0">Per-game konfigurace (Cena, Sklad, Prodává, Nalezitelný) se upravuje v záložce <strong>Obchod</strong> nebo přes <a href="/items">/items</a> seznam.</p>
-                    </DxFormLayoutItem>
-                </DxFormLayoutGroup>
+                @* Issue #185 ask 1: per-game settings persist via the same Save
+                   click as the catalog edits. Visible when the active game has
+                   the item assigned (otherwise prompt to assign). When IsSold
+                   is checked, the Save handler enforces Price > 0 (#185 ask 4). *@
+                @if (GameContext.SelectedGameId is int activeGameId)
+                {
+                    <DxFormLayoutGroup Caption="@($"V této hře{(activeShop is not null ? $" — {activeShop.Game.GameName}" : "")}")" ColSpanMd="12">
+                        @if (activeShop is null)
+                        {
+                            <DxFormLayoutItem ColSpanMd="12">
+                                <p class="text-muted small mb-0">
+                                    Předmět ještě není přiřazen k aktivní hře. Přiřadit jej můžeš ze seznamu <a href="/items?catalog=true">předmětů (katalog)</a> tlačítkem <strong>Přidat</strong>.
+                                </p>
+                            </DxFormLayoutItem>
+                        }
+                        else
+                        {
+                            <DxFormLayoutItem Caption="Cena" ColSpanMd="3">
+                                <DxSpinEdit @bind-Value="@pgPrice" MinValue="0" />
+                            </DxFormLayoutItem>
+                            <DxFormLayoutItem Caption="Sklad" ColSpanMd="3">
+                                <DxSpinEdit @bind-Value="@pgStockCount" MinValue="0" />
+                            </DxFormLayoutItem>
+                            <DxFormLayoutItem ColSpanMd="3">
+                                <DxCheckBox @bind-Checked="@pgIsSold">Prodávaný</DxCheckBox>
+                            </DxFormLayoutItem>
+                            <DxFormLayoutItem ColSpanMd="3">
+                                <DxCheckBox @bind-Checked="@pgIsFindable">Nalezitelný</DxCheckBox>
+                            </DxFormLayoutItem>
+                            <DxFormLayoutItem Caption="Podmínka prodeje" ColSpanMd="12">
+                                <DxTextBox @bind-Text="@pgSaleCondition" />
+                            </DxFormLayoutItem>
+                        }
+                    </DxFormLayoutGroup>
+                }
             </DxFormLayout>
             @if (error is not null) { <div class="alert alert-danger mt-2">@error</div> }
             <div class="oh-it-d-edit-footer">
@@ -587,6 +636,21 @@ else
     private bool editIsUnique, editIsLimited, editIsCraftable;
     private int editReqWarrior, editReqArcher, editReqMage, editReqThief;
 
+    // Issue #185: collapsible class-requirements group (#185 ask 2). Defaults
+    // to collapsed when all four are zero on load; toggles open on user click.
+    private bool showReqsExpanded;
+
+    // Issue #185 ask 1: per-game (active game) shop fields shown alongside the
+    // catalog edits and persisted by the same Save handler. Loaded from
+    // usage.Shops on each LoadAsync; null when the item isn't assigned to the
+    // active game (the form shows an assign-prompt instead).
+    private ItemUsageShopDto? activeShop;
+    private int? pgPrice;
+    private int? pgStockCount;
+    private bool pgIsSold;
+    private bool pgIsFindable;
+    private string? pgSaleCondition;
+
     // Per-game shop-row edit state (Obchod tab popup) — #147 sub-fix (e).
     private bool isShopEditVisible;
     private bool shopEditSaving;
@@ -662,6 +726,7 @@ else
                     error = $"Nepodařilo se načíst doplňková data: {uex.Message}";
                     usage = new ItemUsageDto(item.Id, item.Name, [], [], [], [], [], []);
                 }
+                ResetActiveShopFromUsage();
             }
         }
         catch (Exception ex) { error = ex.Message; item = null; }
@@ -683,6 +748,31 @@ else
         editReqArcher = item.ReqArcher;
         editReqMage = item.ReqMage;
         editReqThief = item.ReqThief;
+        // Issue #185 ask 2: collapse the class-requirements box when all four
+        // are zero on load. User clicks the chevron to expand and stays open
+        // for the rest of the session even if they zero them again.
+        showReqsExpanded = (editReqWarrior + editReqArcher + editReqMage + editReqThief) > 0;
+    }
+
+    // Issue #185 ask 1: source the per-game shop fields from the usage payload
+    // we already fetch for tab badges. No extra round-trip. Null when the item
+    // isn't assigned to the active game — the form shows an assign-prompt.
+    private void ResetActiveShopFromUsage()
+    {
+        activeShop = null;
+        pgPrice = null;
+        pgStockCount = null;
+        pgIsSold = false;
+        pgIsFindable = false;
+        pgSaleCondition = null;
+        if (usage is null || GameContext.SelectedGameId is not int gid) return;
+        activeShop = usage.Shops.FirstOrDefault(s => s.Game.GameId == gid);
+        if (activeShop is null) return;
+        pgPrice = activeShop.Price;
+        pgStockCount = activeShop.StockCount;
+        pgIsSold = activeShop.IsSold;
+        pgIsFindable = activeShop.IsFindable;
+        pgSaleCondition = activeShop.SaleCondition;
     }
 
     private void SetTab(string tab) => activeTab = tab;
@@ -697,14 +787,57 @@ else
     {
         if (item is null || string.IsNullOrWhiteSpace(editName)) return;
         error = null;
+
+        // Issue #185 ask 4: a sold item must have a positive price; never
+        // allow a negative one. The DxSpinEdit MinValue="0" already blocks
+        // negatives at the input layer, but enforce again here so a stale
+        // bound value can't slip through (paranoia + clear error message).
+        if (activeShop is not null)
+        {
+            if (pgPrice.HasValue && pgPrice.Value < 0)
+            {
+                error = "Cena nesmí být záporná.";
+                return;
+            }
+            if (pgIsSold && (!pgPrice.HasValue || pgPrice.Value <= 0))
+            {
+                error = "Prodávaný předmět musí mít cenu vyšší než nula.";
+                return;
+            }
+        }
+
         isSaving = true;
         try
         {
+            // 1) Catalog Item (always saved when the user clicks Save).
             await Api.PutAsync($"/api/items/{item.Id}",
                 new UpdateItemDto(editName, editType, editEffect, editPhysicalForm,
                     editIsCraftable, editReqWarrior, editReqArcher, editReqMage, editReqThief,
                     editIsUnique, editIsLimited,
                     Note: editNote));
+
+            // 2) Per-game GameItem for the active game (#185 ask 1) — only when
+            // the item is actually assigned. Uses the same DTO + endpoint as
+            // the per-game shop popup so behavior stays coherent across both
+            // surfaces. Surfaces the server's Czech ProblemDetails verbatim
+            // (e.g. the #99 GameItem-in-use block).
+            if (activeShop is not null && GameContext.SelectedGameId is int gid)
+            {
+                var (ok, problem) = await Api.PutWithProblemAsync(
+                    $"/api/items/game-item/{gid}/{item.Id}",
+                    new UpdateGameItemDto(
+                        pgPrice,
+                        pgStockCount,
+                        pgIsSold,
+                        string.IsNullOrWhiteSpace(pgSaleCondition) ? null : pgSaleCondition.Trim(),
+                        pgIsFindable));
+                if (!ok)
+                {
+                    error = problem ?? "Uložení nastavení pro hru selhalo.";
+                    return;
+                }
+            }
+
             await LoadAsync();
             activeTab = "karta";
         }
@@ -730,6 +863,17 @@ else
     private async Task SaveShopEditAsync()
     {
         if (item is null || shopEditSaving) return;
+        // Issue #185 ask 4: same price validation as the main Save handler.
+        if (shopEditPrice.HasValue && shopEditPrice.Value < 0)
+        {
+            shopEditError = "Cena nesmí být záporná.";
+            return;
+        }
+        if (shopEditIsSold && (!shopEditPrice.HasValue || shopEditPrice.Value <= 0))
+        {
+            shopEditError = "Prodávaný předmět musí mít cenu vyšší než nula.";
+            return;
+        }
         shopEditSaving = true;
         shopEditError = null;
         try
