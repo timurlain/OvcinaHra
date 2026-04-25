@@ -1,5 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Tests.Fixtures;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
@@ -182,5 +185,164 @@ public class TimelineEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         var slot = await slotResponse.Content.ReadFromJsonAsync<GameTimeSlotDto>();
         Assert.NotNull(slot);
         Assert.Equal(bonus.Id, slot.BattlefieldBonusId);
+        Assert.Equal("Lesní výhoda", slot.BattlefieldBonusName);
+    }
+
+    [Fact]
+    public async Task CreateSlot_WithoutStage_DefaultsToStart()
+    {
+        var game = await CreateTestGameAsync();
+
+        var response = await Client.PostAsJsonAsync("/api/timeline/slots",
+            new CreateGameTimeSlotDto(game.Id, new DateTime(2026, 5, 1, 10, 0, 0, DateTimeKind.Utc), 2));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<GameTimeSlotDto>();
+        Assert.Equal(TreasureQuestDifficulty.Start, created!.Stage);
+    }
+
+    [Fact]
+    public async Task CreateSlot_WithExplicitStage_RoundTrips()
+    {
+        var game = await CreateTestGameAsync();
+
+        var response = await Client.PostAsJsonAsync("/api/timeline/slots",
+            new CreateGameTimeSlotDto(
+                GameId: game.Id,
+                StartTime: new DateTime(2026, 5, 2, 14, 0, 0, DateTimeKind.Utc),
+                DurationHours: 3,
+                Stage: TreasureQuestDifficulty.Midgame));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<GameTimeSlotDto>();
+        Assert.Equal(TreasureQuestDifficulty.Midgame, created!.Stage);
+
+        var fetched = await Client.GetFromJsonAsync<List<GameTimeSlotDto>>($"/api/timeline/slots/by-game/{game.Id}");
+        Assert.Single(fetched!);
+        Assert.Equal(TreasureQuestDifficulty.Midgame, fetched![0].Stage);
+    }
+
+    [Fact]
+    public async Task UpdateSlot_ChangeStage_Persists()
+    {
+        var game = await CreateTestGameAsync();
+        var create = await Client.PostAsJsonAsync("/api/timeline/slots",
+            new CreateGameTimeSlotDto(game.Id, new DateTime(2026, 5, 1, 10, 0, 0, DateTimeKind.Utc), 2));
+        var slot = await create.Content.ReadFromJsonAsync<GameTimeSlotDto>();
+
+        var update = await Client.PutAsJsonAsync($"/api/timeline/slots/{slot!.Id}",
+            new UpdateGameTimeSlotDto(
+                StartTime: slot.StartTime,
+                DurationHours: slot.DurationHours,
+                InGameYear: null,
+                Rules: null,
+                BattlefieldBonusId: null,
+                Stage: TreasureQuestDifficulty.Lategame));
+        Assert.Equal(HttpStatusCode.NoContent, update.StatusCode);
+
+        var fetched = await Client.GetFromJsonAsync<List<GameTimeSlotDto>>($"/api/timeline/slots/by-game/{game.Id}");
+        Assert.Equal(TreasureQuestDifficulty.Lategame, fetched!.Single().Stage);
+    }
+
+    [Fact]
+    public async Task CreateSlot_WithLinkedEvents_RoundTrips()
+    {
+        var game = await CreateTestGameAsync();
+        var ev1 = await CreateEventAsync(game.Id, "Bitva u brodu");
+        var ev2 = await CreateEventAsync(game.Id, "Trh v Brodečku");
+
+        var response = await Client.PostAsJsonAsync("/api/timeline/slots",
+            new CreateGameTimeSlotDto(
+                GameId: game.Id,
+                StartTime: new DateTime(2026, 5, 1, 10, 0, 0, DateTimeKind.Utc),
+                DurationHours: 2,
+                LinkedGameEventIds: [ev1.Id, ev2.Id]));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<GameTimeSlotDto>();
+        Assert.Equal(2, created!.LinkedEvents.Count);
+        Assert.Contains(created.LinkedEvents, e => e.Id == ev1.Id);
+        Assert.Contains(created.LinkedEvents, e => e.Id == ev2.Id);
+
+        // Each event was bootstrapped with its own placeholder slot — filter to the slot under test.
+        var fetched = await Client.GetFromJsonAsync<List<GameTimeSlotDto>>($"/api/timeline/slots/by-game/{game.Id}");
+        var thisSlot = fetched!.Single(s => s.Id == created.Id);
+        Assert.Equal(2, thisSlot.LinkedEvents.Count);
+    }
+
+    [Fact]
+    public async Task UpdateSlot_LinkedEventIds_SyncsAddAndRemove()
+    {
+        var game = await CreateTestGameAsync();
+        var ev1 = await CreateEventAsync(game.Id, "První");
+        var ev2 = await CreateEventAsync(game.Id, "Druhá");
+        var ev3 = await CreateEventAsync(game.Id, "Třetí");
+
+        var create = await Client.PostAsJsonAsync("/api/timeline/slots",
+            new CreateGameTimeSlotDto(game.Id, new DateTime(2026, 5, 1, 10, 0, 0, DateTimeKind.Utc), 2,
+                LinkedGameEventIds: [ev1.Id, ev2.Id]));
+        var slot = await create.Content.ReadFromJsonAsync<GameTimeSlotDto>();
+
+        // Replace [ev1, ev2] with [ev2, ev3]: ev1 removed, ev3 added, ev2 retained.
+        var update = await Client.PutAsJsonAsync($"/api/timeline/slots/{slot!.Id}",
+            new UpdateGameTimeSlotDto(
+                StartTime: slot.StartTime,
+                DurationHours: slot.DurationHours,
+                InGameYear: null,
+                Rules: null,
+                BattlefieldBonusId: null,
+                LinkedGameEventIds: [ev2.Id, ev3.Id]));
+        Assert.Equal(HttpStatusCode.NoContent, update.StatusCode);
+
+        var fetched = await Client.GetFromJsonAsync<List<GameTimeSlotDto>>($"/api/timeline/slots/by-game/{game.Id}");
+        var thisSlot = fetched!.Single(s => s.Id == slot.Id);
+        var linked = thisSlot.LinkedEvents.Select(e => e.Id).ToHashSet();
+        Assert.Equal(new HashSet<int> { ev2.Id, ev3.Id }, linked);
+    }
+
+    [Fact]
+    public async Task DeleteSlot_RemovesJoinRowsButPreservesLinkedEvent()
+    {
+        var game = await CreateTestGameAsync();
+        var ev = await CreateEventAsync(game.Id, "Smazatelný slot");
+
+        var create = await Client.PostAsJsonAsync("/api/timeline/slots",
+            new CreateGameTimeSlotDto(game.Id, new DateTime(2026, 5, 1, 10, 0, 0, DateTimeKind.Utc), 2,
+                LinkedGameEventIds: [ev.Id]));
+        var slot = await create.Content.ReadFromJsonAsync<GameTimeSlotDto>();
+
+        var delete = await Client.DeleteAsync($"/api/timeline/slots/{slot!.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
+
+        // Slot is gone.
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        Assert.False(await db.GameTimeSlots.AnyAsync(s => s.Id == slot.Id));
+        // Join rows for the deleted slot are gone.
+        Assert.False(await db.GameEventTimeSlots.AnyAsync(j => j.GameTimeSlotId == slot.Id));
+        // GameEvent itself is preserved (still has the placeholder-slot join row).
+        Assert.True(await db.GameEvents.AnyAsync(e => e.Id == ev.Id));
+    }
+
+    private async Task<GameDetailDto> CreateTestGameAsync()
+    {
+        var response = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Test Hra", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<GameDetailDto>())!;
+    }
+
+    private async Task<GameEventDetailDto> CreateEventAsync(int gameId, string name)
+    {
+        // GameEvents enforce TimeSlotIds.Count >= 1 — bootstrap a placeholder slot for each event.
+        var slotResp = await Client.PostAsJsonAsync("/api/timeline/slots",
+            new CreateGameTimeSlotDto(gameId, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), 1));
+        slotResp.EnsureSuccessStatusCode();
+        var placeholder = (await slotResp.Content.ReadFromJsonAsync<GameTimeSlotDto>())!;
+
+        var response = await Client.PostAsJsonAsync($"/api/games/{gameId}/events",
+            new CreateGameEventDto(name, null, [placeholder.Id], [], [], []));
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<GameEventDetailDto>())!;
     }
 }

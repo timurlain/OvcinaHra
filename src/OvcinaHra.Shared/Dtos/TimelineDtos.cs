@@ -1,10 +1,46 @@
+using System.Text.Json.Serialization;
+using OvcinaHra.Shared.Domain.Enums;
+using OvcinaHra.Shared.Extensions;
+
 namespace OvcinaHra.Shared.Dtos;
 
-public record GameTimeSlotDto(int Id, int? InGameYear, DateTime StartTime, decimal DurationHours, string? Rules, int? BattlefieldBonusId, int GameId);
+public record GameTimeSlotDto(
+    int Id,
+    int? InGameYear,
+    DateTime StartTime,
+    decimal DurationHours,
+    string? Rules,
+    int? BattlefieldBonusId,
+    int GameId,
+    TreasureQuestDifficulty Stage = TreasureQuestDifficulty.Start,
+    string? BattlefieldBonusName = null)
+{
+    public IReadOnlyList<LinkedGameEventDto> LinkedEvents { get; init; } = [];
 
-public record CreateGameTimeSlotDto(int GameId, DateTime StartTime, decimal DurationHours, int? InGameYear = null, string? Rules = null, int? BattlefieldBonusId = null);
+    [JsonIgnore] public string StageDisplay => Stage.GetDisplayName();
+    [JsonIgnore] public DateTime EndTime => StartTime.AddHours((double)DurationHours);
+}
 
-public record UpdateGameTimeSlotDto(DateTime StartTime, decimal DurationHours, int? InGameYear, string? Rules, int? BattlefieldBonusId);
+public record LinkedGameEventDto(int Id, string Name, GameEventKind Kind);
+
+public record CreateGameTimeSlotDto(
+    int GameId,
+    DateTime StartTime,
+    decimal DurationHours,
+    int? InGameYear = null,
+    string? Rules = null,
+    int? BattlefieldBonusId = null,
+    TreasureQuestDifficulty Stage = TreasureQuestDifficulty.Start,
+    IReadOnlyList<int>? LinkedGameEventIds = null);
+
+public record UpdateGameTimeSlotDto(
+    DateTime StartTime,
+    decimal DurationHours,
+    int? InGameYear,
+    string? Rules,
+    int? BattlefieldBonusId,
+    TreasureQuestDifficulty Stage = TreasureQuestDifficulty.Start,
+    IReadOnlyList<int>? LinkedGameEventIds = null);
 
 public record BattlefieldBonusDto(int Id, string? Name, int AttackBonus, int DefenseBonus, string? Description, string? ImagePath, int GameId);
 
