@@ -1,0 +1,19 @@
+@* Skill category chip — 1.5px outlined pill + colored dot + Czech label
+   (issue #153). Reads --oh-skill-{key} from the global palette tokens
+   declared on :root in ovcinahra-theme.css. *@
+
+<span class="oh-sk-cat" data-cat="@CategoryKey(Category)" title="@($"Kategorie: {Category.GetDisplayName()}")">
+    @Category.GetDisplayName()
+</span>
+
+@code {
+    [Parameter] public SkillCategory Category { get; set; }
+
+    private static string CategoryKey(SkillCategory c) => c switch
+    {
+        SkillCategory.Class     => "class",
+        SkillCategory.Adventure => "adventure",
+        SkillCategory.Quest     => "quest",
+        _ => "class"
+    };
+}

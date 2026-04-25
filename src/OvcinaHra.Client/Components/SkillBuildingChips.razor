@@ -1,0 +1,49 @@
+@* Read-only building requirement chip cluster (issue #153).
+     · Up to MaxVisible chips (3 by default) + "+ N více" overflow chip
+     · Each chip click navigates to /buildings/{id}
+     · Empty state = explicit "Žádná budova" muted text (designer h4 rule) *@
+
+@inject NavigationManager Nav
+
+@if (BuildingIds.Count == 0)
+{
+    <span class="oh-sk-bld-empty">Žádná budova</span>
+}
+else
+{
+    <div class="oh-sk-bld-cluster">
+        @foreach (var id in BuildingIds.Take(MaxVisible))
+        {
+            var captured = id;
+            <button type="button" class="oh-sk-bld-chip" title="@($"Otevřít budovu #{captured}")"
+                    @onclick:stopPropagation="true"
+                    @onclick="() => GoToBuilding(captured)">
+                <i class="bi bi-houses"></i>@LookupName(captured)
+            </button>
+        }
+        @if (BuildingIds.Count > MaxVisible)
+        {
+            <span class="oh-sk-bld-overflow" title="@($"Plný seznam: {BuildingIds.Count} budov")">+ @(BuildingIds.Count - MaxVisible) více</span>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>IDs of required buildings, in display order.</summary>
+    [Parameter] public IReadOnlyList<int> BuildingIds { get; set; } = Array.Empty<int>();
+
+    /// <summary>Optional name lookup so the cluster can render building names
+    /// instead of bare ids. Caller passes a dictionary it already loaded
+    /// once for the page (catalog list, peek, karta, etc.). Falls back to
+    /// "#{id}" when the lookup is empty or the id isn't in it.</summary>
+    [Parameter] public IReadOnlyDictionary<int, string>? Names { get; set; }
+
+    [Parameter] public int MaxVisible { get; set; } = 3;
+
+    private string LookupName(int id)
+        => (Names is not null && Names.TryGetValue(id, out var name) && !string.IsNullOrWhiteSpace(name))
+            ? name
+            : $"#{id}";
+
+    private void GoToBuilding(int id) => Nav.NavigateTo($"/buildings/{id}");
+}

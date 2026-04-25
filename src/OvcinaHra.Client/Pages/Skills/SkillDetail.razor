@@ -1,0 +1,393 @@
+@page "/skills/{Id:int}"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Extensions
+
+<div class="d-flex align-items-center gap-3 mb-3">
+    <button class="btn btn-sm btn-outline-secondary" type="button"
+            @onclick='() => Nav.NavigateTo("/skills")'>
+        <i class="bi bi-arrow-left"></i> Zpět
+    </button>
+    <h1 class="mb-0">@(skill?.Name ?? "Dovednost")</h1>
+</div>
+
+@if (loading)
+{
+    <p class="text-muted">Načítám…</p>
+}
+else if (skill is null && error is not null)
+{
+    <div class="alert alert-danger d-flex align-items-center gap-2">
+        <i class="bi bi-wifi-off"></i>
+        <span>Nepodařilo se načíst dovednost: @error</span>
+        <button type="button" class="btn btn-sm btn-outline-primary ms-auto" @onclick="LoadAsync">Zkusit znovu</button>
+    </div>
+}
+else if (skill is null)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-emoji-frown fs-1 d-block mb-2"></i>
+        <p>Dovednost nenalezena.</p>
+    </div>
+}
+else
+{
+    <div class="d-flex gap-2 mb-3">
+        <button class="btn btn-sm @(activeTab == "karta" ? "btn-primary" : "btn-outline-primary")"
+                @onclick='() => activeTab = "karta"'>
+            <i class="bi bi-bookmark-fill"></i> Karta
+        </button>
+        <button class="btn btn-sm @(activeTab == "upravit" ? "btn-primary" : "btn-outline-primary")"
+                @onclick='() => activeTab = "upravit"'>
+            <i class="bi bi-pencil"></i> Upravit
+        </button>
+        <button class="btn btn-sm @(activeTab == "usage" ? "btn-primary" : "btn-outline-primary")"
+                @onclick="OpenUsageTabAsync">
+            <i class="bi bi-stack"></i> V tomto roce
+            @if (skill.UsageCount > 0)
+            {
+                <span class="badge bg-light text-dark ms-1">@skill.UsageCount</span>
+            }
+        </button>
+    </div>
+
+    @if (activeTab == "karta")
+    {
+        <div class="oh-sk-karta-grid">
+            <article class="oh-sk-karta" style="@KartaStyle(skill.Category)">
+                <h2 class="oh-sk-karta-name">@skill.Name</h2>
+                <div class="oh-sk-karta-meta">
+                    <SkillCategoryChip Category="@skill.Category" />
+                    <ClassPip Class="@skill.ClassRestriction" ShowAllLine="true" />
+                </div>
+                <hr class="oh-sk-karta-sep" />
+                <p class="oh-sk-karta-fx">@(string.IsNullOrWhiteSpace(skill.Effect) ? "(text karty zatím prázdný)" : skill.Effect)</p>
+                @if (!string.IsNullOrWhiteSpace(skill.RequirementNotes))
+                {
+                    <p class="oh-sk-karta-reqnote">@skill.RequirementNotes</p>
+                }
+            </article>
+
+            <aside class="oh-sk-karta-side">
+                <div class="oh-sk-karta-side-block">
+                    <h6>Požadované budovy</h6>
+                    <SkillBuildingChips BuildingIds="@skill.RequiredBuildingIds" Names="@buildingNames" MaxVisible="6" />
+                </div>
+                <div class="oh-sk-karta-side-block">
+                    <h6>Kopie ve hrách</h6>
+                    @if (skill.UsageCount == 0)
+                    {
+                        <p class="text-muted small mb-0 fst-italic">Žádné kopie — šablona je v katalogu, ale dosud nebyla přidána do žádné hry.</p>
+                    }
+                    else
+                    {
+                        <p class="mb-0">
+                            <strong class="oh-sk-tpl-badge">@skill.UsageCount</strong>
+                            <span class="text-muted small">— viz záložka „V tomto roce".</span>
+                        </p>
+                    }
+                </div>
+            </aside>
+        </div>
+    }
+    else if (activeTab == "upravit")
+    {
+        <DxFormLayout>
+            <DxFormLayoutGroup Caption="Identita" ColSpanMd="12">
+                <DxFormLayoutItem Caption="Název" ColSpanMd="8">
+                    <DxTextBox @bind-Text="@editModel.Name" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Kategorie" ColSpanMd="4">
+                    <DxComboBox Data="@categoryValues" @bind-Value="@editModel.Category"
+                                TextFieldName="Display" ValueFieldName="Value" />
+                </DxFormLayoutItem>
+                @* ClassRestriction is meaningful only on Category=Class skills.
+                   The Adventure / Quest categories never gate by class — keep
+                   the field hidden so users don't save inconsistent rows. *@
+                @if (editModel.Category == SkillCategory.Class)
+                {
+                    <DxFormLayoutItem Caption="Pro povolání" ColSpanMd="12"
+                                      Helper="Nech prázdné pro neomezenou dovednost.">
+                        <DxComboBox Data="@classValues" @bind-Value="@editModel.ClassRestriction"
+                                    TextFieldName="Display" ValueFieldName="Value"
+                                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                    </DxFormLayoutItem>
+                }
+            </DxFormLayoutGroup>
+
+            <DxFormLayoutGroup Caption="Obsah" ColSpanMd="12">
+                <DxFormLayoutItem ColSpanMd="12">
+                    <div class="oh-sacred-banner">
+                        <i class="bi bi-shield-fill-exclamation"></i>
+                        <span>Text efektu se zobrazuje hráčům <strong>doslovně</strong>. Žádné formátování ani zkracování — co napíšeš, to vidí.</span>
+                    </div>
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Efekt (text karty — verbatim)" ColSpanMd="12">
+                    <DxMemo @bind-Text="@editModel.Effect" Rows="4" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Poznámky k požadavkům" ColSpanMd="12">
+                    <DxMemo @bind-Text="@editModel.RequirementNotes" Rows="2" />
+                </DxFormLayoutItem>
+            </DxFormLayoutGroup>
+
+            <DxFormLayoutGroup Caption="Budovy" ColSpanMd="12">
+                <DxFormLayoutItem ColSpanMd="12"
+                                  Helper="Vyber všechny budovy, které musí v dané hře existovat, aby se dovednost dala používat.">
+                    <BuildingChipPicker SelectedBuildingIds="@editModel.RequiredBuildingIds"
+                                        SelectedBuildingIdsChanged="OnBuildingsChanged" />
+                </DxFormLayoutItem>
+            </DxFormLayoutGroup>
+        </DxFormLayout>
+
+        @if (saveError is not null)
+        {
+            <div class="alert alert-danger mt-3">@saveError</div>
+        }
+
+        <div class="d-flex gap-2 mt-3">
+            @if (skill.UsageCount > 0)
+            {
+                <span class="oh-sk-delete-blocked" title="@($"Šablona má kopie v {skill.UsageCount} hrách — před smazáním je všechny odeber.")">
+                    <i class="bi bi-lock-fill"></i> Smazat zablokováno — kopie v @skill.UsageCount hrách
+                </span>
+            }
+            else
+            {
+                <button class="btn btn-outline-danger" type="button"
+                        @onclick="() => isDeleteVisible = true" disabled="@isSaving">
+                    <i class="bi bi-trash"></i> Smazat
+                </button>
+            }
+            <div style="flex:1"></div>
+            <button class="btn btn-secondary" type="button" @onclick='() => activeTab = "karta"' disabled="@isSaving">Zrušit</button>
+            <button class="btn btn-primary" type="button" @onclick="SaveAsync"
+                    disabled="@(isSaving || string.IsNullOrWhiteSpace(editModel.Name))">
+                @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Uložit
+            </button>
+        </div>
+    }
+    else if (activeTab == "usage")
+    {
+        @if (usage is null)
+        {
+            <p class="text-muted">Načítám…</p>
+        }
+        else if (usage.CopiesCount == 0)
+        {
+            <div class="oh-sk-usage-empty">
+                <i class="bi bi-stack me-2"></i>
+                Žádná hra zatím nemá kopii této šablony. Otevři detail hry a přidej dovednost ze šablony.
+            </div>
+        }
+        else
+        {
+            <p class="text-muted small mb-3">
+                Šablona má kopie v <strong>@usage.CopiesCount</strong> hrách. Klikni pro přechod na seznam dovedností v dané hře.
+            </p>
+            <div class="oh-sk-usage-list">
+                @foreach (var g in usage.Games)
+                {
+                    var capturedGameId = g.GameId;
+                    <div class="oh-sk-usage-row" role="link" tabindex="0"
+                         @onclick="() => GoToGameSkills(capturedGameId)"
+                         @onkeydown="e => OnUsageRowKey(e, capturedGameId)">
+                        <div class="oh-sk-usage-row-head">
+                            <h5 class="oh-sk-usage-row-name">@g.GameName</h5>
+                            <span class="oh-sk-usage-row-edition">ED. @g.Edition</span>
+                        </div>
+                        <i class="bi bi-arrow-right text-muted"></i>
+                    </div>
+                }
+            </div>
+        }
+    }
+}
+
+@* Delete confirm — only reachable when usage == 0 *@
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Smazat dovednost?" Width="420px">
+    <BodyContentTemplate Context="dCtx">
+        <p>Opravdu chcete smazat dovednost <strong>@skill?.Name</strong>?</p>
+        <p class="text-muted small">Server smazání zablokuje, pokud existují kopie v hrách. Aktuálně: @(skill?.UsageCount ?? 0) kopií.</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" type="button" @onclick="() => isDeleteVisible = false" disabled="@isSaving">Zrušit</button>
+            <button class="btn btn-danger" type="button" @onclick="DeleteAsync" disabled="@isSaving">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private SkillDto? skill;
+    private SkillUsageDto? usage;
+    private bool loading = true;
+    private string? error;
+    private string activeTab = "karta";
+
+    private EditForm editModel = new();
+    private bool isSaving;
+    private bool isDeleteVisible;
+    private string? saveError;
+
+    /// <summary>Building name lookup populated once on detail load and shared
+    /// with the read-only chips on Karta. Loaded best-effort — falls back to
+    /// "#{id}" rendering if the buildings endpoint is unreachable.</summary>
+    private Dictionary<int, string> buildingNames = new();
+
+    private static readonly List<CategoryOption> categoryValues = Enum.GetValues<SkillCategory>()
+        .Select(c => new CategoryOption(c, c.GetDisplayName())).ToList();
+    private static readonly List<ClassOption> classValues = Enum.GetValues<PlayerClass>()
+        .Select(p => new ClassOption(p, p.GetDisplayName())).ToList();
+    private record CategoryOption(SkillCategory Value, string Display);
+    private record ClassOption(PlayerClass Value, string Display);
+
+    /// <summary>Tracks the last Id we loaded so navigating /skills/{a} →
+    /// /skills/{b} (Blazor reuses the component instance) re-fetches.
+    /// `OnInitializedAsync` only fires once and would leave us stuck on
+    /// the original skill.</summary>
+    private int _loadedForId = -1;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Id != _loadedForId)
+        {
+            _loadedForId = Id;
+            // Reset transient tab state so we don't carry V-tomto-roce data
+            // from the previous skill into the new one.
+            usage = null;
+            activeTab = "karta";
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        error = null;
+        try
+        {
+            var detail = await Api.GetAsync<SkillDto>($"/api/skills/{Id}");
+            if (detail is null) { skill = null; return; }
+            skill = detail;
+            editModel = EditForm.FromDto(detail);
+
+            try
+            {
+                var bs = await Api.GetListAsync<BuildingListDto>("/api/buildings");
+                buildingNames = bs.ToDictionary(b => b.Id, b => b.Name);
+            }
+            catch { buildingNames = new(); }
+        }
+        catch (Exception ex) { error = ex.Message; skill = null; }
+        finally { loading = false; }
+    }
+
+    private async Task OpenUsageTabAsync()
+    {
+        activeTab = "usage";
+        if (usage is null)
+        {
+            try { usage = await Api.GetAsync<SkillUsageDto>($"/api/skills/{Id}/usage"); }
+            catch { usage = new SkillUsageDto(Id, 0, Array.Empty<SkillUsageGameDto>()); }
+        }
+    }
+
+    private void OnBuildingsChanged(IReadOnlyList<int> next)
+    {
+        editModel.RequiredBuildingIds = next;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(editModel.Name)) return;
+        saveError = null;
+        isSaving = true;
+        try
+        {
+            var (ok, problem) = await Api.PutWithProblemAsync($"/api/skills/{Id}", editModel.ToUpdateRequest());
+            if (!ok)
+            {
+                saveError = problem ?? "Uložení dovednosti se nepodařilo.";
+                return;
+            }
+            await LoadAsync();
+            activeTab = "karta";
+        }
+        catch (Exception ex) { saveError = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task DeleteAsync()
+    {
+        saveError = null;
+        isSaving = true;
+        try
+        {
+            var (ok, problem) = await Api.DeleteWithProblemAsync($"/api/skills/{Id}");
+            if (!ok)
+            {
+                saveError = problem ?? "Smazání dovednosti se nepodařilo.";
+                isDeleteVisible = false;
+                // Refresh — usage count may have changed since the page rendered.
+                await LoadAsync();
+                return;
+            }
+            isDeleteVisible = false;
+            Nav.NavigateTo("/skills");
+        }
+        catch (Exception ex) { saveError = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private void GoToGameSkills(int gameId) => Nav.NavigateTo($"/games/{gameId}/skills");
+
+    private void OnUsageRowKey(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e, int gameId)
+    {
+        if (e.Key is "Enter" or " ") GoToGameSkills(gameId);
+    }
+
+    private static string KartaStyle(SkillCategory c)
+        => $"--oh-c: var(--oh-skill-{CategoryKey(c)});";
+
+    private static string CategoryKey(SkillCategory c) => c switch
+    {
+        SkillCategory.Class     => "class",
+        SkillCategory.Adventure => "adventure",
+        SkillCategory.Quest     => "quest",
+        _ => "class"
+    };
+
+    private sealed class EditForm
+    {
+        public string Name { get; set; } = "";
+        public SkillCategory Category { get; set; } = SkillCategory.Class;
+        public PlayerClass? ClassRestriction { get; set; }
+        public string? Effect { get; set; }
+        public string? RequirementNotes { get; set; }
+        public IReadOnlyList<int> RequiredBuildingIds { get; set; } = Array.Empty<int>();
+
+        public static EditForm FromDto(SkillDto d) => new()
+        {
+            Name = d.Name,
+            Category = d.Category,
+            ClassRestriction = d.ClassRestriction,
+            Effect = d.Effect,
+            RequirementNotes = d.RequirementNotes,
+            RequiredBuildingIds = d.RequiredBuildingIds.ToList()
+        };
+
+        public UpdateSkillRequest ToUpdateRequest() => new(
+            Name.Trim(),
+            // Gate ClassRestriction on Category — non-Class skills cannot
+            // carry a class lock per the rule the GameSkills + inline-creator
+            // flows already follow.
+            Category == SkillCategory.Class ? ClassRestriction : null,
+            string.IsNullOrWhiteSpace(Effect) ? null : Effect.Trim(),
+            string.IsNullOrWhiteSpace(RequirementNotes) ? null : RequirementNotes.Trim(),
+            RequiredBuildingIds.ToList(),
+            Category);
+    }
+}

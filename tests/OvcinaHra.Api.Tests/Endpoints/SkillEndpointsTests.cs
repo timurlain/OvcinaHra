@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OvcinaHra.Api.Data;
@@ -288,57 +289,12 @@ public class SkillEndpointsTests(PostgresFixture postgres) : IntegrationTestBase
         Assert.Null(gone);
     }
 
-    [Fact]
-    public async Task Delete_WithGameSkillReference_NullsOutTemplateSkillId()
-    {
-        // Template delete no longer blocks when per-game copies reference it;
-        // the FK cascades SetNull so per-game GameSkill rows survive without a template.
-        var skill = await CreateSkillAsync("Šablona s kopiemi", null, null, null, []);
-        int skillId = skill.Id;
-
-        int gameSkillId;
-        using (var scope = Factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
-            var game = new Game
-            {
-                Name = "Testovací hra",
-                Edition = 1,
-                StartDate = new DateOnly(2026, 1, 1),
-                EndDate = new DateOnly(2026, 1, 3),
-                Status = default
-            };
-            db.Games.Add(game);
-            await db.SaveChangesAsync();
-
-            var gs = new GameSkill
-            {
-                GameId = game.Id,
-                TemplateSkillId = skillId,
-                Name = "Kopie šablony",
-                Category = SkillCategory.Class,
-                XpCost = 10,
-                LevelRequirement = null
-            };
-            db.GameSkills.Add(gs);
-            await db.SaveChangesAsync();
-            gameSkillId = gs.Id;
-        }
-
-        var response = await Client.DeleteAsync($"/api/skills/{skillId}");
-        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
-
-        using var scope2 = Factory.Services.CreateScope();
-        var db2 = scope2.ServiceProvider.GetRequiredService<WorldDbContext>();
-
-        // Template is gone.
-        Assert.Null(await db2.Skills.SingleOrDefaultAsync(s => s.Id == skillId));
-
-        // GameSkill row survives with TemplateSkillId nulled.
-        var persistedGs = await db2.GameSkills.SingleOrDefaultAsync(g => g.Id == gameSkillId);
-        Assert.NotNull(persistedGs);
-        Assert.Null(persistedGs!.TemplateSkillId);
-    }
+    // Note (issue #153): Delete is now blocked at the API when GameSkill copies
+    // reference the template — see `Delete_BlockedWith409_WhenCopiesExist` near
+    // the bottom of this file. The previous "cascade SetNull" contract that
+    // lived here was replaced because the designer brief is explicit:
+    // "Smazat zablokováno když existují kopie v hrách". The 409 path keeps
+    // the copies authoritatively rooted in their templates.
 
     [Fact]
     public async Task Delete_NonExistentId_Returns404()
@@ -408,5 +364,160 @@ public class SkillEndpointsTests(PostgresFixture postgres) : IntegrationTestBase
         var response = await Client.PostAsJsonAsync("/api/skills", dto);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<SkillDto>())!;
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    //  Issue #153 — usage rollup + delete-blocked
+    // ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetById_ReturnsZeroUsage_WhenNoCopiesExist()
+    {
+        var skill = await CreateSkillAsync("Solo Skill", PlayerClass.Mage, "Effect", null, []);
+
+        var resp = await Client.GetAsync($"/api/skills/{skill.Id}");
+        resp.EnsureSuccessStatusCode();
+        var fetched = await resp.Content.ReadFromJsonAsync<SkillDto>();
+
+        Assert.NotNull(fetched);
+        Assert.Equal(0, fetched!.UsageCount);
+    }
+
+    [Fact]
+    public async Task GetById_PopulatesUsageCount_WhenCopiesExist()
+    {
+        var skill = await CreateSkillAsync("Forked Skill", PlayerClass.Warrior, "Effect", null, []);
+        await SeedGameAndCopyAsync(skill.Id, "Hra A");
+        await SeedGameAndCopyAsync(skill.Id, "Hra B");
+
+        var resp = await Client.GetAsync($"/api/skills/{skill.Id}");
+        resp.EnsureSuccessStatusCode();
+        var fetched = await resp.Content.ReadFromJsonAsync<SkillDto>();
+
+        Assert.NotNull(fetched);
+        Assert.Equal(2, fetched!.UsageCount);
+    }
+
+    [Fact]
+    public async Task GetAll_PopulatesUsageCount_PerTemplate()
+    {
+        var s1 = await CreateSkillAsync("Tpl-1", null, null, null, []);
+        var s2 = await CreateSkillAsync("Tpl-2", null, null, null, []);
+        await SeedGameAndCopyAsync(s1.Id, "Hra X");
+        await SeedGameAndCopyAsync(s2.Id, "Hra Y");
+        await SeedGameAndCopyAsync(s2.Id, "Hra Z");
+
+        var list = await Client.GetFromJsonAsync<List<SkillDto>>("/api/skills");
+
+        Assert.NotNull(list);
+        Assert.Equal(1, list!.Single(x => x.Id == s1.Id).UsageCount);
+        Assert.Equal(2, list!.Single(x => x.Id == s2.Id).UsageCount);
+    }
+
+    [Fact]
+    public async Task GetUsage_ReturnsGames_WhenCopiesExist()
+    {
+        var skill = await CreateSkillAsync("Usage Skill", null, "Effect", null, []);
+        await SeedGameAndCopyAsync(skill.Id, "První hra");
+        await SeedGameAndCopyAsync(skill.Id, "Druhá hra");
+
+        var resp = await Client.GetAsync($"/api/skills/{skill.Id}/usage");
+        resp.EnsureSuccessStatusCode();
+        var usage = await resp.Content.ReadFromJsonAsync<SkillUsageDto>();
+
+        Assert.NotNull(usage);
+        Assert.Equal(skill.Id, usage!.SkillId);
+        Assert.Equal(2, usage.CopiesCount);
+        Assert.Equal(2, usage.Games.Count);
+        Assert.Contains(usage.Games, g => g.GameName == "První hra");
+        Assert.Contains(usage.Games, g => g.GameName == "Druhá hra");
+    }
+
+    [Fact]
+    public async Task GetUsage_ReturnsEmpty_WhenNoCopies()
+    {
+        var skill = await CreateSkillAsync("Empty Usage", null, null, null, []);
+
+        var resp = await Client.GetAsync($"/api/skills/{skill.Id}/usage");
+        resp.EnsureSuccessStatusCode();
+        var usage = await resp.Content.ReadFromJsonAsync<SkillUsageDto>();
+
+        Assert.NotNull(usage);
+        Assert.Equal(0, usage!.CopiesCount);
+        Assert.Empty(usage.Games);
+    }
+
+    [Fact]
+    public async Task GetUsage_ReturnsNotFound_WhenSkillMissing()
+    {
+        var resp = await Client.GetAsync("/api/skills/999999/usage");
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Delete_BlockedWith409_WhenCopiesExist()
+    {
+        var skill = await CreateSkillAsync("Locked", null, "Effect", null, []);
+        await SeedGameAndCopyAsync(skill.Id, "Aktivní hra");
+
+        var resp = await Client.DeleteAsync($"/api/skills/{skill.Id}");
+        Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
+        var problem = await resp.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Contains("nelze smazat", problem!.Title, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("hrách", problem.Detail);
+
+        // The skill must still exist after the blocked delete.
+        var getResp = await Client.GetAsync($"/api/skills/{skill.Id}");
+        Assert.Equal(HttpStatusCode.OK, getResp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Delete_AllowedWhenNoCopies()
+    {
+        var skill = await CreateSkillAsync("Free To Delete", null, null, null, []);
+
+        var resp = await Client.DeleteAsync($"/api/skills/{skill.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+
+        var getResp = await Client.GetAsync($"/api/skills/{skill.Id}");
+        Assert.Equal(HttpStatusCode.NotFound, getResp.StatusCode);
+    }
+
+    /// <summary>
+    /// Seeds a Game + a GameSkill that copies the given template directly via
+    /// DbContext. Avoids the public POST /api/games/{id}/skills route so the
+    /// usage-count tests stay focused on read behavior.
+    /// </summary>
+    private async Task<int> SeedGameAndCopyAsync(int templateSkillId, string gameName)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        var template = await db.Skills.SingleAsync(s => s.Id == templateSkillId);
+        var game = new Game
+        {
+            Name = gameName,
+            Edition = 1,
+            StartDate = new DateOnly(2026, 5, 1),
+            EndDate = new DateOnly(2026, 5, 3),
+            Status = GameStatus.Draft
+        };
+        db.Games.Add(game);
+        await db.SaveChangesAsync();
+        var copy = new GameSkill
+        {
+            GameId = game.Id,
+            TemplateSkillId = template.Id,
+            Name = template.Name,
+            Category = template.Category,
+            ClassRestriction = template.ClassRestriction,
+            Effect = template.Effect,
+            RequirementNotes = template.RequirementNotes,
+            XpCost = 5,
+            LevelRequirement = null
+        };
+        db.GameSkills.Add(copy);
+        await db.SaveChangesAsync();
+        return copy.Id;
     }
 }

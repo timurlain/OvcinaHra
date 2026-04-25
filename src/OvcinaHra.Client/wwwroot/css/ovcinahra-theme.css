@@ -2835,3 +2835,146 @@
     color:#5b4a17;background:#fdf6e3;border:1px solid #f0d68a;
     border-left:3px solid #B26223;border-radius:3px}
 .oh-overlay-pp-drozd .bi{color:#B26223;font-size:.95rem;line-height:1}
+
+/* ============================================================
+   Skills — catalog · detail (3 tabs) · per-game grid (issue #153)
+   Class prefix: .oh-sk-*  (cells .oh-sk-c-*, peek .oh-sk-peek-*,
+   karta .oh-sk-karta-*, edit .oh-sk-edit-*, V-tomto-roce
+   .oh-sk-usage-*, per-game .oh-sk-pg-*, inline edit .oh-sk-pe-*).
+   ============================================================ */
+
+/* 3 skill-category palette tokens. Distinct from kingdom + stage +
+   spell-school palettes — never blur the four. */
+:root{
+    --oh-skill-class:     #3C4A2E;
+    --oh-skill-adventure: #B26223;
+    --oh-skill-quest:     #8B5A2B;
+}
+
+/* Category chip — 1.5px outlined pill with mono Czech label */
+.oh-sk-cat{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;
+    border:1.5px solid var(--oh-c,#888);border-radius:99px;
+    background:rgba(245,237,227,.55);color:var(--oh-text,#2a2a2a);
+    font:600 .75rem var(--oh-font-mono,JetBrains Mono,Menlo,monospace);white-space:nowrap}
+.oh-sk-cat::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--oh-c,#888);flex-shrink:0}
+.oh-sk-cat[data-cat="class"]    {--oh-c:var(--oh-skill-class)}
+.oh-sk-cat[data-cat="adventure"]{--oh-c:var(--oh-skill-adventure)}
+.oh-sk-cat[data-cat="quest"]    {--oh-c:var(--oh-skill-quest)}
+
+/* Class pip — single SVG glyph in primary green, never a 4-pip array */
+.oh-sk-class-pip{display:inline-flex;align-items:center;justify-content:center;
+    width:24px;height:24px;border-radius:50%;background:rgba(45,80,22,.14);
+    border:1.5px solid #2D5016;color:#2D5016;flex-shrink:0}
+.oh-sk-class-pip svg,.oh-sk-class-pip i{width:14px;height:14px;font-size:.875rem}
+.oh-sk-class-line{display:inline-block;font:italic 400 .8125rem var(--oh-font-serif,Georgia,Merriweather,serif);
+    color:var(--oh-text-secondary,#6a6a6a);white-space:nowrap}
+
+/* XP pill — mono green; greyed when 0 XP */
+.oh-sk-xp{display:inline-block;padding:2px 8px;border-radius:99px;
+    background:rgba(45,80,22,.14);color:#2D5016;border:1px solid rgba(45,80,22,.5);
+    font:600 .75rem var(--oh-font-mono,JetBrains Mono,Menlo,monospace);white-space:nowrap}
+.oh-sk-xp--zero{background:var(--oh-surface-alt,#f5f0e1);color:var(--oh-text-secondary,#6a6a6a);border-color:var(--oh-border,#d8d2be)}
+
+/* Lvl pill — mono neutral */
+.oh-sk-lvl{display:inline-block;padding:2px 8px;border-radius:99px;
+    background:var(--oh-surface-alt,#f5f0e1);color:var(--oh-text,#2a2a2a);border:1px solid var(--oh-border,#d8d2be);
+    font:600 .75rem var(--oh-font-mono,JetBrains Mono,Menlo,monospace);white-space:nowrap}
+
+/* Building chips — cluster (read-only) and picker (multi-select) */
+.oh-sk-bld-cluster{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.oh-sk-bld-chip{display:inline-flex;align-items:center;gap:4px;
+    padding:2px 8px;border-radius:99px;background:var(--oh-surface,#fff);
+    border:1px solid var(--oh-border,#d8d2be);color:var(--oh-text,#2a2a2a);
+    font:600 .75rem var(--oh-font-body);text-decoration:none;white-space:nowrap;cursor:pointer;transition:.12s ease}
+.oh-sk-bld-chip:hover{background:#eee3c9;border-color:#B26223;color:#6c5212}
+.oh-sk-bld-chip i{font-size:.75rem}
+.oh-sk-bld-overflow{padding:2px 8px;border-radius:99px;background:var(--oh-surface-alt,#f5f0e1);
+    color:var(--oh-text-secondary,#6a6a6a);border:1px dashed var(--oh-border,#d8d2be);
+    font:600 .7rem var(--oh-font-mono,JetBrains Mono,Menlo,monospace);white-space:nowrap}
+.oh-sk-bld-empty{font:italic 400 .8125rem var(--oh-font-serif,Georgia,Merriweather,serif);color:var(--oh-text-secondary,#6a6a6a)}
+.oh-sk-bld-stack{display:flex;flex-direction:column;gap:6px}
+.oh-sk-bld-picker{display:flex;flex-wrap:wrap;gap:6px;padding:8px;background:var(--oh-surface-alt,#f5f0e1);
+    border:1px dashed var(--oh-border,#d8d2be);border-radius:6px;min-height:48px}
+.oh-sk-bld-picker-toggle{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:99px;
+    border:1px solid var(--oh-border,#d8d2be);background:var(--oh-surface,#fff);color:var(--oh-text,#2a2a2a);
+    font:600 .75rem var(--oh-font-body);cursor:pointer;transition:.12s ease}
+.oh-sk-bld-picker-toggle.is-on{background:#2D5016;border-color:#2D5016;color:#fff}
+.oh-sk-bld-picker-toggle i{font-size:.75rem}
+
+/* Source badges — Šablona / Od nuly / drift */
+.oh-sk-src-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;
+    border-radius:99px;font:600 .7rem var(--oh-font-mono,JetBrains Mono,Menlo,monospace);
+    text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.oh-sk-src-badge--tpl  {background:rgba(45,80,22,.12);color:#2D5016;border:1px solid rgba(45,80,22,.5)}
+.oh-sk-src-badge--blank{background:rgba(193,154,58,.16);color:#6c5212;border:1px solid rgba(193,154,58,.55)}
+.oh-sk-tpl-badge{font:500 .7rem var(--oh-font-mono,JetBrains Mono,Menlo,monospace);color:var(--oh-text-secondary,#6a6a6a)}
+.oh-sk-fork-hint{font:italic 400 .8125rem var(--oh-font-serif,Georgia,Merriweather,serif);color:var(--oh-text-secondary,#6a6a6a);margin:0}
+
+.oh-sk-drift{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;
+    border-radius:50%;background:rgba(178,98,35,.16);color:#6c5212;border:1.5px solid rgba(178,98,35,.6);
+    font:700 .7rem var(--oh-font-mono,JetBrains Mono,Menlo,monospace)}
+.oh-sk-drift-cell{display:flex;justify-content:center;align-items:center}
+.oh-sk-drift-tip{font:italic 400 .75rem var(--oh-font-serif,Georgia,Merriweather,serif);color:#6c5212;margin-left:4px}
+
+/* List grid cells */
+.oh-sk-c-name{font:600 .9375rem var(--oh-font-body);color:var(--oh-text,#2a2a2a);display:flex;align-items:center;gap:6px}
+.oh-sk-c-fx{font:400 .8125rem var(--oh-font-body);color:var(--oh-text,#2a2a2a);
+    overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-clamp:2}
+.oh-sk-c-bld{display:flex;flex-wrap:wrap;gap:3px}
+
+/* Quick-peek popup — 640×420 per brief */
+.oh-sk-peek-grid{display:grid;grid-template-columns:1fr 200px;gap:18px;padding:6px 4px 14px}
+.oh-sk-peek-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.oh-sk-peek-fx{font:400 .9375rem/1.5 var(--oh-font-serif,Georgia,Merriweather,serif);
+    color:var(--oh-text,#2a2a2a);text-align:justify;hyphens:auto;white-space:pre-wrap;
+    border-left:3px solid var(--oh-c,var(--oh-border,#d8d2be));padding:6px 12px;background:var(--oh-surface-alt,#f5f0e1);border-radius:4px}
+.oh-sk-peek-side{display:flex;flex-direction:column;gap:10px;border-left:1px solid var(--oh-border,#d8d2be);padding-left:14px}
+.oh-sk-peek-side-row{display:flex;justify-content:space-between;gap:6px;font:600 .8125rem var(--oh-font-body);color:var(--oh-text-secondary,#6a6a6a)}
+.oh-sk-peek-side-row strong{color:var(--oh-text,#2a2a2a);font-family:var(--oh-font-mono,JetBrains Mono,Menlo,monospace)}
+.oh-sk-peek-foot{display:flex;justify-content:space-between;gap:10px;padding-top:10px;border-top:1px solid var(--oh-border,#d8d2be);margin-top:6px}
+
+/* Karta — illuminated parchment page (62fr/38fr) */
+.oh-sk-karta-grid{display:grid;grid-template-columns:62fr 38fr;gap:20px;align-items:start}
+@media (max-width:880px){.oh-sk-karta-grid{grid-template-columns:1fr}}
+.oh-sk-karta{position:relative;background:#fbf6e7;border:1px solid #c8b48a;border-radius:6px;
+    padding:24px 28px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.oh-sk-karta::before{content:"";position:absolute;top:0;bottom:0;left:0;width:3px;background:var(--oh-c,#aaa);border-radius:6px 0 0 6px}
+.oh-sk-karta-name{font:900 2.2rem/1.1 var(--oh-font-heading,Merriweather,Georgia,serif);color:var(--oh-primary,#243525);margin:0;text-align:center;letter-spacing:-.01em}
+.oh-sk-karta-meta{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin:14px 0 18px}
+.oh-sk-karta-sep{height:1px;background:linear-gradient(90deg,transparent 0,#B26223 20%,#B26223 80%,transparent 100%);margin:14px 0;border:none}
+.oh-sk-karta-fx{font:400 1.1rem/1.55 var(--oh-font-serif,Georgia,Merriweather,serif);color:var(--oh-text,#2a2a2a);text-align:justify;hyphens:auto;white-space:pre-wrap;margin:0}
+.oh-sk-karta-reqnote{font:italic 400 .9rem/1.5 var(--oh-font-serif,Georgia,Merriweather,serif);color:var(--oh-text-secondary,#6a6a6a);margin:14px 0 0;text-align:justify;white-space:pre-wrap}
+.oh-sk-karta-side{display:flex;flex-direction:column;gap:12px}
+.oh-sk-karta-side-block{background:var(--oh-surface,#fff);border:1px solid var(--oh-border,#d8d2be);border-radius:6px;padding:14px}
+.oh-sk-karta-side-block h6{font:700 .75rem var(--oh-font-mono,JetBrains Mono,Menlo,monospace);color:var(--oh-text-secondary,#6a6a6a);text-transform:uppercase;letter-spacing:.06em;margin:0 0 8px}
+
+/* V tomto roce tab */
+.oh-sk-usage-list{display:flex;flex-direction:column;gap:8px}
+.oh-sk-usage-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;
+    background:var(--oh-surface,#fff);border:1px solid var(--oh-border,#d8d2be);border-radius:6px;cursor:pointer;transition:.12s ease}
+.oh-sk-usage-row:hover{background:#fdf9ed;border-color:#B26223}
+.oh-sk-usage-row-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:1;min-width:0}
+.oh-sk-usage-row-name{font:700 1rem var(--oh-font-heading,Merriweather,Georgia,serif);color:var(--oh-primary,#243525);margin:0}
+.oh-sk-usage-row-edition{font:600 .75rem var(--oh-font-mono,JetBrains Mono,Menlo,monospace);color:var(--oh-text-secondary,#6a6a6a)}
+.oh-sk-usage-empty{padding:18px;text-align:center;font:italic 400 .9rem var(--oh-font-serif,Georgia,Merriweather,serif);color:var(--oh-text-secondary,#6a6a6a);background:var(--oh-surface-alt,#f5f0e1);border:1px dashed var(--oh-border,#d8d2be);border-radius:6px}
+
+/* Per-game inline edit popup — per-game-only fields highlighted */
+.oh-sk-pg-only{background:linear-gradient(135deg,rgba(193,154,58,.14),rgba(193,154,58,.04));
+    border-left:3px solid #B26223;padding:10px 12px;border-radius:4px;margin:6px 0}
+.oh-sk-pg-only-head{font:700 .75rem var(--oh-font-mono,JetBrains Mono,Menlo,monospace);
+    color:#6c5212;text-transform:uppercase;letter-spacing:.06em;margin:0 0 4px}
+.oh-sk-pg-fork-hint{font:italic 400 .8125rem var(--oh-font-serif,Georgia,Merriweather,serif);color:var(--oh-text-secondary,#6a6a6a);margin:0}
+
+/* Smazat zablokováno — disabled-affordance pill, ghost-bordeaux palette */
+.oh-sk-delete-blocked{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:99px;
+    background:rgba(140,36,35,.06);color:rgba(140,36,35,.7);border:1px dashed rgba(140,36,35,.4);
+    font:600 .8125rem var(--oh-font-body);cursor:not-allowed}
+
+/* Sacred banner — warning above any Effect memo. Reused on Spells edit
+   in a future round; new utility class declared here intentionally so
+   it lives in the shared theme. */
+.oh-sacred-banner{display:flex;align-items:flex-start;gap:8px;
+    padding:10px 14px;margin:0 0 8px;background:rgba(178,98,35,.08);
+    border:1px solid rgba(178,98,35,.45);border-left:3px solid #B26223;border-radius:4px;
+    font:500 .8125rem/1.45 var(--oh-font-body);color:#6c5212}
+.oh-sacred-banner i{font-size:.95rem;color:#B26223;flex-shrink:0;margin-top:2px}
