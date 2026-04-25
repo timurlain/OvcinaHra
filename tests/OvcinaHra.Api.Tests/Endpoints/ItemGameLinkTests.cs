@@ -12,7 +12,7 @@ namespace OvcinaHra.Api.Tests.Endpoints;
 // MonsterLoot rows survive as silent ghosts. Tests span the three blocking
 // sources (assigned treasure, pool treasure, monster loot) plus a regression
 // happy-path that confirms an unreferenced GameItem still deletes cleanly.
-public class ItemGameLinkTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
+public class ItemGameLinkTests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
     // ----- helpers -----
 

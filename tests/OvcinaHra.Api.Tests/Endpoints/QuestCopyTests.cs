@@ -6,7 +6,7 @@ using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Tests.Endpoints;
 
-public class QuestCopyTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
+public class QuestCopyTests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
     private async Task<GameDetailDto> CreateGameAsync(string name = "Game")
     {

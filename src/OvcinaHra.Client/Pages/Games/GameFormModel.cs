@@ -16,6 +16,12 @@ public class GameFormModel
     public decimal? BoundingBoxNeLat { get; set; }
     public decimal? BoundingBoxNeLng { get; set; }
 
+    /// <summary>Issue #3 — read-only mirror of <c>Game.ExternalGameId</c>.
+    /// Mutated only by the link/unlink popup, never by the Save button —
+    /// keeps the link decoupled from Edit so a user can't accidentally
+    /// "save away" a freshly-set link by hitting Cancel.</summary>
+    public int? ExternalGameId { get; set; }
+
     public CreateGameDto ToCreateDto() => new(Name, Edition, StartDate, EndDate, Status);
 
     public UpdateGameDto ToUpdateDto() => new(
@@ -32,6 +38,7 @@ public class GameFormModel
         BoundingBoxSwLat = dto.BoundingBoxSwLat,
         BoundingBoxSwLng = dto.BoundingBoxSwLng,
         BoundingBoxNeLat = dto.BoundingBoxNeLat,
-        BoundingBoxNeLng = dto.BoundingBoxNeLng
+        BoundingBoxNeLng = dto.BoundingBoxNeLng,
+        ExternalGameId = dto.ExternalGameId
     };
 }

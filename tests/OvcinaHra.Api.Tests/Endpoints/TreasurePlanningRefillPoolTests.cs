@@ -15,7 +15,7 @@ namespace OvcinaHra.Api.Tests.Endpoints;
 // treasure-quest), QuestReward, and PersonalQuestItemReward allocations,
 // then appends the unallocated remainder to the pool. MonsterLoot is
 // intentionally ignored (situational drop, not a guaranteed allocation).
-public class TreasurePlanningRefillPoolTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
+public class TreasurePlanningRefillPoolTests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
     private async Task<GameDetailDto> CreateGameAsync()
     {

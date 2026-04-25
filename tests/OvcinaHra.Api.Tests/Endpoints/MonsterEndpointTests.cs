@@ -9,7 +9,7 @@ using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Tests.Endpoints;
 
-public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
+public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
     [Fact]
     public async Task GetAll_Empty_ReturnsEmptyList()

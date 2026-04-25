@@ -3153,3 +3153,18 @@
     .oh-tl-print-day:first-child{page-break-before:auto}
     .oh-tl-print-slot{page-break-inside:avoid}
 }
+
+/* Issue #3 — registrace game picker (LinkToRegistracePopup) */
+.oh-registrace-link-row{font-size:.875rem}
+.oh-registrace-picker{display:flex;flex-direction:column;gap:6px;
+    padding:6px;background:var(--oh-surface-alt,#f5f0e1);
+    border:1px solid var(--oh-border,#d8d2be);border-radius:6px;
+    max-height:340px;overflow-y:auto}
+.oh-registrace-picker-row{display:flex;flex-direction:column;gap:2px;
+    text-align:left;padding:8px 12px;border-radius:5px;
+    border:1px solid var(--oh-border,#d8d2be);
+    background:var(--oh-surface,#fff);color:var(--oh-text,#2a2a2a);
+    cursor:pointer;transition:.12s ease}
+.oh-registrace-picker-row:hover{border-color:#2D5016}
+.oh-registrace-picker-row.is-on{background:#2D5016;border-color:#2D5016;color:#fff}
+.oh-registrace-picker-row.is-on .text-muted{color:rgba(255,255,255,.78) !important}

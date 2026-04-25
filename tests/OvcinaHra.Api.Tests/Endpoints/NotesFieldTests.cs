@@ -11,7 +11,7 @@ namespace OvcinaHra.Api.Tests.Endpoints;
 // Both are capped at 2000 chars server-side (DxMemo MaxLength is unreliable
 // in DevExpress 25.2.5 — server enforces). Whitespace-only input is trimmed
 // to null on persist so nullable semantics hold downstream.
-public class NotesFieldTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
+public class NotesFieldTests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
     private async Task<GameDetailDto> CreateGameAsync()
     {

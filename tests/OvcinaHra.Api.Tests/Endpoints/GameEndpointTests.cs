@@ -7,7 +7,7 @@ using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Tests.Endpoints;
 
-public class GameEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
+public class GameEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
     [Fact]
     public async Task GetAll_Empty_ReturnsEmptyList()

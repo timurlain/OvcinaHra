@@ -6,7 +6,7 @@ using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Tests.Endpoints;
 
-public class TagEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
+public class TagEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
     [Fact]
     public async Task Create_ValidTag_ReturnsCreated()

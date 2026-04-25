@@ -17,5 +17,12 @@ public class GameConfiguration : IEntityTypeConfiguration<Game>
         builder.Property(e => e.BoundingBoxSwLng).HasPrecision(10, 7);
         builder.Property(e => e.BoundingBoxNeLat).HasPrecision(10, 7);
         builder.Property(e => e.BoundingBoxNeLng).HasPrecision(10, 7);
+
+        // Issue #3: one OvčinaHra game ↔ at most one registrace game.
+        // Filtered so multiple unlinked games (NULL) coexist; once a value
+        // is set it must be unique across the table.
+        builder.HasIndex(e => e.ExternalGameId)
+            .IsUnique()
+            .HasFilter("\"ExternalGameId\" IS NOT NULL");
     }
 }

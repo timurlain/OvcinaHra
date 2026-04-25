@@ -3,7 +3,7 @@ using OvcinaHra.Api.Tests.Fixtures;
 
 namespace OvcinaHra.Api.Tests;
 
-public class HealthCheckTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
+public class HealthCheckTests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
     [Fact]
     public async Task HealthCheck_ReturnsHealthy()

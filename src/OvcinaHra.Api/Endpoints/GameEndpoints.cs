@@ -3,7 +3,9 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using OvcinaHra.Api.Data;
+using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Dtos;
 
@@ -21,6 +23,12 @@ public static class GameEndpoints
         group.MapPut("/{id:int}", Update);
         group.MapPost("/{id:int}/link", LinkToRegistrace);
         group.MapDelete("/{id:int}/link", UnlinkFromRegistrace);
+
+        // Issue #3: server-side proxy for the "Propojit s registrací" picker.
+        // Browsers never see the integration API key; this endpoint inherits
+        // the parent group's RequireAuthorization gate so only logged-in
+        // organizers can trigger the upstream call.
+        group.MapGet("/registrace-available", GetRegistraceAvailable);
 
         // Map overlay (issue #96) — free-draw shapes per game, stored as JSON blob.
         group.MapGet("/{id:int}/overlay", GetOverlay);
@@ -121,14 +129,46 @@ public static class GameEndpoints
         return TypedResults.NoContent();
     }
 
-    private static async Task<Results<NoContent, NotFound>> LinkToRegistrace(int id, LinkGameDto dto, WorldDbContext db)
+    private static async Task<Results<NoContent, NotFound, Conflict<ProblemDetails>>> LinkToRegistrace(
+        int id, LinkGameDto dto, WorldDbContext db)
     {
         var game = await db.Games.FindAsync(id);
         if (game is null)
             return TypedResults.NotFound();
 
+        // Issue #3: pre-check before relying on the UNIQUE INDEX so the
+        // organizer gets a friendly Czech message rather than a 500. The
+        // unique index (filtered, NULL-safe) is still the authoritative
+        // guard against concurrent races.
+        var conflict = await db.Games
+            .Where(g => g.Id != id && g.ExternalGameId == dto.ExternalGameId)
+            .Select(g => new { g.Id, g.Name })
+            .FirstOrDefaultAsync();
+        if (conflict is not null)
+        {
+            return TypedResults.Conflict(new ProblemDetails
+            {
+                Title = "Registrace už je propojená.",
+                Detail = $"Hra v registraci #{dto.ExternalGameId} je už propojená s hrou „{conflict.Name}“ (#{conflict.Id}). Nejdřív zruš to staré propojení.",
+                Status = StatusCodes.Status409Conflict
+            });
+        }
+
         game.ExternalGameId = dto.ExternalGameId;
-        await db.SaveChangesAsync();
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            // Race against another concurrent link — surface the same 409.
+            return TypedResults.Conflict(new ProblemDetails
+            {
+                Title = "Registrace už je propojená.",
+                Detail = $"Hra v registraci #{dto.ExternalGameId} byla mezitím propojená s jinou hrou.",
+                Status = StatusCodes.Status409Conflict
+            });
+        }
         return TypedResults.NoContent();
     }
 
@@ -142,6 +182,47 @@ public static class GameEndpoints
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
     }
+
+    /// <summary>
+    /// Issue #3 — returns the registrace games available for linking.
+    /// Filters out games already linked locally so the picker only shows
+    /// candidates the organizer can actually pick. Wraps upstream
+    /// failures in a 502 so callers can distinguish "registrace
+    /// unreachable/unauthorized" from an internal 500.
+    /// </summary>
+    private static async Task<Results<Ok<List<RegistraceGameDto>>, ProblemHttpResult>> GetRegistraceAvailable(
+        RegistraceGameService registrace, WorldDbContext db, CancellationToken ct)
+    {
+        IReadOnlyList<RegistraceGameDto> upstream;
+        try
+        {
+            upstream = await registrace.GetAvailableAsync(ct);
+        }
+        catch (HttpRequestException ex)
+        {
+            return TypedResults.Problem(
+                detail: ex.Message,
+                title: "Registrace nedostupná.",
+                statusCode: StatusCodes.Status502BadGateway);
+        }
+
+        var alreadyLinked = await db.Games
+            .Where(g => g.ExternalGameId != null)
+            .Select(g => g.ExternalGameId!.Value)
+            .ToListAsync(ct);
+        var linkedSet = alreadyLinked.ToHashSet();
+        var filtered = upstream.Where(g => !linkedSet.Contains(g.Id)).ToList();
+        return TypedResults.Ok(filtered);
+    }
+
+    private static bool IsUniqueViolation(DbUpdateException ex) =>
+        // Npgsql surfaces unique-violation as PostgresException with SqlState
+        // 23505 (PostgresErrorCodes.UniqueViolation). Direct type check is
+        // compile-time safe — the migration's filtered UNIQUE INDEX is
+        // Postgres-specific anyway, so binding to the Npgsql type here is
+        // honest, not a leak.
+        ex.InnerException is PostgresException pg
+        && pg.SqlState == PostgresErrorCodes.UniqueViolation;
 
     // ----- Map overlay (issue #96) ----------------------------------------
 
