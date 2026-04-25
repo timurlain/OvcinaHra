@@ -121,12 +121,37 @@ else
                                     @onclick:stopPropagation="true">
                                 <i class="bi bi-geo-alt-fill"></i>
                             </button>
-                            <button type="button"
-                                    title="Přiřadit quest (propojit)"
-                                    @onclick="() => OpenLinkDialog(loc)"
-                                    @onclick:stopPropagation="true">
-                                <i class="bi bi-link-45deg"></i>
-                            </button>
+                            @if (Catalog)
+                            {
+                                var isAssigned = assignedLocationIds.Contains(loc.Id);
+                                @if (isAssigned)
+                                {
+                                    <button type="button"
+                                            title="Odebrat z aktuální hry"
+                                            @onclick="() => UnassignLocationAsync(loc.Id)"
+                                            @onclick:stopPropagation="true">
+                                        <i class="bi bi-bookmark-dash"></i>
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button type="button"
+                                            title="Přiřadit k aktuální hře"
+                                            @onclick="() => AssignLocationAsync(loc.Id)"
+                                            @onclick:stopPropagation="true">
+                                        <i class="bi bi-bookmark-plus"></i>
+                                    </button>
+                                }
+                            }
+                            else
+                            {
+                                <button type="button"
+                                        title="Propojit jako variantu rodičovské lokace"
+                                        @onclick="() => OpenLinkDialog(loc)"
+                                        @onclick:stopPropagation="true">
+                                    <i class="bi bi-link-45deg"></i>
+                                </button>
+                            }
                             <button type="button"
                                     title="Otevřít na mapě"
                                     @onclick="() => OpenOnMap(loc)"
