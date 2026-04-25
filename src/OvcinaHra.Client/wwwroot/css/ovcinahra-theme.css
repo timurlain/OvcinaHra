@@ -2978,3 +2978,167 @@
     border:1px solid rgba(178,98,35,.45);border-left:3px solid #B26223;border-radius:4px;
     font:500 .8125rem/1.45 var(--oh-font-body);color:#6c5212}
 .oh-sacred-banner i{font-size:.95rem;color:#B26223;flex-shrink:0;margin-top:2px}
+
+/* ===========================================================================
+ * Timeline — /timeline cockpit (agenda + Gantt) + /timeline/print
+ * Stage-coloured slot cards over a sequence of game phases. Active-slot
+ * highlight is forest-green (#2D5016) — the same primary used elsewhere.
+ * Stage palette tokens (--oh-stage-*) are declared in the treasures CSS.
+ * Added 2026-04-25 (issue #171).
+ * =========================================================================== */
+
+/* Toolbar */
+.oh-tl-bar{position:sticky;top:0;z-index:10;background:var(--oh-surface);
+    border-bottom:1px solid var(--oh-border);padding:12px 16px;
+    display:flex;flex-direction:column;gap:8px}
+.oh-tl-bar-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.oh-tl-bar-title{font:700 1.5rem var(--oh-font-heading);color:var(--oh-text);margin:0}
+.oh-tl-bar-sub{font:400 .85rem 'JetBrains Mono','Fira Code',monospace;color:var(--oh-text-secondary)}
+.oh-tl-bar-spacer{flex:1}
+.oh-tl-act-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;
+    border-radius:99px;font:600 .8rem 'JetBrains Mono','Fira Code',monospace;
+    border:1px solid currentColor}
+.oh-tl-seg{display:inline-flex;border:1px solid var(--oh-border);border-radius:6px;overflow:hidden}
+.oh-tl-seg-btn{background:transparent;border:0;padding:6px 14px;
+    font:500 .85rem var(--oh-font-body);color:var(--oh-text);cursor:pointer}
+.oh-tl-seg-btn.on{background:var(--oh-text);color:#fff}
+.oh-tl-seg-btn:not(.on):hover{background:var(--oh-surface-alt)}
+.oh-tl-filter-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+    padding-top:4px;font-size:.85rem;color:var(--oh-text-secondary)}
+
+/* Agenda */
+.oh-tl-agenda{padding:16px;display:flex;flex-direction:column;gap:10px;
+    max-width:980px;margin:0 auto}
+
+/* Day separator (inline section labels — NOT tabs) */
+.oh-tl-day-sep{display:flex;align-items:baseline;gap:8px;
+    padding:14px 4px 6px;border-bottom:1px solid var(--oh-border);
+    margin-top:6px;font:500 .85rem 'JetBrains Mono','Fira Code',monospace;
+    color:var(--oh-text-secondary);
+    background:linear-gradient(to right,rgba(80,75,37,0.04),transparent 80%)}
+.oh-tl-day-sep:first-child{margin-top:0}
+.oh-tl-day-wkd{font-weight:700;color:var(--oh-text)}
+.oh-tl-day-dt{font-weight:600}
+
+/* Slot card (agenda) */
+.oh-tl-slot{position:relative;background:#FFF8F0;border:1px solid var(--oh-border);
+    border-radius:6px;padding:12px 14px 12px 22px;cursor:pointer;
+    transition:box-shadow .15s,transform .15s}
+.oh-tl-slot:hover{box-shadow:0 2px 6px rgba(0,0,0,.08);transform:translateY(-1px)}
+.oh-tl-slot::before{content:'';position:absolute;left:0;top:0;bottom:0;width:6px;
+    border-radius:6px 0 0 6px;background:var(--oh-stage-start)}
+.oh-tl-slot--start::before{background:var(--oh-stage-start)}
+.oh-tl-slot--early::before{background:var(--oh-stage-early)}
+.oh-tl-slot--midgame::before{background:var(--oh-stage-midgame)}
+.oh-tl-slot--lategame::before{background:var(--oh-stage-lategame)}
+.oh-tl-slot--past{opacity:.7}
+.oh-tl-slot--active{box-shadow:0 0 0 2px #2D5016,0 4px 12px rgba(45,80,22,.25)}
+
+.oh-tl-slot-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.oh-tl-slot-time{font:600 1.05rem 'JetBrains Mono','Fira Code',monospace;
+    color:var(--oh-text);white-space:nowrap}
+.oh-tl-slot-title{font:700 1.15rem var(--oh-font-heading);color:var(--oh-text);
+    margin:0;flex:1 1 200px;min-width:0}
+.oh-tl-slot-pill{display:inline-flex;align-items:center;gap:4px;
+    padding:2px 8px;border-radius:99px;
+    font:600 .75rem 'JetBrains Mono','Fira Code',monospace;
+    background:rgba(45,80,22,.12);color:#2D5016}
+
+.oh-tl-slot-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.oh-tl-chip{display:inline-flex;align-items:center;gap:4px;
+    padding:2px 8px;border-radius:99px;
+    font:500 .75rem var(--oh-font-body);
+    border:1px solid transparent;line-height:1.4}
+.oh-tl-chip .bi{font-size:.85rem;line-height:1}
+.oh-tl-chip--quest{background:rgba(110,70,130,.1);color:#6E4682;border-color:rgba(110,70,130,.25)}
+.oh-tl-chip--encounter{background:rgba(140,36,35,.1);color:#8C2423;border-color:rgba(140,36,35,.25)}
+.oh-tl-chip--bonus{background:rgba(212,166,60,.15);color:#886a1f;border-color:rgba(212,166,60,.4)}
+.oh-tl-chip--transition{background:transparent;color:var(--oh-text);border-color:var(--oh-border)}
+.oh-tl-chip--other{background:var(--oh-surface-alt);color:var(--oh-text-secondary);border-color:var(--oh-border)}
+
+.oh-tl-slot-rules{margin-top:10px;padding:8px 10px;background:rgba(0,0,0,.03);
+    border-left:3px solid var(--oh-border);
+    font:400 .92rem Georgia,serif;color:var(--oh-text);
+    border-radius:0 4px 4px 0}
+
+/* Empty state */
+.oh-tl-empty{padding:48px 16px;text-align:center;color:var(--oh-text-secondary);
+    max-width:520px;margin:0 auto}
+.oh-tl-empty .bi{font-size:2rem;color:#B26223}
+.oh-tl-empty-title{font:600 1.1rem var(--oh-font-heading);margin:12px 0 6px;color:var(--oh-text)}
+
+/* Gantt */
+.oh-tl-gantt-wrap{padding:16px;max-width:1280px;margin:0 auto}
+.oh-tl-gantt-toolbar{display:flex;align-items:center;gap:8px;padding-bottom:10px;
+    color:var(--oh-text-secondary);font-size:.85rem}
+.oh-tl-gantt-zoom{display:inline-flex;border:1px solid var(--oh-border);border-radius:4px}
+.oh-tl-gantt-zoom button{background:transparent;border:0;padding:4px 10px;
+    font:500 .85rem var(--oh-font-body);color:var(--oh-text);cursor:pointer}
+.oh-tl-gantt-zoom button:hover{background:var(--oh-surface-alt)}
+.oh-tl-gantt-canvas{position:relative;overflow-x:auto;
+    border:1px solid var(--oh-border);border-radius:6px;background:#FFF8F0}
+.oh-tl-gantt-track{position:relative;min-height:240px;padding:34px 0 12px}
+.oh-tl-gx-axis{position:absolute;top:0;left:0;height:30px;
+    border-bottom:1px solid var(--oh-border);font:500 .7rem 'JetBrains Mono','Fira Code',monospace;
+    color:var(--oh-text-secondary)}
+.oh-tl-gx-day{position:absolute;top:0;height:30px;padding-left:6px;line-height:30px;
+    font-weight:600;color:var(--oh-text)}
+.oh-tl-gx-day-bound{position:absolute;top:0;bottom:0;width:0;
+    border-left:1px dashed rgba(80,75,37,.4);pointer-events:none}
+.oh-tl-gx-tick{position:absolute;top:24px;bottom:0;width:0;
+    border-left:1px solid rgba(0,0,0,.05);pointer-events:none}
+.oh-tl-gx-stage-band{position:absolute;top:30px;bottom:0;pointer-events:none}
+.oh-tl-gx-stage-band--start{background:var(--oh-stage-start);opacity:.07}
+.oh-tl-gx-stage-band--early{background:var(--oh-stage-early);opacity:.08}
+.oh-tl-gx-stage-band--midgame{background:var(--oh-stage-midgame);opacity:.07}
+.oh-tl-gx-stage-band--lategame{background:var(--oh-stage-lategame);opacity:.08}
+
+.oh-tl-gbar{position:absolute;height:48px;background:#FFF8F0;
+    border:1px solid var(--oh-border);border-radius:4px;
+    padding:4px 8px 4px 14px;cursor:pointer;overflow:hidden;
+    box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.oh-tl-gbar:hover{box-shadow:0 2px 6px rgba(0,0,0,.12)}
+.oh-tl-gbar::before{content:'';position:absolute;left:0;top:0;bottom:0;width:6px;
+    background:var(--oh-stage-start)}
+.oh-tl-gbar--start::before{background:var(--oh-stage-start)}
+.oh-tl-gbar--early::before{background:var(--oh-stage-early)}
+.oh-tl-gbar--midgame::before{background:var(--oh-stage-midgame)}
+.oh-tl-gbar--lategame::before{background:var(--oh-stage-lategame)}
+.oh-tl-gbar--active{box-shadow:0 0 0 2px #2D5016,0 2px 6px rgba(45,80,22,.25)}
+.oh-tl-gbar--past{opacity:.7}
+.oh-tl-gbar-time{font:600 .68rem 'JetBrains Mono','Fira Code',monospace;
+    color:var(--oh-text-secondary);display:block;line-height:1.2}
+.oh-tl-gbar-title{font:600 .85rem var(--oh-font-heading);color:var(--oh-text);
+    display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.oh-tl-gbar-glyphs{position:absolute;right:6px;bottom:4px;display:flex;gap:3px;
+    font-size:.78rem;color:var(--oh-text-secondary)}
+
+/* Print page (/timeline/print) */
+.oh-tl-print{padding:16px;max-width:760px;margin:0 auto;font-family:var(--oh-font-body);color:#000}
+.oh-tl-print-head{text-align:center;padding-bottom:14px;
+    border-bottom:1px solid #000;margin-bottom:18px}
+.oh-tl-print-title{font:900 1.9rem var(--oh-font-heading);color:#000;margin:0 0 4px}
+.oh-tl-print-sub{font:italic 400 .9rem Georgia,serif;color:#333}
+.oh-tl-print-day{padding-top:6px}
+.oh-tl-print-day + .oh-tl-print-day{page-break-before:always}
+.oh-tl-print-day-head{font:700 1.15rem var(--oh-font-heading);margin:0 0 8px;
+    padding-bottom:4px;border-bottom:1px solid #000}
+.oh-tl-print-slot{padding:8px 0 12px;border-bottom:1px dashed #999;
+    page-break-inside:avoid}
+.oh-tl-print-slot:last-child{border-bottom:0}
+.oh-tl-print-slot-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.oh-tl-print-slot-time{font:600 .95rem 'JetBrains Mono','Fira Code',monospace}
+.oh-tl-print-slot-title{font:700 1.05rem var(--oh-font-heading);margin:0;flex:1}
+.oh-tl-print-slot-stage{font-size:.8rem;color:#555}
+.oh-tl-print-slot-rules{margin-top:6px;font:400 .88rem Georgia,serif;color:#222}
+.oh-tl-print-slot-chips{margin-top:4px;font-size:.8rem;color:#444}
+
+@media print{
+    @page{size:A4 portrait;margin:12mm}
+    body{background:#fff !important}
+    .oh-tl-print-hide,.oh-nav,.oh-page-header,.oh-tl-bar,.oh-tl-filter-row{display:none !important}
+    .oh-tl-print{padding:0}
+    .oh-tl-print-day{page-break-before:always}
+    .oh-tl-print-day:first-child{page-break-before:auto}
+    .oh-tl-print-slot{page-break-inside:avoid}
+}

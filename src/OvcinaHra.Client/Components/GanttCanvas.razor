@@ -1,0 +1,162 @@
+@using System.Globalization
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Dtos
+
+<div class="oh-tl-gantt-wrap">
+    <div class="oh-tl-gantt-toolbar">
+        <span>Měřítko:</span>
+        <div class="oh-tl-gantt-zoom">
+            <button type="button" @onclick="() => SetZoom(_pxPerHour - 15)" title="Oddálit"><i class="bi bi-zoom-out"></i></button>
+            <button type="button" @onclick="() => SetZoom(60)">100%</button>
+            <button type="button" @onclick="() => SetZoom(_pxPerHour + 15)" title="Přiblížit"><i class="bi bi-zoom-in"></i></button>
+        </div>
+        <span style="font-size:.75rem">@_pxPerHour px/h · 1 px ≈ @((60.0 / _pxPerHour).ToString("0.#", CultureInfo.InvariantCulture)) min</span>
+    </div>
+
+    @if (Slots.Count == 0)
+    {
+        <div class="oh-tl-empty">
+            <i class="bi bi-bar-chart-steps"></i>
+            <div class="oh-tl-empty-title">Žádné bloky pro Gantt zobrazení</div>
+            <p>Přidej časové bloky a uvidíš je tady jako vodorovné pruhy.</p>
+        </div>
+    }
+    else
+    {
+        <div class="oh-tl-gantt-canvas">
+            <div class="oh-tl-gantt-track" style="@($"width: {_totalWidth.ToString("0", CultureInfo.InvariantCulture)}px")">
+                @* Stage bands behind bars *@
+                @foreach (var s in Slots)
+                {
+                    var left = LeftFor(s.StartTime);
+                    var width = Math.Max(40, (double)s.DurationHours * _pxPerHour);
+                    <div class="oh-tl-gx-stage-band oh-tl-gx-stage-band--@StageMod(s.Stage)"
+                         @key="@($"band-{s.Id}")"
+                         style="@($"left: {left.ToString("0.##", CultureInfo.InvariantCulture)}px; width: {width.ToString("0.##", CultureInfo.InvariantCulture)}px")"></div>
+                }
+
+                @* Hour ticks *@
+                @foreach (var t in HourTicks())
+                {
+                    <div class="oh-tl-gx-tick" style="@($"left: {t.ToString("0.##", CultureInfo.InvariantCulture)}px")"></div>
+                }
+
+                @* Day boundary lines *@
+                @foreach (var b in DayBoundaries())
+                {
+                    <div class="oh-tl-gx-day-bound" style="@($"left: {b.ToString("0.##", CultureInfo.InvariantCulture)}px")"></div>
+                }
+
+                @* Day labels in the axis row *@
+                <div class="oh-tl-gx-axis">
+                    @foreach (var d in DayLabels())
+                    {
+                        <span class="oh-tl-gx-day"
+                              style="@($"left: {d.Left.ToString("0.##", CultureInfo.InvariantCulture)}px; width: {d.Width.ToString("0.##", CultureInfo.InvariantCulture)}px")">@d.Label</span>
+                    }
+                </div>
+
+                @* Slot bars *@
+                @foreach (var s in Slots)
+                {
+                    var left = LeftFor(s.StartTime);
+                    var width = Math.Max(40, (double)s.DurationHours * _pxPerHour);
+                    <SlotGanttBar @key="s.Id" Slot="@s"
+                                  Left="@left" Width="@width" Top="44"
+                                  IsActive="@(IsActiveSlot(s))"
+                                  IsPast="@(IsPastSlot(s))"
+                                  OnEdit="OnEdit" />
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<GameTimeSlotDto> Slots { get; set; } = [];
+    [Parameter] public DateTime Now { get; set; } = DateTime.Now;
+    [Parameter] public EventCallback<int> OnEdit { get; set; }
+
+    private int _pxPerHour = 60;
+    private DateTime _canvasStart;
+    private DateTime _canvasEnd;
+    private double _totalWidth;
+
+    protected override void OnParametersSet()
+    {
+        if (Slots.Count == 0) return;
+
+        // Local-time view; the API stores StartTime UTC.
+        var locals = Slots.Select(s => new { Start = s.StartTime.ToLocalTime(), End = s.EndTime.ToLocalTime() }).ToList();
+        var min = locals.Min(s => s.Start);
+        var max = locals.Max(s => s.End);
+
+        // Snap to whole hours so ticks line up with axis.
+        _canvasStart = new DateTime(min.Year, min.Month, min.Day, min.Hour, 0, 0, DateTimeKind.Local);
+        var endHour = max.Minute > 0 || max.Second > 0 ? max.Hour + 1 : max.Hour;
+        _canvasEnd = new DateTime(max.Year, max.Month, max.Day, 0, 0, 0, DateTimeKind.Local).AddHours(endHour);
+
+        var totalHours = (_canvasEnd - _canvasStart).TotalHours;
+        _totalWidth = Math.Max(800, totalHours * _pxPerHour);
+    }
+
+    private void SetZoom(int target)
+    {
+        _pxPerHour = Math.Clamp(target, 20, 180);
+        var totalHours = (_canvasEnd - _canvasStart).TotalHours;
+        _totalWidth = Math.Max(800, totalHours * _pxPerHour);
+    }
+
+    private double LeftFor(DateTime utcStart)
+    {
+        var local = utcStart.ToLocalTime();
+        return (local - _canvasStart).TotalHours * _pxPerHour;
+    }
+
+    private IEnumerable<double> HourTicks()
+    {
+        for (var t = _canvasStart; t < _canvasEnd; t = t.AddHours(1))
+            yield return (t - _canvasStart).TotalHours * _pxPerHour;
+    }
+
+    private IEnumerable<double> DayBoundaries()
+    {
+        // Skip the 0-position; only render midnights *between* days.
+        var first = _canvasStart.Date.AddDays(1);
+        for (var d = first; d < _canvasEnd; d = d.AddDays(1))
+            yield return (d - _canvasStart).TotalHours * _pxPerHour;
+    }
+
+    private IEnumerable<(double Left, double Width, string Label)> DayLabels()
+    {
+        var cs = CultureInfo.GetCultureInfo("cs-CZ");
+        var d = _canvasStart.Date;
+        while (d < _canvasEnd)
+        {
+            var dayStart = d < _canvasStart ? _canvasStart : d;
+            var dayEnd = d.AddDays(1) > _canvasEnd ? _canvasEnd : d.AddDays(1);
+            var left = (dayStart - _canvasStart).TotalHours * _pxPerHour;
+            var width = (dayEnd - dayStart).TotalHours * _pxPerHour;
+            yield return (left, width, d.ToString("ddd · d.M.", cs));
+            d = d.AddDays(1);
+        }
+    }
+
+    private bool IsActiveSlot(GameTimeSlotDto s)
+    {
+        var localStart = s.StartTime.ToLocalTime();
+        var localEnd = s.EndTime.ToLocalTime();
+        return localStart <= Now && Now < localEnd;
+    }
+
+    private bool IsPastSlot(GameTimeSlotDto s) => s.EndTime.ToLocalTime() < Now;
+
+    private static string StageMod(TreasureQuestDifficulty d) => d switch
+    {
+        TreasureQuestDifficulty.Start => "start",
+        TreasureQuestDifficulty.Early => "early",
+        TreasureQuestDifficulty.Midgame => "midgame",
+        TreasureQuestDifficulty.Lategame => "lategame",
+        _ => "start"
+    };
+}

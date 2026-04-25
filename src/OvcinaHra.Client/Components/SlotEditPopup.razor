@@ -1,0 +1,267 @@
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Dtos
+@using OvcinaHra.Shared.Extensions
+@inject ApiClient Api
+
+<DxPopup AllowResize="true" @bind-Visible="@isVisible" HeaderText="@HeaderText" Width="640px">
+    <BodyContentTemplate Context="popupCtx">
+        <DxFormLayout>
+            <DxFormLayoutGroup Caption="Identita" ColSpanMd="12">
+                <DxFormLayoutItem Caption="Začátek" ColSpanMd="6">
+                    <DxDateEdit @bind-Date="@startTime" TimeSectionVisible="true" DisplayFormat="d.M.yyyy HH:mm" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Délka (h)" ColSpanMd="3">
+                    <DxSpinEdit @bind-Value="@durationHours" MinValue="0.5m" MaxValue="24m" Increment="0.5m" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Herní rok" ColSpanMd="3">
+                    <DxSpinEdit @bind-Value="@inGameYear" MinValue="0" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Fáze hry" ColSpanMd="6">
+                    <DxComboBox Data="@stageChoices" @bind-Value="@stage"
+                                TextFieldName="@nameof(StageChoice.Display)"
+                                ValueFieldName="@nameof(StageChoice.Value)" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Bojový bonus" ColSpanMd="6">
+                    <DxComboBox Data="@bonuses" @bind-Value="@bonusId"
+                                TextFieldName="@nameof(BattlefieldBonusDto.Name)"
+                                ValueFieldName="@nameof(BattlefieldBonusDto.Id)"
+                                NullText="Žádný"
+                                ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                </DxFormLayoutItem>
+            </DxFormLayoutGroup>
+
+            <DxFormLayoutGroup Caption="Obsah" ColSpanMd="12">
+                <DxFormLayoutItem Caption="Pravidla / poznámka" ColSpanMd="12">
+                    <DxMemo @bind-Text="@rules" Rows="4" />
+                </DxFormLayoutItem>
+            </DxFormLayoutGroup>
+
+            <DxFormLayoutGroup Caption="Vazby" ColSpanMd="12">
+                <DxFormLayoutItem Caption="Události" ColSpanMd="12">
+                    @if (gameEvents.Count == 0)
+                    {
+                        <span style="color:var(--oh-text-secondary);font-size:.85rem">
+                            Žádné události. Vytvoř je v sekci Události.
+                        </span>
+                    }
+                    else
+                    {
+                        <div class="oh-tl-slot-chips">
+                            @foreach (var ev in gameEvents)
+                            {
+                                var on = linkedEventIds.Contains(ev.Id);
+                                <button type="button"
+                                        class="oh-tl-chip @(on ? "oh-tl-chip--quest" : "oh-tl-chip--other")"
+                                        style="cursor:pointer"
+                                        @onclick="() => ToggleEvent(ev.Id)">
+                                    <i class="bi @(on ? "bi-check2" : "bi-plus")"></i>@ev.Name
+                                </button>
+                            }
+                        </div>
+                    }
+                </DxFormLayoutItem>
+            </DxFormLayoutGroup>
+        </DxFormLayout>
+
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <div class="alert alert-danger mt-2">@error</div>
+        }
+
+        <div class="d-flex gap-2 mt-3">
+            @if (editingId.HasValue)
+            {
+                <button type="button" class="btn btn-outline-danger" @onclick="() => isDeleteConfirmVisible = true">
+                    <i class="bi bi-trash"></i> Smazat
+                </button>
+            }
+            <div style="flex:1"></div>
+            <button type="button" class="btn btn-secondary" @onclick="Close">Zrušit</button>
+            <button type="button" class="btn btn-primary" @onclick="SaveAsync" disabled="@saving">
+                @(saving ? "Ukládám…" : "Uložit")
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+<DxPopup @bind-Visible="@isDeleteConfirmVisible" HeaderText="Smazat časový blok?" Width="420px">
+    <BodyContentTemplate Context="confirmCtx">
+        <p>Tato akce je nevratná. Propojené události zůstanou zachovány.</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button type="button" class="btn btn-secondary" @onclick="() => isDeleteConfirmVisible = false">Zrušit</button>
+            <button type="button" class="btn btn-danger" @onclick="DeleteAsync">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter, EditorRequired] public int GameId { get; set; }
+    [Parameter] public GameTimeSlotDto? EditSlot { get; set; }
+    [Parameter] public IReadOnlyList<BattlefieldBonusDto> Bonuses { get; set; } = [];
+    [Parameter] public IReadOnlyList<GameEventListDto> GameEvents { get; set; } = [];
+    [Parameter] public EventCallback OnSaved { get; set; }
+    [Parameter] public EventCallback OnDeleted { get; set; }
+
+    private bool isVisible;
+    private bool isDeleteConfirmVisible;
+    private bool saving;
+    private string? error;
+
+    private int? editingId;
+    private DateTime startTime = DateTime.Now;
+    private decimal durationHours = 2m;
+    private int? inGameYear;
+    private TreasureQuestDifficulty stage = TreasureQuestDifficulty.Start;
+    private int? bonusId;
+    private string? rules;
+    private HashSet<int> linkedEventIds = [];
+
+    private IReadOnlyList<BattlefieldBonusDto> bonuses = [];
+    private IReadOnlyList<GameEventListDto> gameEvents = [];
+
+    private record StageChoice(TreasureQuestDifficulty Value, string Display);
+    private static readonly IReadOnlyList<StageChoice> stageChoices =
+        Enum.GetValues<TreasureQuestDifficulty>()
+            .Select(v => new StageChoice(v, v.GetDisplayName()))
+            .ToList();
+
+    private string HeaderText => editingId.HasValue
+        ? $"Upravit blok – {startTime:d.M.yyyy HH:mm}"
+        : "Nový časový blok";
+
+    private bool _wasVisible;
+
+    public override async Task SetParametersAsync(ParameterView parameters)
+    {
+        await base.SetParametersAsync(parameters);
+        bonuses = Bonuses;
+        gameEvents = GameEvents;
+
+        if (Visible && !_wasVisible)
+        {
+            ResetForm();
+            isVisible = true;
+        }
+        else if (!Visible && _wasVisible)
+        {
+            isVisible = false;
+        }
+        _wasVisible = Visible;
+    }
+
+    private void ResetForm()
+    {
+        error = null;
+        if (EditSlot is null)
+        {
+            editingId = null;
+            startTime = DateTime.Now.Date.AddHours(10);
+            durationHours = 2m;
+            inGameYear = null;
+            stage = TreasureQuestDifficulty.Start;
+            bonusId = null;
+            rules = null;
+            linkedEventIds = [];
+        }
+        else
+        {
+            editingId = EditSlot.Id;
+            startTime = EditSlot.StartTime.ToLocalTime();
+            durationHours = EditSlot.DurationHours;
+            inGameYear = EditSlot.InGameYear;
+            stage = EditSlot.Stage;
+            bonusId = EditSlot.BattlefieldBonusId;
+            rules = EditSlot.Rules;
+            linkedEventIds = EditSlot.LinkedEvents.Select(e => e.Id).ToHashSet();
+        }
+    }
+
+    private void ToggleEvent(int id)
+    {
+        if (!linkedEventIds.Add(id)) linkedEventIds.Remove(id);
+    }
+
+    private async Task SaveAsync()
+    {
+        error = null;
+        saving = true;
+        try
+        {
+            var ids = linkedEventIds.Count > 0 ? linkedEventIds.ToList() : null;
+            // StartTime is collected in local time via DxDateEdit; persist as UTC to match the API contract.
+            var startUtc = DateTime.SpecifyKind(startTime, DateTimeKind.Local).ToUniversalTime();
+
+            if (editingId is { } id)
+            {
+                var (ok, problem) = await Api.PutWithProblemAsync($"/api/timeline/slots/{id}",
+                    new UpdateGameTimeSlotDto(startUtc, durationHours, inGameYear, rules, bonusId, stage, ids));
+                if (!ok)
+                {
+                    error = problem ?? "Uložení selhalo.";
+                    return;
+                }
+            }
+            else
+            {
+                var (ok, _, problem) = await Api.PostWithProblemAsync<CreateGameTimeSlotDto, GameTimeSlotDto>(
+                    "/api/timeline/slots",
+                    new CreateGameTimeSlotDto(GameId, startUtc, durationHours, inGameYear, rules, bonusId, stage, ids));
+                if (!ok)
+                {
+                    error = problem ?? "Vytvoření selhalo.";
+                    return;
+                }
+            }
+            await Close();
+            await OnSaved.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (editingId is not { } id) return;
+        try
+        {
+            var (ok, problem) = await Api.DeleteWithProblemAsync($"/api/timeline/slots/{id}");
+            if (!ok)
+            {
+                error = problem ?? "Smazání selhalo.";
+                isDeleteConfirmVisible = false;
+                return;
+            }
+            isDeleteConfirmVisible = false;
+            await Close();
+            await OnDeleted.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            isDeleteConfirmVisible = false;
+        }
+    }
+
+    private async Task Close()
+    {
+        // Reset transient state so the popup can't be reopened with a stale
+        // confirm dialog still on screen, a leftover error banner, or a
+        // mid-flight `saving` flag from a prior open.
+        isVisible = false;
+        isDeleteConfirmVisible = false;
+        error = null;
+        saving = false;
+        if (Visible)
+        {
+            await VisibleChanged.InvokeAsync(false);
+        }
+    }
+}

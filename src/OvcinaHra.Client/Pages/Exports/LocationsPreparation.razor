@@ -1,0 +1,281 @@
+@page "/exports/locations-preparation"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using OvcinaHra.Shared.Dtos
+@inject ApiClient Api
+@inject GameContextService GameContext
+@implements IDisposable
+
+<PageTitle>Příprava lokací — Export | OvčinaHra</PageTitle>
+
+<div class="oh-exp-lp-page">
+    <div class="oh-exp-lp-toolbar oh-no-print">
+        <a href="/exports" class="oh-exp-lp-back">
+            <i class="bi bi-chevron-left"></i> Zpět na exporty
+        </a>
+        <h1>Příprava lokací</h1>
+        <button class="oh-exp-lp-print-btn" @onclick="PrintAsync" type="button">
+            <i class="bi bi-printer-fill"></i> Tisk
+        </button>
+    </div>
+
+    <div class="oh-exp-lp-print-header oh-print-only">
+        <h1>Příprava lokací</h1>
+        <p>OvčinaHra · @DateTime.Now.ToString("d. MMMM yyyy", System.Globalization.CultureInfo.GetCultureInfo("cs-CZ"))</p>
+    </div>
+
+    @if (loading)
+    {
+        <p class="oh-exp-lp-status">Načítám…</p>
+    }
+    else if (locations is null || locations.Count == 0)
+    {
+        <p class="oh-exp-lp-status">Žádné lokace nejsou v této hře.</p>
+    }
+    else
+    {
+        <table class="oh-exp-lp-table">
+            <thead>
+                <tr>
+                    <th class="oh-exp-lp-col-name">Lokace</th>
+                    <th class="oh-exp-lp-col-stashes">Skrýše</th>
+                    <th class="oh-exp-lp-col-stamp">Razítko</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var loc in locations.OrderBy(l => l.Name))
+                {
+                    <tr>
+                        <td class="oh-exp-lp-name">@loc.Name</td>
+                        <td class="oh-exp-lp-stashes">
+                            @if (loc.Stashes is { Count: > 0 })
+                            {
+                                @string.Join(", ", loc.Stashes.Select(s => s.Name))
+                            }
+                            else
+                            {
+                                <span class="oh-exp-lp-muted">—</span>
+                            }
+                        </td>
+                        <td class="oh-exp-lp-stamp">
+                            @if (!string.IsNullOrWhiteSpace(loc.StampImageUrl))
+                            {
+                                <img src="@loc.StampImageUrl" alt="" class="oh-exp-lp-stamp-img" />
+                            }
+                            else
+                            {
+                                <span class="oh-exp-lp-muted">—</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<style>
+    .oh-exp-lp-page {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem;
+    }
+
+    .oh-exp-lp-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .oh-exp-lp-toolbar h1 {
+        flex: 1;
+        font-family: 'Merriweather', serif;
+        margin: 0;
+    }
+
+    .oh-exp-lp-back,
+    .oh-exp-lp-print-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.4rem 0.9rem;
+        border: 1px solid var(--oh-border, #D9CFB6);
+        border-radius: 6px;
+        background: var(--oh-surface, #FAF6EC);
+        color: inherit;
+        text-decoration: none;
+        cursor: pointer;
+        font-size: 0.9rem;
+    }
+
+    .oh-exp-lp-back:hover,
+    .oh-exp-lp-print-btn:hover {
+        background: #F2EBD8;
+    }
+
+    .oh-exp-lp-status {
+        text-align: center;
+        color: var(--oh-text-secondary);
+        padding: 3rem;
+    }
+
+    .oh-exp-lp-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: var(--oh-surface, #FAF6EC);
+        border: 1px solid var(--oh-border, #D9CFB6);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .oh-exp-lp-table th,
+    .oh-exp-lp-table td {
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--oh-border, #D9CFB6);
+        text-align: left;
+        vertical-align: middle;
+    }
+
+    .oh-exp-lp-table th {
+        background: #F2EBD8;
+        font-family: 'Merriweather', serif;
+        font-weight: 600;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .oh-exp-lp-table tbody tr:hover {
+        background: #F7F2E2;
+    }
+
+    .oh-exp-lp-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+
+    .oh-exp-lp-name {
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .oh-exp-lp-stashes {
+        color: var(--oh-text-secondary);
+    }
+
+    .oh-exp-lp-stamp {
+        width: 120px;
+        text-align: center;
+    }
+
+    .oh-exp-lp-stamp-img {
+        width: 100px;
+        height: 100px;
+        object-fit: contain;
+        background: white;
+        border: 1px solid var(--oh-border, #D9CFB6);
+        border-radius: 4px;
+    }
+
+    .oh-exp-lp-muted {
+        color: var(--oh-text-tertiary, #999);
+        font-style: italic;
+    }
+
+    .oh-print-only {
+        display: none;
+    }
+
+    @@media print {
+        @@page {
+            size: A4 portrait;
+            margin: 12mm;
+        }
+
+        .oh-no-print {
+            display: none !important;
+        }
+
+        .oh-print-only {
+            display: block;
+        }
+
+        .oh-exp-lp-page {
+            padding: 0;
+            max-width: none;
+        }
+
+        .oh-exp-lp-print-header h1 {
+            font-family: 'Merriweather', serif;
+            margin: 0 0 0.25rem 0;
+        }
+
+        .oh-exp-lp-print-header p {
+            color: #666;
+            margin: 0 0 1.5rem 0;
+            font-size: 0.85rem;
+        }
+
+        .oh-exp-lp-table {
+            background: white;
+            border: 1px solid #888;
+            page-break-inside: auto;
+        }
+
+        .oh-exp-lp-table tr {
+            page-break-inside: avoid;
+            page-break-after: auto;
+        }
+
+        .oh-exp-lp-table th {
+            background: #eee !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        .oh-exp-lp-stamp-img {
+            width: 80px;
+            height: 80px;
+        }
+    }
+</style>
+
+@code {
+    private bool loading = true;
+    private List<LocationListDto>? locations;
+    private int gameId => GameContext.SelectedGameId ?? 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GameContext.InitializeAsync();
+        GameContext.OnGameChanged += OnGameChanged;
+        await LoadAsync();
+    }
+
+    private async void OnGameChanged()
+    {
+        await LoadAsync();
+        StateHasChanged();
+    }
+
+    public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        try
+        {
+            locations = await Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gameId}");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task PrintAsync()
+    {
+        await JsRuntime.InvokeVoidAsync("print");
+    }
+
+    [Inject] private Microsoft.JSInterop.IJSRuntime JsRuntime { get; set; } = default!;
+}
