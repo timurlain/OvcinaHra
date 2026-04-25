@@ -6,7 +6,7 @@ using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Tests.Endpoints;
 
-public class ScanEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
+public class ScanEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
     private async Task<int> GetKingdomIdAsync(string name)
     {

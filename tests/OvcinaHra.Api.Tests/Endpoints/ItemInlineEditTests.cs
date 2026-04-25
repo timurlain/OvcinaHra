@@ -11,7 +11,7 @@ namespace OvcinaHra.Api.Tests.Endpoints;
 // PUT /api/items/{id} and PUT /api/items/game-item/{gameId}/{itemId} are now
 // hit directly from the grid on every blur, so bad inputs must surface as
 // Czech ProblemDetails 400 rather than getting persisted as junk.
-public class ItemInlineEditTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
+public class ItemInlineEditTests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
     private async Task<GameDetailDto> CreateGameAsync()
     {

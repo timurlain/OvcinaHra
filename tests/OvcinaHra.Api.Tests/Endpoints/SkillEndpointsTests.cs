@@ -12,7 +12,7 @@ using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Tests.Endpoints;
 
-public class SkillEndpointsTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
+public class SkillEndpointsTests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
     private async Task<BuildingDetailDto> CreateBuildingAsync(string name)
     {

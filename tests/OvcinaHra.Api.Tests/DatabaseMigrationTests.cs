@@ -5,7 +5,7 @@ using OvcinaHra.Api.Tests.Fixtures;
 
 namespace OvcinaHra.Api.Tests;
 
-public class DatabaseMigrationTests(PostgresFixture postgres) : IntegrationTestBase(postgres)
+public class DatabaseMigrationTests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
     [Fact]
     public async Task Database_HasPendingModelChanges_IsFalse()
