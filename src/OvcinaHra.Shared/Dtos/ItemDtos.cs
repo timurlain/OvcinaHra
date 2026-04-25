@@ -19,7 +19,8 @@ public record ItemListDto(
     bool IsLimited,
     string? ImagePath,
     string? Note = null,
-    string? ImageUrl = null)
+    string? ImageUrl = null,
+    bool HasRecipe = false)
 {
     [JsonIgnore]
     public string ItemTypeDisplay => ItemType.GetDisplayName();
@@ -57,7 +58,8 @@ public record GameItemListDto(
     bool IsFindable,
     string? RecipeSummary,
     string? Note = null,
-    string? ImageUrl = null)
+    string? ImageUrl = null,
+    bool HasRecipe = false)
 {
     [JsonIgnore]
     public string ItemTypeDisplay => ItemType.GetDisplayName();
@@ -84,7 +86,8 @@ public record ItemDetailDto(
     bool IsLimited,
     string? ImagePath,
     string? Note = null,
-    string? ImageUrl = null);
+    string? ImageUrl = null,
+    bool HasRecipe = false);
 
 public record CreateItemDto(
     string Name,

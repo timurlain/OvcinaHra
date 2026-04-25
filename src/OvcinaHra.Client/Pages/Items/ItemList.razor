@@ -213,7 +213,11 @@ else if (Catalog)
             <DxGridDataColumn Caption="Flagy" Width="96px" AllowSort="false" AllowGroup="false">
                 <CellDisplayTemplate>
                     @{ var it = (ItemListDto)context.DataItem; }
-                    <ItemFlagsBox PerGame="false" IsUnique="it.IsUnique" IsLimited="it.IsLimited" IsCraftable="it.IsCraftable" />
+                    @* Issue #154 — IsCraftable badge only renders when this
+                       item is actually wired to a recipe somewhere; the
+                       catalog flag alone is intent, not a fact. *@
+                    <ItemFlagsBox PerGame="false" IsUnique="it.IsUnique" IsLimited="it.IsLimited"
+                                  IsCraftable="@(it.IsCraftable && it.HasRecipe)" />
                 </CellDisplayTemplate>
             </DxGridDataColumn>
 
@@ -394,7 +398,11 @@ else
             <DxGridDataColumn Caption="Flagy" Width="96px" AllowSort="false" AllowGroup="false">
                 <CellDisplayTemplate>
                     @{ var gi = (GameItemListDto)context.DataItem; }
-                    <ItemFlagsBox PerGame="true" IsSold="gi.IsSold" IsFindable="gi.IsFindable" IsCraftable="gi.IsCraftable" />
+                    @* Issue #154 — gate on RecipeSummary (HasRecipe) so the
+                       per-game tile only shows the IsCraftable badge when
+                       this game actually has a recipe defined. *@
+                    <ItemFlagsBox PerGame="true" IsSold="gi.IsSold" IsFindable="gi.IsFindable"
+                                  IsCraftable="@(gi.IsCraftable && gi.HasRecipe)" />
                 </CellDisplayTemplate>
             </DxGridDataColumn>
 
@@ -480,10 +488,12 @@ else
                             <div class="oh-it-qp-section-body">@quickPeekItem.Effect</div>
                         </div>
                     }
+                    @* Issue #154 — same gate as the catalog tile so the
+                       quick-peek popup matches what the list shows. *@
                     <ItemFlagsBox PerGame="quickPeekIsPerGame"
                                   IsUnique="quickPeekItem.IsUnique"
                                   IsLimited="quickPeekItem.IsLimited"
-                                  IsCraftable="quickPeekItem.IsCraftable"
+                                  IsCraftable="@(quickPeekItem.IsCraftable && quickPeekItem.HasRecipe)"
                                   IsSold="quickPeekIsSold"
                                   IsFindable="quickPeekIsFindable" />
                     @if (quickPeekIsPerGame && quickPeekPrice.HasValue)
@@ -1471,7 +1481,11 @@ else
             gi.ReqWarrior, gi.ReqArcher, gi.ReqMage, gi.ReqThief,
             gi.IsUnique, gi.IsLimited, gi.ImagePath,
             Note: gi.Note,
-            ImageUrl: gi.ImageUrl);
+            ImageUrl: gi.ImageUrl,
+            // Issue #154 — propagate so the per-game quick-peek matches the
+            // tile gate. Without this the badge would never render in
+            // per-game peek even when the recipe exists.
+            HasRecipe: gi.HasRecipe);
         quickPeekIsPerGame = true;
         quickPeekIsSold = gi.IsSold;
         quickPeekIsFindable = gi.IsFindable;
