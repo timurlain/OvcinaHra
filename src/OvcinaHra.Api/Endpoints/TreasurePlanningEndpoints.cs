@@ -298,8 +298,13 @@ public static class TreasurePlanningEndpoints
     /// or a fresh pool row is created. Items where allocations already exceed
     /// stock are skipped and listed in <see cref="RefillPoolResponse.OverAllocated"/>.
     /// </summary>
-    private static async Task<Ok<RefillPoolResponse>> RefillPool(int gameId, WorldDbContext db)
+    private static async Task<Ok<RefillPoolResponse>> RefillPool(int gameId, bool? dryRun, WorldDbContext db)
     {
+        // Optional preview mode — compute the same response shape without
+        // persisting. UI fetches a preview before showing the confirm popup
+        // so the user reviews exactly what will be added before committing.
+        var preview = dryRun == true;
+
         // Wrap the read-then-write in SERIALIZABLE so two concurrent refills
         // can't both compute `remaining` from the same allocation snapshot
         // and double-append. Postgres will retry-fail one of the txns; the
@@ -391,25 +396,35 @@ public static class TreasurePlanningEndpoints
             // pool row (stacks via Count +=). The /pool POST endpoint
             // currently creates fresh rows on every call — refill smooths
             // that over so re-running this action is idempotent.
-            if (existingPoolByItem.TryGetValue(gi.ItemId, out var existingPool))
+            if (!preview)
             {
-                existingPool.Count += remaining;
-            }
-            else
-            {
-                db.TreasureItems.Add(new TreasureItem
+                if (existingPoolByItem.TryGetValue(gi.ItemId, out var existingPool))
                 {
-                    GameId = gameId,
-                    ItemId = gi.ItemId,
-                    TreasureQuestId = null,
-                    Count = remaining
-                });
+                    existingPool.Count += remaining;
+                }
+                else
+                {
+                    db.TreasureItems.Add(new TreasureItem
+                    {
+                        GameId = gameId,
+                        ItemId = gi.ItemId,
+                        TreasureQuestId = null,
+                        Count = remaining
+                    });
+                }
             }
             added.Add(new RefillPoolItemDto(gi.ItemId, gi.Item.Name, remaining));
         }
 
-        await db.SaveChangesAsync();
-        await tx.CommitAsync();
+        if (preview)
+        {
+            await tx.RollbackAsync();
+        }
+        else
+        {
+            await db.SaveChangesAsync();
+            await tx.CommitAsync();
+        }
 
         return TypedResults.Ok(new RefillPoolResponse(
             ItemsAdded: added.Sum(a => a.Added),

@@ -17,8 +17,9 @@
            confirmation per feedback_ovcinahra_destructive_confirm; this
            isn't destructive but it IS bulk + irreversible-without-cleanup. *@
         <button class="btn btn-outline-primary btn-sm" type="button"
-                @onclick="() => isRefillConfirmVisible = true" disabled="@isRefilling"
-                title="Spočítá zbývající stock pro každý nalézatelný předmět a doplní zásobník.">
+                @onclick="OpenRefillPreviewAsync" disabled="@(isRefilling || _isLoadingPreview)"
+                title="Spočítá zbývající stock pro každý nalézatelný předmět a zobrazí náhled toho, co se doplní.">
+            @if (_isLoadingPreview) { <span class="spinner-border spinner-border-sm me-1"></span> }
             <i class="bi bi-arrow-down-circle me-1"></i> Doplnit vše zbývající k schování do zásobníku
         </button>
         <button class="btn btn-primary btn-sm" type="button" @onclick="OpenAddToPoolModal">
@@ -419,27 +420,86 @@ else
     </BodyContentTemplate>
 </DxPopup>
 
-@* Issue #160 sub-task C — bulk refill confirm. *@
-<DxPopup @bind-Visible="@isRefillConfirmVisible" HeaderText="Doplnit zásobník?" Width="540px">
+@* Issue #160 sub-task C — bulk refill preview + confirm. Preview fetched
+   on open via dryRun=true so user sees exactly what will be added before
+   committing. *@
+<DxPopup @bind-Visible="@isRefillConfirmVisible" HeaderText="Náhled doplnění zásobníku" Width="640px">
     <BodyContentTemplate Context="popupContext">
-        <p>
-            Spočítáme zbývající stock pro každý předmět s <strong>nalézatelným</strong> příznakem
-            (<em>IsFindable</em>) a doplníme rozdíl do zásobníku.
-        </p>
-        <ul class="small text-muted mb-3">
-            <li>Stock se počítá per-hru z <code>GameItem.StockCount</code>.</li>
-            <li>Alokace = <strong>zásobník + skryté poklady + odměny questů + osobní questy</strong>.</li>
-            <li>Předměty s alokacemi nad rámec stocku se přeskočí a označí pro manuální revizi.</li>
-        </ul>
-        <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" type="button"
-                    @onclick="() => isRefillConfirmVisible = false" disabled="@isRefilling">Zrušit</button>
-            <button class="btn btn-primary" type="button"
-                    @onclick="RefillPoolAsync" disabled="@isRefilling">
-                @if (isRefilling) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                Doplnit
-            </button>
-        </div>
+        @if (_refillPreview is null)
+        {
+            <p class="text-muted mb-0"><span class="spinner-border spinner-border-sm me-2"></span>Počítám náhled…</p>
+        }
+        else if (_refillPreview.Added.Count == 0 && _refillPreview.OverAllocated.Count == 0)
+        {
+            <p class="mb-3">
+                <i class="bi bi-check2-circle text-success me-1"></i>
+                <strong>Žádné předměty k doplnění.</strong> Všechny nalézatelné položky jsou už alokované do limitu stocku.
+            </p>
+            <div class="d-flex gap-2 justify-content-end">
+                <button class="btn btn-secondary" type="button" @onclick="CloseRefillPreview">Zavřít</button>
+            </div>
+        }
+        else
+        {
+            <p class="small text-muted mb-2">
+                Po potvrzení se do zásobníku doplní následující předměty (rozdíl mezi stockem a všemi alokacemi).
+            </p>
+            @if (_refillPreview.Added.Count > 0)
+            {
+                <div class="table-responsive mb-3" style="max-height: 320px; overflow-y: auto;">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Předmět</th>
+                                <th class="text-end" style="width: 90px;">Doplnit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var a in _refillPreview.Added)
+                            {
+                                <tr>
+                                    <td>@a.ItemName</td>
+                                    <td class="text-end"><strong>+@a.Added</strong></td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr class="table-light">
+                                <td><strong>Celkem</strong></td>
+                                <td class="text-end"><strong>+@_refillPreview.Added.Sum(a => a.Added)</strong></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            }
+            @if (_refillPreview.OverAllocated.Count > 0)
+            {
+                <div class="alert alert-warning small mb-3">
+                    <strong>
+                        <i class="bi bi-exclamation-triangle me-1"></i>
+                        @_refillPreview.OverAllocated.Count předmětů má více alokací než stock — přeskočí se:
+                    </strong>
+                    <ul class="mb-0 mt-1">
+                        @foreach (var oa in _refillPreview.OverAllocated)
+                        {
+                            <li>@oa.ItemName: stock @oa.StockCount, alokovaných @oa.Allocated (přebytek @oa.Excess)</li>
+                        }
+                    </ul>
+                </div>
+            }
+            <div class="d-flex gap-2 justify-content-end">
+                <button class="btn btn-secondary" type="button"
+                        @onclick="CloseRefillPreview" disabled="@isRefilling">Zrušit</button>
+                @if (_refillPreview.Added.Count > 0)
+                {
+                    <button class="btn btn-primary" type="button"
+                            @onclick="RefillPoolAsync" disabled="@isRefilling">
+                        @if (isRefilling) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        Doplnit (@_refillPreview.Added.Sum(a => a.Added) předmětů)
+                    </button>
+                }
+            </div>
+        }
     </BodyContentTemplate>
 </DxPopup>
 
@@ -557,6 +617,8 @@ else
     // Issue #160 sub-task C — bulk refill state.
     private bool isRefillConfirmVisible;
     private bool isRefilling;
+    private bool _isLoadingPreview;
+    private RefillPoolResponse? _refillPreview;
     private RefillPoolResponse? _refillResult;
     private string? _refillError;
     private int? poolItemId;
@@ -869,6 +931,49 @@ else
     // (TreasureItem pool + treasure-quest, QuestReward, PersonalQuestItemReward),
     // then appends the unallocated remainder to the pool. Items already over-
     // allocated are skipped and surfaced for manual review.
+
+    // Open the popup and fetch a dry-run preview so the user reviews exactly
+    // what will be added before committing. Bulk + irreversible-without-cleanup
+    // → preview-then-confirm beats a single confirm dialog.
+    private async Task OpenRefillPreviewAsync()
+    {
+        _refillError = null;
+        _refillPreview = null;
+        _isLoadingPreview = true;
+        isRefillConfirmVisible = true;
+        try
+        {
+            var (ok, value, problem) = await Api.PostWithProblemAsync<object, RefillPoolResponse>(
+                $"/api/treasure-planning/refill-pool/{gameId}?dryRun=true",
+                new { });
+            if (!ok)
+            {
+                _refillError = problem ?? "Server odmítl požadavek bez podrobností.";
+                isRefillConfirmVisible = false;
+            }
+            else
+            {
+                _refillPreview = value;
+            }
+        }
+        catch (Exception ex)
+        {
+            _refillError = ex.Message;
+            isRefillConfirmVisible = false;
+        }
+        finally
+        {
+            _isLoadingPreview = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CloseRefillPreview()
+    {
+        isRefillConfirmVisible = false;
+        _refillPreview = null;
+    }
+
     private async Task RefillPoolAsync()
     {
         _refillError = null;
@@ -897,6 +1002,7 @@ else
             // on failure hides the error banner behind the modal.
             isRefillConfirmVisible = false;
             isRefilling = false;
+            _refillPreview = null;
             StateHasChanged();
         }
     }
