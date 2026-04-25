@@ -1,0 +1,37 @@
+@* Single class pip — exactly ONE weapon glyph in primary green when
+   ClassRestriction is set, italic "Pro všechna povolání" line otherwise
+   (issue #153 designer h4 note: "single pip"; explicit reject of any
+   4-pip array). *@
+
+@if (Class.HasValue)
+{
+    <span class="oh-sk-class-pip" title="@($"Pro povolání: {Class.Value.GetDisplayName()}")">
+        <i class="bi @ClassIcon(Class.Value)" aria-hidden="true"></i>
+    </span>
+}
+else if (ShowAllLine)
+{
+    <span class="oh-sk-class-line">Pro všechna povolání</span>
+}
+
+@code {
+    [Parameter] public PlayerClass? Class { get; set; }
+
+    /// <summary>When the skill is unrestricted, show the muted Czech line
+    /// instead of an empty cell. Default true; cells can opt out for visual
+    /// density (the column header + chip glyph already imply class scope).</summary>
+    [Parameter] public bool ShowAllLine { get; set; } = true;
+
+    /// <summary>Bootstrap Icons mapping — same icons used elsewhere in the
+    /// codebase (Items class pips on ItemListDto). Aligns the visual language
+    /// across grids: shield = warrior, bullseye = archer, magic = mage,
+    /// incognito = thief.</summary>
+    private static string ClassIcon(PlayerClass c) => c switch
+    {
+        PlayerClass.Warrior => "bi-shield-shaded",
+        PlayerClass.Archer  => "bi-bullseye",
+        PlayerClass.Mage    => "bi-magic",
+        PlayerClass.Thief   => "bi-incognito",
+        _ => "bi-question-circle"
+    };
+}
