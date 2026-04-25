@@ -1,105 +1,173 @@
 @page "/timeline"
 @attribute [Authorize]
+@using System.Globalization
+@using System.Threading
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Dtos
 @inject ApiClient Api
 @inject GameContextService GameContext
+@inject IJSRuntime JS
 @implements IDisposable
 
-<h1 class="mb-3">Časová osa</h1>
+<PageTitle>Harmonogram hry</PageTitle>
 
-@if (loading) { <p>Načítám...</p> }
-else if (slots.Count == 0 && bonuses.Count == 0)
-{
-    <div class="text-center text-muted py-5">
-        <i class="bi bi-clock-history fs-1 d-block mb-2"></i>
-        <p>Žádné časové bloky pro tuto hru.</p>
-        <button class="btn btn-primary" @onclick="() => OpenSlotModal(null)">+ Nové období</button>
+@{ var cs = CultureInfo.GetCultureInfo("cs-CZ"); }
+
+<div class="oh-tl-bar">
+    <div class="oh-tl-bar-row">
+        <div>
+            <h1 class="oh-tl-bar-title">Harmonogram hry</h1>
+            <div class="oh-tl-bar-sub">@(GameContext.GameName ?? "Žádná hra")</div>
+        </div>
+        <div class="oh-tl-bar-spacer"></div>
+        @if (gameRunning && currentStage is { } stg)
+        {
+            <span class="oh-tl-act-pill" style="@($"color: {StageColor(stg)}")">
+                <i class="bi bi-broadcast"></i>Aktuálně: @stg.GetDisplayName()
+            </span>
+        }
+        <div class="oh-tl-seg" role="tablist" aria-label="Pohled">
+            <button type="button" class="oh-tl-seg-btn @(view == "agenda" ? "on" : "")"
+                    role="tab" aria-selected="@(view == "agenda")"
+                    @onclick='() => SetViewAsync("agenda")'>Agenda</button>
+            <button type="button" class="oh-tl-seg-btn @(view == "gantt" ? "on" : "")"
+                    role="tab" aria-selected="@(view == "gantt")"
+                    @onclick='() => SetViewAsync("gantt")'>Gantt</button>
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" @onclick="OpenCreate">
+            <i class="bi bi-plus-lg"></i> Nový časový blok
+        </button>
+        <a class="btn btn-outline-secondary btn-sm" href="timeline/print" target="_blank" rel="noopener">
+            <i class="bi bi-printer"></i> Tisk
+        </a>
+        <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="() => isBonusesOpen = true">
+            <i class="bi bi-shield-check"></i> Bonusy
+        </button>
     </div>
+    @if (slots.Count > 0)
+    {
+        <div class="oh-tl-filter-row">
+            <span><i class="bi bi-funnel"></i> Filtrovat:</span>
+            @foreach (var stage in Enum.GetValues<TreasureQuestDifficulty>())
+            {
+                <label style="display:inline-flex;align-items:center;gap:4px">
+                    <input type="checkbox" checked="@stageFilter[stage]"
+                           @onchange="@((ChangeEventArgs e) => ToggleStage(stage, (bool)(e.Value ?? false)))" />
+                    @stage.GetDisplayName()
+                </label>
+            }
+            <label style="display:inline-flex;align-items:center;gap:4px">
+                <input type="checkbox" @bind="onlyWithBonus" /> jen s bonusem
+            </label>
+            <label style="display:inline-flex;align-items:center;gap:4px">
+                <input type="checkbox" @bind="onlyWithEvents" /> jen s událostmi
+            </label>
+        </div>
+    }
+</div>
+
+@if (loading)
+{
+    <p class="oh-tl-agenda">Načítám…</p>
+}
+else if (slots.Count == 0)
+{
+    <div class="oh-tl-empty">
+        <i class="bi bi-clock-history"></i>
+        <div class="oh-tl-empty-title">Žádné časové bloky pro tuto hru</div>
+        <p>Začni rozkreslovat harmonogram – Agenda i Gantt pohled jsou připravené.</p>
+        <button type="button" class="btn btn-primary mt-2" @onclick="OpenCreate">
+            <i class="bi bi-plus-lg"></i> Nový časový blok
+        </button>
+    </div>
+}
+else if (view == "gantt")
+{
+    <GanttCanvas Slots="@FilteredSlots" Now="@_now" OnEdit="OpenEdit" />
 }
 else
 {
-    <div class="row">
-        @* LEFT: Time slots (wider) *@
-        <div class="col-md-7">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h5 class="mb-0">Časová období</h5>
-                <button class="btn btn-sm btn-primary" @onclick="() => OpenSlotModal(null)">+ Nové období</button>
-            </div>
-            <OvcinaGrid Data="@slots" KeyFieldName="Id" LayoutKey="grid-layout-timeline-slots"
-                        RowClick="@(e => OpenSlotModal((GameTimeSlotDto)e.Grid.GetDataItem(e.VisibleIndex)))">
-                <Columns>
-                    <DxGridDataColumn FieldName="StartTime" Caption="Začátek" Width="160px" DisplayFormat="d.M.yyyy HH:mm" />
-                    <DxGridDataColumn FieldName="DurationHours" Caption="Délka (h)" Width="100px" />
-                    <DxGridDataColumn FieldName="InGameYear" Caption="Herní rok" Width="100px" />
-                    <DxGridDataColumn FieldName="Rules" Caption="Pravidla" />
-                    <DxGridDataColumn FieldName="BattlefieldBonusId" Caption="Bonus" Width="100px" Visible="false" />
-                </Columns>
-            </OvcinaGrid>
-        </div>
-
-        @* RIGHT: Battlefield bonuses (narrower) *@
-        <div class="col-md-5">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h5 class="mb-0">Bojové bonusy</h5>
-                <button class="btn btn-sm btn-primary" @onclick="() => OpenBonusModal(null)">+ Nový bonus</button>
-            </div>
-            <OvcinaGrid Data="@bonuses" KeyFieldName="Id" LayoutKey="grid-layout-timeline-bonuses"
-                        RowClick="@(e => OpenBonusModal((BattlefieldBonusDto)e.Grid.GetDataItem(e.VisibleIndex)))">
-                <Columns>
-                    <DxGridDataColumn FieldName="Name" Caption="Název" />
-                    <DxGridDataColumn FieldName="AttackBonus" Caption="Útok" Width="70px" />
-                    <DxGridDataColumn FieldName="DefenseBonus" Caption="Obrana" Width="70px" />
-                    <DxGridDataColumn FieldName="Description" Caption="Popis" Visible="false" />
-                </Columns>
-            </OvcinaGrid>
-        </div>
+    <div class="oh-tl-agenda">
+        @{
+            DateTime? lastDay = null;
+            TreasureQuestDifficulty? prevStage = null;
+        }
+        @foreach (var s in FilteredSlots)
+        {
+            var local = s.StartTime.ToLocalTime();
+            var day = local.Date;
+            if (lastDay != day)
+            {
+                lastDay = day;
+                <div class="oh-tl-day-sep" @key="@($"day-{day:yyyyMMdd}")">
+                    <span class="oh-tl-day-wkd">@local.ToString("dddd", cs)</span>
+                    <span class="oh-tl-day-dt">@local.ToString("d. MMMM yyyy", cs)</span>
+                </div>
+            }
+            <SlotCard @key="s.Id" Slot="@s"
+                      IsActive="@(IsActive(s))"
+                      IsPast="@(IsPast(s))"
+                      StageTransitionFrom="@prevStage"
+                      OnEdit="OpenEdit" />
+            prevStage = s.Stage;
+        }
     </div>
 }
 
-@* === SLOT POPUP === *@
-<DxPopup AllowResize="true" @bind-Visible="@isSlotVisible" HeaderText="@slotTitle" Width="550px">
-    <BodyContentTemplate Context="popupContext">
-        <DxFormLayout>
-            <DxFormLayoutItem Caption="Začátek" ColSpanMd="6">
-                <DxDateEdit @bind-Date="@slotStartTime" TimeSectionVisible="true" DisplayFormat="d.M.yyyy HH:mm" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Délka (hodiny)" ColSpanMd="6">
-                <DxSpinEdit @bind-Value="@slotDurationHours" MinValue="0.5m" MaxValue="24m" Increment="0.5m" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Herní rok" ColSpanMd="6">
-                <DxSpinEdit @bind-Value="@slotInGameYear" MinValue="0" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Bojový bonus" ColSpanMd="6">
-                <DxComboBox Data="@bonuses" @bind-Value="@slotBonusId"
-                            TextFieldName="Name" ValueFieldName="Id"
-                            NullText="Žádný" ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Pravidla" ColSpanMd="12">
-                <DxMemo @bind-Text="@slotRules" Rows="3" />
-            </DxFormLayoutItem>
-        </DxFormLayout>
-        @if (slotError is not null) { <div class="alert alert-danger mt-2">@slotError</div> }
-        <div class="d-flex gap-2 mt-3">
-            @if (editingSlotId.HasValue) { <button class="btn btn-outline-danger" @onclick="() => isSlotDeleteVisible = true">Smazat</button> }
-            <div style="flex: 1"></div>
-            <button class="btn btn-secondary" @onclick="() => isSlotVisible = false">Zrušit</button>
-            <button class="btn btn-primary" @onclick="SaveSlotAsync" disabled="@slotSaving">Uložit</button>
+<SlotEditPopup @bind-Visible="@isEditOpen"
+               GameId="@gameId"
+               EditSlot="@editSlot"
+               Bonuses="@bonuses"
+               GameEvents="@gameEvents"
+               OnSaved="OnEditSavedAsync"
+               OnDeleted="OnEditSavedAsync" />
+
+@* Bonus management popup — preserves prior CRUD. No DxGrid here. *@
+<DxPopup @bind-Visible="@isBonusesOpen" HeaderText="Bojové bonusy" Width="640px">
+    <BodyContentTemplate Context="bonusListCtx">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <span>@bonuses.Count záznamů</span>
+            <button type="button" class="btn btn-sm btn-primary" @onclick="OpenBonusCreate">
+                <i class="bi bi-plus-lg"></i> Nový bonus
+            </button>
         </div>
+        @if (bonuses.Count == 0)
+        {
+            <p style="color:var(--oh-text-secondary)">Žádné bonusy. Přidej první.</p>
+        }
+        else
+        {
+            <ul class="list-group">
+                @foreach (var b in bonuses)
+                {
+                    <li class="list-group-item d-flex justify-content-between align-items-center" @key="b.Id">
+                        <div>
+                            <strong>@b.Name</strong>
+                            <span style="color:var(--oh-text-secondary);margin-left:8px;font-family:'JetBrains Mono',monospace">
+                                Útok @b.AttackBonus · Obrana @b.DefenseBonus
+                            </span>
+                            @if (!string.IsNullOrWhiteSpace(b.Description))
+                            {
+                                <div style="font-size:.85rem;color:var(--oh-text-secondary)">@b.Description</div>
+                            }
+                        </div>
+                        <div class="d-flex gap-1">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => OpenBonusEdit(b)">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => StartBonusDelete(b)">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
     </BodyContentTemplate>
 </DxPopup>
 
-<DxPopup @bind-Visible="@isSlotDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
-    <BodyContentTemplate Context="popupContext">
-        <p>Smazat časové období?</p>
-        <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" @onclick="() => isSlotDeleteVisible = false">Zrušit</button>
-            <button class="btn btn-danger" @onclick="DeleteSlotAsync">Smazat</button>
-        </div>
-    </BodyContentTemplate>
-</DxPopup>
-
-@* === BONUS POPUP === *@
-<DxPopup AllowResize="true" @bind-Visible="@isBonusVisible" HeaderText="@bonusTitle" Width="450px">
-    <BodyContentTemplate Context="popupContext">
+<DxPopup @bind-Visible="@isBonusEditOpen" HeaderText="@bonusHeader" Width="500px">
+    <BodyContentTemplate Context="bonusEditCtx">
         <DxFormLayout>
             <DxFormLayoutItem Caption="Název" ColSpanMd="12">
                 <DxTextBox @bind-Text="@bonusName" />
@@ -115,162 +183,266 @@ else
             </DxFormLayoutItem>
         </DxFormLayout>
         @if (bonusError is not null) { <div class="alert alert-danger mt-2">@bonusError</div> }
-        <div class="d-flex gap-2 mt-3">
-            @if (editingBonusId.HasValue) { <button class="btn btn-outline-danger" @onclick="() => isBonusDeleteVisible = true">Smazat</button> }
-            <div style="flex: 1"></div>
-            <button class="btn btn-secondary" @onclick="() => isBonusVisible = false">Zrušit</button>
-            <button class="btn btn-primary" @onclick="SaveBonusAsync" disabled="@bonusSaving">Uložit</button>
+        <div class="d-flex gap-2 mt-3 justify-content-end">
+            <button type="button" class="btn btn-secondary" @onclick="() => isBonusEditOpen = false">Zrušit</button>
+            <button type="button" class="btn btn-primary" @onclick="SaveBonusAsync">Uložit</button>
         </div>
     </BodyContentTemplate>
 </DxPopup>
 
-<DxPopup @bind-Visible="@isBonusDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
-    <BodyContentTemplate Context="popupContext">
-        <p>Smazat bonus <strong>@bonusName</strong>?</p>
+<DxPopup @bind-Visible="@isBonusDeleteOpen" HeaderText="Smazat bonus?" Width="420px">
+    <BodyContentTemplate Context="bonusDeleteCtx">
+        <p>Smazat bonus <strong>@(bonusDeleteTarget?.Name ?? "")</strong>? Tato akce je nevratná. Sloty, které bonus používaly, ho ztratí.</p>
         <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" @onclick="() => isBonusDeleteVisible = false">Zrušit</button>
-            <button class="btn btn-danger" @onclick="DeleteBonusAsync">Smazat</button>
+            <button type="button" class="btn btn-secondary" @onclick="() => isBonusDeleteOpen = false">Zrušit</button>
+            <button type="button" class="btn btn-danger" @onclick="DeleteBonusAsync">Smazat</button>
         </div>
     </BodyContentTemplate>
 </DxPopup>
 
 @code {
-    // Data
+    private const string ViewKey = "oh-timeline-view";
+
     private List<GameTimeSlotDto> slots = [];
     private List<BattlefieldBonusDto> bonuses = [];
+    private List<GameEventListDto> gameEvents = [];
     private bool loading = true;
-    private int gameId => GameContext.SelectedGameId ?? 1;
+    private string view = "agenda";
+    private DateTime _now = DateTime.Now;
+    private Timer? _tickTimer;
 
-    // Slot state
-    private bool isSlotVisible, isSlotDeleteVisible, slotSaving;
-    private string slotTitle = "";
-    private string? slotError, slotRules;
-    private int? editingSlotId, slotInGameYear, slotBonusId;
-    private DateTime slotStartTime = new(2026, 5, 1, 10, 0, 0);
-    private decimal slotDurationHours = 2m;
+    private int gameId => GameContext.SelectedGameId ?? 0;
 
-    // Bonus state
-    private bool isBonusVisible, isBonusDeleteVisible, bonusSaving;
-    private string bonusTitle = "", bonusName = "";
-    private string? bonusError, bonusDescription;
+    // Filters
+    private readonly Dictionary<TreasureQuestDifficulty, bool> stageFilter =
+        Enum.GetValues<TreasureQuestDifficulty>().ToDictionary(s => s, _ => true);
+    private bool onlyWithBonus;
+    private bool onlyWithEvents;
+
+    // Edit popup
+    private bool isEditOpen;
+    private GameTimeSlotDto? editSlot;
+
+    // Bonus management
+    private bool isBonusesOpen;
+    private bool isBonusEditOpen;
+    private bool isBonusDeleteOpen;
+    private string bonusHeader = "";
     private int? editingBonusId;
-    private int bonusAttack, bonusDefense;
+    private string bonusName = "";
+    private int bonusAttack;
+    private int bonusDefense;
+    private string? bonusDescription;
+    private string? bonusError;
+    private BattlefieldBonusDto? bonusDeleteTarget;
 
-    // Lifecycle
+    private bool gameRunning => slots.Any(s => s.StartTime.ToLocalTime() <= _now);
+
+    private TreasureQuestDifficulty? currentStage =>
+        slots
+            .Where(s => s.StartTime.ToLocalTime() <= _now)
+            .OrderByDescending(s => s.StartTime)
+            .Select(s => (TreasureQuestDifficulty?)s.Stage)
+            .FirstOrDefault();
+
+    private List<GameTimeSlotDto> FilteredSlots =>
+        slots.Where(s =>
+            stageFilter[s.Stage]
+            && (!onlyWithBonus || s.BattlefieldBonusId is not null)
+            && (!onlyWithEvents || s.LinkedEvents.Count > 0))
+        .OrderBy(s => s.StartTime)
+        .ToList();
+
     protected override async Task OnInitializedAsync()
     {
         await GameContext.InitializeAsync();
         GameContext.OnGameChanged += OnGameChanged;
         await LoadAsync();
+        // 30-second re-tick: re-evaluates IsActive / IsPast, refreshes the
+        // active-slot pill counter without a server roundtrip.
+        _tickTimer = new Timer(_ =>
+        {
+            _now = DateTime.Now;
+            _ = InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            var stored = await JS.InvokeAsync<string?>("localStorage.getItem", ViewKey);
+            if ((stored == "agenda" || stored == "gantt") && stored != view)
+            {
+                view = stored;
+                StateHasChanged();
+            }
+        }
+        catch { /* prerender / JS unavailable */ }
     }
 
     private async Task LoadAsync()
     {
+        if (gameId == 0)
+        {
+            // No game selected — clear stale collections and close any open popup
+            // so the empty banner renders against an honest state.
+            slots = [];
+            bonuses = [];
+            gameEvents = [];
+            isEditOpen = false;
+            editSlot = null;
+            loading = false;
+            return;
+        }
         loading = true;
-        var slotsTask = Api.GetListAsync<GameTimeSlotDto>($"/api/timeline/slots/by-game/{gameId}");
-        var bonusesTask = Api.GetListAsync<BattlefieldBonusDto>($"/api/timeline/bonuses/by-game/{gameId}");
-        await Task.WhenAll(slotsTask, bonusesTask);
-        slots = slotsTask.Result;
-        bonuses = bonusesTask.Result;
+        try
+        {
+            var slotsTask = Api.GetListAsync<GameTimeSlotDto>($"/api/timeline/slots/by-game/{gameId}");
+            var bonusesTask = Api.GetListAsync<BattlefieldBonusDto>($"/api/timeline/bonuses/by-game/{gameId}");
+            var eventsTask = Api.GetListAsync<GameEventListDto>($"/api/games/{gameId}/events");
+            await Task.WhenAll(slotsTask, bonusesTask, eventsTask);
+            slots = slotsTask.Result;
+            bonuses = bonusesTask.Result;
+            gameEvents = eventsTask.Result;
+            _now = DateTime.Now;
+        }
+        catch
+        {
+            // Best-effort — page renders empty banner on next render.
+            slots = [];
+            bonuses = [];
+            gameEvents = [];
+        }
         loading = false;
     }
 
-    private async void OnGameChanged() { await LoadAsync(); StateHasChanged(); }
-    public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
-
-    // === SLOT ===
-    private void OpenSlotModal(GameTimeSlotDto? s)
+    private async void OnGameChanged()
     {
-        slotError = null;
-        if (s is null)
-        {
-            editingSlotId = null; slotStartTime = new DateTime(2026, 5, 1, 10, 0, 0);
-            slotDurationHours = 2m; slotInGameYear = null; slotRules = null; slotBonusId = null;
-            slotTitle = "Nové časové období";
-        }
-        else
-        {
-            editingSlotId = s.Id; slotStartTime = s.StartTime;
-            slotDurationHours = s.DurationHours;
-            slotInGameYear = s.InGameYear; slotRules = s.Rules;
-            slotBonusId = s.BattlefieldBonusId;
-            slotTitle = $"Upravit období: {s.StartTime:d.M.yyyy HH:mm}";
-        }
-        isSlotVisible = true;
+        await LoadAsync();
+        StateHasChanged();
     }
 
-    private async Task SaveSlotAsync()
+    public void Dispose()
     {
-        slotError = null; slotSaving = true;
-        try
-        {
-            var durationHours = slotDurationHours;
-            if (editingSlotId.HasValue)
-                await Api.PutAsync($"/api/timeline/slots/{editingSlotId}",
-                    new UpdateGameTimeSlotDto(slotStartTime, durationHours, slotInGameYear, slotRules, slotBonusId));
-            else
-                await Api.PostAsync<CreateGameTimeSlotDto, GameTimeSlotDto>("/api/timeline/slots",
-                    new CreateGameTimeSlotDto(gameId, slotStartTime, durationHours, slotInGameYear, slotRules, slotBonusId));
-            isSlotVisible = false; await LoadAsync(); StateHasChanged();
-        }
-        catch (Exception ex) { slotError = ex.Message; }
-        finally { slotSaving = false; }
+        GameContext.OnGameChanged -= OnGameChanged;
+        _tickTimer?.Dispose();
     }
 
-    private async Task DeleteSlotAsync()
+    private async Task SetViewAsync(string next)
     {
-        try
-        {
-            await Api.DeleteAsync($"/api/timeline/slots/{editingSlotId}");
-            isSlotDeleteVisible = false; isSlotVisible = false;
-            await LoadAsync(); StateHasChanged();
-        }
-        catch (Exception ex) { slotError = ex.Message; }
+        if (view == next) return;
+        view = next;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", ViewKey, next); }
+        catch { /* non-fatal */ }
     }
 
-    // === BONUS ===
-    private void OpenBonusModal(BattlefieldBonusDto? b)
+    private void ToggleStage(TreasureQuestDifficulty stage, bool on) => stageFilter[stage] = on;
+
+    private void OpenCreate()
+    {
+        editSlot = null;
+        isEditOpen = true;
+    }
+
+    private void OpenEdit(int id)
+    {
+        editSlot = slots.FirstOrDefault(s => s.Id == id);
+        if (editSlot is not null) isEditOpen = true;
+    }
+
+    private async Task OnEditSavedAsync()
+    {
+        await LoadAsync();
+        StateHasChanged();
+    }
+
+    private bool IsActive(GameTimeSlotDto s)
+    {
+        var local = s.StartTime.ToLocalTime();
+        return local <= _now && _now < local.Add(TimeSpan.FromHours((double)s.DurationHours));
+    }
+
+    private bool IsPast(GameTimeSlotDto s) =>
+        s.StartTime.ToLocalTime().Add(TimeSpan.FromHours((double)s.DurationHours)) < _now;
+
+    private static string StageColor(TreasureQuestDifficulty d) => d switch
+    {
+        TreasureQuestDifficulty.Start => "#7FA657",
+        TreasureQuestDifficulty.Early => "#D4A63C",
+        TreasureQuestDifficulty.Midgame => "#C17B3D",
+        TreasureQuestDifficulty.Lategame => "#8C2423",
+        _ => "#7FA657"
+    };
+
+    // --- Bonus CRUD (preserved from prior page) ---
+
+    private void OpenBonusCreate()
     {
         bonusError = null;
-        if (b is null)
-        {
-            editingBonusId = null; bonusName = ""; bonusAttack = 0; bonusDefense = 0; bonusDescription = null;
-            bonusTitle = "Nový bojový bonus";
-        }
-        else
-        {
-            editingBonusId = b.Id; bonusName = b.Name ?? ""; bonusAttack = b.AttackBonus;
-            bonusDefense = b.DefenseBonus; bonusDescription = b.Description;
-            bonusTitle = $"Upravit: {b.Name}";
-        }
-        isBonusVisible = true;
+        editingBonusId = null;
+        bonusName = "";
+        bonusAttack = 0;
+        bonusDefense = 0;
+        bonusDescription = null;
+        bonusHeader = "Nový bojový bonus";
+        isBonusEditOpen = true;
+    }
+
+    private void OpenBonusEdit(BattlefieldBonusDto b)
+    {
+        bonusError = null;
+        editingBonusId = b.Id;
+        bonusName = b.Name ?? "";
+        bonusAttack = b.AttackBonus;
+        bonusDefense = b.DefenseBonus;
+        bonusDescription = b.Description;
+        bonusHeader = $"Upravit: {b.Name}";
+        isBonusEditOpen = true;
     }
 
     private async Task SaveBonusAsync()
     {
-        bonusError = null; bonusSaving = true;
+        bonusError = null;
         try
         {
-            if (editingBonusId.HasValue)
-                await Api.PutAsync($"/api/timeline/bonuses/{editingBonusId}",
+            if (editingBonusId is { } id)
+            {
+                var (ok, problem) = await Api.PutWithProblemAsync($"/api/timeline/bonuses/{id}",
                     new UpdateBattlefieldBonusDto(bonusName, bonusAttack, bonusDefense, bonusDescription));
+                if (!ok) { bonusError = problem ?? "Uložení selhalo."; return; }
+            }
             else
-                await Api.PostAsync<CreateBattlefieldBonusDto, BattlefieldBonusDto>("/api/timeline/bonuses",
+            {
+                var (ok, _, problem) = await Api.PostWithProblemAsync<CreateBattlefieldBonusDto, BattlefieldBonusDto>(
+                    "/api/timeline/bonuses",
                     new CreateBattlefieldBonusDto(gameId, bonusAttack, bonusDefense, bonusName, bonusDescription));
-            isBonusVisible = false; await LoadAsync(); StateHasChanged();
+                if (!ok) { bonusError = problem ?? "Vytvoření selhalo."; return; }
+            }
+            isBonusEditOpen = false;
+            await LoadAsync();
+            StateHasChanged();
         }
         catch (Exception ex) { bonusError = ex.Message; }
-        finally { bonusSaving = false; }
+    }
+
+    private void StartBonusDelete(BattlefieldBonusDto b)
+    {
+        bonusDeleteTarget = b;
+        isBonusDeleteOpen = true;
     }
 
     private async Task DeleteBonusAsync()
     {
-        try
+        if (bonusDeleteTarget is null) return;
+        var (ok, _) = await Api.DeleteWithProblemAsync($"/api/timeline/bonuses/{bonusDeleteTarget.Id}");
+        isBonusDeleteOpen = false;
+        if (ok)
         {
-            await Api.DeleteAsync($"/api/timeline/bonuses/{editingBonusId}");
-            isBonusDeleteVisible = false; isBonusVisible = false;
-            await LoadAsync(); StateHasChanged();
+            bonusDeleteTarget = null;
+            await LoadAsync();
+            StateHasChanged();
         }
-        catch (Exception ex) { bonusError = ex.Message; }
     }
 }

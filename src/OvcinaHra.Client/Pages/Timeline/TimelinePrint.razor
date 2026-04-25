@@ -1,0 +1,131 @@
+@page "/timeline/print"
+@attribute [Authorize]
+@layout PrintLayout
+@using System.Globalization
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Dtos
+@inject ApiClient Api
+@inject GameContextService GameContext
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>Harmonogram – tisk</PageTitle>
+
+@{ var cs = CultureInfo.GetCultureInfo("cs-CZ"); }
+
+<div class="oh-tl-print">
+    <div class="oh-tl-print-hide" style="position:fixed;top:8px;right:8px;display:flex;gap:8px;z-index:99">
+        <button type="button" class="btn btn-primary btn-sm" @onclick="PrintAsync">
+            <i class="bi bi-printer"></i> Tisk
+        </button>
+        <a class="btn btn-outline-secondary btn-sm" href="/timeline">
+            <i class="bi bi-x-lg"></i> Zavřít
+        </a>
+    </div>
+
+    <header class="oh-tl-print-head">
+        <h1 class="oh-tl-print-title">Harmonogram hry · @(GameContext.GameName ?? "")</h1>
+        <div class="oh-tl-print-sub">Vytisknuto @DateTime.Now.ToString("d. MMMM yyyy", cs) · pro organizátory</div>
+    </header>
+
+    @if (loading)
+    {
+        <p>Načítám…</p>
+    }
+    else if (slots.Count == 0)
+    {
+        <p>Žádné časové bloky.</p>
+    }
+    else
+    {
+        @foreach (var dayGroup in slots
+            .OrderBy(s => s.StartTime)
+            .GroupBy(s => s.StartTime.ToLocalTime().Date))
+        {
+            <section class="oh-tl-print-day" @key="dayGroup.Key">
+                <h2 class="oh-tl-print-day-head">
+                    @dayGroup.Key.ToString("dddd · d. MMMM yyyy", cs)
+                </h2>
+                @foreach (var s in dayGroup)
+                {
+                    var local = s.StartTime.ToLocalTime();
+                    var endLocal = s.EndTime.ToLocalTime();
+                    <div class="oh-tl-print-slot" @key="s.Id">
+                        <div class="oh-tl-print-slot-head">
+                            <span class="oh-tl-print-slot-time">@local.ToString("HH:mm", cs) – @endLocal.ToString("HH:mm", cs)</span>
+                            <h3 class="oh-tl-print-slot-title">@SlotTitle(s)</h3>
+                            <span class="oh-tl-print-slot-stage">@s.StageDisplay</span>
+                        </div>
+                        @if (s.LinkedEvents.Count > 0 || !string.IsNullOrWhiteSpace(s.BattlefieldBonusName))
+                        {
+                            <div class="oh-tl-print-slot-chips">
+                                @if (s.LinkedEvents.Count > 0)
+                                {
+                                    <span>Události: @string.Join(", ", s.LinkedEvents.Select(e => e.Name))</span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(s.BattlefieldBonusName))
+                                {
+                                    @if (s.LinkedEvents.Count > 0) { <span> · </span> }
+                                    <span>Bonus: @s.BattlefieldBonusName</span>
+                                }
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(s.Rules))
+                        {
+                            <div class="oh-tl-print-slot-rules">@s.Rules</div>
+                        }
+                    </div>
+                }
+            </section>
+        }
+    }
+</div>
+
+@code {
+    private List<GameTimeSlotDto> slots = [];
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GameContext.InitializeAsync();
+        GameContext.OnGameChanged += OnGameChanged;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        var gameId = GameContext.SelectedGameId ?? 0;
+        if (gameId == 0)
+        {
+            slots = [];
+            loading = false;
+            return;
+        }
+        try
+        {
+            slots = await Api.GetListAsync<GameTimeSlotDto>($"/api/timeline/slots/by-game/{gameId}");
+        }
+        catch { slots = []; }
+        loading = false;
+    }
+
+    private async void OnGameChanged()
+    {
+        await LoadAsync();
+        StateHasChanged();
+    }
+
+    public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
+
+    private async Task PrintAsync()
+    {
+        try { await JS.InvokeVoidAsync("window.print"); }
+        catch { /* JS unavailable */ }
+    }
+
+    private static string SlotTitle(GameTimeSlotDto s) =>
+        !string.IsNullOrWhiteSpace(s.Rules) && s.Rules.Length <= 60
+            ? s.Rules.Split('\n')[0].Trim()
+            : $"Blok – {s.Stage.GetDisplayName()}";
+}

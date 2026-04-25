@@ -1,0 +1,134 @@
+@using System.Globalization
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Dtos
+
+@{
+    var stage = Slot.Stage;
+    var stageMod = StageModifier(stage);
+    var classes = $"oh-tl-slot oh-tl-slot--{stageMod}"
+        + (IsActive ? " oh-tl-slot--active" : "")
+        + (IsPast ? " oh-tl-slot--past" : "");
+    var cs = CultureInfo.GetCultureInfo("cs-CZ");
+    var startLocal = Slot.StartTime.ToLocalTime();
+    var endLocal = Slot.EndTime.ToLocalTime();
+    var rulesExpanded = IsActive || forceExpanded;
+}
+
+<div class="@classes" @onclick="OnCardClick" role="button" tabindex="0"
+     @onkeydown="OnKeyDown" aria-label="@($"Časový blok {startLocal:HH:mm}")">
+    <div class="oh-tl-slot-head">
+        <span class="oh-tl-slot-time">@startLocal.ToString("HH:mm", cs) – @endLocal.ToString("HH:mm", cs)</span>
+        <h3 class="oh-tl-slot-title">@SlotTitle</h3>
+        <StageChip Difficulty="@stage" />
+        @if (IsActive)
+        {
+            <span class="oh-tl-slot-pill" title="Aktivní časový blok">
+                <i class="bi bi-broadcast"></i>
+                Probíhá @RemainingText
+            </span>
+        }
+    </div>
+
+    @if (HasAnyChip())
+    {
+        <div class="oh-tl-slot-chips">
+            @foreach (var ev in Slot.LinkedEvents)
+            {
+                var (chipMod, icon) = ChipFor(ev.Kind);
+                <span class="oh-tl-chip @chipMod" @key="ev.Id">
+                    <i class="bi @icon"></i>@ev.Name
+                </span>
+            }
+            @if (!string.IsNullOrWhiteSpace(Slot.BattlefieldBonusName))
+            {
+                <span class="oh-tl-chip oh-tl-chip--bonus">
+                    <i class="bi bi-shield-check"></i>@Slot.BattlefieldBonusName
+                </span>
+            }
+            @if (StageTransitionFrom is not null && StageTransitionFrom != stage)
+            {
+                <span class="oh-tl-chip oh-tl-chip--transition" title="Začíná nová fáze">
+                    <i class="bi bi-arrow-right"></i>@stage.GetDisplayName() začíná
+                </span>
+            }
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Slot.Rules))
+    {
+        if (rulesExpanded)
+        {
+            <div class="oh-tl-slot-rules">@Slot.Rules</div>
+        }
+        else
+        {
+            <button type="button" class="oh-tl-seg-btn"
+                    style="padding:4px 0;color:var(--oh-text-secondary);font-size:.8rem"
+                    @onclick:stopPropagation="true"
+                    @onclick="() => forceExpanded = true">
+                <i class="bi bi-chevron-down"></i> Pravidla
+            </button>
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public GameTimeSlotDto Slot { get; set; } = default!;
+    [Parameter] public bool IsActive { get; set; }
+    [Parameter] public bool IsPast { get; set; }
+    /// <summary>Stage of the previous slot — when different from this slot's, render the transition badge.</summary>
+    [Parameter] public TreasureQuestDifficulty? StageTransitionFrom { get; set; }
+    [Parameter] public EventCallback<int> OnEdit { get; set; }
+
+    private bool forceExpanded;
+
+    // Title falls back to a Czech default since GameTimeSlot has no Name field —
+    // the slot's identity is its time + stage. If Rules starts with a heading-like
+    // line we surface it; otherwise label by Stage.
+    private string SlotTitle =>
+        !string.IsNullOrWhiteSpace(Slot.Rules) && Slot.Rules.Length <= 60
+            ? Slot.Rules.Split('\n')[0].Trim()
+            : $"Blok – {Slot.Stage.GetDisplayName()}";
+
+    private string RemainingText
+    {
+        get
+        {
+            if (!IsActive) return "";
+            var remain = Slot.EndTime.ToLocalTime() - DateTime.Now;
+            if (remain <= TimeSpan.Zero) return "končí";
+            var h = (int)remain.TotalHours;
+            var m = remain.Minutes;
+            return h > 0 ? $"· zbývá {h}h {m}min" : $"· zbývá {m}min";
+        }
+    }
+
+    private bool HasAnyChip() =>
+        Slot.LinkedEvents.Count > 0
+        || !string.IsNullOrWhiteSpace(Slot.BattlefieldBonusName)
+        || (StageTransitionFrom is not null && StageTransitionFrom != Slot.Stage);
+
+    private static string StageModifier(TreasureQuestDifficulty d) => d switch
+    {
+        TreasureQuestDifficulty.Start => "start",
+        TreasureQuestDifficulty.Early => "early",
+        TreasureQuestDifficulty.Midgame => "midgame",
+        TreasureQuestDifficulty.Lategame => "lategame",
+        _ => "start"
+    };
+
+    private static (string Cls, string Icon) ChipFor(GameEventKind k) => k switch
+    {
+        GameEventKind.Quest => ("oh-tl-chip--quest", "bi-journal-bookmark"),
+        GameEventKind.Encounter => ("oh-tl-chip--encounter", "bi-bug"),
+        _ => ("oh-tl-chip--other", "bi-three-dots")
+    };
+
+    private async Task OnCardClick() => await OnEdit.InvokeAsync(Slot.Id);
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or " ")
+            await OnEdit.InvokeAsync(Slot.Id);
+    }
+}

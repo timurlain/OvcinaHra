@@ -1,3 +1,5 @@
+using OvcinaHra.Shared.Domain.Enums;
+
 namespace OvcinaHra.Shared.Domain.Entities;
 
 public class GameTimeSlot
@@ -6,6 +8,7 @@ public class GameTimeSlot
     public int? InGameYear { get; set; }
     public DateTime StartTime { get; set; }
     public TimeSpan Duration { get; set; }
+    public TreasureQuestDifficulty Stage { get; set; } = TreasureQuestDifficulty.Start;
     public string? Rules { get; set; }
     public int? BattlefieldBonusId { get; set; }
     public int GameId { get; set; }
