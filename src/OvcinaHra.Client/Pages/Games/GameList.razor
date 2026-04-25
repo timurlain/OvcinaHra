@@ -63,6 +63,49 @@ else
             </DxFormLayout>
         }
 
+        @* Issue #3 — registrace link status + actions. Sits inside the edit
+           popup but operates independently of Save/Cancel: link/unlink call
+           dedicated endpoints so the user can manage the link without
+           mutating other fields. *@
+        @if (editingId.HasValue)
+        {
+            <div class="d-flex align-items-center gap-2 mt-3 pt-3 border-top oh-registrace-link-row">
+                @if (model.ExternalGameId.HasValue)
+                {
+                    <span class="text-success">
+                        <i class="bi bi-link-45deg me-1"></i>
+                        Propojeno s registrací #@model.ExternalGameId
+                    </span>
+                    <button class="btn btn-outline-danger btn-sm ms-auto"
+                            @onclick="() => isUnlinkConfirmVisible = true"
+                            disabled="@isLinkBusy">
+                        <i class="bi bi-link-45deg me-1"></i>Zrušit propojení
+                    </button>
+                }
+                else
+                {
+                    <span class="text-muted">
+                        <i class="bi bi-link-45deg me-1"></i>
+                        Nepropojeno
+                    </span>
+                    <button class="btn btn-outline-primary btn-sm ms-auto"
+                            @onclick="() => isLinkPickerVisible = true"
+                            disabled="@isLinkBusy">
+                        <i class="bi bi-link-45deg me-1"></i>Propojit s registrací
+                    </button>
+                }
+            </div>
+            @if (linkActionError is not null)
+            {
+                <div class="alert alert-danger mt-2 mb-0 d-flex align-items-center gap-2">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <span>@linkActionError</span>
+                    <button type="button" class="btn-close ms-auto" aria-label="Zavřít"
+                            @onclick="() => linkActionError = null"></button>
+                </div>
+            }
+        }
+
         @if (error is not null)
         {
             <div class="alert alert-danger mt-2">@error</div>
@@ -80,6 +123,35 @@ else
                     <span class="spinner-border spinner-border-sm me-1"></span>
                 }
                 Uložit
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@* Issue #3 — picker popup for "Propojit s registrací" *@
+@if (editingId.HasValue)
+{
+    <LinkToRegistracePopup @bind-Visible="@isLinkPickerVisible"
+                           GameId="@editingId.Value"
+                           Linked="OnLinkedAsync" />
+}
+
+@* Issue #3 — unlink destructive-action confirmation *@
+<DxPopup @bind-Visible="@isUnlinkConfirmVisible" HeaderText="Zrušit propojení s registrací?" Width="400px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Opravdu chcete zrušit propojení této hry s registrací #@model.ExternalGameId?</p>
+        <p class="text-muted small">
+            Hru můžete kdykoli znovu propojit. Žádná data v registraci se nezmění.
+        </p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary"
+                    @onclick="() => isUnlinkConfirmVisible = false"
+                    disabled="@isLinkBusy">Zrušit</button>
+            <button class="btn btn-danger"
+                    @onclick="ConfirmUnlinkAsync"
+                    disabled="@isLinkBusy">
+                @if (isLinkBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Zrušit propojení
             </button>
         </div>
     </BodyContentTemplate>
@@ -110,6 +182,12 @@ else
     private int? editingId;
     private GameFormModel model = new();
     private BoundingBoxPicker.BboxValue bboxValue = BoundingBoxPicker.BboxValue.Empty;
+
+    // Issue #3 — registrace link state
+    private bool isLinkPickerVisible;
+    private bool isUnlinkConfirmVisible;
+    private bool isLinkBusy;
+    private string? linkActionError;
 
     // DateEdit works with DateTime, not DateOnly
     private DateTime startDate
@@ -217,5 +295,34 @@ else
         }
         catch (Exception ex) { error = ex.Message; }
         finally { isSaving = false; }
+    }
+
+    // Issue #3 — link/unlink handlers
+    private async Task OnLinkedAsync(int externalGameId)
+    {
+        model.ExternalGameId = externalGameId;
+        await LoadDataAsync();
+        StateHasChanged();
+    }
+
+    private async Task ConfirmUnlinkAsync()
+    {
+        if (!editingId.HasValue) return;
+        linkActionError = null;
+        isLinkBusy = true;
+        try
+        {
+            var (ok, problem) = await Api.DeleteWithProblemAsync($"/api/games/{editingId.Value}/link");
+            if (!ok)
+            {
+                linkActionError = problem ?? "Server odmítl požadavek bez podrobností.";
+                return;
+            }
+            model.ExternalGameId = null;
+            isUnlinkConfirmVisible = false;
+            await LoadDataAsync();
+        }
+        catch (Exception ex) { linkActionError = ex.Message; }
+        finally { isLinkBusy = false; }
     }
 }

@@ -1,0 +1,158 @@
+@* Issue #3 — picker popup for "Propojit s registrací". Loads the
+   server-side proxy /api/games/registrace-available (which already filters
+   out games linked to other local games), lets the organizer pick one,
+   and POSTs to /api/games/{GameId}/link. Surfaces 409 ProblemDetails
+   verbatim so the user sees exactly which existing link is in the way. *@
+
+@inject ApiClient Api
+
+<DxPopup AllowResize="true" Visible="@Visible"
+         VisibleChanged="@OnVisibleChanged"
+         HeaderText="Propojit s registrací" Width="640px">
+    <BodyContentTemplate Context="popupContext">
+        @if (loading)
+        {
+            <p class="text-muted small mb-0">Načítám hry z registrace…</p>
+        }
+        else if (loadError is not null)
+        {
+            <div class="alert alert-danger mb-2">
+                <i class="bi bi-wifi-off me-1"></i>
+                @loadError
+            </div>
+        }
+        else if (_games.Count == 0)
+        {
+            <p class="text-muted small fst-italic mb-0">
+                V registraci nejsou žádné publikované hry, které by ještě nebyly propojené.
+            </p>
+        }
+        else
+        {
+            <p class="text-muted small mb-2">Vyberte hru z registrace, ke které se má tato hra připojit:</p>
+            <div class="oh-registrace-picker" role="listbox">
+                @foreach (var g in _games)
+                {
+                    var isSelected = _selectedId == g.Id;
+                    <button type="button"
+                            class="oh-registrace-picker-row @(isSelected ? "is-on" : "")"
+                            role="option" aria-selected="@isSelected"
+                            @onclick="() => _selectedId = g.Id">
+                        <div class="oh-registrace-picker-row-name">
+                            <strong>@g.Name</strong>
+                            <span class="text-muted small ms-2">#@g.Id</span>
+                        </div>
+                        <div class="oh-registrace-picker-row-meta text-muted small">
+                            @g.StartsAtUtc.ToLocalTime().ToString("d.M.yyyy") –
+                            @g.EndsAtUtc.ToLocalTime().ToString("d.M.yyyy")
+                            @if (!string.IsNullOrWhiteSpace(g.Description))
+                            {
+                                <span class="ms-2">· @g.Description</span>
+                            }
+                        </div>
+                    </button>
+                }
+            </div>
+        }
+
+        @if (linkError is not null)
+        {
+            <div class="alert alert-danger mt-2 mb-0">
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                @linkError
+            </div>
+        }
+
+        <div class="d-flex gap-2 justify-content-end mt-3">
+            <button class="btn btn-secondary" @onclick="Close" disabled="@isLinking">Zrušit</button>
+            <button class="btn btn-primary"
+                    @onclick="LinkAsync"
+                    disabled="@(isLinking || _selectedId is null)">
+                @if (isLinking) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Propojit
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public int GameId { get; set; }
+    [Parameter] public EventCallback<int> Linked { get; set; }
+
+    private bool loading;
+    private string? loadError;
+    private bool isLinking;
+    private string? linkError;
+    private List<RegistraceGameDto> _games = new();
+    private int? _selectedId;
+    private bool _wasVisible;
+
+    public override async Task SetParametersAsync(ParameterView parameters)
+    {
+        await base.SetParametersAsync(parameters);
+        if (Visible && !_wasVisible)
+        {
+            _selectedId = null;
+            linkError = null;
+            await LoadAsync();
+        }
+        _wasVisible = Visible;
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        loadError = null;
+        try
+        {
+            var fetched = await Api.GetListAsync<RegistraceGameDto>("/api/games/registrace-available");
+            _games = fetched
+                .OrderBy(g => g.StartsAtUtc)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _games = new();
+            loadError = $"Nepodařilo se načíst hry z registrace: {ex.Message}";
+        }
+        finally { loading = false; }
+    }
+
+    private async Task LinkAsync()
+    {
+        if (_selectedId is null) return;
+        linkError = null;
+        isLinking = true;
+        try
+        {
+            var (ok, _, problem) = await Api.PostWithProblemAsync<LinkGameDto, object>(
+                $"/api/games/{GameId}/link",
+                new LinkGameDto(_selectedId.Value));
+            if (!ok)
+            {
+                linkError = problem ?? "Server odmítl požadavek bez podrobností.";
+                return;
+            }
+            await Linked.InvokeAsync(_selectedId.Value);
+            await Close();
+        }
+        catch (Exception ex) { linkError = ex.Message; }
+        finally { isLinking = false; }
+    }
+
+    private async Task Close()
+    {
+        Visible = false;
+        await VisibleChanged.InvokeAsync(false);
+    }
+
+    private async Task OnVisibleChanged(bool next)
+    {
+        // DxPopup raises this when the user hits the X / Escape. Forward the
+        // change to the parent so the [Parameter] mirror stays in sync.
+        Visible = next;
+        await VisibleChanged.InvokeAsync(next);
+    }
+}

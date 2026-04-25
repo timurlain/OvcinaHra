@@ -47,6 +47,7 @@ try
     var jwtKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!));
 
     builder.Services.AddHttpClient<RegistraceImportService>();
+    builder.Services.AddHttpClient<RegistraceGameService>();
 
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
