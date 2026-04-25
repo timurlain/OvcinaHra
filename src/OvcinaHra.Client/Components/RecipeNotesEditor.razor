@@ -21,6 +21,7 @@
 
     private string? _local;
     private string? _trackedPersisted;
+    private bool _initialized;
 
     /// <summary>Compare locally-edited text to whatever the parent says is
     /// persisted. Empty-string and null are treated as equivalent (the API
@@ -32,12 +33,18 @@
     {
         // Re-sync the editor when the parent reloads with a different
         // persisted value (e.g. recipe switched in the popup, or after a
-        // server-confirmed save). Without this, stale local state would shadow
-        // the new persisted note.
-        if (!ReferenceEquals(_trackedPersisted, PersistedValue))
+        // server-confirmed save). Compare by ORDINAL CONTENT — ReferenceEquals
+        // would falsely re-sync (and clobber in-progress edits) any time the
+        // parent passes a new string instance with the same text, e.g. after
+        // a parent re-render projects the same DTO field. Treat null and
+        // empty string as equivalent so the API normalisation doesn't trigger
+        // a redundant resync (Copilot on PR #173).
+        if (!_initialized
+            || !string.Equals(_trackedPersisted ?? string.Empty, PersistedValue ?? string.Empty, StringComparison.Ordinal))
         {
             _trackedPersisted = PersistedValue;
             _local = PersistedValue;
+            _initialized = true;
         }
     }
 

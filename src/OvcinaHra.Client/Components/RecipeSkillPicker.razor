@@ -15,8 +15,10 @@
             <span class="badge bg-secondary me-1">
                 @(gs?.Name ?? $"[Neznámá dovednost #{skillId}]")
                 <button class="btn btn-sm btn-link text-white p-0 ms-1"
+                        title="Odebrat dovednost"
+                        aria-label="@($"Odebrat dovednost {gs?.Name ?? skillId.ToString()}")"
                         @onclick="() => OnRemove.InvokeAsync(skillId)">
-                    <i class="bi bi-x"></i>
+                    <i class="bi bi-x" aria-hidden="true"></i>
                 </button>
             </span>
         }
@@ -34,9 +36,11 @@
                             NullText="(přidat dovednost)" SearchMode="ListSearchMode.AutoSearch" />
             </div>
             <button class="btn btn-sm btn-outline-primary" style="height:34px"
+                    title="Přidat dovednost"
+                    aria-label="Přidat dovednost"
                     disabled="@(_newSkillId is null)"
                     @onclick="AddAsync">
-                <i class="bi bi-plus"></i>
+                <i class="bi bi-plus" aria-hidden="true"></i>
             </button>
         </div>
     }

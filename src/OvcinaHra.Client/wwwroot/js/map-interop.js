@@ -49,9 +49,12 @@ window.ovcinaMap = {
         this._elementId = elementId;
         this._apiKey = (mapyCzApiKey && mapyCzApiKey.length > 5) ? mapyCzApiKey : null;
         // Resolved at init so every style construction below picks up the
-        // environment-specific URL (#166). Empty/missing → fall back to the
-        // demotiles dev URL so local browser-tab smoke testing still works.
-        this._glyphsUrl = (glyphsUrl && glyphsUrl.length > 0) ? glyphsUrl : this._defaultGlyphsUrl;
+        // environment-specific URL (#166). Empty/missing/whitespace-only →
+        // fall back to the demotiles dev URL so local smoke testing still
+        // works AND a stray space in appsettings.json doesn't ship a broken
+        // URL to MapLibre.
+        var trimmedGlyphsUrl = (typeof glyphsUrl === 'string') ? glyphsUrl.trim() : '';
+        this._glyphsUrl = trimmedGlyphsUrl.length > 0 ? trimmedGlyphsUrl : this._defaultGlyphsUrl;
 
         // Start with Mapy.cz raster (tourist), fall back to OSM
         var initialStyle = this._apiKey ? this._mapyCzRasterStyle(this._apiKey) : this._buildRasterStyle();

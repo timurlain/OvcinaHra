@@ -15,8 +15,10 @@
             <span class="badge bg-secondary me-1">
                 @b.BuildingName
                 <button class="btn btn-sm btn-link text-white p-0 ms-1"
+                        title="Odebrat budovu"
+                        aria-label="@($"Odebrat budovu {b.BuildingName}")"
                         @onclick="() => OnRemove.InvokeAsync(b.BuildingId)">
-                    <i class="bi bi-x"></i>
+                    <i class="bi bi-x" aria-hidden="true"></i>
                 </button>
             </span>
         }
@@ -32,9 +34,11 @@
                         NullText="@AddPlaceholder" SearchMode="ListSearchMode.AutoSearch" />
         </div>
         <button class="btn btn-sm btn-outline-primary" style="height:34px"
+                title="Přidat budovu"
+                aria-label="Přidat budovu"
                 disabled="@(_newBuildingId is null)"
                 @onclick="AddAsync">
-            <i class="bi bi-plus"></i>
+            <i class="bi bi-plus" aria-hidden="true"></i>
         </button>
     </div>
 </div>

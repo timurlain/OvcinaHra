@@ -540,7 +540,7 @@ else
                 @if (recipe is not null)
                 {
                     <RecipeIngredientPicker
-                        Ingredients="@(recipe.Ingredients.Select(i => new RecipeIngredientPicker.IngredientRow(i.ItemId, i.ItemName, i.Quantity)).ToList())"
+                        Ingredients="@_ingredientRows"
                         AvailableItems="@allItems"
                         OnAdd="@AddIngredientAsync"
                         OnRemove="@RemoveIngredientAsync" />
@@ -556,7 +556,7 @@ else
                     <RecipeBuildingPicker
                         Caption="Požadované budovy"
                         AddPlaceholder="(přidat budovu)"
-                        Buildings="@(recipe.BuildingRequirements.Select(br => new RecipeBuildingPicker.BuildingRow(br.BuildingId, br.BuildingName)).ToList())"
+                        Buildings="@_buildingRows"
                         AvailableBuildings="@allBuildings"
                         OnAdd="@AddBuildingReqAsync"
                         OnRemove="@RemoveBuildingReqAsync" />
@@ -736,6 +736,11 @@ else
     // Issue #163 — destructive-confirm popup state for "Smazat recept".
     // Mirrors the pattern Hra3 used in BuildingList for #142.
     private bool isDeleteRecipeVisible;
+    // Issue #163 — pre-projected rows for the leaf components, refreshed
+    // once when `recipe` loads/changes instead of allocating new lists on
+    // every popup render (Copilot review on PR #173).
+    private IReadOnlyList<RecipeIngredientPicker.IngredientRow> _ingredientRows = [];
+    private IReadOnlyList<RecipeBuildingPicker.BuildingRow> _buildingRows = [];
 
     private List<GameSkillDto> AvailableGameSkills =>
         recipe is null
@@ -1105,6 +1110,8 @@ else
     private async Task LoadRecipeAsync(int itemId)
     {
         recipe = null;
+        _ingredientRows = [];
+        _buildingRows = [];
         var gameId = GameContext.SelectedGameId;
         if (gameId is null || !isCraftable) return;
 
@@ -1115,6 +1122,18 @@ else
         if (match is not null)
         {
             recipe = await Api.GetAsync<CraftingRecipeDetailDto>($"/api/crafting/{match.Id}");
+            // Project DTO collections into the leaf-component row shapes once
+            // here so the popup renders below don't re-allocate on every
+            // re-render (Copilot on PR #173).
+            if (recipe is not null)
+            {
+                _ingredientRows = recipe.Ingredients
+                    .Select(i => new RecipeIngredientPicker.IngredientRow(i.ItemId, i.ItemName, i.Quantity))
+                    .ToList();
+                _buildingRows = recipe.BuildingRequirements
+                    .Select(br => new RecipeBuildingPicker.BuildingRow(br.BuildingId, br.BuildingName))
+                    .ToList();
+            }
         }
     }
 

@@ -139,7 +139,7 @@ else
                         </div>
                     </div>
                     <RecipeIngredientPicker
-                        Ingredients="@(recipe.Ingredients.Select(i => new RecipeIngredientPicker.IngredientRow(i.ItemId, i.ItemName, i.Quantity)).ToList())"
+                        Ingredients="@_ingredientRows"
                         AvailableItems="@allItems"
                         OnAdd="@AddIngredientAsync"
                         OnRemove="@RemoveIngredientAsync" />
@@ -151,7 +151,7 @@ else
                     <RecipeBuildingPicker
                         Caption="Předpoklady (jiné budovy)"
                         AddPlaceholder="(přidat předpoklad)"
-                        Buildings="@(recipe.PrerequisiteBuildings.Select(pb => new RecipeBuildingPicker.BuildingRow(pb.BuildingId, pb.BuildingName)).ToList())"
+                        Buildings="@_prerequisiteRows"
                         AvailableBuildings="@AvailablePrereqBuildings"
                         OnAdd="@AddPrereqAsync"
                         OnRemove="@RemovePrereqAsync" />
@@ -228,6 +228,11 @@ else
     private List<GameSkillDto> gameSkills = [];
     private int? recipeMoneyCost;
     private bool isDeleteRecipeVisible;
+    // Pre-projected leaf-row caches, refreshed once per recipe load so
+    // popup re-renders don't allocate fresh lists every frame
+    // (Copilot review on PR #173).
+    private IReadOnlyList<RecipeIngredientPicker.IngredientRow> _ingredientRows = [];
+    private IReadOnlyList<RecipeBuildingPicker.BuildingRow> _prerequisiteRows = [];
 
     // Skills already required by the recipe shouldn't appear in the picker.
     private List<GameSkillDto> AvailableGameSkills =>
@@ -315,6 +320,8 @@ else
     {
         recipe = null;
         recipeMoneyCost = null;
+        _ingredientRows = [];
+        _prerequisiteRows = [];
         if (GameContext.SelectedGameId is not int gid) return;
 
         // /api/building-recipes/by-game/{gid} returns one entry per recipe,
@@ -325,6 +332,16 @@ else
         {
             recipe = await Api.GetAsync<BuildingRecipeDetailDto>($"/api/building-recipes/{match.Id}");
             recipeMoneyCost = recipe?.MoneyCost;
+            // Project DTO collections once per recipe load (Copilot on PR #173).
+            if (recipe is not null)
+            {
+                _ingredientRows = recipe.Ingredients
+                    .Select(i => new RecipeIngredientPicker.IngredientRow(i.ItemId, i.ItemName, i.Quantity))
+                    .ToList();
+                _prerequisiteRows = recipe.PrerequisiteBuildings
+                    .Select(pb => new RecipeBuildingPicker.BuildingRow(pb.BuildingId, pb.BuildingName))
+                    .ToList();
+            }
         }
     }
 

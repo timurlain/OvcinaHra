@@ -17,8 +17,10 @@
                         <td style="width:60px">×@ing.Quantity</td>
                         <td style="width:40px">
                             <button class="btn btn-sm btn-link text-danger p-0"
+                                    title="Odebrat ingredienci"
+                                    aria-label="@($"Odebrat ingredienci {ing.ItemName}")"
                                     @onclick="() => OnRemove.InvokeAsync(ing.ItemId)">
-                                <i class="bi bi-x-circle"></i>
+                                <i class="bi bi-x-circle" aria-hidden="true"></i>
                             </button>
                         </td>
                     </tr>
@@ -40,9 +42,11 @@
             <DxSpinEdit @bind-Value="@_newQuantity" MinValue="1" />
         </div>
         <button class="btn btn-sm btn-outline-primary" style="height:34px"
+                title="Přidat ingredienci"
+                aria-label="Přidat ingredienci"
                 disabled="@(_newItemId is null)"
                 @onclick="AddAsync">
-            <i class="bi bi-plus"></i>
+            <i class="bi bi-plus" aria-hidden="true"></i>
         </button>
     </div>
 </div>
