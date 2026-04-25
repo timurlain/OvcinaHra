@@ -2270,7 +2270,8 @@
 @media (max-width:900px){.oh-it-d-karta{grid-template-columns:1fr}}
 
 /* 5:7 MTG hero (NOT 4:3) */
-.oh-it-d-hero{position:relative;width:100%;aspect-ratio:5/7;border:2px solid #c4b494;border-radius:4px;overflow:hidden;background:var(--oh-surface-alt);box-shadow:0 3px 14px rgba(45,80,22,.18),inset 0 0 0 1px rgba(255,248,230,.4)}
+/* Hero capped at ~200px — was 100% of the column (huge). #147 sub-fix (b). */
+.oh-it-d-hero{position:relative;width:100%;max-width:200px;aspect-ratio:5/7;border:2px solid #c4b494;border-radius:4px;overflow:hidden;background:var(--oh-surface-alt);box-shadow:0 3px 14px rgba(45,80,22,.18),inset 0 0 0 1px rgba(255,248,230,.4)}
 .oh-it-d-hero img{width:100%;height:100%;object-fit:cover;display:block}
 .oh-it-d-hero-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;color:rgba(139,90,43,.5);font:italic 700 .95rem Georgia,serif;text-align:center;padding:0 18px}
 .oh-it-d-hero-empty i{font-size:3.5rem;opacity:.55}
