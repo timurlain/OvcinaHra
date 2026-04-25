@@ -280,9 +280,12 @@
             _stagedShapes.Add(shape);
             await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _stagedShapes);
         }
-        catch (System.Text.Json.JsonException ex)
+        catch (Exception ex) when (ex is System.Text.Json.JsonException
+                                || ex is System.NotSupportedException)
         {
             // Shape payload malformed — log, don't surface. User can redraw.
+            // NotSupportedException covers JsonPolymorphic discriminator-missing
+            // / wrong-position errors that JsonException doesn't catch.
             Console.WriteLine($"Overlay shape deserialisation failed: {ex.Message}");
         }
     }

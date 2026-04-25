@@ -478,7 +478,14 @@
     function emitShape(inst, shape) {
         if (!inst.dotnetRef) return;
         try {
-            inst.dotnetRef.invokeMethodAsync('OnShapeComplete', JSON.stringify(shape));
+            // System.Text.Json's [JsonPolymorphic] requires the discriminator
+            // ("type") to be the FIRST JSON property — otherwise it throws
+            // NotSupportedException with DeserializationMustSpecifyTypeDiscriminator.
+            // Call sites build literals with `id` first for readability; this
+            // chokepoint reorders so `type` lands first regardless. DO NOT
+            // remove without also reordering every emitShape() call site.
+            const orderedShape = { type: shape.type, ...shape };
+            inst.dotnetRef.invokeMethodAsync('OnShapeComplete', JSON.stringify(orderedShape));
         } catch (e) {
             console.warn('Overlay shape emit failed:', e);
         }
