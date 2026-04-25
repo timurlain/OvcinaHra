@@ -246,7 +246,10 @@ else
         {
             var dto = new CreateSkillRequest(
                 createModel.Name.Trim(),
-                createModel.ClassRestriction,
+                // Gate ClassRestriction on Category=Class — non-Class skills
+                // never carry a class lock. Same rule applied in SkillDetail
+                // edit form + GameSkills inline edit.
+                createModel.Category == SkillCategory.Class ? createModel.ClassRestriction : null,
                 string.IsNullOrWhiteSpace(createModel.Effect) ? null : createModel.Effect.Trim(),
                 RequirementNotes: null,
                 RequiredBuildingIds: Array.Empty<int>(),

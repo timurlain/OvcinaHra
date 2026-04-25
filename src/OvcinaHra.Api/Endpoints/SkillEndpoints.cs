@@ -176,27 +176,29 @@ public static class SkillEndpoints
     private static async Task<Results<NoContent, NotFound, Conflict<ProblemDetails>>> Delete(
         int id, WorldDbContext db)
     {
-        var skill = await db.Skills.SingleOrDefaultAsync(s => s.Id == id);
-        if (skill is null) return TypedResults.NotFound();
+        // Atomic check-and-delete via a single DELETE … WHERE NOT EXISTS so a
+        // concurrent INSERT into GameSkills (between count and delete) cannot
+        // sneak past the "Smazat zablokováno" rule. ExecuteDeleteAsync runs
+        // server-side as one statement; rows-affected disambiguates 404 vs
+        // 409 below.
+        var deleted = await db.Skills
+            .Where(s => s.Id == id
+                && !db.GameSkills.Any(gs => gs.TemplateSkillId == id))
+            .ExecuteDeleteAsync();
 
-        // Hard-block delete when per-game copies reference the template — the
-        // designer brief is explicit (see the "Smazat zablokováno" h4 note).
-        // Organizers must remove the GameSkill copies first; otherwise we
-        // return 409 with a Czech ProblemDetails the client surfaces inline.
+        if (deleted > 0) return TypedResults.NoContent();
+
+        // Either the skill never existed OR it had copies. Disambiguate.
+        var stillExists = await db.Skills.AnyAsync(s => s.Id == id);
+        if (!stillExists) return TypedResults.NotFound();
+
         var copyCount = await db.GameSkills.CountAsync(gs => gs.TemplateSkillId == id);
-        if (copyCount > 0)
+        return TypedResults.Conflict(new ProblemDetails
         {
-            return TypedResults.Conflict(new ProblemDetails
-            {
-                Title = "Dovednost nelze smazat",
-                Detail = $"Šablona má kopie v {copyCount} hrách. Před smazáním je všechny odeber.",
-                Status = StatusCodes.Status409Conflict
-            });
-        }
-
-        db.Skills.Remove(skill);
-        await db.SaveChangesAsync();
-        return TypedResults.NoContent();
+            Title = "Dovednost nelze smazat",
+            Detail = $"Šablona má kopie v {copyCount} hrách. Před smazáním je všechny odeber.",
+            Status = StatusCodes.Status409Conflict
+        });
     }
 
     private static async Task<ProblemDetails?> ValidateBuildingIdsAsync(

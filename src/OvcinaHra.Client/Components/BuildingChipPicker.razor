@@ -21,7 +21,7 @@
     {
         @foreach (var b in _buildings)
         {
-            var isOn = SelectedBuildingIds.Contains(b.Id);
+            var isOn = _selection.Contains(b.Id);
             <button type="button" class="oh-sk-bld-picker-toggle @(isOn ? "is-on" : "")"
                     title="@b.Name" aria-pressed="@isOn"
                     @onclick="() => ToggleAsync(b.Id)">
@@ -42,6 +42,12 @@
     [Parameter] public IReadOnlyList<BuildingListDto>? Buildings { get; set; }
 
     private List<BuildingListDto>? _buildings;
+
+    /// <summary>Local selection mirror. Standard Blazor controlled-component
+    /// pattern — never mutate <see cref="SelectedBuildingIds"/> directly
+    /// (it's a [Parameter]). The parent re-passes the new list after the
+    /// EventCallback fires; we sync via OnParametersSet.</summary>
+    private HashSet<int> _selection = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -65,8 +71,20 @@
 
     protected override void OnParametersSet()
     {
-        // If parent passes a different pre-loaded list later, refresh.
-        if (Buildings is not null && !ReferenceEquals(_buildings, Buildings))
+        // Sync local selection from parameter on every re-render. SetEquals
+        // guards us against rebuilding when the parent re-passes the same
+        // logical contents.
+        if (!_selection.SetEquals(SelectedBuildingIds))
+        {
+            _selection = new HashSet<int>(SelectedBuildingIds);
+        }
+
+        // Refresh _buildings only when we have a fresh pre-loaded list whose
+        // contents (not reference) differ. The previous reference-equality
+        // guard was a no-op because we always cloned on Init.
+        if (Buildings is not null && _buildings is not null
+            && !Buildings.Select(b => b.Id).OrderBy(i => i)
+                .SequenceEqual(_buildings.Select(b => b.Id).OrderBy(i => i)))
         {
             _buildings = Buildings.OrderBy(b => b.Name).ToList();
         }
@@ -74,10 +92,14 @@
 
     private async Task ToggleAsync(int id)
     {
-        var next = SelectedBuildingIds.Contains(id)
-            ? SelectedBuildingIds.Where(i => i != id).ToList()
-            : SelectedBuildingIds.Concat(new[] { id }).Distinct().ToList();
-        SelectedBuildingIds = next;
-        await SelectedBuildingIdsChanged.InvokeAsync(next);
+        // Mutate the LOCAL selection, then notify the parent. Never assign
+        // to SelectedBuildingIds directly — Blazor will overwrite our
+        // mutation on the next param flush, and assigning a [Parameter]
+        // is a misuse pattern Copilot flagged.
+        if (_selection.Contains(id)) _selection.Remove(id);
+        else _selection.Add(id);
+
+        var snapshot = _selection.ToList();
+        await SelectedBuildingIdsChanged.InvokeAsync(snapshot);
     }
 }

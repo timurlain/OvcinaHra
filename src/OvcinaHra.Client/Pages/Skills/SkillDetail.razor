@@ -103,12 +103,18 @@ else
                     <DxComboBox Data="@categoryValues" @bind-Value="@editModel.Category"
                                 TextFieldName="Display" ValueFieldName="Value" />
                 </DxFormLayoutItem>
-                <DxFormLayoutItem Caption="Pro povolání" ColSpanMd="12"
-                                  Helper="Nech prázdné pro neomezenou dovednost.">
-                    <DxComboBox Data="@classValues" @bind-Value="@editModel.ClassRestriction"
-                                TextFieldName="Display" ValueFieldName="Value"
-                                ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
-                </DxFormLayoutItem>
+                @* ClassRestriction is meaningful only on Category=Class skills.
+                   The Adventure / Quest categories never gate by class — keep
+                   the field hidden so users don't save inconsistent rows. *@
+                @if (editModel.Category == SkillCategory.Class)
+                {
+                    <DxFormLayoutItem Caption="Pro povolání" ColSpanMd="12"
+                                      Helper="Nech prázdné pro neomezenou dovednost.">
+                        <DxComboBox Data="@classValues" @bind-Value="@editModel.ClassRestriction"
+                                    TextFieldName="Display" ValueFieldName="Value"
+                                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                    </DxFormLayoutItem>
+                }
             </DxFormLayoutGroup>
 
             <DxFormLayoutGroup Caption="Obsah" ColSpanMd="12">
@@ -238,7 +244,24 @@ else
     private record CategoryOption(SkillCategory Value, string Display);
     private record ClassOption(PlayerClass Value, string Display);
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    /// <summary>Tracks the last Id we loaded so navigating /skills/{a} →
+    /// /skills/{b} (Blazor reuses the component instance) re-fetches.
+    /// `OnInitializedAsync` only fires once and would leave us stuck on
+    /// the original skill.</summary>
+    private int _loadedForId = -1;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Id != _loadedForId)
+        {
+            _loadedForId = Id;
+            // Reset transient tab state so we don't carry V-tomto-roce data
+            // from the previous skill into the new one.
+            usage = null;
+            activeTab = "karta";
+            await LoadAsync();
+        }
+    }
 
     private async Task LoadAsync()
     {
@@ -358,7 +381,10 @@ else
 
         public UpdateSkillRequest ToUpdateRequest() => new(
             Name.Trim(),
-            ClassRestriction,
+            // Gate ClassRestriction on Category — non-Class skills cannot
+            // carry a class lock per the rule the GameSkills + inline-creator
+            // flows already follow.
+            Category == SkillCategory.Class ? ClassRestriction : null,
             string.IsNullOrWhiteSpace(Effect) ? null : Effect.Trim(),
             string.IsNullOrWhiteSpace(RequirementNotes) ? null : RequirementNotes.Trim(),
             RequiredBuildingIds.ToList(),

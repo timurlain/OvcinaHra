@@ -345,6 +345,10 @@ else
     private bool loading = true;
     private List<GameSkillDto> gameSkills = [];
     private List<SkillDto> allTemplates = [];
+    /// <summary>Indexed lookup populated whenever <see cref="allTemplates"/>
+    /// changes. Used by <see cref="HasDrift"/> to avoid an O(N) FirstOrDefault
+    /// scan per row during grid rendering.</summary>
+    private Dictionary<int, SkillDto> templatesById = [];
     private List<BuildingListDto> allBuildings = [];
     private Dictionary<int, string> buildingNames = [];
 
@@ -420,8 +424,7 @@ else
     private bool HasDrift(GameSkillDto gs)
     {
         if (!gs.TemplateSkillId.HasValue) return false;
-        var template = allTemplates.FirstOrDefault(t => t.Id == gs.TemplateSkillId.Value);
-        if (template is null) return false;
+        if (!templatesById.TryGetValue(gs.TemplateSkillId.Value, out var template)) return false;
         if (!string.Equals(gs.Name, template.Name, StringComparison.Ordinal)) return true;
         if (gs.Category != template.Category) return true;
         if (gs.ClassRestriction != template.ClassRestriction) return true;
@@ -448,6 +451,7 @@ else
             gameSkills = gs.ToList();
             var all = await SkillSvc.GetAllAsync();
             allTemplates = all.ToList();
+            templatesById = allTemplates.ToDictionary(t => t.Id);
             allBuildings = await Api.GetListAsync<BuildingListDto>("/api/buildings");
             buildingNames = allBuildings.ToDictionary(b => b.Id, b => b.Name);
         }
