@@ -31,6 +31,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      # NuGet cache hash spans every csproj since the slnx restore pulls
+      # them all; this is correct invalidation, not over-invalidation.
+      # Client-only csproj changes do bust this cache by design — the api
+      # workflow still has to honour any package shifts that ship via
+      # Client when both projects share a transitive dependency root.
       - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
@@ -46,17 +51,12 @@ jobs:
           printf '%s' "$DEVEXPRESS_LICENSE_CONTENT" > "$HOME/.config/DevExpress/DevExpress_License.txt"
         env:
           DEVEXPRESS_LICENSE_CONTENT: ${{ secrets.DEVEXPRESS_LICENSE_CONTENT }}
-      # Restore + build only the test project (transitively pulls in
-      # OvcinaHra.Api + OvcinaHra.Shared). The client-ci workflow already
-      # builds OvcinaHra.Client, so building the whole slnx here is wasted
-      # work — Client carries the heavy DevExpress deps that don't apply
-      # to the API test surface.
       - name: Restore
-        run: dotnet restore tests/OvcinaHra.Api.Tests/OvcinaHra.Api.Tests.csproj
+        run: dotnet restore OvcinaHra.slnx
       - name: Build
-        run: dotnet build tests/OvcinaHra.Api.Tests/OvcinaHra.Api.Tests.csproj --no-restore -c Release
+        run: dotnet build OvcinaHra.slnx --no-restore -c Release
       - name: Test
-        run: dotnet test tests/OvcinaHra.Api.Tests --no-build -c Release --logger "trx;LogFileName=results.trx"
+        run: dotnet test tests/OvcinaHra.Api.Tests --no-build --no-restore -c Release --logger "trx;LogFileName=results.trx"
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()
