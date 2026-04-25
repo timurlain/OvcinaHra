@@ -87,8 +87,41 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
     /// <paramref name="localGameId"/>. Resolves the registrace counterpart
     /// from <c>Game.ExternalGameId</c> internally — callers no longer need
     /// to (and should not) hand over a registrace id directly.
+    /// Network/parse failures are folded into <c>ImportResultDto.Errors</c>
+    /// — the original behavior the standalone "Importovat" button relies on.
+    /// Catches <see cref="HttpRequestException"/>, <see cref="TaskCanceledException"/>
+    /// (timeouts), and <see cref="System.Text.Json.JsonException"/> (malformed
+    /// upstream payload) so the button surfaces a Czech error rather than a 500.
     /// </summary>
     public async Task<ImportResultDto> ImportAsync(int localGameId)
+    {
+        try
+        {
+            return await ImportOrThrowAsync(localGameId);
+        }
+        catch (HttpRequestException ex)
+        {
+            return new ImportResultDto(0, 0, 0, [$"Failed to fetch from registrace: {ex.Message}"]);
+        }
+        catch (TaskCanceledException ex)
+        {
+            return new ImportResultDto(0, 0, 0, [$"Timed out while fetching from registrace: {ex.Message}"]);
+        }
+        catch (JsonException ex)
+        {
+            return new ImportResultDto(0, 0, 0, [$"Failed to parse registrace response: {ex.Message}"]);
+        }
+    }
+
+    /// <summary>
+    /// Issue #192 — same upsert as <see cref="ImportAsync"/> but
+    /// propagates upstream <see cref="HttpRequestException"/> instead of
+    /// folding them into the result. The reimport endpoint relies on this
+    /// to roll back the wipe transaction when registrace is unreachable —
+    /// without it we'd commit an empty database after silently swallowing
+    /// the fetch failure.
+    /// </summary>
+    public async Task<ImportResultDto> ImportOrThrowAsync(int localGameId)
     {
         var externalGameId = await ResolveExternalGameIdAsync(localGameId);
         var created = 0;
@@ -96,15 +129,7 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
         var skipped = 0;
         var errors = new List<string>();
 
-        List<RegistraceCharacterRecord> records;
-        try
-        {
-            records = await FetchCharactersAsync(externalGameId);
-        }
-        catch (Exception ex)
-        {
-            return new ImportResultDto(0, 0, 0, [$"Failed to fetch from registrace: {ex.Message}"]);
-        }
+        var records = await FetchCharactersAsync(externalGameId);
 
         // Kingdom-name → id lookup, loaded once per import. Names from registrace
         // are matched case-insensitively against the Kingdom lookup table.
