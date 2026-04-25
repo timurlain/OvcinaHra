@@ -248,6 +248,17 @@ else
                         <ImagePicker EntityType="locations" EntityId="@Id" Field="placement"
                                      AspectRatio="4:3" Width="280px" Alt="Fotka umístění" />
                     </div>
+                    @* Issue #172 — Razítko (rubber stamp) editor. Goes through
+                       the `locationstamps` image-pipeline alias so the cache
+                       namespace stays separate from the main location image
+                       (per feedback_ovcinahra_secondary_image_entity_alias).
+                       Same picker config as the LocationEditPopup so the two
+                       editing surfaces stay consistent. *@
+                    <div class="oh-lc-mv-col">
+                        <small class="text-muted d-block mb-1">Razítko (1:1)</small>
+                        <ImagePicker EntityType="locationstamps" EntityId="@Id"
+                                     AspectRatio="1:1" Width="180px" Alt="Razítko lokace" />
+                    </div>
                 </div>
             </div>
 
