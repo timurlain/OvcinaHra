@@ -27,8 +27,19 @@
                            UseFill="@_useFill" UseFillChanged="OnUseFillChanged"
                            StrokeWidth="@_strokeWidth" StrokeWidthChanged="OnStrokeWidthChanged"
                            FontSize="@_fontSize" FontSizeChanged="OnFontSizeChanged"
+                           IconAsset="@_iconAsset" IconAssetChanged="OnIconAssetChanged"
+                           IconRotation="@_iconRotation" IconRotationChanged="OnIconRotationChanged"
+                           IconScale="@_iconScale" IconScaleChanged="OnIconScaleChanged"
                            OnSave="SaveOverlayAsync"
                            OnCancel="CancelEditAsync" />
+
+        @if (_selectedShape is not null)
+        {
+            <OverlayPropertyPanel Shape="_selectedShape"
+                                  OnChange="OnShapeEditedAsync"
+                                  OnDelete="RequestDeleteAsync"
+                                  OnClose="ClearSelectionAsync" />
+        }
 
         @if (!string.IsNullOrEmpty(_overlayError))
         {
@@ -40,6 +51,21 @@
             </div>
         }
     }
+
+    @* Phase 3 — destructive action confirm per
+       feedback_ovcinahra_destructive_confirm. Always route DELETE through a
+       DxPopup, never wire straight to the handler. *@
+    <DxPopup HeaderText="Smazat tvar?" Width="400px"
+             CloseOnEscape="true" ShowCloseButton="true"
+             @bind-Visible="_deleteConfirmVisible">
+        <BodyContentTemplate>
+            <p class="mb-3">Opravdu chcete smazat vybraný tvar překryvu? Tato akce se projeví až po uložení překryvu.</p>
+            <div class="d-flex gap-2 justify-content-end">
+                <button type="button" class="btn btn-secondary" @onclick="() => _deleteConfirmVisible = false">Zrušit</button>
+                <button type="button" class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
+            </div>
+        </BodyContentTemplate>
+    </DxPopup>
 </div>
 
 @code {
@@ -70,11 +96,16 @@
     private List<MapOverlayShape> _committedShapes = new();   // last-saved baseline
     private List<MapOverlayShape> _stagedShapes = new();      // working copy
     private bool _editMode;
-    private string _tool = "text";
+    private string _tool = "select";
     private string _color = "#242F3D";
     private bool _useFill;
     private double _strokeWidth = 2;
     private int _fontSize = 14;
+    private string _iconAsset = "flag";
+    private double _iconRotation;
+    private double _iconScale = 1.0;
+    private MapOverlayShape? _selectedShape;
+    private bool _deleteConfirmVisible;
     private string? _overlayError;
     private int? _loadedOverlayForGameId;
 
@@ -131,7 +162,10 @@
     private async Task CancelEditAsync()
     {
         _editMode = false;
+        _selectedShape = null;
+        _deleteConfirmVisible = false;
         _stagedShapes = new List<MapOverlayShape>(_committedShapes);
+        await JS.InvokeVoidAsync("ovcinaOverlay.clearSelection", _elementId);
         await JS.InvokeVoidAsync("ovcinaOverlay.exitEditMode", _elementId);
         await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _committedShapes);
     }
@@ -147,6 +181,9 @@
         }
         _committedShapes = new List<MapOverlayShape>(_stagedShapes);
         _editMode = false;
+        _selectedShape = null;
+        _deleteConfirmVisible = false;
+        await JS.InvokeVoidAsync("ovcinaOverlay.clearSelection", _elementId);
         await JS.InvokeVoidAsync("ovcinaOverlay.exitEditMode", _elementId);
         await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _committedShapes);
     }
@@ -156,6 +193,13 @@
         _tool = tool;
         if (_editMode)
         {
+            // Switching away from select clears the highlight so it doesn't
+            // linger while the user is drawing a fresh shape elsewhere.
+            if (tool != "select" && _selectedShape is not null)
+            {
+                _selectedShape = null;
+                await JS.InvokeVoidAsync("ovcinaOverlay.clearSelection", _elementId);
+            }
             await PushStyleToJsAsync();
             await JS.InvokeVoidAsync("ovcinaOverlay.switchTool", _elementId, _tool);
         }
@@ -185,6 +229,24 @@
         await PushStyleToJsAsync();
     }
 
+    private async Task OnIconAssetChanged(string key)
+    {
+        _iconAsset = key;
+        await PushStyleToJsAsync();
+    }
+
+    private async Task OnIconRotationChanged(double rot)
+    {
+        _iconRotation = rot;
+        await PushStyleToJsAsync();
+    }
+
+    private async Task OnIconScaleChanged(double scale)
+    {
+        _iconScale = scale;
+        await PushStyleToJsAsync();
+    }
+
     private Task PushStyleToJsAsync()
         => JS.InvokeVoidAsync("ovcinaOverlay.setStyle", new
         {
@@ -192,7 +254,10 @@
             fillColor = _color,       // single colour for both stroke + fill
             strokeWidth = _strokeWidth,
             useFill = _useFill,
-            fontSize = _fontSize
+            fontSize = _fontSize,
+            iconAsset = _iconAsset,
+            iconRotation = _iconRotation,
+            iconScale = _iconScale
         }).AsTask();
 
     [JSInvokable]
@@ -212,6 +277,72 @@
             // Shape payload malformed — log, don't surface. User can redraw.
             Console.WriteLine($"Overlay shape deserialisation failed: {ex.Message}");
         }
+    }
+
+    // ---- Phase 3 — selection / edit / delete --------------------------
+
+    [JSInvokable]
+    public async Task OnShapeSelected(string? shapeId)
+    {
+        if (string.IsNullOrEmpty(shapeId))
+        {
+            _selectedShape = null;
+            await JS.InvokeVoidAsync("ovcinaOverlay.clearSelection", _elementId);
+        }
+        else
+        {
+            _selectedShape = _stagedShapes.FirstOrDefault(s => s.Id == shapeId);
+            if (_selectedShape is not null)
+                await JS.InvokeVoidAsync("ovcinaOverlay.selectShape", _elementId, _selectedShape);
+            else
+                await JS.InvokeVoidAsync("ovcinaOverlay.clearSelection", _elementId);
+        }
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public Task OnDeleteRequested()
+    {
+        if (_selectedShape is not null)
+        {
+            _deleteConfirmVisible = true;
+            StateHasChanged();
+        }
+        return Task.CompletedTask;
+    }
+
+    private async Task OnShapeEditedAsync(MapOverlayShape updated)
+    {
+        var ix = _stagedShapes.FindIndex(s => s.Id == updated.Id);
+        if (ix < 0) return;
+        _stagedShapes[ix] = updated;
+        _selectedShape = updated;
+        await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _stagedShapes);
+        await JS.InvokeVoidAsync("ovcinaOverlay.selectShape", _elementId, updated);
+    }
+
+    private Task RequestDeleteAsync()
+    {
+        if (_selectedShape is not null)
+            _deleteConfirmVisible = true;
+        return Task.CompletedTask;
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        _deleteConfirmVisible = false;
+        if (_selectedShape is null) return;
+        var id = _selectedShape.Id;
+        _stagedShapes.RemoveAll(s => s.Id == id);
+        _selectedShape = null;
+        await JS.InvokeVoidAsync("ovcinaOverlay.clearSelection", _elementId);
+        await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _stagedShapes);
+    }
+
+    private async Task ClearSelectionAsync()
+    {
+        _selectedShape = null;
+        await JS.InvokeVoidAsync("ovcinaOverlay.clearSelection", _elementId);
     }
 
     public async Task AddMarkerAsync(int id, double lat, double lon, string name, string kind, string color = "#e74c3c")

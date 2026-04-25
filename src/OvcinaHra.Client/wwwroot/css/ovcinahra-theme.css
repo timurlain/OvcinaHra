@@ -2768,3 +2768,62 @@
     .oh-sp-print-spread{box-shadow:none;border:none;page-break-after:always;break-after:page;width:auto;min-height:auto}
     .oh-mana svg{width:12px !important;height:12px !important}
 }
+
+/* ----- Issue #96 Phase 3 — icon palette + property panel + selection chrome ----- */
+
+/* Toolbar icon-tool row */
+.oh-mo-icons{display:flex;flex-wrap:wrap;align-items:center;gap:6px;
+    padding:6px 8px;border-top:1px solid var(--oh-border,#d8d2be);
+    background:var(--oh-surface-tint,rgba(80,75,37,0.04))}
+.oh-mo-icon{width:32px;height:32px;border:1px solid var(--oh-border,#d8d2be);
+    background:var(--oh-bg,#fff);border-radius:4px;display:inline-flex;
+    align-items:center;justify-content:center;cursor:pointer;padding:2px}
+.oh-mo-icon:hover{border-color:#504B25}
+.oh-mo-icon.is-active{border-color:#504B25;box-shadow:0 0 0 2px rgba(80,75,37,0.25)}
+.oh-mo-icon img{width:22px;height:22px;display:block}
+
+/* Sidecar property panel — anchored top-right of map host. Above MapLibre
+   controls (z-index:20) but below the error banner (z-index:21). */
+.oh-overlay-property-panel{position:absolute;top:12px;right:12px;z-index:20;
+    width:340px;max-height:calc(100% - 24px);overflow-y:auto;
+    background:var(--oh-bg,#fff);border:1px solid var(--oh-border,#d8d2be);
+    border-radius:6px;box-shadow:0 4px 16px rgba(36,47,61,0.18);
+    display:flex;flex-direction:column}
+.oh-overlay-property-panel-header{display:flex;align-items:center;
+    justify-content:space-between;padding:8px 12px;
+    border-bottom:1px solid var(--oh-border,#d8d2be);
+    background:var(--oh-surface-tint,rgba(80,75,37,0.04));
+    color:var(--oh-text,#2a2a2a);font-size:.95rem}
+.oh-overlay-property-panel-header .btn-close{width:18px;height:18px}
+.oh-overlay-property-panel-body{padding:10px 12px;display:flex;flex-direction:column;gap:10px}
+.oh-overlay-property-panel-footer{padding:8px 12px;
+    border-top:1px solid var(--oh-border,#d8d2be);
+    display:flex;justify-content:flex-end;gap:6px}
+
+.oh-overlay-pp-type{font-size:.75rem;font-weight:600;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--oh-muted,#6b6650);
+    padding-bottom:4px;border-bottom:1px dashed var(--oh-border,#d8d2be)}
+.oh-overlay-pp-label{display:flex;align-items:center;gap:8px;
+    font-size:.825rem;color:var(--oh-text,#2a2a2a);margin:0}
+.oh-overlay-pp-label input[type="range"]{flex:1}
+.oh-overlay-pp-label input[type="text"]{flex:1;font-size:.825rem}
+.oh-overlay-pp-check{font-weight:500}
+.oh-overlay-pp-color{width:32px;height:28px;border:1px solid var(--oh-border,#d8d2be);
+    border-radius:3px;cursor:pointer;padding:0;background:transparent}
+.oh-overlay-pp-val{font-family:var(--oh-font-mono,Menlo,monospace);font-size:.75rem;
+    color:var(--oh-text,#2a2a2a);min-width:36px;text-align:right}
+.oh-overlay-pp-icon-row{display:flex;flex-wrap:wrap;gap:4px}
+.oh-overlay-pp-icon{width:32px;height:32px;border:1px solid var(--oh-border,#d8d2be);
+    background:var(--oh-bg,#fff);border-radius:4px;display:inline-flex;
+    align-items:center;justify-content:center;cursor:pointer;padding:2px}
+.oh-overlay-pp-icon:hover{border-color:#504B25}
+.oh-overlay-pp-icon.is-active{border-color:#504B25;box-shadow:0 0 0 2px rgba(80,75,37,0.25)}
+.oh-overlay-pp-icon img{width:22px;height:22px;display:block}
+
+/* Drozd radí inline hint — mascot-attributed advice block. Soft amber band
+   so users notice the guidance without reading it as an error. */
+.oh-overlay-pp-drozd{display:flex;align-items:flex-start;gap:6px;
+    padding:6px 8px;font-size:.75rem;line-height:1.35;
+    color:#5b4a17;background:#fdf6e3;border:1px solid #f0d68a;
+    border-left:3px solid #B26223;border-radius:3px}
+.oh-overlay-pp-drozd .bi{color:#B26223;font-size:.95rem;line-height:1}
