@@ -155,14 +155,26 @@
         await JS.InvokeVoidAsync("localStorage.setItem", "oidc_verifier", codeVerifier);
 
         var redirectUri = Uri.EscapeDataString($"{Nav.BaseUri}auth-callback");
+        // offline_access is critical: without it, registrace's OpenIddict server
+        // never emits a refresh_token, and TokenRefreshService falls back to the
+        // dev path that doesn't work in production — every user gets bounced to
+        // /login the moment the 15-min access token expires (issue #125).
+        const string Scopes = "openid+profile+email+roles+offline_access";
         var url = $"{oidcAuthority}/connect/authorize" +
             $"?client_id={oidcClientId}" +
             $"&redirect_uri={redirectUri}" +
             $"&response_type=code" +
-            $"&scope=openid+profile+email+roles" +
+            $"&scope={Scopes}" +
             $"&state={state}" +
             $"&code_challenge={codeChallenge}" +
             $"&code_challenge_method=S256";
+
+        // Log the requested scopes (no PII) so a future regression here surfaces
+        // in the browser console immediately. AuthLog already redacts tokens.
+        OvcinaHra.Client.Auth.AuthLog.Event("login.authorize",
+            ("scopes", Scopes),
+            ("client_id", oidcClientId ?? "(none)"));
+
         Nav.NavigateTo(url, forceLoad: true);
     }
 
