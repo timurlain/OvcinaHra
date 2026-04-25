@@ -9,13 +9,48 @@ using OvcinaHra.Shared.Extensions;
 
 namespace OvcinaHra.Api.Services;
 
+/// <summary>
+/// Thrown when a caller asks the import service to do work for a local
+/// OvčinaHra Game that has no <c>ExternalGameId</c> (#191). Endpoints
+/// translate this into a 400 ProblemDetails so the UI can surface a
+/// "není propojená s registrací" CTA pointing at the link picker (#187).
+/// </summary>
+public sealed class GameNotLinkedToRegistraceException(int localGameId)
+    : Exception($"Game {localGameId} is not linked to a registrace game (Game.ExternalGameId is null).")
+{
+    public int LocalGameId { get; } = localGameId;
+}
+
 public class RegistraceImportService(HttpClient httpClient, IConfiguration configuration, WorldDbContext db)
 {
     private readonly string _baseUrl = configuration["IntegrationApi:BaseUrl"] ?? "https://registrace.ovcina.cz";
     private readonly string? _apiKey = configuration["IntegrationApi:ApiKey"];
 
-    public async Task<ImportResultDto> ImportAsync(int gameId)
+    /// <summary>
+    /// Issue #191 — resolve the registrace counterpart id for a local game.
+    /// Throws <see cref="GameNotLinkedToRegistraceException"/> when not linked
+    /// rather than silently using the wrong id (the pre-#191 behavior).
+    /// </summary>
+    private async Task<int> ResolveExternalGameIdAsync(int localGameId)
     {
+        var externalId = await db.Games
+            .Where(g => g.Id == localGameId)
+            .Select(g => g.ExternalGameId)
+            .FirstOrDefaultAsync();
+        if (externalId is null)
+            throw new GameNotLinkedToRegistraceException(localGameId);
+        return externalId.Value;
+    }
+
+    /// <summary>
+    /// Imports player characters for the local OvčinaHra game with id
+    /// <paramref name="localGameId"/>. Resolves the registrace counterpart
+    /// from <c>Game.ExternalGameId</c> internally — callers no longer need
+    /// to (and should not) hand over a registrace id directly.
+    /// </summary>
+    public async Task<ImportResultDto> ImportAsync(int localGameId)
+    {
+        var externalGameId = await ResolveExternalGameIdAsync(localGameId);
         var created = 0;
         var updated = 0;
         var skipped = 0;
@@ -24,7 +59,7 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
         List<RegistraceCharacterRecord> records;
         try
         {
-            records = await FetchCharactersAsync(gameId);
+            records = await FetchCharactersAsync(externalGameId);
         }
         catch (Exception ex)
         {
@@ -82,9 +117,13 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
                         character.IsDeleted = false;
                 }
 
-                // Look up assignment by GameId + ExternalPersonId
+                // Look up assignment by local GameId + ExternalPersonId.
+                // Pre-#191 this used the same `gameId` variable that was
+                // also passed to the registrace fetch URL — broken if the
+                // local id and registrace id ever diverge. Now resolved
+                // separately at the top of ImportAsync.
                 var assignment = await db.CharacterAssignments
-                    .FirstOrDefaultAsync(a => a.GameId == gameId && a.ExternalPersonId == record.PersonId);
+                    .FirstOrDefaultAsync(a => a.GameId == localGameId && a.ExternalPersonId == record.PersonId);
 
                 PlayerClass? playerClass = null;
                 if (!string.IsNullOrWhiteSpace(record.ClassOrType))
@@ -103,7 +142,7 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
                     assignment = new CharacterAssignment
                     {
                         CharacterId = character.Id,
-                        GameId = gameId,
+                        GameId = localGameId,
                         ExternalPersonId = record.PersonId,
                         RegistraceCharacterId = record.CharacterId,
                         Class = playerClass,
@@ -134,10 +173,10 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
         return new ImportResultDto(created, updated, skipped, errors);
     }
 
-    private async Task<List<RegistraceCharacterRecord>> FetchCharactersAsync(int gameId)
+    private async Task<List<RegistraceCharacterRecord>> FetchCharactersAsync(int externalGameId)
     {
         var request = new HttpRequestMessage(HttpMethod.Get,
-            $"{_baseUrl.TrimEnd('/')}/api/v1/games/{gameId}/characters");
+            $"{_baseUrl.TrimEnd('/')}/api/v1/games/{externalGameId}/characters");
 
         if (!string.IsNullOrWhiteSpace(_apiKey))
             request.Headers.Add("X-Api-Key", _apiKey);
@@ -150,10 +189,19 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
     }
 
-    public async Task<List<RegistraceAdultDto>> FetchAdultsAsync(int gameId)
+    /// <summary>
+    /// Fetches the registrace "adults" list for the local game with id
+    /// <paramref name="localGameId"/>. Used by the NPC picker to let
+    /// organizers attach a real-world person to an NPC. Resolves
+    /// <c>Game.ExternalGameId</c> internally — see <see cref="ImportAsync"/>
+    /// for the same #191 contract.
+    /// </summary>
+    public async Task<List<RegistraceAdultDto>> FetchAdultsAsync(int localGameId)
     {
+        var externalGameId = await ResolveExternalGameIdAsync(localGameId);
+
         var request = new HttpRequestMessage(HttpMethod.Get,
-            $"{_baseUrl.TrimEnd('/')}/api/v1/games/{gameId}/adults");
+            $"{_baseUrl.TrimEnd('/')}/api/v1/games/{externalGameId}/adults");
 
         if (!string.IsNullOrWhiteSpace(_apiKey))
             request.Headers.Add("X-Api-Key", _apiKey);

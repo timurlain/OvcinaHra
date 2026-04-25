@@ -39,6 +39,14 @@ public static class NpcEndpoints
             var adults = await registrace.FetchAdultsAsync(gameId);
             return TypedResults.Ok(adults);
         }
+        catch (GameNotLinkedToRegistraceException)
+        {
+            // Issue #191 — same shape as the character import 400 path.
+            return TypedResults.Problem(
+                detail: "Tato hra ještě není propojená s registrací. Otevřete Správu her, otevřete tuto hru a klikněte na tlačítko Propojit s registrací.",
+                title: "Hra není propojená s registrací.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
         catch (HttpRequestException ex)
         {
             return TypedResults.Problem(
