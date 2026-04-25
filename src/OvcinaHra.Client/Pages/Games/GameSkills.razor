@@ -14,7 +14,7 @@
            the entry points lead straight to the right step. *@
         <button class="btn btn-primary" type="button" @onclick="OpenFromTemplateStep"
                 title="Vytvořit kopii z existující šablony">
-            <i class="bi bi-stack"></i> Přidat ze šablony
+            <i class="bi bi-stack"></i> Přidat z katalogu
         </button>
         <button class="btn btn-outline-primary" type="button" @onclick="OpenCustomEdit"
                 title="Vytvořit dovednost úplně od nuly">
@@ -506,7 +506,7 @@ else
         xpCost = 0;
         levelRequirement = null;
 
-        editTitle = $"Přidat ze šablony: {tpl.Name}";
+        editTitle = $"Přidat z katalogu: {tpl.Name}";
         isEditVisible = true;
     }
 
