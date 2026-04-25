@@ -13,6 +13,15 @@ on:
       - '.github/workflows/api-ci.yml'
   pull_request:
     branches: [main]
+    # Skip the suite on PRs that touch only docs / repo metadata. Branch
+    # protection treats a workflow that didn't run due to paths-ignore as
+    # passing for required-status-check purposes (documented GitHub behavior).
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.github/CODEOWNERS'
 
 jobs:
   build-and-test:
@@ -22,6 +31,14 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-api-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'nuget.config') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-api-
+            nuget-${{ runner.os }}-
       - name: DevExpress License
         if: env.DEVEXPRESS_LICENSE_CONTENT != ''
         run: |
@@ -29,10 +46,15 @@ jobs:
           printf '%s' "$DEVEXPRESS_LICENSE_CONTENT" > "$HOME/.config/DevExpress/DevExpress_License.txt"
         env:
           DEVEXPRESS_LICENSE_CONTENT: ${{ secrets.DEVEXPRESS_LICENSE_CONTENT }}
+      # Restore + build only the test project (transitively pulls in
+      # OvcinaHra.Api + OvcinaHra.Shared). The client-ci workflow already
+      # builds OvcinaHra.Client, so building the whole slnx here is wasted
+      # work — Client carries the heavy DevExpress deps that don't apply
+      # to the API test surface.
       - name: Restore
-        run: dotnet restore OvcinaHra.slnx
+        run: dotnet restore tests/OvcinaHra.Api.Tests/OvcinaHra.Api.Tests.csproj
       - name: Build
-        run: dotnet build OvcinaHra.slnx --no-restore -c Release
+        run: dotnet build tests/OvcinaHra.Api.Tests/OvcinaHra.Api.Tests.csproj --no-restore -c Release
       - name: Test
         run: dotnet test tests/OvcinaHra.Api.Tests --no-build -c Release --logger "trx;LogFileName=results.trx"
       - name: Upload test results

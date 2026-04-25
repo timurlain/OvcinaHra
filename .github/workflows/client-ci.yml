@@ -10,6 +10,15 @@ on:
       - '.github/workflows/client-ci.yml'
   pull_request:
     branches: [main]
+    # Skip the build on PRs that touch only docs / repo metadata. Branch
+    # protection treats a workflow that didn't run due to paths-ignore as
+    # passing for required-status-check purposes.
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.github/CODEOWNERS'
 
 jobs:
   build:
@@ -19,6 +28,14 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-client-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'nuget.config') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-client-
+            nuget-${{ runner.os }}-
       - name: DevExpress License
         if: env.DEVEXPRESS_LICENSE_CONTENT != ''
         run: |
