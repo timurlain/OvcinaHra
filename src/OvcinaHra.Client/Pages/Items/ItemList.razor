@@ -1481,7 +1481,11 @@ else
             gi.ReqWarrior, gi.ReqArcher, gi.ReqMage, gi.ReqThief,
             gi.IsUnique, gi.IsLimited, gi.ImagePath,
             Note: gi.Note,
-            ImageUrl: gi.ImageUrl);
+            ImageUrl: gi.ImageUrl,
+            // Issue #154 — propagate so the per-game quick-peek matches the
+            // tile gate. Without this the badge would never render in
+            // per-game peek even when the recipe exists.
+            HasRecipe: gi.HasRecipe);
         quickPeekIsPerGame = true;
         quickPeekIsSold = gi.IsSold;
         quickPeekIsFindable = gi.IsFindable;

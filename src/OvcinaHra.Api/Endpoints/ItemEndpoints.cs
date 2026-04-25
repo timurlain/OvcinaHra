@@ -201,6 +201,13 @@ public static class ItemEndpoints
             .GroupBy(r => r.OutputItemId)
             .ToDictionary(g => g.Key, g => BuildRecipeSummary(g.First()));
 
+        // Issue #154 — keep the recipe-existence flag separate from the
+        // RecipeSummary string. BuildRecipeSummary returns null when a
+        // recipe row exists but has no ingredients/buildings/skills, so
+        // deriving HasRecipe from the summary would hide the IsCraftable
+        // badge incorrectly. Source the flag from the dictionary key set.
+        var hasRecipeByItemId = recipes.Select(r => r.OutputItemId).ToHashSet();
+
         var result = gameItems
             .Select(gi => new GameItemListDto(
                 gi.Item.Id, gi.Item.Name, gi.Item.ItemType, gi.Item.Effect, gi.Item.PhysicalForm,
@@ -211,7 +218,8 @@ public static class ItemEndpoints
                 gi.GameId, gi.Price, gi.StockCount, gi.IsSold, gi.SaleCondition, gi.IsFindable,
                 summaryByItemId.GetValueOrDefault(gi.ItemId),
                 Note: gi.Item.Note,
-                ImageUrl: string.IsNullOrWhiteSpace(gi.Item.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "items", gi.Item.Id, "small")))
+                ImageUrl: string.IsNullOrWhiteSpace(gi.Item.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "items", gi.Item.Id, "small"),
+                HasRecipe: hasRecipeByItemId.Contains(gi.ItemId)))
             .ToList();
 
         return TypedResults.Ok(result);
