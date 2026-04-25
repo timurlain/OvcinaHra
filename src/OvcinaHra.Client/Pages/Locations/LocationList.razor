@@ -409,6 +409,28 @@ else
                 </CellDisplayTemplate>
             </DxGridDataColumn>
         </Columns>
+        @* Issue #149 — drozd-confused fires when the visibleRows projection
+           filters everything out (search box, kind/region pickers, the toggle
+           switches above the grid, or DxGrid's own filter row). The page-level
+           empty branch above only intercepts `locations.Count == 0`, so this
+           in-grid surface is reachable whenever a non-empty dataset is filtered
+           down to zero. *@
+        <EmptyDataAreaTemplate>
+            <div class="text-center text-muted py-5">
+                <div class="oh-lg-drozd-box mx-auto mb-3" aria-hidden="true">
+                    @if (!confusedFailed)
+                    {
+                        <img src="/img/drozd/drozd-confused.svg" alt=""
+                             @onerror="() => confusedFailed = true" />
+                    }
+                    else
+                    {
+                        <i class="bi bi-funnel" style="font-size:90px;color:var(--oh-text-secondary);"></i>
+                    }
+                </div>
+                <p class="mb-0">Žádné lokace neodpovídají filtrům.</p>
+            </div>
+        </EmptyDataAreaTemplate>
     </OvcinaGrid>
 }
 
@@ -507,6 +529,7 @@ else
     private HashSet<int> assignedLocationIds = [];
     private bool loading = true;
     private bool drozdFailed;   // flips true if /img/drozd/drozd-knocking.svg 404s
+    private bool confusedFailed; // flips true if /img/drozd/drozd-confused.svg 404s (in-grid no-rows, #149)
     private bool isGpsVisible;
     private bool isLinkVisible;
     private bool isSaving;
