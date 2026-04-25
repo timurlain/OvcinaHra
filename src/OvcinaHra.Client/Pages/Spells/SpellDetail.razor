@@ -40,7 +40,7 @@ else
             <i class="bi bi-bookmark-fill"></i> Karta
         </button>
         <button class="btn btn-sm @(activeTab == "upravit" ? "btn-primary" : "btn-outline-primary")"
-                @onclick='() => activeTab = "upravit"'>
+                @onclick="OpenUpravitTabAsync">
             <i class="bi bi-pencil"></i> Upravit
         </button>
         <button class="btn btn-sm @(activeTab == "obchod" ? "btn-primary" : "btn-outline-primary")"
@@ -115,25 +115,33 @@ else
                     </div>
                 </div>
 
-                @* Scroll → Item callout (issue #148, follow-up flagged for proper FK).
-                   Fuzz-matches case-insensitive on Name — disabled with explanatory
-                   title when no item matches. *@
+                @* Scroll → Item callout. Issue #181 replaces the previous
+                   case-insensitive name fuzz-match with a proper FK lookup —
+                   ScrollItemId is set explicitly via the Upravit form, so a
+                   spell stays linked even after a Name rename, and unlinked
+                   scrolls render the disabled state without a /api/items
+                   round-trip. *@
                 @if (spell.IsScroll)
                 {
                     <div class="oh-sp-karta-scroll-callout">
                         <h6><i class="bi bi-link-45deg"></i> Svitek je také předmět</h6>
                         <p>Tento svitek existuje i v katalogu předmětů jako <em>Svitek</em>. Detail položky obsahuje cenu, sklad a možnosti prodeje.</p>
-                        <button class="btn btn-sm btn-outline-primary" type="button"
-                                @onclick="OpenAsItemAsync" disabled="@isLookingUpItem">
-                            @if (isLookingUpItem)
-                            {
-                                <span class="spinner-border spinner-border-sm me-1"></span>
-                            }
-                            Zobrazit jako předmět <i class="bi bi-arrow-right"></i>
-                        </button>
-                        @if (!string.IsNullOrEmpty(scrollItemError))
+                        @if (spell.ScrollItemId is int scrollItemId)
                         {
-                            <p class="mt-2 mb-0 text-danger small"><i class="bi bi-exclamation-triangle"></i> @scrollItemError</p>
+                            <a href="/items/@scrollItemId" class="btn btn-sm btn-outline-primary">
+                                Zobrazit jako předmět <i class="bi bi-arrow-right"></i>
+                                @if (!string.IsNullOrWhiteSpace(spell.ScrollItemName))
+                                {
+                                    <span class="ms-1 text-muted small">(@spell.ScrollItemName)</span>
+                                }
+                            </a>
+                        }
+                        else
+                        {
+                            <button class="btn btn-sm btn-outline-secondary" type="button" disabled
+                                    title="Tento svitek zatím není propojen s předmětem v katalogu. Otevřete záložku Upravit a vyberte odpovídající položku.">
+                                <i class="bi bi-link-45deg"></i> Svitek není propojen
+                            </button>
                         }
                     </div>
                 }
@@ -191,6 +199,25 @@ else
                         <DxCheckBox @bind-Checked="@editModel.IsScroll" />
                     </DxFormLayoutItem>
                 </DxFormLayoutGroup>
+
+                @* Issue #181 — link to the catalog Item that physically
+                   represents this scroll. Visible only when IsScroll = true
+                   so non-scroll spells don't surface a meaningless field.
+                   Items list is fetched lazily on first activation of the
+                   Upravit tab (LoadScrollItemPickerAsync). *@
+                @if (editModel.IsScroll)
+                {
+                    <DxFormLayoutGroup Caption="Propojení se svitkem v katalogu" ColSpanMd="12">
+                        <DxFormLayoutItem Caption="Položka (svitek)" ColSpanMd="12">
+                            <DxComboBox Data="@allScrollItems"
+                                        @bind-Value="@editModel.ScrollItemId"
+                                        TextFieldName="Name" ValueFieldName="Id"
+                                        NullText="(žádná — propojení zatím není nastaveno)"
+                                        ClearButton="true"
+                                        SearchMode="ListSearchMode.AutoSearch" />
+                        </DxFormLayoutItem>
+                    </DxFormLayoutGroup>
+                }
 
                 <DxFormLayoutGroup Caption="Obsah" ColSpanMd="12">
                     <DxFormLayoutItem Caption="Efekt (text karty — verbatim)" ColSpanMd="12">
@@ -331,12 +358,13 @@ else
     private bool isDeleteVisible;
     private string? saveError;
 
-    // Scroll → Item callout (issue #148, follow-up #1: replace with proper FK).
-    // Lookup is lazy on button click, NOT eager on detail load — fetching
-    // the entire /api/items catalog just to render one button would scale
-    // poorly as the catalog grows.
-    private bool isLookingUpItem;
-    private string? scrollItemError;
+    // Issue #181 — Items available for the ScrollItem picker. Loaded once
+    // when the Upravit tab is opened on a scroll spell; cached for the
+    // session of this detail view. Pre-PR #181 this was a lazy lookup on
+    // button click against the whole catalog — now we just need it to
+    // populate a single combo box, so a one-shot load is fine.
+    private List<ItemListDto> allScrollItems = [];
+    private bool scrollItemsLoaded;
 
     // Obchod tab — per-game configuration list. Spell-side projection rolled
     // up from /api/spells/by-game/{gameId} hits across all games would be a
@@ -365,7 +393,6 @@ else
             }
             spell = detail;
             editModel = EditForm.FromDetail(detail);
-            scrollItemError = null;
 
             // Obchod data — best-effort. List endpoint per game not provided
             // for spells-by-spellId yet (followup); leave empty for now.
@@ -397,31 +424,40 @@ else
         finally { isSaving = false; }
     }
 
-    /// <summary>
-    /// Lazy fuzz-match by Name against /api/items when the user clicks
-    /// "Zobrazit jako předmět". No eager fetch on detail load — the catalog
-    /// can grow and this lookup is only useful on scroll detail pages.
-    /// Replaced by the proper Spell.ScrollItemId FK in follow-up #1.
-    /// </summary>
-    private async Task OpenAsItemAsync()
+    private async Task OpenUpravitTabAsync()
     {
-        if (spell is null || !spell.IsScroll) return;
-        scrollItemError = null;
-        isLookingUpItem = true;
+        activeTab = "upravit";
+        // Picker only matters for scroll spells. Avoid the catalog fetch on
+        // non-scroll spells until the user toggles IsScroll on.
+        if (editModel.IsScroll) await LoadScrollItemPickerAsync();
+    }
+
+    /// <summary>
+    /// Issue #181 — populate the ScrollItem picker on Upravit tab activation.
+    /// Filters to scroll-type Items only (server-side ?type=Scroll); falls
+    /// back to the full catalog if the API doesn't expose that filter so the
+    /// user can still pick something. Idempotent — only runs once per detail
+    /// page session.
+    /// </summary>
+    private async Task LoadScrollItemPickerAsync()
+    {
+        if (scrollItemsLoaded) return;
         try
         {
-            var items = await Api.GetListAsync<ItemListDto>("/api/items");
-            var hit = items.FirstOrDefault(i =>
-                string.Equals(i.Name?.Trim(), spell.Name.Trim(), StringComparison.OrdinalIgnoreCase));
-            if (hit is null)
-            {
-                scrollItemError = "Položka stejného názvu nenalezena. Vytvořte svitek v katalogu předmětů a propojení vznikne automaticky.";
-                return;
-            }
-            Nav.NavigateTo($"/items/{hit.Id}");
+            // Try the type-filtered endpoint first; fall back to /api/items
+            // if the server doesn't recognise the query string.
+            var filtered = await Api.GetListAsync<ItemListDto>("/api/items?type=Scroll");
+            allScrollItems = filtered.Count > 0
+                ? filtered
+                : await Api.GetListAsync<ItemListDto>("/api/items");
+            scrollItemsLoaded = true;
         }
-        catch (Exception ex) { scrollItemError = $"Nepodařilo se prohledat katalog: {ex.Message}"; }
-        finally { isLookingUpItem = false; }
+        catch
+        {
+            // Best-effort — leave the list empty so the combo at least
+            // renders without crashing the page.
+            scrollItemsLoaded = true;
+        }
     }
 
     private async Task DeleteAsync()
@@ -484,6 +520,12 @@ else
         public int? Price { get; set; }
         public string Effect { get; set; } = "";
         public string? Description { get; set; }
+        // Issue #181 — bound to the ScrollItem picker. Editor accepts a value
+        // even when IsScroll is false (so a user toggling IsScroll off and
+        // back on doesn't lose what they picked); the EffectiveScrollItemId
+        // getter strips it on persist if !IsScroll, mirroring the other
+        // Effective* getters below.
+        public int? ScrollItemId { get; set; }
 
         // ── Effective values — single source of truth for both preview and
         // persistence. MAG-005/006 says scrolls are Level 0, ManaCost 0,
@@ -496,6 +538,7 @@ else
         public int EffectiveMinMageLevel => IsScroll ? 0 : MinMageLevel;
         public bool EffectiveIsLearnable => !IsScroll && IsLearnable;
         public int? EffectivePrice => IsScroll ? null : Price;
+        public int? EffectiveScrollItemId => IsScroll ? ScrollItemId : null;
 
         public static EditForm FromDetail(SpellDetailDto d) => new()
         {
@@ -509,7 +552,8 @@ else
             MinMageLevel = d.MinMageLevel,
             Price = d.Price,
             Effect = d.Effect,
-            Description = d.Description
+            Description = d.Description,
+            ScrollItemId = d.ScrollItemId
         };
 
         public UpdateSpellDto ToUpdateDto() => new(
@@ -523,6 +567,7 @@ else
             EffectiveMinMageLevel,
             EffectivePrice,
             string.IsNullOrWhiteSpace(Effect) ? "—" : Effect.Trim(),
-            string.IsNullOrWhiteSpace(Description) ? null : Description.Trim());
+            string.IsNullOrWhiteSpace(Description) ? null : Description.Trim(),
+            EffectiveScrollItemId);
     }
 }

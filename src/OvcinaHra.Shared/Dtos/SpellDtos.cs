@@ -38,7 +38,13 @@ public record SpellDetailDto(
     int? Price,
     string Effect,
     string? Description,
-    string? ImagePath)
+    string? ImagePath,
+    // Issue #181 — proper FK to the catalog Item that physically represents
+    // this scroll spell. Replaces the case-insensitive name fuzz-match shipped
+    // in PR #157. ScrollItemName is a server-side join projection so the
+    // client doesn't have to round-trip /api/items/{id} just to render the link.
+    int? ScrollItemId = null,
+    string? ScrollItemName = null)
 {
     [JsonIgnore] public string SchoolDisplay => School.GetDisplayName();
 }
@@ -67,7 +73,12 @@ public record UpdateSpellDto(
     int MinMageLevel,
     int? Price,
     string Effect,
-    string? Description);
+    string? Description,
+    // Issue #181 — null clears the link, an int sets it. Server validates the
+    // ID against Items before persisting (PUT returns 400 on bogus ID).
+    // Create endpoint deliberately does NOT accept this — set the link as
+    // a follow-up update so the create flow stays narrow.
+    int? ScrollItemId = null);
 
 // ── Per-game spell configuration (mirror GameItem) ────────────────────────
 

@@ -17,6 +17,16 @@ public class SpellConfiguration : IEntityTypeConfiguration<Spell>
         builder.Property(e => e.Description).HasMaxLength(4000);
         builder.Property(e => e.ImagePath).HasMaxLength(500);
 
+        // Issue #181 — optional FK to the Item that physically represents this
+        // spell when it's a scroll. WithMany() because Item doesn't carry a
+        // back-reference (we don't want to pollute Item DTOs with a parent
+        // spell nav prop). DeleteBehavior.SetNull so deleting the Item just
+        // clears the link; the spell itself survives.
+        builder.HasOne(s => s.ScrollItem)
+               .WithMany()
+               .HasForeignKey(s => s.ScrollItemId)
+               .OnDelete(DeleteBehavior.SetNull);
+
         // Full-text search — shadow property + GIN index. Mirrors Item/Location/Monster/Quest.
         builder.Property<NpgsqlTypes.NpgsqlTsVector>("SearchVector")
             .HasColumnType("tsvector")

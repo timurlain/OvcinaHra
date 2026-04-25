@@ -47,5 +47,14 @@ public class Spell
 
     public string? ImagePath { get; set; }
 
+    /// <summary>
+    /// Optional FK to the catalog <see cref="Item"/> that physically represents
+    /// this spell when it's a scroll (issue #181). Replaces the case-insensitive
+    /// name fuzz-match shipped in PR #157. Null = unlinked. Deleting the Item
+    /// nulls this FK (DeleteBehavior.SetNull) — never cascades into the spell.
+    /// </summary>
+    public int? ScrollItemId { get; set; }
+    public Item? ScrollItem { get; set; }
+
     public ICollection<GameSpell> GameSpells { get; set; } = [];
 }
