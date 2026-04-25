@@ -1,0 +1,63 @@
+@* Issue #163 — building list + add control. Same UI shape on both sides:
+   Item recipes call this list "Požadované budovy" (workbenches needed to
+   craft the item); Building recipes call it "Předpoklady (jiné budovy)"
+   (other buildings that must already exist before construction). Caption
+   + placeholder are parameterised to keep the Czech copy distinct. *@
+
+@using OvcinaHra.Shared.Dtos
+
+<div class="mb-2">
+    <strong class="small">@Caption:</strong>
+    @if (Buildings.Count > 0)
+    {
+        @foreach (var b in Buildings)
+        {
+            <span class="badge bg-secondary me-1">
+                @b.BuildingName
+                <button class="btn btn-sm btn-link text-white p-0 ms-1"
+                        @onclick="() => OnRemove.InvokeAsync(b.BuildingId)">
+                    <i class="bi bi-x"></i>
+                </button>
+            </span>
+        }
+    }
+    else
+    {
+        <span class="text-muted small">Žádné.</span>
+    }
+    <div class="d-flex gap-2 align-items-end mt-1">
+        <div style="flex:1">
+            <DxComboBox Data="@AvailableBuildings" @bind-Value="@_newBuildingId"
+                        TextFieldName="Name" ValueFieldName="Id"
+                        NullText="@AddPlaceholder" SearchMode="ListSearchMode.AutoSearch" />
+        </div>
+        <button class="btn btn-sm btn-outline-primary" style="height:34px"
+                disabled="@(_newBuildingId is null)"
+                @onclick="AddAsync">
+            <i class="bi bi-plus"></i>
+        </button>
+    </div>
+</div>
+
+@code {
+    public sealed record BuildingRow(int BuildingId, string BuildingName);
+
+    [Parameter, EditorRequired] public string Caption { get; set; } = "Budovy";
+    [Parameter] public string AddPlaceholder { get; set; } = "(přidat budovu)";
+
+    [Parameter, EditorRequired] public IReadOnlyList<BuildingRow> Buildings { get; set; } = [];
+    [Parameter, EditorRequired] public IReadOnlyList<BuildingListDto> AvailableBuildings { get; set; } = [];
+
+    [Parameter] public EventCallback<int> OnAdd { get; set; }
+    [Parameter] public EventCallback<int> OnRemove { get; set; }
+
+    private int? _newBuildingId;
+
+    private async Task AddAsync()
+    {
+        if (_newBuildingId is null) return;
+        var id = _newBuildingId.Value;
+        _newBuildingId = null;
+        await OnAdd.InvokeAsync(id);
+    }
+}

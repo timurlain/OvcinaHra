@@ -1,0 +1,52 @@
+@* Issue #163 — Poznámka k surovinám memo + save button. Save fires only
+   when the local value diverges from the persisted one (matches the
+   pre-extraction inline behaviour). Caller persists. *@
+
+<div class="mb-2">
+    <strong class="small">Poznámka k surovinám:</strong>
+    <DxMemo @bind-Text="@_local" Rows="2"
+            NullText="(žádná poznámka, např. „Byliny — 3× stejný druh“)" />
+    <div class="d-flex gap-2 mt-1">
+        <button class="btn btn-sm btn-outline-primary"
+                disabled="@IsClean"
+                @onclick="SaveAsync">
+            Uložit poznámku
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? PersistedValue { get; set; }
+    [Parameter] public EventCallback<string?> OnSave { get; set; }
+
+    private string? _local;
+    private string? _trackedPersisted;
+
+    /// <summary>Compare locally-edited text to whatever the parent says is
+    /// persisted. Empty-string and null are treated as equivalent (the API
+    /// stores either as "no note").</summary>
+    private bool IsClean
+        => string.Equals(_local ?? string.Empty, PersistedValue ?? string.Empty, StringComparison.Ordinal);
+
+    protected override void OnParametersSet()
+    {
+        // Re-sync the editor when the parent reloads with a different
+        // persisted value (e.g. recipe switched in the popup, or after a
+        // server-confirmed save). Without this, stale local state would shadow
+        // the new persisted note.
+        if (!ReferenceEquals(_trackedPersisted, PersistedValue))
+        {
+            _trackedPersisted = PersistedValue;
+            _local = PersistedValue;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        // Send null when the user clears the field — server normalises
+        // empty/null to "no note", but the existing inline handlers passed
+        // string.Empty. Stay consistent: pass _local through unmodified so
+        // either convention works.
+        await OnSave.InvokeAsync(_local);
+    }
+}

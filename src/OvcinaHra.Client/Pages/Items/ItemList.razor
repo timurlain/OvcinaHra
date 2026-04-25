@@ -539,100 +539,42 @@ else
                 <h6 class="mb-2"><i class="bi bi-hammer me-1"></i> Recept (aktuální hra)</h6>
                 @if (recipe is not null)
                 {
-                    <div class="mb-2">
-                        <strong class="small">Ingredience:</strong>
-                        @if (recipe.Ingredients.Count > 0)
-                        {
-                            <table class="table table-sm mb-1">
-                                <tbody>
-                                    @foreach (var ing in recipe.Ingredients)
-                                    {
-                                        <tr>
-                                            <td>@ing.ItemName</td>
-                                            <td style="width:60px">×@ing.Quantity</td>
-                                            <td style="width:40px"><button class="btn btn-sm btn-link text-danger p-0" @onclick="() => RemoveIngredientAsync(ing.ItemId)"><i class="bi bi-x-circle"></i></button></td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        }
-                        else { <p class="text-muted small mb-1">Žádné ingredience.</p> }
-                        <div class="d-flex gap-2 align-items-end">
-                            <div style="flex:1">
-                                <DxComboBox Data="@allItems" @bind-Value="@newIngItemId"
-                                            TextFieldName="Name" ValueFieldName="Id"
-                                            NullText="(přidat ingredienci)" SearchMode="ListSearchMode.AutoSearch" />
-                            </div>
-                            <div style="width:70px">
-                                <DxSpinEdit @bind-Value="@newIngQuantity" MinValue="1" />
-                            </div>
-                            <button class="btn btn-sm btn-outline-primary" style="height:34px" disabled="@(newIngItemId is null)" @onclick="AddIngredientAsync"><i class="bi bi-plus"></i></button>
-                        </div>
-                    </div>
-                    @* Poznámka k surovinám — issue #121. Belongs after the
-                       ingredient list (per the issue text), before Buildings/Skills.
-                       Free-text annotation that's not tied to any one ingredient
-                       — e.g. "Byliny — 3× stejný druh". Save explicitly via
-                       the Uložit poznámku button so a stray click in the memo
+                    <RecipeIngredientPicker
+                        Ingredients="@(recipe.Ingredients.Select(i => new RecipeIngredientPicker.IngredientRow(i.ItemId, i.ItemName, i.Quantity)).ToList())"
+                        AvailableItems="@allItems"
+                        OnAdd="@AddIngredientAsync"
+                        OnRemove="@RemoveIngredientAsync" />
+
+                    @* Poznámka k surovinám — issue #121. Free-text annotation
+                       not tied to any one ingredient (e.g. "Byliny — 3× stejný
+                       druh"). Save explicitly so a stray click in the memo
                        doesn't trigger a stale PUT. *@
-                    <div class="mb-2">
-                        <strong class="small">Poznámka k surovinám:</strong>
-                        <DxMemo @bind-Text="@recipeIngredientNotes" Rows="2"
-                                NullText="(žádná poznámka, např. „Byliny — 3× stejný druh“)" />
-                        <div class="d-flex gap-2 mt-1">
-                            <button class="btn btn-sm btn-outline-primary"
-                                    disabled="@(string.Equals(recipeIngredientNotes ?? "", recipe.IngredientNotes ?? "", StringComparison.Ordinal))"
-                                    @onclick="SaveRecipeNotesAsync">
-                                Uložit poznámku
-                            </button>
-                        </div>
-                    </div>
-                    <div class="mb-2">
-                        <strong class="small">Požadované budovy:</strong>
-                        @if (recipe.BuildingRequirements.Count > 0)
-                        {
-                            @foreach (var br in recipe.BuildingRequirements)
-                            {
-                                <span class="badge bg-secondary me-1">@br.BuildingName <button class="btn btn-sm btn-link text-white p-0 ms-1" @onclick="() => RemoveBuildingReqAsync(br.BuildingId)"><i class="bi bi-x"></i></button></span>
-                            }
-                        }
-                        else { <span class="text-muted small">Žádné.</span> }
-                        <div class="d-flex gap-2 align-items-end mt-1">
-                            <div style="flex:1">
-                                <DxComboBox Data="@allBuildings" @bind-Value="@newBuildingId"
-                                            TextFieldName="Name" ValueFieldName="Id"
-                                            NullText="(přidat budovu)" SearchMode="ListSearchMode.AutoSearch" />
-                            </div>
-                            <button class="btn btn-sm btn-outline-primary" style="height:34px" disabled="@(newBuildingId is null)" @onclick="AddBuildingReqAsync"><i class="bi bi-plus"></i></button>
-                        </div>
-                    </div>
-                    <div class="mb-2">
-                        <strong class="small">Požadované dovednosti:</strong>
-                        @if (recipe.RequiredSkillIds.Count > 0)
-                        {
-                            @foreach (var skillId in recipe.RequiredSkillIds)
-                            {
-                                var gs = gameSkills.FirstOrDefault(g => g.Id == skillId);
-                                <span class="badge bg-secondary me-1">
-                                    @(gs?.Name ?? $"[Neznámá dovednost #{skillId}]")
-                                    <button class="btn btn-sm btn-link text-white p-0 ms-1" @onclick="() => RemoveSkillReqAsync(skillId)"><i class="bi bi-x"></i></button>
-                                </span>
-                            }
-                        }
-                        else { <span class="text-muted small">Žádné.</span> }
-                        @if (AvailableGameSkills.Count > 0)
-                        {
-                            <div class="d-flex gap-2 align-items-end mt-1">
-                                <div style="flex:1">
-                                    <DxComboBox Data="@AvailableGameSkills" @bind-Value="@newSkillId"
-                                                TextFieldName="Name" ValueFieldName="Id"
-                                                NullText="(přidat dovednost)" SearchMode="ListSearchMode.AutoSearch" />
-                                </div>
-                                <button class="btn btn-sm btn-outline-primary" style="height:34px" disabled="@(newSkillId is null)" @onclick="AddSkillReqAsync"><i class="bi bi-plus"></i></button>
-                            </div>
-                        }
-                    </div>
-                    <button class="btn btn-sm btn-outline-danger" @onclick="DeleteRecipeAsync">Smazat recept</button>
+                    <RecipeNotesEditor
+                        PersistedValue="@recipe.IngredientNotes"
+                        OnSave="@SaveRecipeNotesAsync" />
+
+                    <RecipeBuildingPicker
+                        Caption="Požadované budovy"
+                        AddPlaceholder="(přidat budovu)"
+                        Buildings="@(recipe.BuildingRequirements.Select(br => new RecipeBuildingPicker.BuildingRow(br.BuildingId, br.BuildingName)).ToList())"
+                        AvailableBuildings="@allBuildings"
+                        OnAdd="@AddBuildingReqAsync"
+                        OnRemove="@RemoveBuildingReqAsync" />
+
+                    <RecipeSkillPicker
+                        SelectedSkillIds="@recipe.RequiredSkillIds"
+                        AllGameSkills="@gameSkills"
+                        AvailableSkills="@AvailableGameSkills"
+                        OnAdd="@AddSkillReqAsync"
+                        OnRemove="@RemoveSkillReqAsync" />
+
+                    @* Issue #163 — destructive-confirm rule (matches Building
+                       side). Opening a popup instead of wiring the handler
+                       directly so a stray click can't drop the recipe. *@
+                    <button class="btn btn-sm btn-outline-danger"
+                            @onclick="() => isDeleteRecipeVisible = true">
+                        Smazat recept
+                    </button>
                 }
                 else
                 {
@@ -712,6 +654,20 @@ else
     </BodyContentTemplate>
 </DxPopup>
 
+@* Issue #163 — destructive recipe-delete confirmation, matches the pattern
+   already used in BuildingList.razor for #142. Pre-extraction the Item-side
+   wired the delete handler directly to the button, which would drop the
+   recipe on a stray click. *@
+<DxPopup @bind-Visible="@isDeleteRecipeVisible" HeaderText="Smazat recept?" Width="420px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Opravdu chcete smazat recept předmětu <strong>@name</strong>? Ingredience, požadované budovy a dovednosti se odeberou společně s receptem.</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isDeleteRecipeVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmDeleteRecipeAsync">Smazat recept</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
 @code {
     [SupplyParameterFromQuery]
     public bool Catalog { get; set; }
@@ -777,14 +733,9 @@ else
     private List<ItemListDto> allItems = [];
     private List<BuildingListDto> allBuildings = [];
     private List<GameSkillDto> gameSkills = [];
-    private int? newIngItemId;
-    private int newIngQuantity = 1;
-    private int? newBuildingId;
-    private int? newSkillId;
-    // Issue #121 — locally-bound editor copy for IngredientNotes. Server is
-    // the source of truth (LoadRecipeAsync re-reads after saves); this is just
-    // the DxMemo's binding target while the user types.
-    private string? recipeIngredientNotes;
+    // Issue #163 — destructive-confirm popup state for "Smazat recept".
+    // Mirrors the pattern Hra3 used in BuildingList for #142.
+    private bool isDeleteRecipeVisible;
 
     private List<GameSkillDto> AvailableGameSkills =>
         recipe is null
@@ -1154,8 +1105,6 @@ else
     private async Task LoadRecipeAsync(int itemId)
     {
         recipe = null;
-        recipeIngredientNotes = null;
-        newIngItemId = null; newIngQuantity = 1; newBuildingId = null; newSkillId = null;
         var gameId = GameContext.SelectedGameId;
         if (gameId is null || !isCraftable) return;
 
@@ -1166,16 +1115,15 @@ else
         if (match is not null)
         {
             recipe = await Api.GetAsync<CraftingRecipeDetailDto>($"/api/crafting/{match.Id}");
-            recipeIngredientNotes = recipe?.IngredientNotes;
         }
     }
 
-    private async Task AddSkillReqAsync()
+    private async Task AddSkillReqAsync(int skillId)
     {
-        if (recipe is null || newSkillId is null) return;
+        if (recipe is null) return;
         var next = recipe.RequiredSkillIds.ToList();
-        if (next.Contains(newSkillId.Value)) return;
-        next.Add(newSkillId.Value);
+        if (next.Contains(skillId)) return;
+        next.Add(skillId);
         await SaveRecipeSkillsAsync(next);
     }
 
@@ -1196,19 +1144,18 @@ else
             await Api.PutAsync($"/api/crafting/{recipe.Id}",
                 new UpdateCraftingRecipeDto(recipe.OutputItemId, recipe.LocationId, desiredSkillIds,
                     IngredientNotes: recipe.IngredientNotes));
-            newSkillId = null;
             await LoadRecipeAsync(editingId!.Value);
             StateHasChanged();
         }
         catch (Exception ex) { error = ex.Message; }
     }
 
-    private async Task SaveRecipeNotesAsync()
+    private async Task SaveRecipeNotesAsync(string? newValue)
     {
         if (recipe is null || editingId is null) return;
         // Normalize like the server — trim + whitespace→null — so the local
         // UI state matches what actually persists. Issue #121.
-        var normalized = string.IsNullOrWhiteSpace(recipeIngredientNotes) ? null : recipeIngredientNotes.Trim();
+        var normalized = string.IsNullOrWhiteSpace(newValue) ? null : newValue.Trim();
         try
         {
             await Api.PutAsync($"/api/crafting/{recipe.Id}",
@@ -1234,9 +1181,10 @@ else
         catch (Exception ex) { error = ex.Message; }
     }
 
-    private async Task DeleteRecipeAsync()
+    private async Task ConfirmDeleteRecipeAsync()
     {
         if (recipe is null) return;
+        isDeleteRecipeVisible = false;
         try
         {
             await Api.DeleteAsync($"/api/crafting/{recipe.Id}");
@@ -1246,13 +1194,13 @@ else
         catch (Exception ex) { error = ex.Message; }
     }
 
-    private async Task AddIngredientAsync()
+    private async Task AddIngredientAsync((int ItemId, int Quantity) ev)
     {
-        if (recipe is null || newIngItemId is null) return;
+        if (recipe is null) return;
         try
         {
             await Api.PostAsync<AddCraftingIngredientDto, object>($"/api/crafting/{recipe.Id}/ingredients",
-                new AddCraftingIngredientDto(newIngItemId.Value, newIngQuantity));
+                new AddCraftingIngredientDto(ev.ItemId, ev.Quantity));
             await LoadRecipeAsync(editingId!.Value);
             StateHasChanged();
         }
@@ -1271,13 +1219,13 @@ else
         catch (Exception ex) { error = ex.Message; }
     }
 
-    private async Task AddBuildingReqAsync()
+    private async Task AddBuildingReqAsync(int buildingId)
     {
-        if (recipe is null || newBuildingId is null) return;
+        if (recipe is null) return;
         try
         {
             await Api.PostAsync<AddCraftingBuildingReqDto, object>($"/api/crafting/{recipe.Id}/buildings",
-                new AddCraftingBuildingReqDto(newBuildingId.Value));
+                new AddCraftingBuildingReqDto(buildingId));
             await LoadRecipeAsync(editingId!.Value);
             StateHasChanged();
         }

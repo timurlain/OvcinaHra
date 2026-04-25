@@ -115,7 +115,12 @@
         {
             _dotnetRef = DotNetObjectReference.Create(this);
             var apiKey = Config["MapyCz:ApiKey"];
-            await JS.InvokeVoidAsync("ovcinaMap.init", _elementId, _dotnetRef, CenterLat, CenterLon, Zoom, apiKey);
+            // #166 — `glyphs` URL is environment-specific. Dev points at
+            // demotiles.maplibre.org (rate-limited, fine for local), prod at
+            // a self-hosted Azure Blob path. See appsettings.Production.json
+            // and the deploy doc for upload steps.
+            var glyphsUrl = Config["MapLibre:GlyphsUrl"];
+            await JS.InvokeVoidAsync("ovcinaMap.init", _elementId, _dotnetRef, CenterLat, CenterLon, Zoom, apiKey, glyphsUrl);
         }
 
         // Load overlay once per game. Repeat on GameId change. Wrapped in
