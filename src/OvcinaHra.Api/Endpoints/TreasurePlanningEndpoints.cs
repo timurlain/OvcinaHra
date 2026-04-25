@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
@@ -17,6 +18,9 @@ public static class TreasurePlanningEndpoints
         group.MapGet("/pool/{gameId:int}", GetPool);
         group.MapPost("/pool", AddToPool);
         group.MapDelete("/pool/{id:int}", RemoveFromPool);
+
+        // Issue #160: bulk refill — append unallocated stock to the pool.
+        group.MapPost("/refill-pool/{gameId:int}", RefillPool);
 
         // Unlimited items (always available, derived from GameItem)
         group.MapGet("/unlimited/{gameId:int}", GetUnlimitedItems);
@@ -272,5 +276,144 @@ public static class TreasurePlanningEndpoints
                 loaded.Id, loaded.Title, loaded.Clue, loaded.Difficulty,
                 loaded.LocationId, loaded.Location?.Name, loaded.SecretStashId, loaded.SecretStash?.Name, loaded.GameId,
                 loaded.TreasureItems.Select(ti => new TreasureItemDto(ti.Id, ti.ItemId, ti.Item.Name, ti.Count, ti.TreasureQuestId)).ToList()));
+    }
+
+    // ── Issue #160: bulk refill ───────────────────────────────────────────
+
+    /// <summary>
+    /// Sweeps every <c>GameItem</c> with <c>IsFindable=true</c> and a non-null
+    /// <c>StockCount</c> for the active game, computes the unallocated remainder
+    /// against three reward channels (per the user's confirmed inventory):
+    /// <list type="bullet">
+    ///   <item><c>TreasureItem</c> (pool + treasure-quest, both legs)</item>
+    ///   <item><c>QuestReward</c> (regular quest rewards scoped by Quest.GameId)</item>
+    ///   <item><c>PersonalQuestItemReward</c> on PersonalQuest templates that
+    ///         this game has linked via <c>GamePersonalQuest</c></item>
+    /// </list>
+    /// MonsterLoot intentionally excluded (situational, encounter-dependent
+    /// — confirmed with the user).
+    ///
+    /// For each item where <c>StockCount &gt; allocated</c>, the remainder is
+    /// appended to the existing pool TreasureItem (stack via <c>Count +=</c>)
+    /// or a fresh pool row is created. Items where allocations already exceed
+    /// stock are skipped and listed in <see cref="RefillPoolResponse.OverAllocated"/>.
+    /// </summary>
+    private static async Task<Ok<RefillPoolResponse>> RefillPool(int gameId, WorldDbContext db)
+    {
+        // Wrap the read-then-write in SERIALIZABLE so two concurrent refills
+        // can't both compute `remaining` from the same allocation snapshot
+        // and double-append. Postgres will retry-fail one of the txns; the
+        // caller can press the button again. Cost is negligible — refill is
+        // organizer-triggered, not on a hot path.
+        await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
+        // 1. Fetch findable items with stock for this game.
+        var gameItems = await db.GameItems
+            .Where(gi => gi.GameId == gameId && gi.IsFindable && gi.StockCount != null)
+            .Include(gi => gi.Item)
+            .ToListAsync();
+
+        if (gameItems.Count == 0)
+        {
+            await tx.CommitAsync();
+            return TypedResults.Ok(new RefillPoolResponse(0,
+                Array.Empty<RefillPoolItemDto>(), Array.Empty<RefillPoolOverAllocationDto>()));
+        }
+
+        var itemIds = gameItems.Select(gi => gi.ItemId).ToHashSet();
+
+        // 2. Sum allocations across the three reward channels.
+
+        // Channel A: TreasureItem — covers BOTH the pool (TreasureQuestId == null)
+        // and items already placed inside a treasure quest. Existing /available-items
+        // endpoint sums them the same way; staying consistent.
+        var treasureUsed = await db.TreasureItems
+            .Where(ti => ti.GameId == gameId && itemIds.Contains(ti.ItemId))
+            .GroupBy(ti => ti.ItemId)
+            .Select(g => new { ItemId = g.Key, Used = g.Sum(ti => ti.Count) })
+            .ToDictionaryAsync(x => x.ItemId, x => x.Used);
+
+        // Channel B: QuestReward — Quest.GameId is nullable on the entity, but
+        // for stock allocation we only care about quests pinned to THIS game.
+        var questRewardUsed = await db.QuestRewards
+            .Where(qr => qr.Quest.GameId == gameId && itemIds.Contains(qr.ItemId))
+            .GroupBy(qr => qr.ItemId)
+            .Select(g => new { ItemId = g.Key, Used = g.Sum(qr => qr.Quantity) })
+            .ToDictionaryAsync(x => x.ItemId, x => x.Used);
+
+        // Channel C: PersonalQuestItemReward — PersonalQuest is a catalog
+        // template; per-game linkage via GamePersonalQuest. Each template's
+        // ItemRewards count once per game-link (planning view; the actual
+        // per-character payout depends on claims).
+        var pqRewardUsed = await db.GamePersonalQuests
+            .Where(gpq => gpq.GameId == gameId)
+            .SelectMany(gpq => gpq.PersonalQuest.ItemRewards)
+            .Where(r => itemIds.Contains(r.ItemId))
+            .GroupBy(r => r.ItemId)
+            .Select(g => new { ItemId = g.Key, Used = g.Sum(r => r.Quantity) })
+            .ToDictionaryAsync(x => x.ItemId, x => x.Used);
+
+        // Pre-load all pool rows for this game in one shot so the per-item
+        // append below is dictionary lookup, not a DB roundtrip per item.
+        // The /pool POST endpoint can leave multiple unstacked rows per
+        // item (legacy behavior), so reduce to a single representative row
+        // per ItemId — the refill endpoint always stacks remainder onto one.
+        var existingPoolByItem = (await db.TreasureItems
+                .Where(ti => ti.GameId == gameId && ti.TreasureQuestId == null
+                    && itemIds.Contains(ti.ItemId))
+                .ToListAsync())
+            .GroupBy(ti => ti.ItemId)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        // 3. For each findable game-item: compute remaining; allocate or report.
+        var added = new List<RefillPoolItemDto>();
+        var overAllocated = new List<RefillPoolOverAllocationDto>();
+
+        foreach (var gi in gameItems)
+        {
+            var t = treasureUsed.GetValueOrDefault(gi.ItemId, 0);
+            var q = questRewardUsed.GetValueOrDefault(gi.ItemId, 0);
+            var p = pqRewardUsed.GetValueOrDefault(gi.ItemId, 0);
+            var allocated = t + q + p;
+            var stock = gi.StockCount!.Value;
+
+            if (allocated > stock)
+            {
+                overAllocated.Add(new RefillPoolOverAllocationDto(
+                    gi.ItemId, gi.Item.Name, stock, allocated, allocated - stock));
+                continue;
+            }
+
+            var remaining = stock - allocated;
+            if (remaining <= 0) continue;
+
+            // Refill always consolidates remainder onto a single per-item
+            // pool row (stacks via Count +=). The /pool POST endpoint
+            // currently creates fresh rows on every call — refill smooths
+            // that over so re-running this action is idempotent.
+            if (existingPoolByItem.TryGetValue(gi.ItemId, out var existingPool))
+            {
+                existingPool.Count += remaining;
+            }
+            else
+            {
+                db.TreasureItems.Add(new TreasureItem
+                {
+                    GameId = gameId,
+                    ItemId = gi.ItemId,
+                    TreasureQuestId = null,
+                    Count = remaining
+                });
+            }
+            added.Add(new RefillPoolItemDto(gi.ItemId, gi.Item.Name, remaining));
+        }
+
+        await db.SaveChangesAsync();
+        await tx.CommitAsync();
+
+        return TypedResults.Ok(new RefillPoolResponse(
+            ItemsAdded: added.Sum(a => a.Added),
+            Added: added,
+            OverAllocated: overAllocated));
     }
 }

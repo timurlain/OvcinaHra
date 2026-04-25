@@ -62,3 +62,27 @@ public record TreasureSummaryDto(
 public record UnlimitedItemDto(int ItemId, string ItemName, ItemType ItemType);
 
 public record AvailablePoolItemDto(int ItemId, string DisplayName, int Remaining, int StockCount);
+
+// ── Issue #160: bulk pool refill ──────────────────────────────────────────
+
+/// <summary>
+/// Result of <c>POST /api/treasure-planning/refill-pool/{gameId}</c>.
+/// Sums every <c>GameItem.IsFindable</c> item's stock against allocations on
+/// TreasureItem (pool + treasure-quest), QuestReward, and PersonalQuestItemReward,
+/// then appends the unallocated remainder to the treasure pool. Items where
+/// allocations already exceed stock are skipped and listed in
+/// <see cref="OverAllocated"/> for manual review.
+/// </summary>
+public record RefillPoolResponse(
+    int ItemsAdded,
+    IReadOnlyList<RefillPoolItemDto> Added,
+    IReadOnlyList<RefillPoolOverAllocationDto> OverAllocated);
+
+public record RefillPoolItemDto(int ItemId, string ItemName, int Added);
+
+public record RefillPoolOverAllocationDto(
+    int ItemId,
+    string ItemName,
+    int StockCount,
+    int Allocated,
+    int Excess);
