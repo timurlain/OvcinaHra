@@ -11,9 +11,20 @@
 
 <div class="d-flex justify-content-between align-items-center mb-2">
     <h1 class="mb-0">Rozmístění pokladů</h1>
-    <button class="btn btn-primary btn-sm" @onclick="OpenAddToPoolModal">
-        <i class="bi bi-plus-circle me-1"></i> Přidat do zásobníku
-    </button>
+    <div class="d-flex gap-2">
+        @* Issue #160 sub-task C: bulk refill — sweeps stock - allocations
+           per findable item and tops up the pool. Routes through DxPopup
+           confirmation per feedback_ovcinahra_destructive_confirm; this
+           isn't destructive but it IS bulk + irreversible-without-cleanup. *@
+        <button class="btn btn-outline-primary btn-sm" type="button"
+                @onclick="() => isRefillConfirmVisible = true" disabled="@isRefilling"
+                title="Spočítá zbývající stock pro každý nalézatelný předmět a doplní zásobník.">
+            <i class="bi bi-arrow-down-circle me-1"></i> Doplnit vše zbývající k schování do zásobníku
+        </button>
+        <button class="btn btn-primary btn-sm" type="button" @onclick="OpenAddToPoolModal">
+            <i class="bi bi-plus-circle me-1"></i> Přidat do zásobníku
+        </button>
+    </div>
 </div>
 
 @if (loading)
@@ -77,6 +88,29 @@ else
                                 @onclick="() => ToggleStage(s.Key)">@s.Label</button>
                     }
                 </div>
+                @* Issue #160 sub-task B: surface an explicit hint when the
+                   game has assigned locations but none have GPS coordinates
+                   yet — without this the map looks empty and the user can't
+                   tell whether it's a bug or a data state. *@
+                @if (locations.Count > 0 && locations.All(l => !l.Latitude.HasValue || !l.Longitude.HasValue))
+                {
+                    <div class="alert alert-info small mb-2 d-flex align-items-center gap-2">
+                        <i class="bi bi-geo-alt"></i>
+                        <span>
+                            Žádná z @locations.Count přiřazených lokací nemá nastavené GPS souřadnice.
+                            Otevři detail lokace a nastav je, aby se zobrazila na mapě.
+                        </span>
+                    </div>
+                }
+                else if (locations.Count == 0)
+                {
+                    <div class="alert alert-warning small mb-2 d-flex align-items-center gap-2">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <span>
+                            Tato hra nemá přiřazené žádné lokace. Přidej je v sekci „Lokace" a vrať se sem.
+                        </span>
+                    </div>
+                }
                 <div class="oh-tp-map-host" id="oh-tp-map-host">
                     <MapView @ref="mapView"
                              Height="100%"
@@ -385,6 +419,75 @@ else
     </BodyContentTemplate>
 </DxPopup>
 
+@* Issue #160 sub-task C — bulk refill confirm. *@
+<DxPopup @bind-Visible="@isRefillConfirmVisible" HeaderText="Doplnit zásobník?" Width="540px">
+    <BodyContentTemplate Context="popupContext">
+        <p>
+            Spočítáme zbývající stock pro každý předmět s <strong>nalézatelným</strong> příznakem
+            (<em>IsFindable</em>) a doplníme rozdíl do zásobníku.
+        </p>
+        <ul class="small text-muted mb-3">
+            <li>Stock se počítá per-hru z <code>GameItem.StockCount</code>.</li>
+            <li>Alokace = <strong>zásobník + skryté poklady + odměny questů + osobní questy</strong>.</li>
+            <li>Předměty s alokacemi nad rámec stocku se přeskočí a označí pro manuální revizi.</li>
+        </ul>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" type="button"
+                    @onclick="() => isRefillConfirmVisible = false" disabled="@isRefilling">Zrušit</button>
+            <button class="btn btn-primary" type="button"
+                    @onclick="RefillPoolAsync" disabled="@isRefilling">
+                @if (isRefilling) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Doplnit
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@* Result banner — rendered after the API call returns. Dismissible via the
+   button. Shows over-allocated items as a follow-up note. *@
+@if (_refillResult is not null)
+{
+    <div class="alert @( _refillResult.OverAllocated.Count > 0 ? "alert-warning" : "alert-success") d-flex align-items-start gap-2 mt-2">
+        <i class="bi @( _refillResult.OverAllocated.Count > 0 ? "bi-exclamation-triangle" : "bi-check2-circle") fs-5"></i>
+        <div class="flex-fill">
+            <strong>Doplněno @_refillResult.ItemsAdded předmětů do zásobníku.</strong>
+            @if (_refillResult.Added.Count > 0)
+            {
+                <details class="mt-1">
+                    <summary class="small text-muted">Detail (@_refillResult.Added.Count položek)</summary>
+                    <ul class="small mb-0 mt-1">
+                        @foreach (var a in _refillResult.Added)
+                        {
+                            <li>@a.ItemName: <strong>+@a.Added</strong></li>
+                        }
+                    </ul>
+                </details>
+            }
+            @if (_refillResult.OverAllocated.Count > 0)
+            {
+                <div class="mt-2 small">
+                    <strong>Pozor: @_refillResult.OverAllocated.Count předmětů má více alokací než stock — vyžadují manuální revizi:</strong>
+                    <ul class="mb-0 mt-1">
+                        @foreach (var o in _refillResult.OverAllocated)
+                        {
+                            <li>@o.ItemName: stock @o.StockCount, alokováno @o.Allocated (přebytek @o.Excess)</li>
+                        }
+                    </ul>
+                </div>
+            }
+        </div>
+        <button type="button" class="btn-close" aria-label="Zavřít" @onclick="() => _refillResult = null"></button>
+    </div>
+}
+@if (_refillError is not null)
+{
+    <div class="alert alert-danger d-flex align-items-center gap-2 mt-2">
+        <i class="bi bi-wifi-off"></i>
+        <span>Doplnění se nepodařilo: @_refillError</span>
+        <button type="button" class="btn-close ms-auto" @onclick="() => _refillError = null"></button>
+    </div>
+}
+
 @code {
     // ===== Data =====
     private List<TreasurePoolItemDto> poolItems = [];
@@ -450,6 +553,12 @@ else
 
     // ===== Add-to-pool popup =====
     private bool isAddPoolVisible, poolSaving;
+
+    // Issue #160 sub-task C — bulk refill state.
+    private bool isRefillConfirmVisible;
+    private bool isRefilling;
+    private RefillPoolResponse? _refillResult;
+    private string? _refillError;
     private int? poolItemId;
     private int poolItemCount = 1;
     private string? poolError;
@@ -567,12 +676,13 @@ else
             .SelectMany(l => new[] { l.StartCount, l.EarlyCount, l.MidgameCount, l.LategameCount })
             .DefaultIfEmpty(0).Max());
 
-        // Issue #103: map centers on the game's bounding box when set, else
-        // falls back to a Czech-countryside default. Fetch failures must not
-        // break the treasures page render — best-effort try/catch.
-        await FitMapToGameBoundsOrDefaultAsync();
-
+        // Issue #160 / #103: prefer the LOCATION-EXTENT bbox over the saved
+        // game bbox so the map starts tight on what the organizer actually
+        // placed. Saved bbox stays as a fallback (and CZ countryside as a
+        // last resort) so games without placements still render somewhere
+        // sensible.
         var placed = locations.Where(l => l.Latitude.HasValue && l.Longitude.HasValue).ToList();
+        await FitMapToLocationExtentOrFallbackAsync(placed);
         foreach (var loc in placed)
         {
             var card = locationCards.FirstOrDefault(c => c.LocationId == loc.Id);
@@ -594,17 +704,46 @@ else
         await mapView.SetStageFilterAsync(activeStages);
     }
 
-    // Cached bbox per gameId so we don't refetch /api/games/{id} on every
-    // FitMapToGameBoundsOrDefaultAsync call (Copilot noticed — marker rebuilds
-    // + style reloads were triggering an extra roundtrip each time). Cache
-    // invalidates automatically when the bound gameId changes (game switch).
+    /// <summary>Cached saved-bbox per gameId, used as a fallback when no
+    /// placed locations exist. Invalidates on game switch.</summary>
     private int? _cachedBoundsGameId;
     private (double SwLat, double SwLng, double NeLat, double NeLng)? _cachedBounds;
 
-    private async Task FitMapToGameBoundsOrDefaultAsync()
+    /// <summary>
+    /// Issue #160: zoom the Treasures map tight on the smallest box that
+    /// contains every placed <see cref="LocationListDto"/> for the active
+    /// game. Three-tier fallback so the map renders cleanly even on
+    /// freshly-created games:
+    ///   1. ≥ 2 placed locations → fitBounds to their extent (40px padding
+    ///      already baked into <c>ovcinaMap.fitBounds</c>).
+    ///   2. exactly 1 placed location → SetCenter at zoom 14
+    ///      (zero-area fitBounds doesn't render correctly in MapLibre).
+    ///   3. 0 placed locations → fall back to the game's saved bbox if
+    ///      set, else the CZ-countryside default the BoundingBoxPicker uses.
+    /// Saved-bbox fetch is best-effort: a 5xx must not break the page.
+    /// </summary>
+    private async Task FitMapToLocationExtentOrFallbackAsync(IReadOnlyList<LocationListDto> placed)
     {
         if (mapView is null) return;
 
+        if (placed.Count >= 2)
+        {
+            var minLat = placed.Min(l => (double)l.Latitude!.Value);
+            var maxLat = placed.Max(l => (double)l.Latitude!.Value);
+            var minLng = placed.Min(l => (double)l.Longitude!.Value);
+            var maxLng = placed.Max(l => (double)l.Longitude!.Value);
+            await mapView.FitBoundsAsync(minLat, minLng, maxLat, maxLng);
+            return;
+        }
+
+        if (placed.Count == 1)
+        {
+            var only = placed[0];
+            await mapView.SetCenterAsync((double)only.Latitude!.Value, (double)only.Longitude!.Value, 14);
+            return;
+        }
+
+        // No placed locations — try the game's saved bbox (cached per game).
         if (_cachedBoundsGameId != gameId)
         {
             _cachedBoundsGameId = gameId;
@@ -630,8 +769,7 @@ else
             return;
         }
 
-        // Fall back to CZ countryside — mirrors BoundingBoxPicker's default.
-        // SetCenterAsync signature is (lat, lon, zoom), NOT MapLibre's [lng,lat] order.
+        // Last resort — CZ countryside, mirrors BoundingBoxPicker's default.
         await mapView.SetCenterAsync(49.8, 15.4, 7);
     }
 
@@ -724,6 +862,40 @@ else
         }
         catch (Exception ex) { poolError = ex.Message; }
         finally { poolSaving = false; }
+    }
+
+    // ===== Bulk refill (issue #160) =====
+    // Sums every IsFindable GameItem's StockCount against current allocations
+    // (TreasureItem pool + treasure-quest, QuestReward, PersonalQuestItemReward),
+    // then appends the unallocated remainder to the pool. Items already over-
+    // allocated are skipped and surfaced for manual review.
+    private async Task RefillPoolAsync()
+    {
+        _refillError = null;
+        _refillResult = null;
+        isRefilling = true;
+        try
+        {
+            var (ok, value, problem) = await Api.PostWithProblemAsync<object, RefillPoolResponse>(
+                $"/api/treasure-planning/refill-pool/{gameId}",
+                new { });
+            if (!ok)
+            {
+                _refillError = problem ?? "Server odmítl požadavek bez podrobností.";
+            }
+            else
+            {
+                _refillResult = value;
+                isRefillConfirmVisible = false;
+                await LoadAllAsync();
+            }
+        }
+        catch (Exception ex) { _refillError = ex.Message; }
+        finally
+        {
+            isRefilling = false;
+            StateHasChanged();
+        }
     }
 
     // ===== Pool-remove flow =====
