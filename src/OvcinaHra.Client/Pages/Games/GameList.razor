@@ -104,6 +104,53 @@ else
                             @onclick="() => linkActionError = null"></button>
                 </div>
             }
+
+            @* Issue #192 — destructive: wipe + reimport players. Only
+               surfaced when the game is actually linked, otherwise the
+               server would 400 and there's nothing to reimport anyway. *@
+            @if (model.ExternalGameId.HasValue)
+            {
+                <div class="d-flex align-items-center gap-2 mt-2">
+                    <span class="text-muted small flex-grow-1">
+                        <i class="bi bi-arrow-clockwise me-1"></i>
+                        Smazat všechny importované hráče v této hře a načíst znovu z registrace.
+                    </span>
+                    <button class="btn btn-outline-warning btn-sm"
+                            @onclick="() => isReimportConfirmVisible = true"
+                            disabled="@isReimportBusy">
+                        <i class="bi bi-arrow-clockwise me-1"></i>Reimport hráčů
+                    </button>
+                </div>
+            }
+            @if (reimportResult is not null)
+            {
+                <div class="alert alert-success mt-2 mb-0 d-flex align-items-start gap-2">
+                    <i class="bi bi-check2-circle fs-5"></i>
+                    <div class="flex-grow-1 small">
+                        <strong>Reimport hotov.</strong>
+                        Smazáno @reimportResult.WipedAssignments přiřazení a
+                        @reimportResult.WipedCharacters postav.
+                        Importováno @reimportResult.Imported.Created nových,
+                        @reimportResult.Imported.Updated aktualizováno,
+                        @reimportResult.Imported.Skipped přeskočeno.
+                        @if (reimportResult.Imported.Errors.Count > 0)
+                        {
+                            <span class="text-danger"> @reimportResult.Imported.Errors.Count chyb.</span>
+                        }
+                    </div>
+                    <button type="button" class="btn-close" aria-label="Zavřít"
+                            @onclick="() => reimportResult = null"></button>
+                </div>
+            }
+            @if (reimportError is not null)
+            {
+                <div class="alert alert-danger mt-2 mb-0 d-flex align-items-center gap-2">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <span>@reimportError</span>
+                    <button type="button" class="btn-close ms-auto" aria-label="Zavřít"
+                            @onclick="() => reimportError = null"></button>
+                </div>
+            }
         }
 
         @if (error is not null)
@@ -157,6 +204,42 @@ else
     </BodyContentTemplate>
 </DxPopup>
 
+@* Issue #192 — destructive: wipe imported characters + assignments and
+   re-import all from registrace. Hand-created (NPC / lore) characters
+   are intentionally preserved by the server-side filter. *@
+<DxPopup @bind-Visible="@isReimportConfirmVisible"
+         HeaderText="Smazat a znovu importovat hráče?" Width="520px">
+    <BodyContentTemplate Context="popupContext">
+        <p>
+            Opravdu chcete smazat <strong>všechny importované hráče</strong>
+            v této hře a načíst je znovu z registrace?
+        </p>
+        <ul class="text-muted small">
+            <li>Smažou se přiřazení hráčů k této hře (kingdom, třída, …).</li>
+            <li>
+                Smažou se importované postavy, které nemají žádné jiné přiřazení.
+                Cross-edition postavy a ručně vytvořené postavy zůstanou.
+            </li>
+            <li>Hráči se znovu načtou z registrace v jedné transakci.</li>
+            <li>
+                Pokud bude registrace nedostupná, transakce se vrátí —
+                lokální data se nesmažou.
+            </li>
+        </ul>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary"
+                    @onclick="() => isReimportConfirmVisible = false"
+                    disabled="@isReimportBusy">Zrušit</button>
+            <button class="btn btn-danger"
+                    @onclick="ConfirmReimportAsync"
+                    disabled="@isReimportBusy">
+                @if (isReimportBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Smazat a načíst znovu
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
 @* Create confirmation *@
 <DxPopup @bind-Visible="@isCreateConfirmVisible" HeaderText="Vytvořit novou hru?" Width="400px">
     <BodyContentTemplate Context="popupContext">
@@ -188,6 +271,12 @@ else
     private bool isUnlinkConfirmVisible;
     private bool isLinkBusy;
     private string? linkActionError;
+
+    // Issue #192 — reimport state
+    private bool isReimportConfirmVisible;
+    private bool isReimportBusy;
+    private ReimportCharactersResponse? reimportResult;
+    private string? reimportError;
 
     // DateEdit works with DateTime, not DateOnly
     private DateTime startDate
@@ -303,6 +392,34 @@ else
         model.ExternalGameId = externalGameId;
         await LoadDataAsync();
         StateHasChanged();
+    }
+
+    // Issue #192 — destructive reimport handler. Closes popup unconditionally
+    // in finally so any error banner under the modal stays visible.
+    private async Task ConfirmReimportAsync()
+    {
+        if (!editingId.HasValue) return;
+        reimportError = null;
+        reimportResult = null;
+        isReimportBusy = true;
+        try
+        {
+            var (ok, value, problem) = await Api.PostWithProblemAsync<object, ReimportCharactersResponse>(
+                $"/api/characters/reimport/{editingId.Value}", new { });
+            if (!ok)
+            {
+                reimportError = problem ?? "Server odmítl požadavek bez podrobností.";
+                return;
+            }
+            reimportResult = value;
+        }
+        catch (Exception ex) { reimportError = ex.Message; }
+        finally
+        {
+            isReimportConfirmVisible = false;
+            isReimportBusy = false;
+            StateHasChanged();
+        }
     }
 
     private async Task ConfirmUnlinkAsync()

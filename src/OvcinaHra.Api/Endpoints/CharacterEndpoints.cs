@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
@@ -23,6 +24,7 @@ public static class CharacterEndpoints
         group.MapPut("/assignments/{id:int}", UpdateAssignment);
         group.MapPut("/{id:int}/assignment/kingdom", SetAssignmentKingdom);
         group.MapPost("/import/{gameId:int}", ImportFromRegistrace);
+        group.MapPost("/reimport/{gameId:int}", ReimportFromRegistrace);
 
         return group;
     }
@@ -276,6 +278,92 @@ public static class CharacterEndpoints
             // Issue #191 — pre-empt the upstream call when the local game
             // has no registrace counterpart. The Czech detail string is
             // surfaced verbatim by ApiClient.PostWithProblemAsync.
+            return TypedResults.Problem(
+                detail: RegistraceImportProblems.NotLinkedDetail,
+                title: RegistraceImportProblems.NotLinkedTitle,
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+    }
+
+    /// <summary>
+    /// Issue #192 — destructive: wipes every <see cref="CharacterAssignment"/>
+    /// for the game plus every imported (<c>ExternalPersonId IS NOT NULL</c>)
+    /// Character row that has no remaining assignment after the wipe, then
+    /// re-runs the import to recreate everything fresh from registrace.
+    /// Hand-created characters (no <c>ExternalPersonId</c>) are preserved.
+    /// </summary>
+    /// <remarks>
+    /// Wraps wipe + import in a SERIALIZABLE transaction. If the registrace
+    /// fetch fails the whole thing rolls back — we never want to leave the
+    /// local roster wiped while the upstream is unreachable.
+    /// </remarks>
+    private static async Task<Results<Ok<ReimportCharactersResponse>, ProblemHttpResult>> ReimportFromRegistrace(
+        int gameId, RegistraceImportService importService, WorldDbContext db)
+    {
+        try
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
+            // 1. Null self-references on imported characters so step 3 can
+            //    delete parents and children in any order without violating
+            //    the optional Character → ParentCharacter FK.
+            await db.Characters
+                .IgnoreQueryFilters()
+                .Where(c => c.ExternalPersonId != null && c.ParentCharacterId != null)
+                .ExecuteUpdateAsync(s => s.SetProperty(c => c.ParentCharacterId, _ => (int?)null));
+
+            // 2. Hard-delete this game's assignments. Cascades CharacterEvents
+            //    via the required FK on CharacterEvent.CharacterAssignmentId.
+            var wipedAssignments = await db.CharacterAssignments
+                .Where(a => a.GameId == gameId)
+                .ExecuteDeleteAsync();
+
+            // 3. Hard-delete imported Character rows that no longer have any
+            //    assignment (orphans across all games). Cascades
+            //    CharacterPersonalQuest via the explicit Cascade rule. Hand-
+            //    created characters (ExternalPersonId == null) are skipped
+            //    so user-typed NPCs / lore characters survive.
+            var wipedCharacters = await db.Characters
+                .IgnoreQueryFilters()
+                .Where(c => c.ExternalPersonId != null
+                    && !db.CharacterAssignments.Any(a => a.CharacterId == c.Id))
+                .ExecuteDeleteAsync();
+
+            // 4. Run the regular import — recreates Character rows for the
+            //    registrace roster and seeds fresh CharacterAssignments.
+            //    Use the throwing variant so an upstream HttpRequestException
+            //    bubbles to the catch below and rolls the transaction back.
+            ImportResultDto imported;
+            try
+            {
+                imported = await importService.ImportOrThrowAsync(gameId);
+            }
+            catch (HttpRequestException ex)
+            {
+                // Don't commit — rollback on dispose preserves the original
+                // roster instead of leaving an empty database.
+                return TypedResults.Problem(
+                    detail: $"Registrace nedostupná: {ex.Message}. Žádná data nebyla zahozena.",
+                    title: "Registrace nedostupná.",
+                    statusCode: StatusCodes.Status502BadGateway);
+            }
+
+            await tx.CommitAsync();
+
+            return TypedResults.Ok(new ReimportCharactersResponse(
+                WipedAssignments: wipedAssignments,
+                WipedCharacters: wipedCharacters,
+                Imported: imported));
+        }
+        catch (GameNotFoundException)
+        {
+            return TypedResults.Problem(
+                detail: RegistraceImportProblems.NotFoundDetail(gameId),
+                title: RegistraceImportProblems.NotFoundTitle,
+                statusCode: StatusCodes.Status404NotFound);
+        }
+        catch (GameNotLinkedToRegistraceException)
+        {
             return TypedResults.Problem(
                 detail: RegistraceImportProblems.NotLinkedDetail,
                 title: RegistraceImportProblems.NotLinkedTitle,
