@@ -576,7 +576,7 @@ else
                     <div class="mb-2">
                         <strong class="small">Poznámka k surovinám:</strong>
                         <DxMemo @bind-Text="@recipeIngredientNotes" Rows="2"
-                                NullText="(žádná poznámka, např. „Byliny — 3× stejný druh")" />
+                                NullText="(žádná poznámka, např. „Byliny — 3× stejný druh“)" />
                         <div class="d-flex gap-2 mt-1">
                             <button class="btn btn-sm btn-outline-primary"
                                     disabled="@(string.Equals(recipeIngredientNotes ?? "", recipe.IngredientNotes ?? "", StringComparison.Ordinal))"
@@ -733,6 +733,11 @@ else
     private bool contextMenuTargetIsCraftable;
     private string modalTitle = "", name = "";
     private string? error, effect;
+    // Modal preserves Note transparently — there's no UI for it in the popup
+    // (use the inline column or ItemDetail.razor for free-text editing). Loaded
+    // by LoadDetailAsync and passed through SaveAsync so the legacy modal
+    // doesn't accidentally null an existing note (Copilot review on PR #141).
+    private string? note;
     private int? editingId;
     private ItemType itemType = ItemType.Weapon;
     private PhysicalForm? physicalForm;
@@ -942,6 +947,13 @@ else
 
         if (!perGameChanged && !noteChanged) return;
 
+        // Track which save legs actually persisted so a partial failure (e.g.
+        // catalog Note PUT succeeds but per-game PUT 400s on bad Price) still
+        // patches the local list with what the server now holds — otherwise
+        // the grid would display stale "Note edited" while the server already
+        // has the new note, drifting from reality (Copilot review on PR #141).
+        var notePersisted = false;
+
         // Catalog-scoped Note edit goes to /api/items/{id} (the catalog endpoint),
         // not /api/items/game-item — the field lives on Item, shared across games.
         if (noteChanged)
@@ -957,6 +969,7 @@ else
                 e.Cancel = true;
                 return;
             }
+            notePersisted = true;
         }
 
         if (perGameChanged)
@@ -967,6 +980,15 @@ else
             {
                 error = problem ?? "Uložení per-hra nastavení se nezdařilo.";
                 e.Cancel = true;
+
+                // Per-game leg failed but the Note leg already persisted —
+                // reflect that in the local list so the grid matches the server.
+                if (notePersisted)
+                {
+                    var noteIdx = gameItems.FindIndex(g => g.Id == src.Id);
+                    if (noteIdx >= 0)
+                        gameItems[noteIdx] = src with { Note = normalizedNote };
+                }
                 return;
             }
         }
@@ -1034,7 +1056,7 @@ else
         error = null;
         if (item is null)
         {
-            editingId = null; name = ""; effect = null; itemType = ItemType.Weapon; physicalForm = null;
+            editingId = null; name = ""; effect = null; note = null; itemType = ItemType.Weapon; physicalForm = null;
             isCraftable = false; isUnique = false; isLimited = false;
             reqWarrior = 0; reqArcher = 0; reqMage = 0; reqThief = 0;
             modalTitle = "Nový předmět";
@@ -1101,6 +1123,7 @@ else
         {
             effect = d.Effect; physicalForm = d.PhysicalForm;
             reqWarrior = d.ReqWarrior; reqArcher = d.ReqArcher; reqMage = d.ReqMage; reqThief = d.ReqThief;
+            note = d.Note;
         }
         await LoadGameItemAsync(id);
         await LoadRecipeAsync(id);
@@ -1376,10 +1399,14 @@ else
         try
         {
             if (editingId.HasValue)
-                await Api.PutAsync($"/api/items/{editingId}", new UpdateItemDto(name, itemType, effect, physicalForm, isCraftable, reqWarrior, reqArcher, reqMage, reqThief, isUnique, isLimited));
+                await Api.PutAsync($"/api/items/{editingId}",
+                    new UpdateItemDto(name, itemType, effect, physicalForm, isCraftable, reqWarrior, reqArcher, reqMage, reqThief, isUnique, isLimited,
+                        Note: note));
             else
             {
-                var created = await Api.PostAsync<CreateItemDto, ItemDetailDto>("/api/items", new CreateItemDto(name, itemType, effect, physicalForm, isCraftable, reqWarrior, reqArcher, reqMage, reqThief, isUnique, isLimited));
+                var created = await Api.PostAsync<CreateItemDto, ItemDetailDto>("/api/items",
+                    new CreateItemDto(name, itemType, effect, physicalForm, isCraftable, reqWarrior, reqArcher, reqMage, reqThief, isUnique, isLimited,
+                        Note: note));
                 if (!Catalog && GameContext.SelectedGameId is int gid && created is not null)
                     await Api.PostAsync<CreateGameItemDto, GameItemDto>("/api/items/game-item", new CreateGameItemDto(gid, created.Id));
             }
@@ -1419,10 +1446,16 @@ else
     private void OpenQuickPeek(GameItemListDto gi)
     {
         // Reuse ItemListDto shape for the popup body — they share all the catalog fields.
+        // Named args for the optional tail (Note, ImageUrl) so future field
+        // insertions don't silently shift values into the wrong slot
+        // (Copilot review on PR #141 — Note was inserted before ImageUrl in
+        // ItemListDto's ctor, breaking positional construction here).
         quickPeekItem = new ItemListDto(
             gi.Id, gi.Name, gi.ItemType, gi.Effect, gi.PhysicalForm, gi.IsCraftable,
             gi.ReqWarrior, gi.ReqArcher, gi.ReqMage, gi.ReqThief,
-            gi.IsUnique, gi.IsLimited, gi.ImagePath, gi.ImageUrl);
+            gi.IsUnique, gi.IsLimited, gi.ImagePath,
+            Note: gi.Note,
+            ImageUrl: gi.ImageUrl);
         quickPeekIsPerGame = true;
         quickPeekIsSold = gi.IsSold;
         quickPeekIsFindable = gi.IsFindable;
