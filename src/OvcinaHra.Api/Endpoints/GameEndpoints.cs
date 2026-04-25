@@ -166,14 +166,17 @@ public static class GameEndpoints
             return TypedResults.NoContent();
 
         // Best-effort deserialize: if a stored overlay is corrupt (e.g. schema
-        // drift from a future Phase 3 adding new shape types), treat as empty
-        // rather than 500 — the client can then re-save a valid overlay.
+        // drift from a future shape type, or a hand-edited row), treat as
+        // empty rather than 500 — the client can then re-save a valid
+        // overlay. System.Text.Json signals an unknown polymorphic
+        // discriminator with NotSupportedException (not JsonException), so
+        // both must be caught here.
         try
         {
             var dto = JsonSerializer.Deserialize<MapOverlayDto>(game.OverlayJson, OverlayJsonOptions);
             return dto is null ? TypedResults.NoContent() : TypedResults.Ok(dto);
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
             return TypedResults.NoContent();
         }
@@ -194,6 +197,23 @@ public static class GameEndpoints
             return TypedResults.Problem(
                 title: "Překryv je příliš velký",
                 detail: $"Maximální velikost překryvu je {OverlayMaxBytes / 1024} KiB, odeslaná data mají {byteCount / 1024} KiB.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        // Round-trip guard — make sure the JSON we're about to persist will
+        // re-deserialize cleanly. Otherwise a payload with an unknown
+        // polymorphic shape (server is on an older build than the client
+        // during a rolling deploy) would poison the field and every
+        // subsequent GET would crash the editor.
+        try
+        {
+            _ = JsonSerializer.Deserialize<MapOverlayDto>(serialized, OverlayJsonOptions);
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException)
+        {
+            return TypedResults.Problem(
+                title: "Neznámý tvar v překryvu",
+                detail: "Některý z odeslaných tvarů nebyl rozpoznán. Aktualizujte aplikaci a zkuste překryv uložit znovu.",
                 statusCode: StatusCodes.Status400BadRequest);
         }
 

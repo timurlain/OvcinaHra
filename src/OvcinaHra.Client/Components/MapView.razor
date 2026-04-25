@@ -132,11 +132,14 @@
                     var dto = await Api.GetAsync<MapOverlayDto>($"/api/games/{GameId.Value}/overlay");
                     shapes = dto?.Shapes ?? new List<MapOverlayShape>();
                 }
-                catch (System.Text.Json.JsonException)
+                catch (Exception ex) when (ex is System.Text.Json.JsonException or NotSupportedException)
                 {
-                    // 204 NoContent — empty body can't parse as JSON; treat as
-                    // no overlay. Still rendering below so the preview layers
-                    // are initialised for a future editor session.
+                    // 204 NoContent → empty body can't parse as JSON → JsonException.
+                    // Unknown polymorphic discriminator (server returned a shape
+                    // type a stale client doesn't know yet) → NotSupportedException.
+                    // Either way: treat as no overlay so the editor can still
+                    // open and the user can re-save. Preview layers initialise
+                    // below regardless.
                     shapes = new List<MapOverlayShape>();
                 }
                 _committedShapes = shapes;

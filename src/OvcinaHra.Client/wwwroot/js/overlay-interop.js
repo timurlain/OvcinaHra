@@ -322,7 +322,21 @@
             const inst = ensureInstance(mapId);
             inst.tool = tool;
             inst.dotnetRef = dotnetRef;
+            inst.editMode = true;
             map.getCanvas().style.cursor = tool === 'select' ? '' : 'crosshair';
+            // Suspend MapLibre handlers that compete with click-to-draw: drag-pan
+            // would steal mousedown+mousemove from freehand/rectangle/circle and
+            // box-zoom would steal Shift+drag (#159 sub-fix 2). Restored on
+            // exitEditMode / dispose. Wheel zoom stays on — users still want
+            // to zoom while drawing big shapes.
+            suspendMapInteractions(map, inst);
+            // Lock location markers so users can't accidentally relocate a pin
+            // while drawing on top of it (#159 sub-fix 5). Same restore path.
+            setLocationMarkersDraggable(false);
+            // Tell Blazor that overlay edit-mode is active so any markers
+            // re-added during the edit (e.g. SetStageFilter repopulates after
+            // a filter toggle) come up locked too.
+            window.__ovcinaOverlayEditMode = true;
             // Disable map-level double-click zoom so polyline/polygon "dblclick
             // to finish" doesn't also zoom the viewport.
             if (map.doubleClickZoom && map.doubleClickZoom.disable) map.doubleClickZoom.disable();
@@ -350,15 +364,66 @@
         const inst = instances[mapId];
         if (!inst) return;
         const map = getMap(mapId);
+        // Clear editMode FIRST so detachHandlers' generic dragPan.enable()
+        // path can fire on its own without fighting the suspension flag.
+        inst.editMode = false;
         if (map) {
             detachHandlers(map, inst);
             map.getCanvas().style.cursor = '';
             if (map.doubleClickZoom && map.doubleClickZoom.enable) map.doubleClickZoom.enable();
+            restoreMapInteractions(map, inst);
             teardownPreview(map);
         }
+        // Restore location markers and the global edit-mode flag regardless
+        // of map presence — a SwitchStyle race could leave markers locked.
+        setLocationMarkersDraggable(true);
+        window.__ovcinaOverlayEditMode = false;
         resetInProgress(inst);
         inst.tool = null;
         inst.dotnetRef = null;
+    }
+
+    // ---- Map-handler suspension (#159 sub-fix 2) -------------------------
+
+    function suspendMapInteractions(map, inst) {
+        // Snapshot prior on/off state so we restore exactly what was there.
+        // MapLibre's handler objects each expose .isEnabled() in v3+; default
+        // to true if missing so we err on the side of restoring.
+        const snap = {};
+        try { snap.dragPan = map.dragPan ? safeIsEnabled(map.dragPan, true) : false; } catch (e) { snap.dragPan = false; }
+        try { snap.boxZoom = map.boxZoom ? safeIsEnabled(map.boxZoom, true) : false; } catch (e) { snap.boxZoom = false; }
+        try { snap.touchRotate = !!(map.touchZoomRotate); } catch (e) { snap.touchRotate = false; }
+        inst.suspendedHandlers = snap;
+        try { if (snap.dragPan && map.dragPan.disable) map.dragPan.disable(); } catch (e) { }
+        try { if (snap.boxZoom && map.boxZoom.disable) map.boxZoom.disable(); } catch (e) { }
+        try { if (snap.touchRotate && map.touchZoomRotate.disableRotation) map.touchZoomRotate.disableRotation(); } catch (e) { }
+    }
+
+    function restoreMapInteractions(map, inst) {
+        const snap = inst.suspendedHandlers || { dragPan: true, boxZoom: true, touchRotate: true };
+        try { if (snap.dragPan && map.dragPan && map.dragPan.enable) map.dragPan.enable(); } catch (e) { }
+        try { if (snap.boxZoom && map.boxZoom && map.boxZoom.enable) map.boxZoom.enable(); } catch (e) { }
+        try { if (snap.touchRotate && map.touchZoomRotate && map.touchZoomRotate.enableRotation) map.touchZoomRotate.enableRotation(); } catch (e) { }
+        inst.suspendedHandlers = null;
+    }
+
+    function safeIsEnabled(handler, fallback) {
+        if (!handler) return fallback;
+        if (typeof handler.isEnabled === 'function') return handler.isEnabled();
+        return fallback;
+    }
+
+    // ---- Location-marker draggable toggle (#159 sub-fix 5) ----------------
+
+    // Bridge to the main `ovcinaMap` JS API. The marker registry lives in
+    // `wwwroot/js/maplibre-interop.js`; we go through a public method so
+    // edit-mode coupling stays one-way (overlay → map, never the reverse).
+    function setLocationMarkersDraggable(enabled) {
+        try {
+            if (window.ovcinaMap && typeof window.ovcinaMap.setLocationMarkersDraggable === 'function') {
+                window.ovcinaMap.setLocationMarkersDraggable(!!enabled);
+            }
+        } catch (e) { /* best-effort — never block the editor on marker plumbing */ }
     }
 
     // ---- Handler plumbing -------------------------------------------------
@@ -377,11 +442,15 @@
     }
 
     function detachHandlers(map, inst) {
-        // Always restore map panning — if the user interrupted a freehand,
-        // rectangle, or circle drag mid-stroke (tool switch / exit / nav away),
-        // the matching mouseup never fired and `dragPan` would stay disabled,
-        // leaving the map stuck.
-        if (map && map.dragPan && map.dragPan.enable) map.dragPan.enable();
+        // Skip the per-tool dragPan re-enable while we're still in overlay
+        // edit mode — `enterEditMode` globally suspended dragPan/boxZoom and
+        // `exitEditMode` restores them via restoreMapInteractions. If we
+        // re-enabled here on every tool switch we'd undo that suspension and
+        // map panning would steal click+drag again (#159 sub-fix 2).
+        // Outside edit mode (e.g. dispose-without-exit edge case), keep the
+        // legacy "always re-enable" so an interrupted draw can never strand
+        // the map.
+        if (!inst.editMode && map && map.dragPan && map.dragPan.enable) map.dragPan.enable();
         for (const h of inst.handlers) {
             try {
                 if (h.target === map) map.off(h.event, h.fn);
@@ -821,9 +890,14 @@
         const inst = instances[mapId];
         if (!inst) return;
         const map = getMap(mapId);
+        // Drop the editMode flag before detachHandlers so its dragPan re-enable
+        // path fires unconditionally (the user navigated away — they want a
+        // working map, suspension or no suspension).
+        inst.editMode = false;
         if (map) {
             // detachHandlers also re-enables dragPan if it was disabled mid-draw.
             detachHandlers(map, inst);
+            try { restoreMapInteractions(map, inst); } catch (e) { /* best-effort */ }
             try { teardownPreview(map); } catch (e) { /* map may be gone */ }
             // Remove overlay source + layers so a subsequent remount starts
             // clean — avoids orphaned style-dependent layers when the user
@@ -851,6 +925,10 @@
                 if (map.doubleClickZoom && map.doubleClickZoom.enable) map.doubleClickZoom.enable();
             } catch (e) { /* best-effort */ }
         }
+        // Unlock markers + clear the global edit-mode flag — same belt-and-
+        // suspenders as exitEditMode in case the page was disposed mid-edit.
+        setLocationMarkersDraggable(true);
+        window.__ovcinaOverlayEditMode = false;
         delete instances[mapId];
     }
 
