@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
@@ -299,6 +300,13 @@ public static class TreasurePlanningEndpoints
     /// </summary>
     private static async Task<Ok<RefillPoolResponse>> RefillPool(int gameId, WorldDbContext db)
     {
+        // Wrap the read-then-write in SERIALIZABLE so two concurrent refills
+        // can't both compute `remaining` from the same allocation snapshot
+        // and double-append. Postgres will retry-fail one of the txns; the
+        // caller can press the button again. Cost is negligible — refill is
+        // organizer-triggered, not on a hot path.
+        await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
         // 1. Fetch findable items with stock for this game.
         var gameItems = await db.GameItems
             .Where(gi => gi.GameId == gameId && gi.IsFindable && gi.StockCount != null)
@@ -307,6 +315,7 @@ public static class TreasurePlanningEndpoints
 
         if (gameItems.Count == 0)
         {
+            await tx.CommitAsync();
             return TypedResults.Ok(new RefillPoolResponse(0,
                 Array.Empty<RefillPoolItemDto>(), Array.Empty<RefillPoolOverAllocationDto>()));
         }
@@ -344,6 +353,18 @@ public static class TreasurePlanningEndpoints
             .Select(g => new { ItemId = g.Key, Used = g.Sum(r => r.Quantity) })
             .ToDictionaryAsync(x => x.ItemId, x => x.Used);
 
+        // Pre-load all pool rows for this game in one shot so the per-item
+        // append below is dictionary lookup, not a DB roundtrip per item.
+        // The /pool POST endpoint can leave multiple unstacked rows per
+        // item (legacy behavior), so reduce to a single representative row
+        // per ItemId — the refill endpoint always stacks remainder onto one.
+        var existingPoolByItem = (await db.TreasureItems
+                .Where(ti => ti.GameId == gameId && ti.TreasureQuestId == null
+                    && itemIds.Contains(ti.ItemId))
+                .ToListAsync())
+            .GroupBy(ti => ti.ItemId)
+            .ToDictionary(g => g.Key, g => g.First());
+
         // 3. For each findable game-item: compute remaining; allocate or report.
         var added = new List<RefillPoolItemDto>();
         var overAllocated = new List<RefillPoolOverAllocationDto>();
@@ -366,12 +387,11 @@ public static class TreasurePlanningEndpoints
             var remaining = stock - allocated;
             if (remaining <= 0) continue;
 
-            // Stack onto an existing pool row if one exists for this item;
-            // brief #3 confirmed pool entries are stacks (one TreasureItem
-            // with Count=N), not N distinct rows.
-            var existingPool = await db.TreasureItems.FirstOrDefaultAsync(ti =>
-                ti.GameId == gameId && ti.ItemId == gi.ItemId && ti.TreasureQuestId == null);
-            if (existingPool is not null)
+            // Refill always consolidates remainder onto a single per-item
+            // pool row (stacks via Count +=). The /pool POST endpoint
+            // currently creates fresh rows on every call — refill smooths
+            // that over so re-running this action is idempotent.
+            if (existingPoolByItem.TryGetValue(gi.ItemId, out var existingPool))
             {
                 existingPool.Count += remaining;
             }
@@ -389,6 +409,7 @@ public static class TreasurePlanningEndpoints
         }
 
         await db.SaveChangesAsync();
+        await tx.CommitAsync();
 
         return TypedResults.Ok(new RefillPoolResponse(
             ItemsAdded: added.Sum(a => a.Added),

@@ -484,7 +484,7 @@ else
     <div class="alert alert-danger d-flex align-items-center gap-2 mt-2">
         <i class="bi bi-wifi-off"></i>
         <span>Doplnění se nepodařilo: @_refillError</span>
-        <button type="button" class="btn-close ms-auto" @onclick="() => _refillError = null"></button>
+        <button type="button" class="btn-close ms-auto" aria-label="Zavřít" @onclick="() => _refillError = null"></button>
     </div>
 }
 
@@ -886,13 +886,16 @@ else
             else
             {
                 _refillResult = value;
-                isRefillConfirmVisible = false;
                 await LoadAllAsync();
             }
         }
         catch (Exception ex) { _refillError = ex.Message; }
         finally
         {
+            // Always dismiss the confirm popup so the top-level result/
+            // error banner is visible underneath. Leaving the popup open
+            // on failure hides the error banner behind the modal.
+            isRefillConfirmVisible = false;
             isRefilling = false;
             StateHasChanged();
         }

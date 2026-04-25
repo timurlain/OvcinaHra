@@ -179,8 +179,12 @@ public class TreasurePlanningRefillPoolTests(PostgresFixture postgres) : Integra
     }
 
     [Fact]
-    public async Task Refill_NullStock_IsTreatedAsZero()
+    public async Task Refill_NullStock_IsIgnoredAsUnlimited()
     {
+        // Null StockCount means "unlimited" elsewhere in the app
+        // (GetUnlimitedItems filters on StockCount == null). Refill has
+        // nothing concrete to allocate for an unlimited item — no upper
+        // bound to top up against — so it skips them entirely.
         var game = await CreateGameAsync();
         var item = await CreateItemAsync("Bez počtu");
         await AssignItemToGameAsync(game.Id, item.Id, stock: null, findable: true);
