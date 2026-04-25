@@ -1,10 +1,12 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Tests.Fixtures;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
+using OvcinaHra.Shared.Domain.ValueObjects;
 using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Tests.Endpoints;
@@ -166,4 +168,185 @@ public class SpellEndpointTests(PostgresFixture postgres) : IntegrationTestBase(
         Assert.Contains(spells, s => s.Name == "Ohnivá střela (test)");
         Assert.Contains(spells, s => s.Name == "Ohnivá koule (test)");
     }
+
+    // ── Issue #181 — Spell.ScrollItemId FK round-trip + cascade + validation ──
+
+    [Fact]
+    public async Task ScrollItemId_LinkViaUpdate_RoundTripsThroughGet()
+    {
+        var token = Guid.NewGuid().ToString("N")[..6];
+
+        var spellResp = await Client.PostAsJsonAsync("/api/spells",
+            new CreateSpellDto($"Svitek hojení {token}", 0, 0, SpellSchool.Support,
+                IsScroll: true, IsReaction: false, IsLearnable: false, MinMageLevel: 0,
+                Price: null, Effect: "Vyleč 5 ž v kole použití."));
+        spellResp.EnsureSuccessStatusCode();
+        var spell = await spellResp.Content.ReadFromJsonAsync<SpellDetailDto>();
+        Assert.NotNull(spell);
+        Assert.Null(spell.ScrollItemId);
+        Assert.Null(spell.ScrollItemName);
+
+        // Items don't have a public catalog POST in scope here (depends on
+        // ItemEndpoints surface); seed via DbContext to keep this test focused
+        // on the spell side.
+        int itemId;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var item = new Item
+            {
+                Name = $"Svitek hojení {token}",
+                ItemType = ItemType.Scroll,
+                ClassRequirements = new ClassRequirements(0, 0, 0, 0)
+            };
+            db.Items.Add(item);
+            await db.SaveChangesAsync();
+            itemId = item.Id;
+        }
+
+        var put = await Client.PutAsJsonAsync($"/api/spells/{spell.Id}",
+            new UpdateSpellDto(spell.Name, 0, 0, SpellSchool.Support,
+                true, false, false, 0, null, spell.Effect, null,
+                ScrollItemId: itemId));
+        Assert.Equal(HttpStatusCode.NoContent, put.StatusCode);
+
+        var get = await Client.GetFromJsonAsync<SpellDetailDto>($"/api/spells/{spell.Id}");
+        Assert.NotNull(get);
+        Assert.Equal(itemId, get.ScrollItemId);
+        Assert.Equal($"Svitek hojení {token}", get.ScrollItemName);
+    }
+
+    [Fact]
+    public async Task ScrollItemId_DeletingItem_NullsTheFk()
+    {
+        var token = Guid.NewGuid().ToString("N")[..6];
+
+        var spellResp = await Client.PostAsJsonAsync("/api/spells",
+            new CreateSpellDto($"Svitek mlhy {token}", 0, 0, SpellSchool.Frost,
+                true, false, false, 0, null, "Mlha skryje cíl."));
+        spellResp.EnsureSuccessStatusCode();
+        var spell = await spellResp.Content.ReadFromJsonAsync<SpellDetailDto>();
+        Assert.NotNull(spell);
+
+        int itemId;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var item = new Item
+            {
+                Name = $"Svitek mlhy {token}",
+                ItemType = ItemType.Scroll,
+                ClassRequirements = new ClassRequirements(0, 0, 0, 0)
+            };
+            db.Items.Add(item);
+            await db.SaveChangesAsync();
+            itemId = item.Id;
+        }
+
+        await Client.PutAsJsonAsync($"/api/spells/{spell.Id}",
+            new UpdateSpellDto(spell.Name, 0, 0, SpellSchool.Frost,
+                true, false, false, 0, null, spell.Effect, null,
+                ScrollItemId: itemId));
+
+        // Delete the Item directly via DbContext to exercise the EF cascade
+        // rule (DeleteBehavior.SetNull). Going through /api/items/{id} would
+        // also work but couples this test to the Item endpoint's auth flow.
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var item = await db.Items.FindAsync(itemId);
+            db.Items.Remove(item!);
+            await db.SaveChangesAsync();
+        }
+
+        var get = await Client.GetFromJsonAsync<SpellDetailDto>($"/api/spells/{spell.Id}");
+        Assert.NotNull(get);
+        Assert.Null(get.ScrollItemId);
+        Assert.Null(get.ScrollItemName);
+    }
+
+    [Fact]
+    public async Task ScrollItemId_BogusId_ReturnsBadRequestProblemDetails()
+    {
+        var spellResp = await Client.PostAsJsonAsync("/api/spells",
+            new CreateSpellDto($"Svitek omámení {Guid.NewGuid():N}".Substring(0, 30),
+                0, 0, SpellSchool.Mental, true, false, false, 0, null,
+                "Cíl ztratí akci."));
+        spellResp.EnsureSuccessStatusCode();
+        var spell = await spellResp.Content.ReadFromJsonAsync<SpellDetailDto>();
+        Assert.NotNull(spell);
+
+        var put = await Client.PutAsJsonAsync($"/api/spells/{spell.Id}",
+            new UpdateSpellDto(spell.Name, 0, 0, SpellSchool.Mental,
+                true, false, false, 0, null, spell.Effect, null,
+                ScrollItemId: 999_999));
+        Assert.Equal(HttpStatusCode.BadRequest, put.StatusCode);
+
+        var problem = await put.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Neplatný předmět", problem.Title);
+        Assert.Contains("999999", problem.Detail);
+    }
+
+    [Fact]
+    public async Task ScrollItemId_BackfillSql_LinksMatchingScrollNames()
+    {
+        // The migration's backfill SQL ran when the fixture span up — so for
+        // a deterministic test we re-execute it here against fresh seed data.
+        // The query is idempotent (WHERE ScrollItemId IS NULL clause), so a
+        // second run is safe. This validates the SQL is structurally correct
+        // and matches case-insensitively as the previous fuzz-match did.
+        var token = Guid.NewGuid().ToString("N")[..6];
+        int spellId, itemId;
+
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+
+            var item = new Item
+            {
+                // Mixed case on purpose — the LOWER() match should find it.
+                Name = $"SVITEK PROMĚNY {token}",
+                ItemType = ItemType.Scroll,
+                ClassRequirements = new ClassRequirements(0, 0, 0, 0)
+            };
+            db.Items.Add(item);
+
+            var spell = new Spell
+            {
+                Name = $"Svitek proměny {token}",
+                Level = 0, ManaCost = 0, School = SpellSchool.Utility,
+                IsScroll = true, IsReaction = false, IsLearnable = false,
+                MinMageLevel = 0, Effect = "Krátká transformace."
+            };
+            db.Spells.Add(spell);
+            await db.SaveChangesAsync();
+
+            spellId = spell.Id;
+            itemId = item.Id;
+
+            // Re-run the backfill SQL verbatim from the migration. PG quoting
+            // matches the migration file character-for-character.
+            await db.Database.ExecuteSqlRawAsync(@"
+                UPDATE ""Spells"" s
+                SET ""ScrollItemId"" = i.""Id""
+                FROM ""Items"" i
+                WHERE s.""IsScroll"" = true
+                  AND LOWER(i.""Name"") = LOWER(s.""Name"")
+                  AND s.""ScrollItemId"" IS NULL;
+            ");
+        }
+
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var linked = await db.Spells.FindAsync(spellId);
+            Assert.NotNull(linked);
+            Assert.Equal(itemId, linked.ScrollItemId);
+        }
+    }
 }
+
+// Minimal ProblemDetails shape for assertion — System.Text.Json deserialises
+// the standard ASP.NET ProblemDetails payload into these fields.
+internal sealed record ProblemDetails(string? Title, string? Detail, int? Status);

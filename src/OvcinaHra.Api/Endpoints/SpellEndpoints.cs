@@ -64,13 +64,21 @@ public static class SpellEndpoints
 
     private static async Task<Results<Ok<SpellDetailDto>, NotFound>> GetById(int id, WorldDbContext db)
     {
-        var s = await db.Spells.FindAsync(id);
-        if (s is null) return TypedResults.NotFound();
-
-        return TypedResults.Ok(new SpellDetailDto(
-            s.Id, s.Name, s.Level, s.ManaCost, s.School,
-            s.IsScroll, s.IsReaction, s.IsLearnable, s.MinMageLevel, s.Price,
-            s.Effect, s.Description, s.ImagePath));
+        // Issue #181 — project the ScrollItem join in a single query so the
+        // client can render the "Zobrazit jako předmět" link without a second
+        // round-trip. Left join (s.ScrollItem != null fan-out) handles the
+        // unlinked case naturally.
+        var dto = await db.Spells
+            .Where(s => s.Id == id)
+            .Select(s => new SpellDetailDto(
+                s.Id, s.Name, s.Level, s.ManaCost, s.School,
+                s.IsScroll, s.IsReaction, s.IsLearnable, s.MinMageLevel, s.Price,
+                s.Effect, s.Description, s.ImagePath,
+                ScrollItemId: s.ScrollItemId,
+                ScrollItemName: s.ScrollItem != null ? s.ScrollItem.Name : null))
+            .FirstOrDefaultAsync();
+        if (dto is null) return TypedResults.NotFound();
+        return TypedResults.Ok(dto);
     }
 
     private static async Task<Results<Created<SpellDetailDto>, Conflict<string>>> Create(
@@ -103,7 +111,7 @@ public static class SpellEndpoints
                 s.Effect, s.Description, s.ImagePath));
     }
 
-    private static async Task<Results<NoContent, NotFound, Conflict<string>>> Update(
+    private static async Task<Results<NoContent, NotFound, Conflict<string>, ProblemHttpResult>> Update(
         int id, UpdateSpellDto dto, WorldDbContext db)
     {
         var s = await db.Spells.FindAsync(id);
@@ -111,6 +119,19 @@ public static class SpellEndpoints
 
         if (s.Name != dto.Name && await db.Spells.AnyAsync(x => x.Id != id && x.Name == dto.Name))
             return TypedResults.Conflict($"Kouzlo s názvem '{dto.Name}' už existuje.");
+
+        // Issue #181 — validate ScrollItemId before persisting. EF will throw
+        // an FK violation at SaveChangesAsync otherwise, but that bubbles as
+        // an unfriendly 500. Cleaner to short-circuit with a Czech
+        // ProblemDetails so the client banner shows a useful message.
+        if (dto.ScrollItemId is int scrollItemId &&
+            !await db.Items.AnyAsync(i => i.Id == scrollItemId))
+        {
+            return TypedResults.Problem(
+                title: "Neplatný předmět",
+                detail: $"Položka s ID {scrollItemId} neexistuje.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
 
         s.Name = dto.Name;
         s.Level = dto.Level;
@@ -123,6 +144,10 @@ public static class SpellEndpoints
         s.Price = dto.Price;
         s.Effect = dto.Effect;
         s.Description = dto.Description;
+        // Null clears the link; an int sets it. Non-scroll spells should
+        // always send null (the client side enforces this via the
+        // EffectiveScrollItemId getter).
+        s.ScrollItemId = dto.ScrollItemId;
 
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
