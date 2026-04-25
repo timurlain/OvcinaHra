@@ -274,20 +274,33 @@ else
         isCreating = true;
         try
         {
+            // Clamp Level/IsScroll/ManaCost into a consistent shape per
+            // MAG-005/006: scrolls are Level 0, ManaCost 0, MinMageLevel 0;
+            // any non-zero Level is a learnable mage spell, never a scroll.
+            var isScroll = createModel.Level == 0;
+            var mana = isScroll ? 0 : createModel.ManaCost;
             var dto = new CreateSpellDto(
                 createModel.Name.Trim(),
                 createModel.Level,
-                createModel.ManaCost,
+                mana,
                 createModel.School,
-                IsScroll: createModel.Level == 0,
+                IsScroll: isScroll,
                 IsReaction: false,
-                IsLearnable: createModel.Level > 0,
+                IsLearnable: !isScroll,
                 MinMageLevel: 0,
                 Price: null,
                 Effect: string.IsNullOrWhiteSpace(createModel.Effect) ? "—" : createModel.Effect.Trim(),
                 Description: null);
 
-            var created = await Api.PostAsync<CreateSpellDto, SpellDetailDto>("/api/spells", dto);
+            // PostWithProblemAsync forwards 409 ProblemDetails (e.g. duplicate
+            // Czech name from SpellEndpoints.Create) into the inline banner
+            // instead of the generic exception message.
+            var (ok, created, problem) = await Api.PostWithProblemAsync<CreateSpellDto, SpellDetailDto>("/api/spells", dto);
+            if (!ok)
+            {
+                createError = problem ?? "Vytvoření kouzla se nepodařilo.";
+                return;
+            }
             isCreateVisible = false;
             // Land on the new spell's detail so the user can fill in the rest
             // of the fields on the Upravit tab without a round-trip through

@@ -2726,7 +2726,10 @@
 .oh-sp-tisk-toolbar-info{font:600 .8125rem var(--oh-font-body);color:var(--oh-text-secondary,#6a6a6a)}
 .oh-sp-print-stage{background:#e8e3d5;padding:18px;display:flex;flex-direction:column;align-items:center;gap:18px;min-height:calc(100vh - 60px)}
 
-/* A5 spread (landscape 297×210mm = two A5 portrait pages side by side) */
+/* "Kniha kouzel" spread — physically A4 landscape (297×210mm) holding two
+   A5 portrait pages side by side. The brief called the printed sheet
+   "A5 landscape" but those dimensions are actually A4 landscape; we print
+   on A4 and fold/cut to two A5 booklet leaves. */
 .oh-sp-print-spread{width:297mm;min-height:210mm;background:#fbf6e7;
     box-shadow:0 4px 18px rgba(0,0,0,.18);
     display:grid;grid-template-columns:1fr 1fr;
@@ -2754,9 +2757,10 @@
 .oh-sp-print-tile-fx::first-letter{font:900 1.25rem/.9 var(--oh-font-heading,Merriweather,Georgia,serif);color:var(--oh-school-c,#243525);float:left;margin:1px 4px 0 0}
 .oh-sp-print-tile-foot{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:auto;padding-top:2mm;border-top:1px dashed rgba(178,98,35,.4);font:600 8pt var(--oh-font-mono,JetBrains Mono,Menlo,monospace);color:#6c5212}
 
-/* @media print — actual A5 landscape rules */
+/* @media print — actual A4 landscape rules (matches the spread above; user
+   folds the printed sheet down the spine into two A5 portrait pages). */
 @media print{
-    @page{size:A5 landscape;margin:8mm}
+    @page{size:A4 landscape;margin:8mm}
     body{background:#fff !important}
     .oh-sp-tisk-toolbar,.oh-sp-print-stage > nav,nav,header,aside,.sidebar,.oh-app-sidebar{display:none !important}
     .oh-sp-print-stage{background:transparent;padding:0;gap:0;min-height:0;align-items:stretch}

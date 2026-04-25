@@ -123,19 +123,17 @@ else
                     <div class="oh-sp-karta-scroll-callout">
                         <h6><i class="bi bi-link-45deg"></i> Svitek je také předmět</h6>
                         <p>Tento svitek existuje i v katalogu předmětů jako <em>Svitek</em>. Detail položky obsahuje cenu, sklad a možnosti prodeje.</p>
-                        @if (matchedItemId is int itemId)
+                        <button class="btn btn-sm btn-outline-primary" type="button"
+                                @onclick="OpenAsItemAsync" disabled="@isLookingUpItem">
+                            @if (isLookingUpItem)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            Zobrazit jako předmět <i class="bi bi-arrow-right"></i>
+                        </button>
+                        @if (!string.IsNullOrEmpty(scrollItemError))
                         {
-                            <button class="btn btn-sm btn-outline-primary" type="button"
-                                    @onclick="@(() => Nav.NavigateTo($"/items/{itemId}"))">
-                                Zobrazit jako předmět <i class="bi bi-arrow-right"></i>
-                            </button>
-                        }
-                        else
-                        {
-                            <button class="btn btn-sm btn-outline-secondary" type="button" disabled
-                                    title="Položka stejného názvu nenalezena">
-                                Zobrazit jako předmět <i class="bi bi-arrow-right"></i>
-                            </button>
+                            <p class="mt-2 mb-0 text-danger small"><i class="bi bi-exclamation-triangle"></i> @scrollItemError</p>
                         }
                     </div>
                 }
@@ -160,7 +158,8 @@ else
                         <DxTextBox @bind-Text="@editModel.Name" />
                     </DxFormLayoutItem>
                     <DxFormLayoutItem Caption="Úroveň (0=svitek, 1-5=mág)" ColSpanMd="4">
-                        <DxSpinEdit @bind-Value="@editModel.Level" MinValue="0" MaxValue="5" />
+                        <DxSpinEdit @bind-Value="@editModel.Level" MinValue="0" MaxValue="5"
+                                    Enabled="@(!editModel.IsScroll)" />
                     </DxFormLayoutItem>
                     <DxFormLayoutItem Caption="Škola" ColSpanMd="12">
                         <DxComboBox Data="@schoolValues" @bind-Value="@editModel.School"
@@ -170,10 +169,12 @@ else
 
                 <DxFormLayoutGroup Caption="Mechanika" ColSpanMd="12">
                     <DxFormLayoutItem Caption="Mana" ColSpanMd="3">
-                        <DxSpinEdit @bind-Value="@editModel.ManaCost" MinValue="0" MaxValue="9" />
+                        <DxSpinEdit @bind-Value="@editModel.ManaCost" MinValue="0" MaxValue="9"
+                                    Enabled="@(!editModel.IsScroll)" />
                     </DxFormLayoutItem>
                     <DxFormLayoutItem Caption="Min. úroveň mága" ColSpanMd="3">
-                        <DxSpinEdit @bind-Value="@editModel.MinMageLevel" MinValue="0" MaxValue="5" />
+                        <DxSpinEdit @bind-Value="@editModel.MinMageLevel" MinValue="0" MaxValue="5"
+                                    Enabled="@(!editModel.IsScroll)" />
                     </DxFormLayoutItem>
                     <DxFormLayoutItem Caption="Cena (groše)" ColSpanMd="3">
                         <DxSpinEdit @bind-Value="@editModel.Price" MinValue="0" MaxValue="9999"
@@ -184,7 +185,7 @@ else
                         <DxCheckBox @bind-Checked="@editModel.IsReaction" />
                     </DxFormLayoutItem>
                     <DxFormLayoutItem Caption="Naučitelné" ColSpanMd="6">
-                        <DxCheckBox @bind-Checked="@editModel.IsLearnable" />
+                        <DxCheckBox @bind-Checked="@editModel.IsLearnable" Enabled="@(!editModel.IsScroll)" />
                     </DxFormLayoutItem>
                     <DxFormLayoutItem Caption="Svitek" ColSpanMd="6">
                         <DxCheckBox @bind-Checked="@editModel.IsScroll" />
@@ -207,7 +208,7 @@ else
                     <div class="oh-sp-karta-name-row">
                         <h2 class="oh-sp-karta-name">@(string.IsNullOrWhiteSpace(editModel.Name) ? "Bez názvu" : editModel.Name)</h2>
                         <span class="oh-sp-lvl-badge oh-sp-lvl-badge--lg @(editModel.IsScroll ? "oh-sp-lvl-scroll" : "oh-sp-lvl-roman")">
-                            @LevelRoman(editModel.Level)
+                            @LevelRoman(editModel.EffectiveLevel)
                         </span>
                     </div>
                     <div class="oh-sp-karta-meta">
@@ -219,11 +220,11 @@ else
                     </div>
                     <div class="oh-sp-karta-mana-row">
                         <span class="oh-sp-karta-mana-lab">Mana</span>
-                        <ManaRings Cost="@editModel.ManaCost" Size="ManaRings.RingSize.Lg" IsScroll="@editModel.IsScroll" />
+                        <ManaRings Cost="@editModel.EffectiveManaCost" Size="ManaRings.RingSize.Lg" IsScroll="@editModel.IsScroll" />
                     </div>
-                    @if (editModel.MinMageLevel > 1)
+                    @if (editModel.EffectiveMinMageLevel > 1)
                     {
-                        <p class="oh-sp-karta-min">Minimální úroveň mága: @LevelRoman(editModel.MinMageLevel)</p>
+                        <p class="oh-sp-karta-min">Minimální úroveň mága: @LevelRoman(editModel.EffectiveMinMageLevel)</p>
                     }
                     <hr class="oh-sp-karta-sep" />
                     <p class="oh-sp-karta-fx">@(string.IsNullOrWhiteSpace(editModel.Effect) ? "(text karty zatím prázdný)" : editModel.Effect)</p>
@@ -330,8 +331,12 @@ else
     private bool isDeleteVisible;
     private string? saveError;
 
-    // Scroll-to-item fuzz match (issue #148 follow-up: replace with FK).
-    private int? matchedItemId;
+    // Scroll → Item callout (issue #148, follow-up #1: replace with proper FK).
+    // Lookup is lazy on button click, NOT eager on detail load — fetching
+    // the entire /api/items catalog just to render one button would scale
+    // poorly as the catalog grows.
+    private bool isLookingUpItem;
+    private string? scrollItemError;
 
     // Obchod tab — per-game configuration list. Spell-side projection rolled
     // up from /api/spells/by-game/{gameId} hits across all games would be a
@@ -360,20 +365,7 @@ else
             }
             spell = detail;
             editModel = EditForm.FromDetail(detail);
-
-            // Best-effort scroll→item fuzz match. Failure leaves matchedItemId
-            // null and the callout falls back to its disabled state.
-            if (detail.IsScroll)
-            {
-                try
-                {
-                    var items = await Api.GetListAsync<ItemListDto>("/api/items");
-                    var hit = items.FirstOrDefault(i =>
-                        string.Equals(i.Name?.Trim(), detail.Name.Trim(), StringComparison.OrdinalIgnoreCase));
-                    matchedItemId = hit?.Id;
-                }
-                catch { matchedItemId = null; }
-            }
+            scrollItemError = null;
 
             // Obchod data — best-effort. List endpoint per game not provided
             // for spells-by-spellId yet (followup); leave empty for now.
@@ -390,12 +382,46 @@ else
         isSaving = true;
         try
         {
-            await Api.PutAsync($"/api/spells/{Id}", editModel.ToUpdateDto());
+            // PutWithProblemAsync forwards 4xx ProblemDetails (e.g. duplicate
+            // name) into the inline banner instead of swallowing the body.
+            var (ok, problem) = await Api.PutWithProblemAsync($"/api/spells/{Id}", editModel.ToUpdateDto());
+            if (!ok)
+            {
+                saveError = problem ?? "Uložení kouzla se nepodařilo.";
+                return;
+            }
             await LoadAsync();
             activeTab = "karta";
         }
         catch (Exception ex) { saveError = ex.Message; }
         finally { isSaving = false; }
+    }
+
+    /// <summary>
+    /// Lazy fuzz-match by Name against /api/items when the user clicks
+    /// "Zobrazit jako předmět". No eager fetch on detail load — the catalog
+    /// can grow and this lookup is only useful on scroll detail pages.
+    /// Replaced by the proper Spell.ScrollItemId FK in follow-up #1.
+    /// </summary>
+    private async Task OpenAsItemAsync()
+    {
+        if (spell is null || !spell.IsScroll) return;
+        scrollItemError = null;
+        isLookingUpItem = true;
+        try
+        {
+            var items = await Api.GetListAsync<ItemListDto>("/api/items");
+            var hit = items.FirstOrDefault(i =>
+                string.Equals(i.Name?.Trim(), spell.Name.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (hit is null)
+            {
+                scrollItemError = "Položka stejného názvu nenalezena. Vytvořte svitek v katalogu předmětů a propojení vznikne automaticky.";
+                return;
+            }
+            Nav.NavigateTo($"/items/{hit.Id}");
+        }
+        catch (Exception ex) { scrollItemError = $"Nepodařilo se prohledat katalog: {ex.Message}"; }
+        finally { isLookingUpItem = false; }
     }
 
     private async Task DeleteAsync()
@@ -459,6 +485,18 @@ else
         public string Effect { get; set; } = "";
         public string? Description { get; set; }
 
+        // ── Effective values — single source of truth for both preview and
+        // persistence. MAG-005/006 says scrolls are Level 0, ManaCost 0,
+        // MinMageLevel 0, not learnable, no learning price. The UI can let
+        // the user toggle IsScroll while leaving stale numbers in adjacent
+        // fields; these getters squash that inconsistency before render
+        // and persist. ──
+        public int EffectiveLevel => IsScroll ? 0 : Level;
+        public int EffectiveManaCost => IsScroll ? 0 : ManaCost;
+        public int EffectiveMinMageLevel => IsScroll ? 0 : MinMageLevel;
+        public bool EffectiveIsLearnable => !IsScroll && IsLearnable;
+        public int? EffectivePrice => IsScroll ? null : Price;
+
         public static EditForm FromDetail(SpellDetailDto d) => new()
         {
             Name = d.Name,
@@ -475,7 +513,15 @@ else
         };
 
         public UpdateSpellDto ToUpdateDto() => new(
-            Name.Trim(), Level, ManaCost, School, IsScroll, IsReaction, IsLearnable, MinMageLevel, Price,
+            Name.Trim(),
+            EffectiveLevel,
+            EffectiveManaCost,
+            School,
+            IsScroll,
+            IsReaction,
+            EffectiveIsLearnable,
+            EffectiveMinMageLevel,
+            EffectivePrice,
             string.IsNullOrWhiteSpace(Effect) ? "—" : Effect.Trim(),
             string.IsNullOrWhiteSpace(Description) ? null : Description.Trim());
     }

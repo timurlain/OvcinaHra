@@ -13,16 +13,22 @@
 }
 else if (Cost <= 0)
 {
-    <span class="oh-mana-free" title="Kouzlo bez maganové ceny">Zdarma</span>
+    <span class="oh-mana-free" title="Kouzlo bez manové ceny">Zdarma</span>
 }
 else
 {
     <span class="oh-mana @WrapperClass" aria-label="@($"Mana: {Cost}")">
         @for (var i = 0; i < Math.Min(Cost, MaxRings); i++)
         {
+            @* Each <linearGradient> id must be unique across the whole document
+               — duplicates make some browsers latch onto the wrong stops or
+               drop the stroke entirely. _gradId is unique per component
+               instance; we further suffix with the ring index here so a single
+               <ManaRings Cost="6"> rendering 6 SVGs each carries a distinct id. *@
+            var gradId = $"oh-mana-{_gradId}-{i}";
             <svg viewBox="0 0 14 14" role="img" aria-hidden="true">
                 <defs>
-                    <linearGradient id="@($"oh-mana-{_gradId}")" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <linearGradient id="@gradId" x1="0%" y1="0%" x2="100%" y2="100%">
                         <stop offset="0%"   stop-color="#E74C3C" />
                         <stop offset="16%"  stop-color="#F39C12" />
                         <stop offset="33%"  stop-color="#F1C40F" />
@@ -32,7 +38,7 @@ else
                         <stop offset="100%" stop-color="#E74C3C" />
                     </linearGradient>
                 </defs>
-                <circle cx="7" cy="7" r="5.5" fill="none" stroke="@($"url(#oh-mana-{_gradId})")" stroke-width="3" />
+                <circle cx="7" cy="7" r="5.5" fill="none" stroke="@($"url(#{gradId})")" stroke-width="3" />
             </svg>
         }
         @if (Cost > MaxRings)
