@@ -1,305 +1,291 @@
 @page "/skills"
 @attribute [Authorize]
-@inject SkillService SkillSvc
 @inject ApiClient Api
+@inject NavigationManager Nav
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Extensions
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="mb-0">Knihovna dovedností</h1>
-    <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Přidat dovednost</button>
+    <button class="btn btn-primary" type="button" @onclick="OpenCreateModal">
+        <i class="bi bi-plus-lg"></i> Nová dovednost
+    </button>
 </div>
 
 <div class="alert alert-info small">
-    Tyto dovednosti jsou šablony. Při přidání do hry se vytvoří kopie, kterou lze pro danou hru upravit nezávisle.
+    Šablony slouží jako základ pro hru — při přidání do hry se vytvoří nezávislá kopie (<em>fork</em>) s vlastními XP a požadovanou úrovní.
 </div>
 
 @if (loading)
 {
-    <p>Načítám...</p>
+    <p class="text-muted">Načítám…</p>
 }
 else if (skills.Count == 0)
 {
     <div class="text-center text-muted py-5">
-        <i class="bi bi-star fs-1 d-block mb-2"></i>
-        <p>Zatím žádné dovednosti. Přidejte první pomocí tlačítka nahoře.</p>
+        <i class="bi bi-stars fs-1 d-block mb-2"></i>
+        <p>Zatím žádné dovednosti.</p>
+        <button class="btn btn-outline-primary" type="button" @onclick="OpenCreateModal">
+            <i class="bi bi-plus-lg"></i> Přidej první
+        </button>
     </div>
 }
 else
 {
-    <OvcinaGrid Data="@skills" KeyFieldName="Id" LayoutKey="grid-layout-skills"
-                RowClick="@(e => OpenModal((SkillDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+    @* LayoutKey bumped grid-layout-skills → -v2 because the column schema
+       changed (new chip / pip / cluster cells). Memory rule:
+       feedback_ovcinagrid_layoutkey_bump. *@
+    <OvcinaGrid Data="@skills" KeyFieldName="Id" LayoutKey="grid-layout-skills-v2"
+                RowClick="@(e => OpenPeek((SkillDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
-            <DxGridDataColumn FieldName="Name" Caption="Název" />
-            <DxGridDataColumn FieldName="Category" Caption="Kategorie" Width="140px">
+            <DxGridDataColumn FieldName="Name" Caption="Název" MinWidth="220">
                 <CellDisplayTemplate>
-                    @(((SkillCategory)context.Value).GetDisplayName())
+                    @{ var s = (SkillDto)context.DataItem; }
+                    <div class="oh-sk-c-name">
+                        <span>@s.Name</span>
+                        @if (s.UsageCount > 0)
+                        {
+                            <span class="oh-sk-tpl-badge" title="@($"Šablona má {s.UsageCount} kopií ve hrách")">
+                                <i class="bi bi-stack"></i> @s.UsageCount
+                            </span>
+                        }
+                    </div>
                 </CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="ClassRestriction" Caption="Povolání" Width="140px">
+
+            <DxGridDataColumn FieldName="Category" Caption="Kategorie" Width="150px">
                 <CellDisplayTemplate>
-                    @(((PlayerClass?)context.Value).GetClassRestrictionLabel())
+                    @{ var s = (SkillDto)context.DataItem; }
+                    <SkillCategoryChip Category="@s.Category" />
                 </CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="Effect" Caption="Efekt" />
-            <DxGridDataColumn FieldName="RequiredBuildingIds" Caption="Požadované budovy" Width="220px" AllowSort="false" AllowGroup="false">
+
+            <DxGridDataColumn FieldName="ClassRestriction" Caption="Třída" Width="130px">
                 <CellDisplayTemplate>
-                    @{
-                        var ids = (IReadOnlyList<int>?)context.Value ?? Array.Empty<int>();
-                        var names = ids
-                            .Where(i => buildingNames.ContainsKey(i))
-                            .Select(i => buildingNames[i]);
-                        <text>@string.Join(", ", names)</text>
-                    }
+                    @{ var s = (SkillDto)context.DataItem; }
+                    <ClassPip Class="@s.ClassRestriction" ShowAllLine="true" />
                 </CellDisplayTemplate>
             </DxGridDataColumn>
-            <DxGridDataColumn FieldName="RequirementNotes" Caption="Poznámka" />
+
+            <DxGridDataColumn FieldName="RequiredBuildingIds" Caption="Budovy" Width="220px"
+                              AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{ var s = (SkillDto)context.DataItem; }
+                    <SkillBuildingChips BuildingIds="@s.RequiredBuildingIds" Names="@buildingNames" MaxVisible="3" />
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            <DxGridDataColumn FieldName="Effect" Caption="Efekt" MinWidth="280">
+                <CellDisplayTemplate>
+                    @{ var s = (SkillDto)context.DataItem; }
+                    @* Full text in DOM — line-clamp via .oh-sk-c-fx provides
+                       the visual ellipsis. Card text stays sacred (memory:
+                       feedback_ovcina_card_text_sacred). *@
+                    <span class="oh-sk-c-fx" title="@s.Effect">@(s.Effect ?? "")</span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            @* Hidden by default — reveal via column chooser *@
+            <DxGridDataColumn FieldName="RequirementNotes" Caption="Poznámky" Width="220px" Visible="false" />
+            <DxGridDataColumn FieldName="UsageCount" Caption="Kopie" Width="90px" Visible="false" />
         </Columns>
     </OvcinaGrid>
 }
 
-<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="700px">
-    <BodyContentTemplate Context="popupContext">
-        @if (error is not null)
+@* Quick-peek popup — 640×420 per brief. Row click opens. *@
+<DxPopup @bind-Visible="@isPeekVisible" HeaderText="@(peekItem?.Name ?? "Dovednost")" Width="640px">
+    <BodyContentTemplate Context="qpCtx">
+        @if (peekItem is null)
         {
-            <div class="alert alert-danger">@error</div>
+            <p class="text-muted">Načítám…</p>
         }
-
-        <DxFormLayout>
-            <DxFormLayoutItem Caption="Název" ColSpanMd="12">
-                <DxTextBox @bind-Text="@name" />
-            </DxFormLayoutItem>
-
-            <DxFormLayoutItem Caption="Kategorie" ColSpanMd="12">
-                <DxComboBox Data="@skillCategoryValues" @bind-Value="@editCategory"
-                            TextFieldName="Display" ValueFieldName="Value" />
-            </DxFormLayoutItem>
-
-            @if (editCategory == SkillCategory.Class)
-            {
-                <DxFormLayoutItem Caption="Povolání" ColSpanMd="12">
-                    <DxComboBox Data="@playerClassValues" @bind-Value="@classRestriction"
-                                TextFieldName="Display" ValueFieldName="Value" />
-                </DxFormLayoutItem>
-            }
-
-            <DxFormLayoutItem Caption="Efekt" ColSpanMd="12">
-                <DxMemo @bind-Text="@effect" Rows="3" />
-            </DxFormLayoutItem>
-
-            <DxFormLayoutItem Caption="Poznámka k požadavkům" ColSpanMd="12">
-                <DxMemo @bind-Text="@requirementNotes" Rows="2" />
-            </DxFormLayoutItem>
-
-            <DxFormLayoutItem Caption="Požadované budovy" ColSpanMd="12">
+        else
+        {
+            <div class="oh-sk-peek-grid">
                 <div>
-                    @if (selectedBuildingIds.Count > 0)
+                    <div class="oh-sk-peek-meta">
+                        <SkillCategoryChip Category="@peekItem.Category" />
+                        <ClassPip Class="@peekItem.ClassRestriction" ShowAllLine="true" />
+                    </div>
+                    <p class="oh-sk-peek-fx" style="@PeekStyle(peekItem.Category)">
+                        @(string.IsNullOrWhiteSpace(peekItem.Effect) ? "(text karty zatím prázdný)" : peekItem.Effect)
+                    </p>
+                    @if (!string.IsNullOrWhiteSpace(peekItem.RequirementNotes))
                     {
-                        <ul class="list-unstyled mb-2">
-                            @foreach (var id in selectedBuildingIds)
-                            {
-                                <li class="d-inline-block me-2 mb-1">
-                                    <span class="badge bg-secondary">
-                                        @(buildingNames.TryGetValue(id, out var n) ? n : $"#{id}")
-                                        <button type="button" class="btn btn-sm btn-link text-white p-0 ms-1"
-                                                @onclick="() => RemoveBuilding(id)" title="Odebrat">
-                                            <i class="bi bi-x"></i>
-                                        </button>
-                                    </span>
-                                </li>
-                            }
-                        </ul>
+                        <p class="oh-sk-karta-reqnote mt-2">@peekItem.RequirementNotes</p>
                     }
-                    else
-                    {
-                        <p class="text-muted small mb-2">Žádné požadované budovy.</p>
-                    }
-                    <div class="d-flex gap-2 align-items-end">
-                        <div style="flex:1">
-                            <DxComboBox Data="@AvailableBuildings" @bind-Value="@newBuildingId"
-                                        TextFieldName="Name" ValueFieldName="Id"
-                                        NullText="(přidat budovu)" SearchMode="ListSearchMode.AutoSearch" />
-                        </div>
-                        <button class="btn btn-sm btn-outline-primary" style="height:34px"
-                                disabled="@(newBuildingId is null)" @onclick="AddBuilding">
-                            <i class="bi bi-plus"></i>
-                        </button>
+                </div>
+                <div class="oh-sk-peek-side">
+                    <div class="oh-sk-peek-side-row">
+                        <span>Kopie</span>
+                        <strong>@peekItem.UsageCount</strong>
+                    </div>
+                    <div>
+                        <div class="oh-sk-peek-side-row mb-1"><span>Budovy</span><strong></strong></div>
+                        <SkillBuildingChips BuildingIds="@peekItem.RequiredBuildingIds" Names="@buildingNames" MaxVisible="6" />
                     </div>
                 </div>
-            </DxFormLayoutItem>
-
-            @if (editingId.HasValue)
-            {
-                <DxFormLayoutItem Caption="Obrázek" ColSpanMd="12">
-                    @* TODO: wire up ImagePicker once /api/skills image upload endpoint is available. *@
-                    <div class="text-muted small">Obrázek (nahrát později)</div>
-                </DxFormLayoutItem>
-            }
-        </DxFormLayout>
-
-        <div class="d-flex gap-2 mt-3">
-            @if (editingId.HasValue)
-            {
-                <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true" disabled="@isSaving">Smazat</button>
-            }
-            <div style="flex: 1"></div>
-            <button class="btn btn-secondary" @onclick="() => isModalVisible = false" disabled="@isSaving">Zrušit</button>
-            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving">Uložit</button>
-        </div>
+            </div>
+            <div class="oh-sk-peek-foot">
+                <button class="btn btn-secondary" type="button" @onclick="() => isPeekVisible = false">Zavřít</button>
+                <button class="btn btn-primary" type="button" @onclick="OpenDetailFromPeek">
+                    Otevřít detail <i class="bi bi-arrow-right"></i>
+                </button>
+            </div>
+        }
     </BodyContentTemplate>
 </DxPopup>
 
-<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
-    <BodyContentTemplate Context="popupContext">
-        <p>Opravdu smazat dovednost <strong>@name</strong>?</p>
-        <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Ne</button>
-            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Ano, smazat</button>
+@* Slim "+ Nová dovednost" create modal — lands on detail immediately. *@
+<DxPopup AllowResize="true" @bind-Visible="@isCreateVisible" HeaderText="Nová dovednost" Width="600px">
+    <BodyContentTemplate Context="cCtx">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Název" ColSpanMd="12">
+                <DxTextBox @bind-Text="@createModel.Name" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Kategorie" ColSpanMd="6">
+                <DxComboBox Data="@categoryValues" @bind-Value="@createModel.Category"
+                            TextFieldName="Display" ValueFieldName="Value" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Pro povolání" ColSpanMd="6">
+                <DxComboBox Data="@classValues" @bind-Value="@createModel.ClassRestriction"
+                            TextFieldName="Display" ValueFieldName="Value"
+                            ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Efekt" ColSpanMd="12">
+                <DxMemo @bind-Text="@createModel.Effect" Rows="3" />
+            </DxFormLayoutItem>
+        </DxFormLayout>
+
+        @if (createError is not null)
+        {
+            <div class="alert alert-danger mt-2">@createError</div>
+        }
+
+        <div class="d-flex gap-2 justify-content-end mt-3">
+            <button class="btn btn-secondary" type="button"
+                    @onclick="() => isCreateVisible = false" disabled="@isCreating">Zrušit</button>
+            <button class="btn btn-primary" type="button" @onclick="CreateAsync"
+                    disabled="@(isCreating || string.IsNullOrWhiteSpace(createModel.Name))">
+                @if (isCreating) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Vytvořit a otevřít
+            </button>
         </div>
     </BodyContentTemplate>
 </DxPopup>
 
 @code {
-
     private List<SkillDto> skills = [];
-    private List<BuildingListDto> allBuildings = [];
-    private Dictionary<int, string> buildingNames = [];
+    private bool loading = true;
 
-    private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
-    private string modalTitle = "", name = "";
-    private string? error, effect, requirementNotes;
-    private int? editingId;
-    private PlayerClass classRestriction = PlayerClass.Warrior;
-    private SkillCategory editCategory = SkillCategory.Class;
-    private List<int> selectedBuildingIds = [];
-    private int? newBuildingId;
+    private bool isPeekVisible;
+    private SkillDto? peekItem;
 
-    private static readonly List<EnumItem<PlayerClass>> playerClassValues = Enum.GetValues<PlayerClass>()
-        .Select(v => new EnumItem<PlayerClass>(v, v.GetDisplayName())).ToList();
+    private bool isCreateVisible;
+    private bool isCreating;
+    private string? createError;
+    private CreateForm createModel = new();
 
-    private static readonly List<EnumItem<SkillCategory>> skillCategoryValues = Enum.GetValues<SkillCategory>()
-        .Select(v => new EnumItem<SkillCategory>(v, v.GetDisplayName())).ToList();
+    /// <summary>Building name lookup for the chip cluster cells. Loaded once
+    /// per page and shared across rows + peek.</summary>
+    private Dictionary<int, string> buildingNames = new();
 
-    private record EnumItem<T>(T Value, string Display);
+    private static readonly List<CategoryOption> categoryValues = Enum.GetValues<SkillCategory>()
+        .Select(c => new CategoryOption(c, c.GetDisplayName())).ToList();
+    private static readonly List<ClassOption> classValues = Enum.GetValues<PlayerClass>()
+        .Select(p => new ClassOption(p, p.GetDisplayName())).ToList();
 
-    private IEnumerable<BuildingListDto> AvailableBuildings
-        => allBuildings.Where(b => !selectedBuildingIds.Contains(b.Id));
+    private record CategoryOption(SkillCategory Value, string Display);
+    private record ClassOption(PlayerClass Value, string Display);
 
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadAsync();
-    }
+    protected override async Task OnInitializedAsync() => await LoadAsync();
 
     private async Task LoadAsync()
     {
         loading = true;
         try
         {
-            var skillList = await SkillSvc.GetAllAsync();
-            skills = skillList.ToList();
-            allBuildings = await Api.GetListAsync<BuildingListDto>("/api/buildings");
-            buildingNames = allBuildings.ToDictionary(b => b.Id, b => b.Name);
+            // Pulled in parallel — both endpoints are read-only and indexed.
+            var skillsTask = Api.GetListAsync<SkillDto>("/api/skills");
+            var buildingsTask = Api.GetListAsync<BuildingListDto>("/api/buildings");
+            await Task.WhenAll(skillsTask, buildingsTask);
+            skills = skillsTask.Result;
+            try { buildingNames = buildingsTask.Result.ToDictionary(b => b.Id, b => b.Name); }
+            catch { buildingNames = new(); }
         }
-        finally
-        {
-            loading = false;
-        }
+        finally { loading = false; }
     }
 
-    private void OpenModal(SkillDto? s)
+    private void OpenPeek(SkillDto s)
     {
-        error = null;
-        newBuildingId = null;
-        if (s is null)
-        {
-            editingId = null;
-            name = "";
-            effect = null;
-            requirementNotes = null;
-            classRestriction = PlayerClass.Warrior;
-            editCategory = SkillCategory.Class;
-            selectedBuildingIds = [];
-            modalTitle = "Nová dovednost";
-        }
-        else
-        {
-            editingId = s.Id;
-            name = s.Name;
-            effect = s.Effect;
-            requirementNotes = s.RequirementNotes;
-            editCategory = s.Category;
-            classRestriction = s.ClassRestriction ?? PlayerClass.Warrior;
-            selectedBuildingIds = s.RequiredBuildingIds.ToList();
-            modalTitle = $"Upravit: {s.Name}";
-        }
-        isModalVisible = true;
+        peekItem = s;
+        isPeekVisible = true;
     }
 
-    private void AddBuilding()
+    private void OpenDetailFromPeek()
     {
-        if (newBuildingId is int id && !selectedBuildingIds.Contains(id))
-        {
-            selectedBuildingIds.Add(id);
-            newBuildingId = null;
-        }
+        if (peekItem is null) return;
+        var id = peekItem.Id;
+        isPeekVisible = false;
+        Nav.NavigateTo($"/skills/{id}");
     }
 
-    private void RemoveBuilding(int id)
+    private void OpenCreateModal()
     {
-        selectedBuildingIds.Remove(id);
+        createModel = new CreateForm();
+        createError = null;
+        isCreateVisible = true;
     }
 
-    private async Task SaveAsync()
+    private async Task CreateAsync()
     {
-        error = null;
-        isSaving = true;
+        if (string.IsNullOrWhiteSpace(createModel.Name)) return;
+        createError = null;
+        isCreating = true;
         try
         {
-            PlayerClass? cr = editCategory == SkillCategory.Class ? classRestriction : null;
-            if (editingId.HasValue)
+            var dto = new CreateSkillRequest(
+                createModel.Name.Trim(),
+                createModel.ClassRestriction,
+                string.IsNullOrWhiteSpace(createModel.Effect) ? null : createModel.Effect.Trim(),
+                RequirementNotes: null,
+                RequiredBuildingIds: Array.Empty<int>(),
+                Category: createModel.Category);
+
+            // PostWithProblemAsync forwards Czech 409 ProblemDetails (duplicate
+            // name) into the inline banner instead of swallowing the body.
+            var (ok, created, problem) = await Api.PostWithProblemAsync<CreateSkillRequest, SkillDto>("/api/skills", dto);
+            if (!ok)
             {
-                await SkillSvc.UpdateAsync(editingId.Value,
-                    new UpdateSkillRequest(name, cr, effect, requirementNotes, selectedBuildingIds, editCategory));
+                createError = problem ?? "Vytvoření dovednosti se nepodařilo.";
+                return;
             }
+            isCreateVisible = false;
+            if (created is not null)
+                Nav.NavigateTo($"/skills/{created.Id}");
             else
-            {
-                await SkillSvc.CreateAsync(
-                    new CreateSkillRequest(name, cr, effect, requirementNotes, selectedBuildingIds, editCategory));
-            }
-            isModalVisible = false;
-            await LoadAsync();
+                await LoadAsync();
         }
-        catch (Exception ex)
-        {
-            error = FormatError(ex);
-        }
-        finally
-        {
-            isSaving = false;
-        }
+        catch (Exception ex) { createError = ex.Message; }
+        finally { isCreating = false; }
     }
 
-    private async Task ConfirmDeleteAsync()
-    {
-        if (editingId is null) return;
-        error = null;
-        try
-        {
-            await SkillSvc.DeleteAsync(editingId.Value);
-            isDeleteVisible = false;
-            isModalVisible = false;
-            await LoadAsync();
-        }
-        catch (Exception ex)
-        {
-            error = FormatError(ex);
-            isDeleteVisible = false;
-        }
-    }
+    private static string PeekStyle(SkillCategory c)
+        => $"--oh-c: var(--oh-skill-{CategoryKey(c)});";
 
-    private static string FormatError(Exception ex)
+    private static string CategoryKey(SkillCategory c) => c switch
     {
-        // Best-effort: surface the underlying message; API returns ProblemDetails
-        // on 400/409 but HttpClient.EnsureSuccessStatusCode throws with status line.
-        // If a richer ProblemDetails parse is needed, wire it here later.
-        return ex.Message;
+        SkillCategory.Class     => "class",
+        SkillCategory.Adventure => "adventure",
+        SkillCategory.Quest     => "quest",
+        _ => "class"
+    };
+
+    private sealed class CreateForm
+    {
+        public string Name { get; set; } = "";
+        public SkillCategory Category { get; set; } = SkillCategory.Class;
+        public PlayerClass? ClassRestriction { get; set; }
+        public string Effect { get; set; } = "";
     }
 }

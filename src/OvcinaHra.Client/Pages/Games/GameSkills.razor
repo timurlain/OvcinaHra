@@ -7,10 +7,21 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="mb-0">Dovednosti hry</h1>
     <div class="d-flex gap-2">
-        <button class="btn btn-primary" @onclick="OpenChooserPopup">
-            <i class="bi bi-plus"></i> Přidat dovednost
+        @* Two named actions per #153 designer note "Šablona ↔ kopie": each
+           GameSkill is an independent fork — making the source explicit at
+           create-time helps organizers think about it that way. The original
+           combined chooser popup remains reachable for backwards-compat but
+           the entry points lead straight to the right step. *@
+        <button class="btn btn-primary" type="button" @onclick="OpenFromTemplateStep"
+                title="Vytvořit kopii z existující šablony">
+            <i class="bi bi-stack"></i> Přidat ze šablony
         </button>
-        <button class="btn btn-outline-secondary" @onclick="@(() => Nav.NavigateTo("/games"))">
+        <button class="btn btn-outline-primary" type="button" @onclick="OpenCustomEdit"
+                title="Vytvořit dovednost úplně od nuly">
+            <i class="bi bi-plus-square"></i> Od nuly
+        </button>
+        <button class="btn btn-outline-secondary" type="button"
+                @onclick="@(() => Nav.NavigateTo("/games"))">
             <i class="bi bi-arrow-left"></i> Zpět na hry
         </button>
     </div>
@@ -31,35 +42,95 @@ else
     }
     else
     {
-        <OvcinaGrid Data="@gameSkills" KeyFieldName="Id" LayoutKey="grid-layout-game-skills"
+        @* LayoutKey bumped grid-layout-game-skills → -v2 because the column
+           schema changed (new source / drift / chip / pip cells, renamed
+           Povolání → Třída). Memory rule: feedback_ovcinagrid_layoutkey_bump. *@
+        <OvcinaGrid Data="@gameSkills" KeyFieldName="Id" LayoutKey="grid-layout-game-skills-v2"
                     RowClick="@(e => OpenEditPopup((GameSkillDto)e.Grid.GetDataItem(e.VisibleIndex)))">
             <Columns>
-                <DxGridDataColumn FieldName="Name" Caption="Název" />
-                <DxGridDataColumn FieldName="ClassRestriction" Caption="Povolání" Width="140px">
+                @* Source badge — Šablona #N when copied from a template, Od nuly when blank *@
+                <DxGridDataColumn FieldName="TemplateSkillId" Caption="Zdroj" Width="120px">
                     <CellDisplayTemplate>
-                        @(((PlayerClass?)context.Value).GetClassRestrictionLabel())
-                    </CellDisplayTemplate>
-                </DxGridDataColumn>
-                <DxGridDataColumn FieldName="Category" Caption="Kategorie" Width="140px">
-                    <CellDisplayTemplate>
-                        @(((SkillCategory)context.Value).GetDisplayName())
-                    </CellDisplayTemplate>
-                </DxGridDataColumn>
-                <DxGridDataColumn FieldName="XpCost" Caption="XP" Width="100px" />
-                <DxGridDataColumn FieldName="LevelRequirement" Caption="Úroveň" Width="140px">
-                    <CellDisplayTemplate>
-                        @{
-                            var lvl = (int?)context.Value;
+                        @{ var row = (GameSkillDto)context.DataItem; }
+                        @if (row.TemplateSkillId is int tid)
+                        {
+                            <span class="oh-sk-src-badge oh-sk-src-badge--tpl" title="@($"Vytvořeno ze šablony #{tid}")">Šablona #@tid</span>
                         }
-                        @(lvl.HasValue ? lvl.Value.ToString() : "Bez požadavku")
+                        else
+                        {
+                            <span class="oh-sk-src-badge oh-sk-src-badge--blank" title="Vytvořeno od nuly">Od nuly</span>
+                        }
                     </CellDisplayTemplate>
                 </DxGridDataColumn>
+
+                @* Drift glyph — visible only when per-game fields diverge from the template.
+                   Detection is client-side per the design brief. *@
+                <DxGridDataColumn Caption="≠" Width="48px" AllowSort="false" AllowGroup="false">
+                    <CellDisplayTemplate>
+                        @{ var row = (GameSkillDto)context.DataItem; }
+                        @if (HasDrift(row))
+                        {
+                            <span class="oh-sk-drift" title="Pole se liší od šablony">≠</span>
+                        }
+                    </CellDisplayTemplate>
+                </DxGridDataColumn>
+
+                <DxGridDataColumn FieldName="Name" Caption="Název" MinWidth="180" />
+
+                <DxGridDataColumn FieldName="Category" Caption="Kategorie" Width="150px">
+                    <CellDisplayTemplate>
+                        @{ var row = (GameSkillDto)context.DataItem; }
+                        <SkillCategoryChip Category="@row.Category" />
+                    </CellDisplayTemplate>
+                </DxGridDataColumn>
+
+                <DxGridDataColumn FieldName="ClassRestriction" Caption="Třída" Width="120px">
+                    <CellDisplayTemplate>
+                        @{ var row = (GameSkillDto)context.DataItem; }
+                        <ClassPip Class="@row.ClassRestriction" ShowAllLine="false" />
+                    </CellDisplayTemplate>
+                </DxGridDataColumn>
+
+                <DxGridDataColumn FieldName="BuildingRequirementIds" Caption="Budovy" Width="220px"
+                                  AllowSort="false" AllowGroup="false">
+                    <CellDisplayTemplate>
+                        @{ var row = (GameSkillDto)context.DataItem; }
+                        <SkillBuildingChips BuildingIds="@row.BuildingRequirementIds" Names="@buildingNames" MaxVisible="3" />
+                    </CellDisplayTemplate>
+                </DxGridDataColumn>
+
+                <DxGridDataColumn FieldName="XpCost" Caption="XP" Width="80px">
+                    <CellDisplayTemplate>
+                        @{ var row = (GameSkillDto)context.DataItem; }
+                        <span class="oh-sk-xp @(row.XpCost == 0 ? "oh-sk-xp--zero" : "")" title="@($"Cena: {row.XpCost} XP")">@row.XpCost XP</span>
+                    </CellDisplayTemplate>
+                </DxGridDataColumn>
+
+                <DxGridDataColumn FieldName="LevelRequirement" Caption="Úroveň" Width="100px">
+                    <CellDisplayTemplate>
+                        @{ var row = (GameSkillDto)context.DataItem; var lvl = row.LevelRequirement; }
+                        @if (lvl.HasValue)
+                        {
+                            <span class="oh-sk-lvl" title="Min. úroveň postavy">Lv. @lvl.Value</span>
+                        }
+                        else
+                        {
+                            <span class="text-muted small">—</span>
+                        }
+                    </CellDisplayTemplate>
+                </DxGridDataColumn>
+
+                <DxGridDataColumn FieldName="Effect" Caption="Efekt" MinWidth="240" Visible="false">
+                    <CellDisplayTemplate>
+                        @{ var row = (GameSkillDto)context.DataItem; }
+                        <span class="oh-sk-c-fx" title="@row.Effect">@(row.Effect ?? "")</span>
+                    </CellDisplayTemplate>
+                </DxGridDataColumn>
+
                 <DxGridDataColumn Caption="" Width="60px" AllowSort="false" AllowGroup="false">
                     <CellDisplayTemplate>
-                        @{
-                            var row = (GameSkillDto)context.DataItem;
-                        }
-                        <button class="btn btn-sm btn-outline-danger"
+                        @{ var row = (GameSkillDto)context.DataItem; }
+                        <button class="btn btn-sm btn-outline-danger" type="button"
                                 title="Smazat"
                                 @onclick="() => OpenDeletePopup(row)"
                                 @onclick:stopPropagation="true">
@@ -197,6 +268,17 @@ else
                 </div>
             </DxFormLayoutItem>
 
+            @* Per-game-only fork fields — XpCost + LevelRequirement do not
+               exist on the catalog Skill template; they live on this fork
+               only. The banner makes that explicit per the #153 brief
+               ("Tato úprava ovlivní jen tuto hru, ne šablonu" hint). *@
+            <DxFormLayoutItem ColSpanMd="12">
+                <div class="oh-sk-pg-only">
+                    <div class="oh-sk-pg-only-head"><i class="bi bi-controller"></i> Pouze v této hře</div>
+                    <p class="oh-sk-pg-fork-hint">Cena v XP a požadovaná úroveň jsou per-hru — neuloží se zpět do šablony.</p>
+                </div>
+            </DxFormLayoutItem>
+
             <DxFormLayoutItem Caption="Cena v XP" ColSpanMd="12">
                 <DxSpinEdit @bind-Value="@xpCost" MinValue="0" />
             </DxFormLayoutItem>
@@ -328,6 +410,29 @@ else
 
     private IEnumerable<BuildingListDto> AvailableBuildings
         => allBuildings.Where(b => !editBuildingIds.Contains(b.Id));
+
+    /// <summary>
+    /// True when any per-game field on the GameSkill diverges from its
+    /// template Skill. Per-game-only fields (XpCost, LevelRequirement) are
+    /// excluded — they're expected to vary by design. Detection happens
+    /// client-side per the #153 brief — no server roundtrip needed.
+    /// </summary>
+    private bool HasDrift(GameSkillDto gs)
+    {
+        if (!gs.TemplateSkillId.HasValue) return false;
+        var template = allTemplates.FirstOrDefault(t => t.Id == gs.TemplateSkillId.Value);
+        if (template is null) return false;
+        if (!string.Equals(gs.Name, template.Name, StringComparison.Ordinal)) return true;
+        if (gs.Category != template.Category) return true;
+        if (gs.ClassRestriction != template.ClassRestriction) return true;
+        if (!StringEqualOrBothBlank(gs.Effect, template.Effect)) return true;
+        if (!StringEqualOrBothBlank(gs.RequirementNotes, template.RequirementNotes)) return true;
+        if (!gs.BuildingRequirementIds.OrderBy(i => i).SequenceEqual(template.RequiredBuildingIds.OrderBy(i => i))) return true;
+        return false;
+    }
+
+    private static bool StringEqualOrBothBlank(string? a, string? b)
+        => string.Equals(a ?? string.Empty, b ?? string.Empty, StringComparison.Ordinal);
 
     protected override async Task OnParametersSetAsync()
     {

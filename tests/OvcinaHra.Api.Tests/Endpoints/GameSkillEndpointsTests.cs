@@ -357,8 +357,12 @@ public class GameSkillEndpointsTests(PostgresFixture postgres) : IntegrationTest
     }
 
     [Fact]
-    public async Task DeletingTemplate_NullsOutTemplateSkillIdOnCopies()
+    public async Task DeletingTemplate_BlockedWith409_WhenCopiesExist()
     {
+        // Issue #153 changed the contract: while a per-game GameSkill copy
+        // references a Skill template via TemplateSkillId, the template
+        // delete must be rejected with 409 (Czech ProblemDetails). The
+        // template + copy both survive with the FK intact.
         var game = await CreateGameAsync("CascadeGame");
         var templateId = await CreateTemplateSkillAsync("Šablona k smazání", SkillCategory.Class);
         var gs = await CreateGameSkillAsync(game.Id, MakeCreate(
@@ -368,14 +372,15 @@ public class GameSkillEndpointsTests(PostgresFixture postgres) : IntegrationTest
         Assert.Equal(templateId, gs.TemplateSkillId);
 
         var deleteResp = await Client.DeleteAsync($"/api/skills/{templateId}");
-        Assert.Equal(HttpStatusCode.NoContent, deleteResp.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, deleteResp.StatusCode);
 
         using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
-        var persisted = await db.GameSkills.SingleOrDefaultAsync(g => g.Id == gs.Id);
-        Assert.NotNull(persisted);
-        Assert.Null(persisted!.TemplateSkillId);
+        var persistedCopy = await db.GameSkills.SingleOrDefaultAsync(g => g.Id == gs.Id);
+        Assert.NotNull(persistedCopy);
+        Assert.Equal(templateId, persistedCopy!.TemplateSkillId);
 
-        Assert.Null(await db.Skills.SingleOrDefaultAsync(s => s.Id == templateId));
+        var persistedTemplate = await db.Skills.SingleOrDefaultAsync(s => s.Id == templateId);
+        Assert.NotNull(persistedTemplate);
     }
 }

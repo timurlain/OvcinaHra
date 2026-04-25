@@ -1,0 +1,83 @@
+@* Multi-select building chip picker (issue #153).
+   Generic — designed to be reused on the future Spells edit form too,
+   so the API stays building-agnostic-shaped: caller passes an `int[]`
+   selection and gets back changes via EventCallback.
+
+   Loads /api/buildings once on first render unless the caller pre-loaded
+   them (Buildings parameter). Each chip toggles in/out of the selection. *@
+
+@inject ApiClient Api
+
+<div class="oh-sk-bld-picker" role="group" aria-label="Volba požadovaných budov">
+    @if (_buildings is null)
+    {
+        <span class="text-muted small">Načítám budovy…</span>
+    }
+    else if (_buildings.Count == 0)
+    {
+        <span class="text-muted small fst-italic">V katalogu nejsou žádné budovy.</span>
+    }
+    else
+    {
+        @foreach (var b in _buildings)
+        {
+            var isOn = SelectedBuildingIds.Contains(b.Id);
+            <button type="button" class="oh-sk-bld-picker-toggle @(isOn ? "is-on" : "")"
+                    title="@b.Name" aria-pressed="@isOn"
+                    @onclick="() => ToggleAsync(b.Id)">
+                <i class="bi bi-houses" aria-hidden="true"></i>@b.Name
+            </button>
+        }
+    }
+</div>
+
+@code {
+    /// <summary>Currently selected building ids (subset of <see cref="Buildings"/>).</summary>
+    [Parameter] public IReadOnlyList<int> SelectedBuildingIds { get; set; } = Array.Empty<int>();
+    [Parameter] public EventCallback<IReadOnlyList<int>> SelectedBuildingIdsChanged { get; set; }
+
+    /// <summary>Optional pre-loaded catalog. When null, we fetch /api/buildings
+    /// once on first render. Passing a list lets parents share one fetch
+    /// across multiple pickers on the same page.</summary>
+    [Parameter] public IReadOnlyList<BuildingListDto>? Buildings { get; set; }
+
+    private List<BuildingListDto>? _buildings;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Buildings is not null)
+        {
+            _buildings = Buildings.OrderBy(b => b.Name).ToList();
+            return;
+        }
+        try
+        {
+            var fetched = await Api.GetListAsync<BuildingListDto>("/api/buildings");
+            _buildings = fetched.OrderBy(b => b.Name).ToList();
+        }
+        catch
+        {
+            // Network failure — render the empty state. Caller's edit flow
+            // can still save with the existing SelectedBuildingIds untouched.
+            _buildings = new List<BuildingListDto>();
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        // If parent passes a different pre-loaded list later, refresh.
+        if (Buildings is not null && !ReferenceEquals(_buildings, Buildings))
+        {
+            _buildings = Buildings.OrderBy(b => b.Name).ToList();
+        }
+    }
+
+    private async Task ToggleAsync(int id)
+    {
+        var next = SelectedBuildingIds.Contains(id)
+            ? SelectedBuildingIds.Where(i => i != id).ToList()
+            : SelectedBuildingIds.Concat(new[] { id }).Distinct().ToList();
+        SelectedBuildingIds = next;
+        await SelectedBuildingIdsChanged.InvokeAsync(next);
+    }
+}
