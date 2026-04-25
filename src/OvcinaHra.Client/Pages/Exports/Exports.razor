@@ -1,0 +1,83 @@
+@page "/exports"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+
+<PageTitle>Exporty | OvčinaHra</PageTitle>
+
+<div class="oh-exports-page">
+    <h1>Exporty</h1>
+    <p class="oh-exports-intro">Tisknutelné a sdílitelné přehledy pro fyzickou přípravu hry.</p>
+
+    <div class="oh-exports-grid">
+        <a href="/exports/locations-preparation" class="oh-exports-card">
+            <div class="oh-exports-card-icon">
+                <i class="bi bi-geo-alt-fill"></i>
+            </div>
+            <div class="oh-exports-card-body">
+                <h3>Příprava lokací</h3>
+                <p>Tabulka lokací s názvy skrýší a razítky pro fyzické třídění.</p>
+            </div>
+        </a>
+    </div>
+</div>
+
+<style>
+    .oh-exports-page {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem;
+    }
+
+    .oh-exports-page h1 {
+        font-family: 'Merriweather', serif;
+        color: var(--oh-text-primary);
+        margin-bottom: 0.5rem;
+    }
+
+    .oh-exports-intro {
+        color: var(--oh-text-secondary);
+        margin-bottom: 2rem;
+    }
+
+    .oh-exports-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 1.5rem;
+    }
+
+    .oh-exports-card {
+        display: flex;
+        align-items: flex-start;
+        gap: 1rem;
+        padding: 1.25rem;
+        background: var(--oh-surface, #FAF6EC);
+        border: 1px solid var(--oh-border, #D9CFB6);
+        border-radius: 8px;
+        text-decoration: none;
+        color: inherit;
+        transition: background 0.15s, border-color 0.15s;
+    }
+
+    .oh-exports-card:hover {
+        background: #F2EBD8;
+        border-color: #B8A87A;
+    }
+
+    .oh-exports-card-icon {
+        font-size: 2rem;
+        color: #2D5016;
+        flex-shrink: 0;
+    }
+
+    .oh-exports-card-body h3 {
+        font-family: 'Merriweather', serif;
+        margin: 0 0 0.5rem 0;
+        font-size: 1.1rem;
+    }
+
+    .oh-exports-card-body p {
+        margin: 0;
+        color: var(--oh-text-secondary);
+        font-size: 0.9rem;
+    }
+</style>
