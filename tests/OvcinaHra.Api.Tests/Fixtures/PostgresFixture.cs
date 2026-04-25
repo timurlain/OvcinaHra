@@ -83,8 +83,11 @@ public class PostgresFixture : IAsyncLifetime
         // whole class lifetime, no need to re-auth per test.
         var tokenResponse = await Client.PostAsJsonAsync("/api/auth/dev-token",
             new DevTokenRequest("test-user", "test@ovcina.cz", "Test Organizátor"));
-        var token = await tokenResponse.Content.ReadFromJsonAsync<TokenResponse>();
-        Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token!.Token);
+        tokenResponse.EnsureSuccessStatusCode();
+        var token = await tokenResponse.Content.ReadFromJsonAsync<TokenResponse>()
+            ?? throw new InvalidOperationException(
+                "Dev-token endpoint returned an empty body — test fixture cannot authenticate.");
+        Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
     }
 
     public async Task DisposeAsync()
@@ -140,40 +143,60 @@ public class PostgresFixture : IAsyncLifetime
             var container = new PostgreSqlBuilder("postgres:17-alpine").Build();
             await container.StartAsync();
 
-            // Testcontainers' default DB is a one-off; use the built-in
-            // `postgres` admin database for CREATE/DROP DATABASE.
-            var adminB = new NpgsqlConnectionStringBuilder(container.GetConnectionString())
+            try
             {
-                Database = "postgres"
-            };
-            var adminConn = adminB.ConnectionString;
+                // Testcontainers' default DB is a one-off; use the built-in
+                // `postgres` admin database for CREATE/DROP DATABASE.
+                var adminB = new NpgsqlConnectionStringBuilder(container.GetConnectionString())
+                {
+                    Database = "postgres"
+                };
+                var adminConn = adminB.ConnectionString;
 
-            await using (var conn = new NpgsqlConnection(adminConn))
+                await using (var conn = new NpgsqlConnection(adminConn))
+                {
+                    await conn.OpenAsync();
+                    await using var cmd = conn.CreateCommand();
+                    cmd.CommandText = $"CREATE DATABASE \"{TemplateDbName}\";";
+                    await cmd.ExecuteNonQueryAsync();
+                }
+
+                // Migrate the template. Pooling=false ensures the connection
+                // truly closes on dispose — CREATE DATABASE ... TEMPLATE
+                // refuses to clone while any session is connected to source.
+                var migrationB = new NpgsqlConnectionStringBuilder(adminConn)
+                {
+                    Database = TemplateDbName,
+                    Pooling = false
+                };
+                await using (var ctx = new WorldDbContext(
+                    new DbContextOptionsBuilder<WorldDbContext>()
+                        .UseNpgsql(migrationB.ConnectionString)
+                        .Options))
+                {
+                    await ctx.Database.MigrateAsync();
+                }
+
+                _sharedContainer = container;
+                _adminConnectionString = adminConn;
+            }
+            catch
             {
-                await conn.OpenAsync();
-                await using var cmd = conn.CreateCommand();
-                cmd.CommandText = $"CREATE DATABASE \"{TemplateDbName}\";";
-                await cmd.ExecuteNonQueryAsync();
+                // If template setup fails, dispose the container we just
+                // started so we don't leak it. Re-throw the original error.
+                await container.DisposeAsync();
+                throw;
             }
 
-            // Migrate the template. Pooling=false ensures the connection truly
-            // closes on dispose — CREATE DATABASE ... TEMPLATE refuses to clone
-            // while any session is connected to the source.
-            var migrationB = new NpgsqlConnectionStringBuilder(adminConn)
+            // Belt-and-braces cleanup on process exit — Testcontainers' Ryuk
+            // daemon normally handles this, but if Ryuk is disabled or
+            // unavailable on a CI runner the container would otherwise stick
+            // around until the runner is recycled.
+            AppDomain.CurrentDomain.ProcessExit += async (_, _) =>
             {
-                Database = TemplateDbName,
-                Pooling = false
+                try { await container.DisposeAsync(); }
+                catch { /* best-effort */ }
             };
-            await using (var ctx = new WorldDbContext(
-                new DbContextOptionsBuilder<WorldDbContext>()
-                    .UseNpgsql(migrationB.ConnectionString)
-                    .Options))
-            {
-                await ctx.Database.MigrateAsync();
-            }
-
-            _sharedContainer = container;
-            _adminConnectionString = adminConn;
         }
         finally
         {
