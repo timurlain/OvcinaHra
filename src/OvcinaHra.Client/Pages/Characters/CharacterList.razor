@@ -464,11 +464,21 @@ else
     private async Task ImportAsync()
     {
         if (!GameContext.SelectedGameId.HasValue) return;
-        isImporting = true; importResult = null;
+        isImporting = true; importResult = null; error = null;
         try
         {
-            importResult = await Api.PostAsync<object, ImportResultDto>(
+            // Issue #191 — server may return 400 ProblemDetails when the
+            // local game is not yet linked to registrace. PostWithProblemAsync
+            // surfaces the Czech detail string verbatim ("…klikněte na
+            // „Propojit s registrací"") so the organizer knows what to do.
+            var (ok, value, problem) = await Api.PostWithProblemAsync<object, ImportResultDto>(
                 $"/api/characters/import/{GameContext.SelectedGameId}", new { });
+            if (!ok)
+            {
+                error = problem ?? "Server odmítl požadavek bez podrobností.";
+                return;
+            }
+            importResult = value;
             await LoadAsync();
             await LoadParentSourceAsync();
         }

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using OvcinaHra.Api.Data;
@@ -19,6 +20,22 @@ public class ApiWebApplicationFactory : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        // Issue #191 — pin the registrace integration base URL to a known
+        // unreachable loopback so any RegistraceImportService HTTP call in
+        // tests fails deterministically instead of depending on whether
+        // the dev/CI environment can reach https://registrace.ovcina.cz.
+        // Tests that need the upstream "linked but unreachable" path
+        // assert on the resulting Errors list; tests that gate on the
+        // "not linked" 400 short-circuit never reach the network anyway.
+        builder.ConfigureAppConfiguration((_, config) =>
+        {
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["IntegrationApi:BaseUrl"] = "http://127.0.0.1:1",
+                ["IntegrationApi:ApiKey"] = "test-key-not-used"
+            });
+        });
+
         builder.ConfigureServices(services =>
         {
             // Remove the existing DbContext registration

@@ -256,10 +256,30 @@ public static class CharacterEndpoints
         return TypedResults.NoContent();
     }
 
-    private static async Task<Ok<ImportResultDto>> ImportFromRegistrace(
+    private static async Task<Results<Ok<ImportResultDto>, ProblemHttpResult>> ImportFromRegistrace(
         int gameId, RegistraceImportService importService)
     {
-        var result = await importService.ImportAsync(gameId);
-        return TypedResults.Ok(result);
+        try
+        {
+            var result = await importService.ImportAsync(gameId);
+            return TypedResults.Ok(result);
+        }
+        catch (GameNotFoundException)
+        {
+            return TypedResults.Problem(
+                detail: RegistraceImportProblems.NotFoundDetail(gameId),
+                title: RegistraceImportProblems.NotFoundTitle,
+                statusCode: StatusCodes.Status404NotFound);
+        }
+        catch (GameNotLinkedToRegistraceException)
+        {
+            // Issue #191 — pre-empt the upstream call when the local game
+            // has no registrace counterpart. The Czech detail string is
+            // surfaced verbatim by ApiClient.PostWithProblemAsync.
+            return TypedResults.Problem(
+                detail: RegistraceImportProblems.NotLinkedDetail,
+                title: RegistraceImportProblems.NotLinkedTitle,
+                statusCode: StatusCodes.Status400BadRequest);
+        }
     }
 }
