@@ -6,23 +6,23 @@ namespace OvcinaHra.Shared.Dtos;
 
 // --- TreasureQuest DTOs ---
 
-public record TreasureQuestListDto(int Id, string Title, TreasureQuestDifficulty Difficulty, int? LocationId, int? SecretStashId, int GameId)
+public record TreasureQuestListDto(int Id, string Title, GameTimePhase Difficulty, int? LocationId, int? SecretStashId, int GameId)
 {
     [JsonIgnore]
     public string DifficultyDisplay => Difficulty.GetDisplayName();
 }
 
 public record TreasureQuestDetailDto(
-    int Id, string Title, string? Clue, TreasureQuestDifficulty Difficulty,
+    int Id, string Title, string? Clue, GameTimePhase Difficulty,
     int? LocationId, string? LocationName, int? SecretStashId, string? SecretStashName, int GameId,
     List<TreasureItemDto> Items);
 
 public record CreateTreasureQuestDto(
-    string Title, TreasureQuestDifficulty Difficulty, int GameId,
+    string Title, GameTimePhase Difficulty, int GameId,
     string? Clue = null, int? LocationId = null, int? SecretStashId = null);
 
 public record UpdateTreasureQuestDto(
-    string Title, string? Clue, TreasureQuestDifficulty Difficulty,
+    string Title, string? Clue, GameTimePhase Difficulty,
     int? LocationId, int? SecretStashId);
 
 public record TreasureItemDto(int Id, int ItemId, string ItemName, int Count, int? TreasureQuestId);
@@ -48,7 +48,7 @@ public record TreasurePlanningLocationDto(
 public record StashSummaryDto(int Id, string Name, int ItemCount);
 
 public record AssignTreasureDto(
-    string Title, TreasureQuestDifficulty Difficulty, int GameId,
+    string Title, GameTimePhase Difficulty, int GameId,
     string? Clue = null, int? LocationId = null, int? SecretStashId = null,
     List<int>? TreasureItemIds = null,
     List<UnlimitedItemAssignDto>? UnlimitedItems = null);

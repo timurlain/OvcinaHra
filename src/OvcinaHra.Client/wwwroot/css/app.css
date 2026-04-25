@@ -32,15 +32,21 @@
     --oh-kingdom-lake: #1565C0;
     --oh-kingdom-arnor: #F9A825;
 
-    /* === Stage palette (canon — treasure-quest difficulty) === */
+    /* === Stage palette (canon — game-time phase, drives treasure-quest
+       difficulty AND the timeline Gantt stage band) === */
     --oh-stage-start:    #7FA657;
     --oh-stage-early:    #D4A63C;
     --oh-stage-midgame:  #C17B3D;
     --oh-stage-lategame: #8C2423;
+    /* Issue #182 — EndGame ("Konec hry"). Deep wine, parchment-compatible per
+       kingdom-seal aesthetic; intentionally darker than Lategame (#8C2423)
+       so the visual progression reads start → early → mid → late → end. */
+    --oh-stage-endgame:  #4A1D24;
     --oh-stage-start-soft:    rgba(127, 166,  87, 0.14);
     --oh-stage-early-soft:    rgba(212, 166,  60, 0.14);
     --oh-stage-midgame-soft:  rgba(193, 123,  61, 0.14);
     --oh-stage-lategame-soft: rgba(140,  36,  35, 0.12);
+    --oh-stage-endgame-soft:  rgba( 74,  29,  36, 0.12);
 
     /* === Location kind (map marker dots — canon) === */
     --oh-kind-town:       #2c3e50;

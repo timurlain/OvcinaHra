@@ -26,7 +26,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
     {
         var dto = new CreatePersonalQuestDto(
             Name: "Zachránit vesničany",
-            Difficulty: TreasureQuestDifficulty.Midgame,
+            Difficulty: GameTimePhase.Midgame,
             Description: "Najdi a osvoboď unesené vesničany z lupičského tábora.",
             AllowWarrior: true,
             AllowThief: true,
@@ -44,7 +44,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         Assert.NotNull(created);
         Assert.True(created.Id > 0);
         Assert.Equal("Zachránit vesničany", created.Name);
-        Assert.Equal(TreasureQuestDifficulty.Midgame, created.Difficulty);
+        Assert.Equal(GameTimePhase.Midgame, created.Difficulty);
         Assert.True(created.AllowWarrior);
         Assert.False(created.AllowMage);
         Assert.True(created.AllowThief);
@@ -75,7 +75,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
             var quest = new PersonalQuest
             {
                 Name = "Hrdinský čin",
-                Difficulty = TreasureQuestDifficulty.Early,
+                Difficulty = GameTimePhase.Early,
                 AllowWarrior = true,
                 SkillRewards = [new PersonalQuestSkillReward { SkillId = skill.Id }],
                 ItemRewards = [new PersonalQuestItemReward { ItemId = item.Id, Quantity = 2 }]
@@ -112,7 +112,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         // Arrange — create via POST
         var createDto = new CreatePersonalQuestDto(
             Name: "Původní název",
-            Difficulty: TreasureQuestDifficulty.Start,
+            Difficulty: GameTimePhase.Start,
             Description: "Původní popis",
             AllowWarrior: true);
         var createResponse = await Client.PostAsJsonAsync("/api/personal-quests", createDto);
@@ -121,7 +121,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         // Act — PUT with changed fields
         var updateDto = new UpdatePersonalQuestDto(
             Name: "Nový název",
-            Difficulty: TreasureQuestDifficulty.Lategame,
+            Difficulty: GameTimePhase.Lategame,
             Description: "Nový popis",
             AllowWarrior: false,
             AllowArcher: true,
@@ -139,7 +139,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         var reloaded = await Client.GetFromJsonAsync<PersonalQuestDetailDto>($"/api/personal-quests/{created.Id}");
         Assert.NotNull(reloaded);
         Assert.Equal("Nový název", reloaded.Name);
-        Assert.Equal(TreasureQuestDifficulty.Lategame, reloaded.Difficulty);
+        Assert.Equal(GameTimePhase.Lategame, reloaded.Difficulty);
         Assert.Equal("Nový popis", reloaded.Description);
         Assert.False(reloaded.AllowWarrior);
         Assert.True(reloaded.AllowArcher);
@@ -156,7 +156,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
     {
         var updateDto = new UpdatePersonalQuestDto(
             Name: "Neexistující",
-            Difficulty: TreasureQuestDifficulty.Early,
+            Difficulty: GameTimePhase.Early,
             Description: null,
             AllowWarrior: false, AllowArcher: false, AllowMage: false, AllowThief: false,
             QuestCardText: null, RewardCardText: null, RewardNote: null, Notes: null);
@@ -170,7 +170,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
     {
         var createDto = new CreatePersonalQuestDto(
             Name: "K smazání",
-            Difficulty: TreasureQuestDifficulty.Early);
+            Difficulty: GameTimePhase.Early);
         var createResponse = await Client.PostAsJsonAsync("/api/personal-quests", createDto);
         var created = await createResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
 
@@ -212,7 +212,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
             var quest = new PersonalQuest
             {
                 Name = "Kaskáda testu",
-                Difficulty = TreasureQuestDifficulty.Midgame,
+                Difficulty = GameTimePhase.Midgame,
                 SkillRewards = [new PersonalQuestSkillReward { SkillId = skill.Id }],
                 ItemRewards = [new PersonalQuestItemReward { ItemId = item.Id, Quantity = 1 }]
             };
@@ -298,7 +298,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
             var quest = new PersonalQuest
             {
                 Name = "Úkol druida",
-                Difficulty = TreasureQuestDifficulty.Early,
+                Difficulty = GameTimePhase.Early,
                 AllowMage = true,
                 SkillRewards = [new PersonalQuestSkillReward { Skill = skill }],
                 ItemRewards = [new PersonalQuestItemReward { Item = item, Quantity = 2 }]
@@ -343,7 +343,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
 
         var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
-            new CreatePersonalQuestDto(Name: "Linkovaný úkol", Difficulty: TreasureQuestDifficulty.Early));
+            new CreatePersonalQuestDto(Name: "Linkovaný úkol", Difficulty: GameTimePhase.Early));
         var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
 
         // Act
@@ -374,7 +374,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
 
         var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
-            new CreatePersonalQuestDto(Name: "Duplikát", Difficulty: TreasureQuestDifficulty.Early));
+            new CreatePersonalQuestDto(Name: "Duplikát", Difficulty: GameTimePhase.Early));
         var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
 
         var dto = new CreateGamePersonalQuestDto(game!.Id, quest!.Id, XpCost: 5, PerKingdomLimit: null);
@@ -395,7 +395,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
 
         var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
-            new CreatePersonalQuestDto(Name: "Ladit", Difficulty: TreasureQuestDifficulty.Early));
+            new CreatePersonalQuestDto(Name: "Ladit", Difficulty: GameTimePhase.Early));
         var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
 
         await Client.PostAsJsonAsync("/api/personal-quests/game-link",
@@ -434,7 +434,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
 
         var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
-            new CreatePersonalQuestDto(Name: "Ponechat v katalogu", Difficulty: TreasureQuestDifficulty.Early));
+            new CreatePersonalQuestDto(Name: "Ponechat v katalogu", Difficulty: GameTimePhase.Early));
         var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
 
         await Client.PostAsJsonAsync("/api/personal-quests/game-link",
@@ -475,7 +475,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         }
 
         var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
-            new CreatePersonalQuestDto(Name: "Skillová odměna", Difficulty: TreasureQuestDifficulty.Early));
+            new CreatePersonalQuestDto(Name: "Skillová odměna", Difficulty: GameTimePhase.Early));
         var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
 
         // Act
@@ -507,7 +507,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         }
 
         var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
-            new CreatePersonalQuestDto(Name: "Duplikátní skill", Difficulty: TreasureQuestDifficulty.Early));
+            new CreatePersonalQuestDto(Name: "Duplikátní skill", Difficulty: GameTimePhase.Early));
         var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
 
         var first = await Client.PostAsJsonAsync(
@@ -535,7 +535,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         }
 
         var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
-            new CreatePersonalQuestDto(Name: "K odebrání skillu", Difficulty: TreasureQuestDifficulty.Early));
+            new CreatePersonalQuestDto(Name: "K odebrání skillu", Difficulty: GameTimePhase.Early));
         var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
 
         await Client.PostAsJsonAsync(
@@ -557,7 +557,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
     public async Task RemoveSkillReward_NotLinked_Returns404()
     {
         var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
-            new CreatePersonalQuestDto(Name: "Idempotent", Difficulty: TreasureQuestDifficulty.Early));
+            new CreatePersonalQuestDto(Name: "Idempotent", Difficulty: GameTimePhase.Early));
         var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
 
         var response = await Client.DeleteAsync(
@@ -584,7 +584,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         }
 
         var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
-            new CreatePersonalQuestDto(Name: "Item odměna", Difficulty: TreasureQuestDifficulty.Early));
+            new CreatePersonalQuestDto(Name: "Item odměna", Difficulty: GameTimePhase.Early));
         var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
 
         // Act — add with qty 3
@@ -622,7 +622,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         }
 
         var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
-            new CreatePersonalQuestDto(Name: "K odebrání itemu", Difficulty: TreasureQuestDifficulty.Early));
+            new CreatePersonalQuestDto(Name: "K odebrání itemu", Difficulty: GameTimePhase.Early));
         var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
 
         await Client.PostAsJsonAsync(
@@ -645,7 +645,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
     {
         var create = new CreatePersonalQuestDto(
             Name: "Test XP Quest",
-            Difficulty: TreasureQuestDifficulty.Early,
+            Difficulty: GameTimePhase.Early,
             Description: null,
             AllowWarrior: true, AllowArcher: false, AllowMage: false, AllowThief: false,
             QuestCardText: null, RewardCardText: null, RewardNote: null, Notes: null,
@@ -669,7 +669,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
             new CreatePersonalQuestDto(
                 Name: "Fallback úkol",
-                Difficulty: TreasureQuestDifficulty.Early,
+                Difficulty: GameTimePhase.Early,
                 XpCost: 42));
         var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
 
@@ -697,7 +697,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         var questResponse = await Client.PostAsJsonAsync("/api/personal-quests",
             new CreatePersonalQuestDto(
                 Name: "Override úkol",
-                Difficulty: TreasureQuestDifficulty.Early,
+                Difficulty: GameTimePhase.Early,
                 XpCost: 42));
         var quest = await questResponse.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();
 
@@ -823,7 +823,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
     {
         var dto = new CreatePersonalQuestDto(
             Name: "Bad XP quest",
-            Difficulty: TreasureQuestDifficulty.Early,
+            Difficulty: GameTimePhase.Early,
             Description: null,
             AllowWarrior: true, AllowArcher: false, AllowMage: false, AllowThief: false,
             QuestCardText: null, RewardCardText: null, RewardNote: null, Notes: null,
@@ -878,7 +878,7 @@ public class PersonalQuestEndpointTests(PostgresFixture postgres) : IntegrationT
         var resp = await Client.PostAsJsonAsync("/api/personal-quests",
             new CreatePersonalQuestDto(
                 Name: name,
-                Difficulty: TreasureQuestDifficulty.Early,
+                Difficulty: GameTimePhase.Early,
                 XpCost: xpCost));
         resp.EnsureSuccessStatusCode();
         var quest = await resp.Content.ReadFromJsonAsync<PersonalQuestDetailDto>();

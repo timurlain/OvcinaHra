@@ -133,14 +133,14 @@
     [Parameter] public List<StashSummaryDto> Stashes { get; set; } = [];
     [Parameter] public List<TreasurePoolItemDto> SelectedPool { get; set; } = [];
     [Parameter] public List<UnlimitedItemDto> Unlimited { get; set; } = [];
-    [Parameter] public TreasureQuestDifficulty InitialDifficulty { get; set; } = TreasureQuestDifficulty.Start;
+    [Parameter] public GameTimePhase InitialDifficulty { get; set; } = GameTimePhase.Start;
     [Parameter] public string? InitialTitle { get; set; }
     [Parameter] public EventCallback<AssignTreasureDto> OnSave { get; set; }
     [Parameter] public EventCallback OnCancel { get; set; }
 
     private string title = "";
     private string? clue;
-    private TreasureQuestDifficulty difficulty;
+    private GameTimePhase difficulty;
     private bool toStash;
     private int? stashId;
     private int? newUnlimitedItemId;
@@ -151,14 +151,15 @@
 
     private record UnlimitedChoice(int ItemId, string Name, int Count);
 
-    private record StagePick(string Key, TreasureQuestDifficulty Value, string Label);
+    private record StagePick(string Key, GameTimePhase Value, string Label);
 
     private static readonly List<StagePick> stageKeys =
     [
-        new("start", TreasureQuestDifficulty.Start, "Start"),
-        new("early", TreasureQuestDifficulty.Early, "Rozvoj hry"),
-        new("mid", TreasureQuestDifficulty.Midgame, "Střed hry"),
-        new("late", TreasureQuestDifficulty.Lategame, "Závěr hry")
+        new("start", GameTimePhase.Start, "Start"),
+        new("early", GameTimePhase.Early, "Rozvoj hry"),
+        new("mid", GameTimePhase.Midgame, "Střed hry"),
+        new("late", GameTimePhase.Lategame, "Závěr hry"),
+        new("end", GameTimePhase.EndGame, "Konec hry")
     ];
 
     private bool _initialised;

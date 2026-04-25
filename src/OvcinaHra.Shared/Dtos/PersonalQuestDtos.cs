@@ -8,7 +8,7 @@ public record PersonalQuestListDto(
     int Id,
     string Name,
     string? Description,
-    TreasureQuestDifficulty Difficulty,
+    GameTimePhase Difficulty,
     bool AllowWarrior,
     bool AllowArcher,
     bool AllowMage,
@@ -55,7 +55,7 @@ public record PersonalQuestDetailDto(
     int Id,
     string Name,
     string? Description,
-    TreasureQuestDifficulty Difficulty,
+    GameTimePhase Difficulty,
     bool AllowWarrior,
     bool AllowArcher,
     bool AllowMage,
@@ -75,7 +75,7 @@ public record ItemRewardDto(int ItemId, string ItemName, int Quantity);
 
 public record CreatePersonalQuestDto(
     string Name,
-    TreasureQuestDifficulty Difficulty,
+    GameTimePhase Difficulty,
     string? Description = null,
     bool AllowWarrior = false,
     bool AllowArcher = false,
@@ -89,7 +89,7 @@ public record CreatePersonalQuestDto(
 
 public record UpdatePersonalQuestDto(
     string Name,
-    TreasureQuestDifficulty Difficulty,
+    GameTimePhase Difficulty,
     string? Description,
     bool AllowWarrior,
     bool AllowArcher,
@@ -105,7 +105,7 @@ public record GamePersonalQuestListDto(
     int Id,            // PersonalQuest.Id, matches the ListDto for popup reuse
     string Name,
     string? Description,
-    TreasureQuestDifficulty Difficulty,
+    GameTimePhase Difficulty,
     bool AllowWarrior,
     bool AllowArcher,
     bool AllowMage,

@@ -173,7 +173,7 @@ public static class TreasurePlanningEndpoints
             var stashQuests = quests.Where(q => q.SecretStashId.HasValue && stashIds.Contains(q.SecretStashId.Value)).ToList();
             var allQuests = locationQuests.Concat(stashQuests).ToList();
 
-            int CountByDifficulty(TreasureQuestDifficulty d) =>
+            int CountByDifficulty(GameTimePhase d) =>
                 allQuests.Where(q => q.Difficulty == d).SelectMany(q => q.TreasureItems).Sum(ti => ti.Count);
 
             var stashSummaries = loc.GameSecretStashes.Select(gs =>
@@ -184,10 +184,10 @@ public static class TreasurePlanningEndpoints
 
             return new TreasurePlanningLocationDto(
                 loc.Id, loc.Name, loc.LocationKind,
-                CountByDifficulty(TreasureQuestDifficulty.Start),
-                CountByDifficulty(TreasureQuestDifficulty.Early),
-                CountByDifficulty(TreasureQuestDifficulty.Midgame),
-                CountByDifficulty(TreasureQuestDifficulty.Lategame),
+                CountByDifficulty(GameTimePhase.Start),
+                CountByDifficulty(GameTimePhase.Early),
+                CountByDifficulty(GameTimePhase.Midgame),
+                CountByDifficulty(GameTimePhase.Lategame),
                 allQuests.SelectMany(q => q.TreasureItems).Sum(ti => ti.Count),
                 loc.GameSecretStashes.Count, 3,
                 stashSummaries);
@@ -207,17 +207,17 @@ public static class TreasurePlanningEndpoints
             .Include(tq => tq.TreasureItems)
             .ToListAsync();
 
-        int CountByDifficulty(TreasureQuestDifficulty d) =>
+        int CountByDifficulty(GameTimePhase d) =>
             quests.Where(q => q.Difficulty == d).SelectMany(q => q.TreasureItems).Sum(ti => ti.Count);
 
         var placed = quests.SelectMany(q => q.TreasureItems).Sum(ti => ti.Count);
 
         return TypedResults.Ok(new TreasureSummaryDto(
             poolRemaining, placed,
-            CountByDifficulty(TreasureQuestDifficulty.Start),
-            CountByDifficulty(TreasureQuestDifficulty.Early),
-            CountByDifficulty(TreasureQuestDifficulty.Midgame),
-            CountByDifficulty(TreasureQuestDifficulty.Lategame)));
+            CountByDifficulty(GameTimePhase.Start),
+            CountByDifficulty(GameTimePhase.Early),
+            CountByDifficulty(GameTimePhase.Midgame),
+            CountByDifficulty(GameTimePhase.Lategame)));
     }
 
     private static async Task<Results<Created<TreasureQuestDetailDto>, ValidationProblem>> AssignTreasure(AssignTreasureDto dto, WorldDbContext db)

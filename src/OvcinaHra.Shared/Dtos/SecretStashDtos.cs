@@ -34,7 +34,7 @@ public record SecretStashGameDetailDto(
     List<StashTreasureDto> Treasures);
 
 public record StashTreasureDto(
-    int TreasureQuestId, string Title, string? Clue, TreasureQuestDifficulty Difficulty,
+    int TreasureQuestId, string Title, string? Clue, GameTimePhase Difficulty,
     List<StashTreasureItemDto> Items);
 
 public record StashTreasureItemDto(int ItemId, string ItemName, int Count);

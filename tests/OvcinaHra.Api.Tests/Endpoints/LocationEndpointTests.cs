@@ -237,7 +237,7 @@ public class LocationEndpointTests(PostgresFixture postgres) : IntegrationTestBa
             {
                 Title = "Poklad v dole",
                 Clue = "Pod velkým kamenem",
-                Difficulty = TreasureQuestDifficulty.Midgame,
+                Difficulty = GameTimePhase.Midgame,
                 LocationId = loc.Id,
                 GameId = game.Id
             };
@@ -245,7 +245,7 @@ public class LocationEndpointTests(PostgresFixture postgres) : IntegrationTestBa
             {
                 Title = "Poklad ve skrýši",
                 Clue = "V dřevěné krabici",
-                Difficulty = TreasureQuestDifficulty.Early,
+                Difficulty = GameTimePhase.Early,
                 SecretStashId = stash.Id,
                 GameId = game.Id
             };

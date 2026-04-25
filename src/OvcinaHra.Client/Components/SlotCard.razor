@@ -77,7 +77,7 @@
     [Parameter] public bool IsActive { get; set; }
     [Parameter] public bool IsPast { get; set; }
     /// <summary>Stage of the previous slot — when different from this slot's, render the transition badge.</summary>
-    [Parameter] public TreasureQuestDifficulty? StageTransitionFrom { get; set; }
+    [Parameter] public GameTimePhase? StageTransitionFrom { get; set; }
     [Parameter] public EventCallback<int> OnEdit { get; set; }
 
     private bool forceExpanded;
@@ -108,13 +108,14 @@
         || !string.IsNullOrWhiteSpace(Slot.BattlefieldBonusName)
         || (StageTransitionFrom is not null && StageTransitionFrom != Slot.Stage);
 
-    private static string StageModifier(TreasureQuestDifficulty d) => d switch
+    private static string StageModifier(GameTimePhase d) => d switch
     {
-        TreasureQuestDifficulty.Start => "start",
-        TreasureQuestDifficulty.Early => "early",
-        TreasureQuestDifficulty.Midgame => "midgame",
-        TreasureQuestDifficulty.Lategame => "lategame",
-        _ => "start"
+        GameTimePhase.Start => "start",
+        GameTimePhase.Early => "early",
+        GameTimePhase.Midgame => "midgame",
+        GameTimePhase.Lategame => "lategame",
+        GameTimePhase.EndGame => "endgame",
+        _ => throw new ArgumentOutOfRangeException(nameof(d), d, null)
     };
 
     private static (string Cls, string Icon) ChipFor(GameEventKind k) => k switch

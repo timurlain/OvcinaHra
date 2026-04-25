@@ -199,7 +199,7 @@ public class TimelineEndpointTests(PostgresFixture postgres) : IntegrationTestBa
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var created = await response.Content.ReadFromJsonAsync<GameTimeSlotDto>();
-        Assert.Equal(TreasureQuestDifficulty.Start, created!.Stage);
+        Assert.Equal(GameTimePhase.Start, created!.Stage);
     }
 
     [Fact]
@@ -212,15 +212,15 @@ public class TimelineEndpointTests(PostgresFixture postgres) : IntegrationTestBa
                 GameId: game.Id,
                 StartTime: new DateTime(2026, 5, 2, 14, 0, 0, DateTimeKind.Utc),
                 DurationHours: 3,
-                Stage: TreasureQuestDifficulty.Midgame));
+                Stage: GameTimePhase.Midgame));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var created = await response.Content.ReadFromJsonAsync<GameTimeSlotDto>();
-        Assert.Equal(TreasureQuestDifficulty.Midgame, created!.Stage);
+        Assert.Equal(GameTimePhase.Midgame, created!.Stage);
 
         var fetched = await Client.GetFromJsonAsync<List<GameTimeSlotDto>>($"/api/timeline/slots/by-game/{game.Id}");
         Assert.Single(fetched!);
-        Assert.Equal(TreasureQuestDifficulty.Midgame, fetched![0].Stage);
+        Assert.Equal(GameTimePhase.Midgame, fetched![0].Stage);
     }
 
     [Fact]
@@ -238,11 +238,11 @@ public class TimelineEndpointTests(PostgresFixture postgres) : IntegrationTestBa
                 InGameYear: null,
                 Rules: null,
                 BattlefieldBonusId: null,
-                Stage: TreasureQuestDifficulty.Lategame));
+                Stage: GameTimePhase.Lategame));
         Assert.Equal(HttpStatusCode.NoContent, update.StatusCode);
 
         var fetched = await Client.GetFromJsonAsync<List<GameTimeSlotDto>>($"/api/timeline/slots/by-game/{game.Id}");
-        Assert.Equal(TreasureQuestDifficulty.Lategame, fetched!.Single().Stage);
+        Assert.Equal(GameTimePhase.Lategame, fetched!.Single().Stage);
     }
 
     [Fact]
@@ -378,7 +378,7 @@ public class TimelineEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         var game = await CreateTestGameAsync();
         var create = await Client.PostAsJsonAsync("/api/timeline/slots",
             new CreateGameTimeSlotDto(game.Id, new DateTime(2026, 5, 1, 10, 0, 0, DateTimeKind.Utc), 2,
-                Stage: TreasureQuestDifficulty.Midgame));
+                Stage: GameTimePhase.Midgame));
         var slot = await create.Content.ReadFromJsonAsync<GameTimeSlotDto>();
 
         // Older client: no Stage in payload — null means "leave it alone".
@@ -393,7 +393,7 @@ public class TimelineEndpointTests(PostgresFixture postgres) : IntegrationTestBa
 
         var fetched = await Client.GetFromJsonAsync<List<GameTimeSlotDto>>($"/api/timeline/slots/by-game/{game.Id}");
         var thisSlot = fetched!.Single(s => s.Id == slot.Id);
-        Assert.Equal(TreasureQuestDifficulty.Midgame, thisSlot.Stage);
+        Assert.Equal(GameTimePhase.Midgame, thisSlot.Stage);
         Assert.Equal(1500, thisSlot.InGameYear);
         Assert.Equal("Aktualizovaná pravidla", thisSlot.Rules);
     }
@@ -423,5 +423,30 @@ public class TimelineEndpointTests(PostgresFixture postgres) : IntegrationTestBa
             new CreateGameEventDto(name, null, [placeholder.Id], [], [], []));
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<GameEventDetailDto>())!;
+    }
+
+    // Issue #182 — confirm the new EndGame phase persists through the slot
+    // create/list path. String-backed conversion handles the new value
+    // without a migration; this test is the smoke that proves it.
+    [Fact]
+    public async Task CreateSlot_WithEndGameStage_RoundTrips()
+    {
+        var game = await CreateTestGameAsync();
+
+        var response = await Client.PostAsJsonAsync("/api/timeline/slots",
+            new CreateGameTimeSlotDto(
+                GameId: game.Id,
+                StartTime: new DateTime(2026, 5, 2, 20, 0, 0, DateTimeKind.Utc),
+                DurationHours: 1,
+                Stage: GameTimePhase.EndGame));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<GameTimeSlotDto>();
+        Assert.Equal(GameTimePhase.EndGame, created!.Stage);
+
+        var fetched = await Client.GetFromJsonAsync<List<GameTimeSlotDto>>(
+            $"/api/timeline/slots/by-game/{game.Id}");
+        Assert.NotNull(fetched);
+        Assert.Contains(fetched, s => s.Stage == GameTimePhase.EndGame);
     }
 }

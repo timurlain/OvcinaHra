@@ -13,7 +13,7 @@ public class GameTimeSlotConfiguration : IEntityTypeConfiguration<GameTimeSlot>
         builder.Property(e => e.Stage)
             .HasConversion<string>()
             .HasMaxLength(20)
-            .HasDefaultValue(TreasureQuestDifficulty.Start);
+            .HasDefaultValue(GameTimePhase.Start);
         builder.HasOne(e => e.BattlefieldBonus).WithMany(b => b.TimeSlots).HasForeignKey(e => e.BattlefieldBonusId);
         builder.HasOne(e => e.Game).WithMany(g => g.TimeSlots).HasForeignKey(e => e.GameId);
     }
