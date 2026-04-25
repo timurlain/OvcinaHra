@@ -57,6 +57,35 @@
         }
     </div>
 
+    @* Phase 3 — icon-specific controls. Only visible when the icon tool is
+       active. Asset picker is a small button row (6 SDF icons curated in
+       wwwroot/img/overlay-icons). *@
+    @if (Tool == "icon")
+    {
+        <div class="oh-mo-icons" role="group" aria-label="Volba ikony">
+            @foreach (var key in IconAssets)
+            {
+                <button type="button"
+                        class="oh-mo-icon @(string.Equals(key, IconAsset, StringComparison.Ordinal) ? "is-active" : "")"
+                        title="@IconLabel(key)" aria-label="@IconLabel(key)"
+                        aria-pressed="@(string.Equals(key, IconAsset, StringComparison.Ordinal))"
+                        @onclick="() => SetIconAssetAsync(key)">
+                    <img src="@($"/img/overlay-icons/{key}.svg")" alt="@IconLabel(key)" style="color:@Color" />
+                </button>
+            }
+            <label class="oh-mo-label">Otočení
+                <input type="range" min="0" max="359" step="1" value="@IconRotation"
+                       @onchange="OnIconRotationChangedAsync" />
+                <span class="oh-mo-stroke-val">@(((int)IconRotation))°</span>
+            </label>
+            <label class="oh-mo-label">Velikost
+                <input type="range" min="0.5" max="3" step="0.1" value="@IconScale"
+                       @onchange="OnIconScaleChangedAsync" />
+                <span class="oh-mo-stroke-val">@IconScale.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)×</span>
+            </label>
+        </div>
+    }
+
     @* Save / Cancel. *@
     <div class="oh-mo-actions" role="group" aria-label="Akce">
         <button type="button" class="btn btn-outline-secondary btn-sm" title="Zahodit změny"
@@ -87,15 +116,37 @@
 
     private sealed record ToolItem(string Key, string Label, string Icon);
 
-    // Czech tool labels. Phase 3 adds "ikona"/"šipka" here too.
+    // Czech tool labels. Phase 3 adds "Ikona" + "Vybrat" (select-to-edit).
+    // Arrows skipped — MapLibre has no native arrow-head support, plain
+    // polylines cover the same use case.
     private static readonly ToolItem[] Tools = new[]
     {
+        new ToolItem("select",    "Vybrat",       "bi-cursor"),
         new ToolItem("text",      "Text",         "bi-fonts"),
         new ToolItem("freehand",  "Kresba",       "bi-vector-pen"),
         new ToolItem("polyline",  "Čára",         "bi-slash-lg"),
         new ToolItem("rectangle", "Obdélník",     "bi-square"),
         new ToolItem("circle",    "Kruh",         "bi-circle"),
-        new ToolItem("polygon",   "Mnohoúhelník", "bi-pentagon")
+        new ToolItem("polygon",   "Mnohoúhelník", "bi-pentagon"),
+        new ToolItem("icon",      "Ikona",        "bi-bookmark-star")
+    };
+
+    // Curated SDF icon palette — must match ICON_ASSETS in overlay-interop.js
+    // and the slugs of /wwwroot/img/overlay-icons/{key}.svg.
+    private static readonly string[] IconAssets = new[]
+    {
+        "flag", "tent", "chest", "skull", "door", "fire"
+    };
+
+    private static string IconLabel(string key) => key switch
+    {
+        "flag" => "Vlajka",
+        "tent" => "Stan",
+        "chest" => "Truhla",
+        "skull" => "Lebka",
+        "door" => "Dveře",
+        "fire" => "Oheň",
+        _ => key
     };
 
     [Parameter] public string Tool { get; set; } = "text";
@@ -113,11 +164,33 @@
     [Parameter] public int FontSize { get; set; } = 14;
     [Parameter] public EventCallback<int> FontSizeChanged { get; set; }
 
+    [Parameter] public string IconAsset { get; set; } = "flag";
+    [Parameter] public EventCallback<string> IconAssetChanged { get; set; }
+
+    [Parameter] public double IconRotation { get; set; }
+    [Parameter] public EventCallback<double> IconRotationChanged { get; set; }
+
+    [Parameter] public double IconScale { get; set; } = 1.0;
+    [Parameter] public EventCallback<double> IconScaleChanged { get; set; }
+
     [Parameter] public EventCallback OnSave { get; set; }
     [Parameter] public EventCallback OnCancel { get; set; }
 
     private Task SelectToolAsync(string key) => ToolChanged.InvokeAsync(key);
     private Task SetColorAsync(string hex) => ColorChanged.InvokeAsync(hex);
+    private Task SetIconAssetAsync(string key) => IconAssetChanged.InvokeAsync(key);
+
+    private async Task OnIconRotationChangedAsync(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), System.Globalization.CultureInfo.InvariantCulture, out var v))
+            await IconRotationChanged.InvokeAsync(v);
+    }
+
+    private async Task OnIconScaleChangedAsync(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), System.Globalization.CultureInfo.InvariantCulture, out var v))
+            await IconScaleChanged.InvokeAsync(v);
+    }
 
     private async Task OnCustomColorChangedAsync(ChangeEventArgs e)
     {

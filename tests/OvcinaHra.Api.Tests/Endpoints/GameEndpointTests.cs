@@ -187,7 +187,11 @@ public class GameEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
             new PolygonShape("p1", "#B26223", "#B26223", 2, new List<OverlayCoord>
             {
                 new(49.90, 17.50), new(49.91, 17.52), new(49.89, 17.52)
-            })
+            }),
+            // Phase 3 — icon primitive. Asset key, rotation, scale must
+            // round-trip through Game.OverlayJson without schema migration.
+            new IconShape("i1", "#8C2423", "flag",
+                new OverlayCoord(49.95, 17.55), Rotation: 45.0, Scale: 1.5)
         });
 
         var putResponse = await Client.PutAsJsonAsync($"/api/games/{game.Id}/overlay", dto);
@@ -198,7 +202,7 @@ public class GameEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
 
         var roundTripped = await getResponse.Content.ReadFromJsonAsync<MapOverlayDto>();
         Assert.NotNull(roundTripped);
-        Assert.Equal(6, roundTripped!.Shapes.Count);
+        Assert.Equal(7, roundTripped!.Shapes.Count);
 
         Assert.IsType<TextShape>(roundTripped.Shapes[0]);
         var text = (TextShape)roundTripped.Shapes[0];
@@ -216,6 +220,14 @@ public class GameEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
 
         Assert.IsType<PolygonShape>(roundTripped.Shapes[5]);
         Assert.Equal(3, ((PolygonShape)roundTripped.Shapes[5]).Points.Count);
+
+        Assert.IsType<IconShape>(roundTripped.Shapes[6]);
+        var icon = (IconShape)roundTripped.Shapes[6];
+        Assert.Equal("flag", icon.AssetKey);
+        Assert.Equal(45.0, icon.Rotation);
+        Assert.Equal(1.5, icon.Scale);
+        Assert.Equal(49.95, icon.Coord.Lat);
+        Assert.Equal(17.55, icon.Coord.Lng);
     }
 
     [Fact]

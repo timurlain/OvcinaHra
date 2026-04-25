@@ -1,26 +1,37 @@
-// Vector overlay editor for the MapLibre map — issue #96, Phase 1+2.
+// Vector overlay editor for the MapLibre map — issue #96, Phase 1+2 (+3).
 //
 // Exposes a `window.ovcinaOverlay` global. Pairs with the main `window.ovcinaMap`
 // MapLibre instance (MapPage.razor / TreasurePlanning.razor both boot one map).
 // Operates on the same MapLibre instance — doesn't manage its own map.
 //
 // Shape wire format matches `OvcinaHra.Shared.Dtos.MapOverlayShape`:
-//   { type: "text"|"freehand"|"polyline"|"rectangle"|"circle"|"polygon",
+//   { type: "text"|"freehand"|"polyline"|"rectangle"|"circle"|"polygon"|"icon",
 //     id, color, strokeWidth?, fillColor?, ... geometry ... }
 //
-// Phase 3 will add icons + arrows + select-to-edit; this file intentionally
-// has no selection/hit-test helpers yet.
+// Phase 3 adds: icon primitive, select-to-edit (hit-test → property panel),
+// shape update / delete via Blazor → JS interop. Arrows skipped (MapLibre
+// has no native arrow head support and lines suffice).
 
 (function () {
     const SRC_SAVED = 'oh-overlay-src';
     const SRC_PREVIEW = 'oh-overlay-preview-src';
+    const SRC_SELECTION = 'oh-overlay-selection-src';
     const LYR_FILLS = 'oh-overlay-fills';
     const LYR_STROKES = 'oh-overlay-strokes';
     const LYR_TEXT = 'oh-overlay-text';
+    const LYR_ICONS = 'oh-overlay-icons';
     const LYR_PREVIEW_FILLS = 'oh-overlay-preview-fills';
     const LYR_PREVIEW_STROKES = 'oh-overlay-preview-strokes';
     const LYR_PREVIEW_TEXT = 'oh-overlay-preview-text';
+    const LYR_PREVIEW_ICONS = 'oh-overlay-preview-icons';
+    const LYR_SELECTION_FILL = 'oh-overlay-selection-fill';
+    const LYR_SELECTION_LINE = 'oh-overlay-selection-line';
+    const LYR_SELECTION_PT = 'oh-overlay-selection-point';
     const CIRCLE_SEGMENTS = 32;
+    // Phase 3 icon palette — slugs match wwwroot/img/overlay-icons/{key}.svg.
+    // SVGs use fill="currentColor"; we rasterize them with a black silhouette
+    // and add to MapLibre as SDF icons so `icon-color` tints them per shape.
+    const ICON_ASSETS = ['flag', 'tent', 'chest', 'skull', 'door', 'fire'];
 
     // Singleton state, keyed by mapId so future multi-map callers don't collide.
     const instances = {};
@@ -75,17 +86,23 @@
     function shapeToFeature(shape) {
         const base = {
             type: 'Feature',
+            id: shape.id,
             properties: {
+                shapeId: shape.id,
                 shapeType: shape.type,
                 color: shape.color,
                 strokeWidth: shape.strokeWidth || 2,
                 fillColor: shape.fillColor || null,
                 text: shape.text || null,
-                fontSize: shape.fontSize || 14
+                fontSize: shape.fontSize || 14,
+                iconAsset: shape.assetKey || null,
+                iconRotation: shape.rotation || 0,
+                iconScale: shape.scale || 1.0
             }
         };
         switch (shape.type) {
             case 'text':
+            case 'icon':
                 base.geometry = { type: 'Point', coordinates: [shape.coord.lng, shape.coord.lat] };
                 break;
             case 'freehand':
@@ -134,7 +151,7 @@
 
     // ---- Source + layer management ----------------------------------------
 
-    function ensureLayers(map, sourceId, fillsId, strokesId, textId) {
+    function ensureLayers(map, sourceId, fillsId, strokesId, textId, iconsId) {
         if (!map.getSource(sourceId)) {
             map.addSource(sourceId, {
                 type: 'geojson',
@@ -161,7 +178,10 @@
                 id: strokesId,
                 type: 'line',
                 source: sourceId,
-                filter: ['!=', ['get', 'shapeType'], 'text'],
+                filter: ['all',
+                    ['!=', ['get', 'shapeType'], 'text'],
+                    ['!=', ['get', 'shapeType'], 'icon']
+                ],
                 paint: {
                     'line-color': ['coalesce', ['get', 'color'], '#000000'],
                     'line-width': ['coalesce', ['get', 'strokeWidth'], 2]
@@ -188,6 +208,64 @@
                 }
             });
         }
+        if (iconsId && !map.getLayer(iconsId)) {
+            map.addLayer({
+                id: iconsId,
+                type: 'symbol',
+                source: sourceId,
+                filter: ['==', ['get', 'shapeType'], 'icon'],
+                layout: {
+                    'icon-image': ['get', 'iconAsset'],
+                    'icon-size': ['coalesce', ['get', 'iconScale'], 1.0],
+                    'icon-rotate': ['coalesce', ['get', 'iconRotation'], 0],
+                    'icon-allow-overlap': true,
+                    'icon-ignore-placement': true
+                },
+                paint: {
+                    'icon-color': ['coalesce', ['get', 'color'], '#000000']
+                }
+            });
+        }
+    }
+
+    // ---- Icon image loader ------------------------------------------------
+
+    // Rasterize each /img/overlay-icons/{key}.svg into a 64×64 ImageData and
+    // register it with MapLibre as an SDF image so `icon-color` tints it per
+    // shape. Idempotent — guarded by `map.hasImage`. Triggered on first render
+    // / first edit; tracked on `map.__ovcinaOverlayIconsLoaded` to short-circuit
+    // subsequent calls without re-decoding the SVGs.
+    function loadIconImage(map, key) {
+        return new Promise(function (resolve) {
+            if (map.hasImage(key)) { resolve(); return; }
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            const finalize = function () {
+                try {
+                    const size = 64;
+                    const canvas = document.createElement('canvas');
+                    canvas.width = size; canvas.height = size;
+                    const ctx = canvas.getContext('2d');
+                    ctx.clearRect(0, 0, size, size);
+                    ctx.drawImage(img, 0, 0, size, size);
+                    if (!map.hasImage(key)) {
+                        map.addImage(key, ctx.getImageData(0, 0, size, size), { sdf: true });
+                    }
+                } catch (e) { console.warn('Overlay icon load failed:', key, e); }
+                resolve();
+            };
+            img.onload = finalize;
+            img.onerror = function () { console.warn('Overlay icon missing:', key); resolve(); };
+            img.src = '/img/overlay-icons/' + encodeURIComponent(key) + '.svg';
+        });
+    }
+
+    function ensureIconsLoaded(map) {
+        if (map.__ovcinaOverlayIconsLoaded) return Promise.resolve();
+        map.__ovcinaOverlayIconsLoaded = Promise.all(ICON_ASSETS.map(function (k) {
+            return loadIconImage(map, k);
+        }));
+        return map.__ovcinaOverlayIconsLoaded;
     }
 
     function setSourceData(map, sourceId, features) {
@@ -205,12 +283,17 @@
         const map = getMap(mapId);
         if (!map) return;
         const paint = () => {
-            ensureLayers(map, SRC_SAVED, LYR_FILLS, LYR_STROKES, LYR_TEXT);
-            ensureLayers(map, SRC_PREVIEW, LYR_PREVIEW_FILLS, LYR_PREVIEW_STROKES, LYR_PREVIEW_TEXT);
+            ensureLayers(map, SRC_SAVED, LYR_FILLS, LYR_STROKES, LYR_TEXT, LYR_ICONS);
+            ensureLayers(map, SRC_PREVIEW, LYR_PREVIEW_FILLS, LYR_PREVIEW_STROKES, LYR_PREVIEW_TEXT, LYR_PREVIEW_ICONS);
+            ensureSelectionLayers(map);
             const features = (shapes || [])
                 .map(shapeToFeature)
                 .filter(f => f !== null);
             setSourceData(map, SRC_SAVED, features);
+            // Icons load asynchronously — MapLibre will silently fail to render
+            // a symbol whose `icon-image` isn't registered yet, so we trigger
+            // load + force a re-paint when ready.
+            ensureIconsLoaded(map).then(function () { try { map.triggerRepaint(); } catch (e) { } });
         };
         if (map.isStyleLoaded()) paint(); else map.once('styledata', paint);
     }
@@ -223,12 +306,14 @@
         // preview updates would no-op — make sure both exist before wiring
         // handlers.
         const setup = () => {
-            ensureLayers(map, SRC_SAVED, LYR_FILLS, LYR_STROKES, LYR_TEXT);
-            ensureLayers(map, SRC_PREVIEW, LYR_PREVIEW_FILLS, LYR_PREVIEW_STROKES, LYR_PREVIEW_TEXT);
+            ensureLayers(map, SRC_SAVED, LYR_FILLS, LYR_STROKES, LYR_TEXT, LYR_ICONS);
+            ensureLayers(map, SRC_PREVIEW, LYR_PREVIEW_FILLS, LYR_PREVIEW_STROKES, LYR_PREVIEW_TEXT, LYR_PREVIEW_ICONS);
+            ensureSelectionLayers(map);
+            ensureIconsLoaded(map).then(function () { try { map.triggerRepaint(); } catch (e) { } });
             const inst = ensureInstance(mapId);
             inst.tool = tool;
             inst.dotnetRef = dotnetRef;
-            map.getCanvas().style.cursor = 'crosshair';
+            map.getCanvas().style.cursor = tool === 'select' ? '' : 'crosshair';
             // Disable map-level double-click zoom so polyline/polygon "dblclick
             // to finish" doesn't also zoom the viewport.
             if (map.doubleClickZoom && map.doubleClickZoom.disable) map.doubleClickZoom.disable();
@@ -246,6 +331,9 @@
         resetInProgress(inst);
         teardownPreview(map);
         inst.tool = tool;
+        // Cursor: drawing tools get crosshair, select gets default (handler swaps
+        // to pointer on hover-over-shape). Idle (null) also gets default.
+        try { map.getCanvas().style.cursor = (tool && tool !== 'select') ? 'crosshair' : ''; } catch (e) { }
         attachHandlers(map, inst);
     }
 
@@ -274,6 +362,8 @@
             case 'polygon':   attachPolylineTool(map, inst, /*closeLoop*/ true); break;
             case 'rectangle': attachRectangleTool(map, inst); break;
             case 'circle':    attachCircleTool(map, inst); break;
+            case 'icon':      attachIconTool(map, inst); break;
+            case 'select':    attachSelectTool(map, inst); break;
         }
     }
 
@@ -537,6 +627,130 @@
         onMap(map, inst, 'mouseup', onUp);
     }
 
+    // ---- Tool: icon -------------------------------------------------------
+
+    function attachIconTool(map, inst) {
+        // Click-to-drop. Asset key + rotation/scale come from the toolbar style.
+        // Color tints the SDF icon — same color picker as other primitives.
+        onMap(map, inst, 'click', function (e) {
+            const s = currentStyle();
+            const asset = (s.iconAsset && ICON_ASSETS.indexOf(s.iconAsset) >= 0)
+                ? s.iconAsset : ICON_ASSETS[0];
+            emitShape(inst, {
+                id: uuid(),
+                type: 'icon',
+                color: s.color,
+                assetKey: asset,
+                coord: { lat: e.lngLat.lat, lng: e.lngLat.lng },
+                rotation: s.iconRotation || 0,
+                scale: s.iconScale || 1.0
+            });
+        });
+    }
+
+    // ---- Tool: select (hit-test → emit shapeId to .NET) -------------------
+
+    function attachSelectTool(map, inst) {
+        // Cursor turns to pointer over any shape layer for affordance. We
+        // hit-test against all four saved layers (fills, strokes, text, icons).
+        // queryRenderedFeatures honors layer filters, so unrelated map layers
+        // are ignored automatically.
+        const layers = [LYR_FILLS, LYR_STROKES, LYR_TEXT, LYR_ICONS]
+            .filter(function (id) { return map.getLayer(id) != null; });
+
+        const onMove = function (e) {
+            if (layers.length === 0) return;
+            const f = map.queryRenderedFeatures(e.point, { layers: layers });
+            map.getCanvas().style.cursor = (f && f.length > 0) ? 'pointer' : '';
+        };
+        const onClick = function (e) {
+            if (layers.length === 0) return;
+            const features = map.queryRenderedFeatures(e.point, { layers: layers });
+            if (!features || features.length === 0) {
+                emitSelection(inst, null);
+                return;
+            }
+            // Topmost feature wins. Phase 1+2 properties carry shapeId; older
+            // payloads without it would have to fall back on `feature.id`.
+            const f = features[0];
+            const id = (f.properties && f.properties.shapeId) || f.id || null;
+            if (id) emitSelection(inst, id);
+        };
+        onMap(map, inst, 'mousemove', onMove);
+        onMap(map, inst, 'click', onClick);
+        // Delete key fires while the select tool is active and a shape is
+        // selected — .NET decides whether to confirm + remove.
+        inst.keydownHandler = function (ev) {
+            if (ev.key === 'Delete' || ev.key === 'Backspace') {
+                if (!inst.dotnetRef) return;
+                try { inst.dotnetRef.invokeMethodAsync('OnDeleteRequested'); }
+                catch (e) { /* swallow */ }
+            }
+        };
+        window.addEventListener('keydown', inst.keydownHandler);
+    }
+
+    function emitSelection(inst, shapeId) {
+        if (!inst.dotnetRef) return;
+        try {
+            inst.dotnetRef.invokeMethodAsync('OnShapeSelected', shapeId);
+        } catch (e) {
+            console.warn('Overlay shape selection emit failed:', e);
+        }
+    }
+
+    // ---- Selection highlight overlay --------------------------------------
+
+    function ensureSelectionLayers(map) {
+        if (!map.getSource(SRC_SELECTION)) {
+            map.addSource(SRC_SELECTION, {
+                type: 'geojson',
+                data: { type: 'FeatureCollection', features: [] }
+            });
+        }
+        if (!map.getLayer(LYR_SELECTION_FILL)) {
+            map.addLayer({
+                id: LYR_SELECTION_FILL,
+                type: 'fill',
+                source: SRC_SELECTION,
+                filter: ['in', ['geometry-type'], ['literal', ['Polygon', 'MultiPolygon']]],
+                paint: { 'fill-color': '#FFD166', 'fill-opacity': 0.25 }
+            });
+        }
+        if (!map.getLayer(LYR_SELECTION_LINE)) {
+            map.addLayer({
+                id: LYR_SELECTION_LINE,
+                type: 'line',
+                source: SRC_SELECTION,
+                filter: ['!=', ['geometry-type'], 'Point'],
+                paint: {
+                    'line-color': '#FFD166',
+                    'line-width': 3,
+                    'line-dasharray': [2, 1.5]
+                }
+            });
+        }
+        if (!map.getLayer(LYR_SELECTION_PT)) {
+            map.addLayer({
+                id: LYR_SELECTION_PT,
+                type: 'circle',
+                source: SRC_SELECTION,
+                filter: ['==', ['geometry-type'], 'Point'],
+                paint: {
+                    'circle-radius': 14,
+                    'circle-color': 'rgba(255,209,102,0.20)',
+                    'circle-stroke-color': '#FFD166',
+                    'circle-stroke-width': 2
+                }
+            });
+        }
+    }
+
+    function highlightSelection(map, shape) {
+        const f = shape ? shapeToFeature(shape) : null;
+        setSourceData(map, SRC_SELECTION, f ? [f] : []);
+    }
+
     function haversineMeters(a, b) {
         const R = 6371000.0;
         const lat1 = a.lat * Math.PI / 180, lat2 = b.lat * Math.PI / 180;
@@ -562,7 +776,10 @@
         fillColor: '#242F3D',
         strokeWidth: 2,
         useFill: false,
-        fontSize: 14
+        fontSize: 14,
+        iconAsset: 'flag',
+        iconRotation: 0,
+        iconScale: 1.0
     };
 
     function currentStyle() { return _style; }
@@ -586,14 +803,21 @@
             // navigates away and back.
             try {
                 for (const lyr of [
-                    LYR_FILLS, LYR_STROKES, LYR_TEXT,
-                    LYR_PREVIEW_FILLS, LYR_PREVIEW_STROKES, LYR_PREVIEW_TEXT
+                    LYR_FILLS, LYR_STROKES, LYR_TEXT, LYR_ICONS,
+                    LYR_PREVIEW_FILLS, LYR_PREVIEW_STROKES, LYR_PREVIEW_TEXT, LYR_PREVIEW_ICONS,
+                    LYR_SELECTION_FILL, LYR_SELECTION_LINE, LYR_SELECTION_PT
                 ]) {
                     if (map.getLayer(lyr)) map.removeLayer(lyr);
                 }
-                for (const src of [SRC_SAVED, SRC_PREVIEW]) {
+                for (const src of [SRC_SAVED, SRC_PREVIEW, SRC_SELECTION]) {
                     if (map.getSource(src)) map.removeSource(src);
                 }
+                // Drop SDF icon images so a remount can re-register them
+                // cleanly after a style change wipes the image registry.
+                for (const k of ICON_ASSETS) {
+                    if (map.hasImage(k)) { try { map.removeImage(k); } catch (e) { } }
+                }
+                map.__ovcinaOverlayIconsLoaded = null;
             } catch (e) { /* best-effort */ }
             try {
                 map.getCanvas().style.cursor = '';
@@ -603,6 +827,26 @@
         delete instances[mapId];
     }
 
+    // ---- Selection / shape mutation API (called from Blazor) -------------
+
+    function selectShape(mapId, shape) {
+        const map = getMap(mapId);
+        if (!map) return;
+        // `shape` is the deserialized DTO (camelCase JSON). Null clears the
+        // highlight without changing tool / handler state.
+        highlightSelection(map, shape);
+    }
+
+    function clearSelection(mapId) {
+        const map = getMap(mapId);
+        if (!map) return;
+        highlightSelection(map, null);
+    }
+
+    function getIconAssets() {
+        return ICON_ASSETS.slice();
+    }
+
     window.ovcinaOverlay = {
         render: render,
         enterEditMode: enterEditMode,
@@ -610,6 +854,9 @@
         exitEditMode: exitEditMode,
         dispose: dispose,
         setStyle: setStyle,
+        selectShape: selectShape,
+        clearSelection: clearSelection,
+        getIconAssets: getIconAssets,
         // Exposed for unit-testability / future tools; not called by Blazor.
         _circleToPolygonRing: circleToPolygonRing
     };
