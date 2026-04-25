@@ -385,6 +385,21 @@
     .oh-nav.collapse {
         display: none;
     }
+
+    /* Issue #162 — on mobile the page (not the sidebar) is the scroll
+       container, so .oh-nav-tools' sticky bottom-0 glues it to the viewport
+       bottom and overlaps the last items in .oh-nav-list when the user
+       scrolls. Drop sticky on mobile — the tools section flows naturally
+       at the end of the menu and scrolls with the rest of the list. */
+    .oh-nav-tools {
+        position: static;
+    }
+
+    /* Reserve safe-area inset for iOS home-bar so the very last item
+       isn't tucked under the system gesture region. */
+    .oh-nav-foot {
+        padding-bottom: calc(8px + env(safe-area-inset-bottom, 0));
+    }
 }
 
 @media (min-width: 641px) {
