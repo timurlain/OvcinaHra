@@ -70,10 +70,13 @@ public static class BuildingEndpoints
             .ToListAsync();
 
         // Issue #142 — pull this game's BuildingRecipes so we can attach a
-        // compact RecipeSummary to each row. GroupBy is defensive — schema
-        // doesn't enforce one recipe per (game, building) so a duplicate
-        // wouldn't blow up ToDictionary.
+        // compact RecipeSummary to each row. AsNoTracking() because we only
+        // read the entities to format a string; tracking the graph wastes
+        // change-detection CPU + memory (Copilot review on PR #164).
+        // GroupBy is defensive — schema doesn't enforce one recipe per
+        // (game, building) so a duplicate wouldn't blow up ToDictionary.
         var recipes = await db.BuildingRecipes
+            .AsNoTracking()
             .Where(r => r.GameId == gameId)
             .Include(r => r.Ingredients)
             .Include(r => r.PrerequisiteBuildings)

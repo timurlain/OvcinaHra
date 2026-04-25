@@ -168,6 +168,70 @@ public class BuildingRecipeEndpointTests(PostgresFixture postgres) : Integration
     }
 
     [Fact]
+    public async Task AddIngredient_RecipeNotFound_Returns404()
+    {
+        var item = await CreateItemAsync("Sláma");
+        var resp = await Client.PostAsJsonAsync("/api/building-recipes/99999/ingredients",
+            new AddBuildingRecipeIngredientDto(item.Id));
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task AddIngredient_NegativeQuantity_Returns400()
+    {
+        var game = await CreateGameAsync();
+        var b = await CreateBuildingAsync("Strážnice");
+        var item = await CreateItemAsync("Kámen");
+        var createResp = await Client.PostAsJsonAsync("/api/building-recipes",
+            new CreateBuildingRecipeDto(game.Id, b.Id));
+        var recipe = (await createResp.Content.ReadFromJsonAsync<BuildingRecipeDetailDto>())!;
+
+        var resp = await Client.PostAsJsonAsync($"/api/building-recipes/{recipe.Id}/ingredients",
+            new AddBuildingRecipeIngredientDto(item.Id, Quantity: 0));
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        await AssertProblemDetailsAsync(resp, "Neplatné množství", "1");
+    }
+
+    [Fact]
+    public async Task AddIngredient_NonExistentItem_Returns400()
+    {
+        var game = await CreateGameAsync();
+        var b = await CreateBuildingAsync("Sklad");
+        var createResp = await Client.PostAsJsonAsync("/api/building-recipes",
+            new CreateBuildingRecipeDto(game.Id, b.Id));
+        var recipe = (await createResp.Content.ReadFromJsonAsync<BuildingRecipeDetailDto>())!;
+
+        var resp = await Client.PostAsJsonAsync($"/api/building-recipes/{recipe.Id}/ingredients",
+            new AddBuildingRecipeIngredientDto(ItemId: 99999, Quantity: 1));
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        await AssertProblemDetailsAsync(resp, "Předmět neexistuje", "99999");
+    }
+
+    [Fact]
+    public async Task AddPrerequisite_RecipeNotFound_Returns404()
+    {
+        var b = await CreateBuildingAsync("Brána");
+        var resp = await Client.PostAsJsonAsync("/api/building-recipes/99999/prerequisites",
+            new AddBuildingRecipePrerequisiteDto(b.Id));
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task AddPrerequisite_NonExistentBuilding_Returns400()
+    {
+        var game = await CreateGameAsync();
+        var b = await CreateBuildingAsync("Most");
+        var createResp = await Client.PostAsJsonAsync("/api/building-recipes",
+            new CreateBuildingRecipeDto(game.Id, b.Id));
+        var recipe = (await createResp.Content.ReadFromJsonAsync<BuildingRecipeDetailDto>())!;
+
+        var resp = await Client.PostAsJsonAsync($"/api/building-recipes/{recipe.Id}/prerequisites",
+            new AddBuildingRecipePrerequisiteDto(BuildingId: 99999));
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        await AssertProblemDetailsAsync(resp, "Budova neexistuje", "99999");
+    }
+
+    [Fact]
     public async Task AddIngredient_DuplicateReturnsConflict()
     {
         var game = await CreateGameAsync();

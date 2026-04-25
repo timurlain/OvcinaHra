@@ -486,46 +486,64 @@ else
         var next = recipe.RequiredSkillIds.ToList();
         if (next.Contains(newSkillId.Value)) return;
         next.Add(newSkillId.Value);
-        await SaveRecipeAsync(skillIds: next);
+        await PutRecipeAsync(
+            moneyCost: recipe.MoneyCost,
+            skillIds: next,
+            ingredientNotes: recipe.IngredientNotes);
     }
 
     private async Task RemoveSkillAsync(int skillId)
     {
         if (recipe is null) return;
         var next = recipe.RequiredSkillIds.Where(s => s != skillId).ToList();
-        await SaveRecipeAsync(skillIds: next);
+        await PutRecipeAsync(
+            moneyCost: recipe.MoneyCost,
+            skillIds: next,
+            ingredientNotes: recipe.IngredientNotes);
     }
 
     private async Task SaveRecipeMoneyAsync()
     {
         if (recipe is null) return;
-        await SaveRecipeAsync(moneyCost: recipeMoneyCost);
+        // Use the editor's current value verbatim — null means "clear it",
+        // not "leave unchanged" (Copilot review on PR #164: ?? fallback
+        // prevented users from clearing MoneyCost back to null).
+        await PutRecipeAsync(
+            moneyCost: recipeMoneyCost,
+            skillIds: recipe.RequiredSkillIds.ToList(),
+            ingredientNotes: recipe.IngredientNotes);
     }
 
     private async Task SaveRecipeNotesAsync()
     {
         if (recipe is null || editingId is null) return;
         var normalized = string.IsNullOrWhiteSpace(recipeIngredientNotes) ? null : recipeIngredientNotes.Trim();
-        await SaveRecipeAsync(ingredientNotes: normalized);
+        // Same shape as money — pass `normalized` (which may be null) verbatim
+        // so clearing the memo actually persists as null.
+        await PutRecipeAsync(
+            moneyCost: recipe.MoneyCost,
+            skillIds: recipe.RequiredSkillIds.ToList(),
+            ingredientNotes: normalized);
     }
 
     /// <summary>
-    /// Single PUT helper that preserves all unrelated fields by default —
-    /// each handler passes only the field it's actually changing. Without
-    /// this, an "edit skills" PUT would null out money + notes (the DTO
-    /// defaults the unspecified params to null).
+    /// Single PUT helper that requires explicit values for every mutable
+    /// field. Callers are responsible for sending the recipe's current
+    /// server-side values for fields they don't want to change — without
+    /// that contract, a null param meant "preserve" and clearing a field
+    /// silently no-op'd (Copilot review on PR #164).
     /// </summary>
-    private async Task SaveRecipeAsync(
-        int? moneyCost = null, IReadOnlyList<int>? skillIds = null, string? ingredientNotes = null)
+    private async Task PutRecipeAsync(
+        int? moneyCost, IReadOnlyList<int> skillIds, string? ingredientNotes)
     {
         if (recipe is null) return;
         try
         {
             var dto = new UpdateBuildingRecipeDto(
                 recipe.OutputBuildingId,
-                MoneyCost: moneyCost ?? recipe.MoneyCost,
-                RequiredSkillIds: skillIds ?? recipe.RequiredSkillIds.ToList(),
-                IngredientNotes: ingredientNotes ?? recipe.IngredientNotes);
+                MoneyCost: moneyCost,
+                RequiredSkillIds: skillIds,
+                IngredientNotes: ingredientNotes);
             await Api.PutAsync($"/api/building-recipes/{recipe.Id}", dto);
             newSkillId = null;
             await LoadRecipeAsync(editingId!.Value);

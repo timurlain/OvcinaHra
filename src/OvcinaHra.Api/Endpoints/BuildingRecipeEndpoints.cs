@@ -187,8 +187,35 @@ public static class BuildingRecipeEndpoints
         return TypedResults.NoContent();
     }
 
-    private static async Task<Results<Created, Conflict>> AddIngredient(int id, AddBuildingRecipeIngredientDto dto, WorldDbContext db)
+    private static async Task<Results<Created, Conflict, NotFound, BadRequest<ProblemDetails>>> AddIngredient(int id, AddBuildingRecipeIngredientDto dto, WorldDbContext db)
     {
+        // Validate parent + reference + payload up front so invalid inputs
+        // surface as 404/400 ProblemDetails instead of bubbling out as
+        // FK 500s (Copilot review on PR #164).
+        var recipeExists = await db.BuildingRecipes.AnyAsync(r => r.Id == id);
+        if (!recipeExists) return TypedResults.NotFound();
+
+        if (dto.Quantity < 1)
+        {
+            return TypedResults.BadRequest(new ProblemDetails
+            {
+                Title = "Neplatné množství",
+                Detail = "Množství ingredience musí být alespoň 1.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
+        var itemExists = await db.Items.AnyAsync(i => i.Id == dto.ItemId);
+        if (!itemExists)
+        {
+            return TypedResults.BadRequest(new ProblemDetails
+            {
+                Title = "Předmět neexistuje",
+                Detail = $"Předmět s ID {dto.ItemId} nebyl nalezen.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
         if (await db.BuildingRecipeIngredients.AnyAsync(bi => bi.BuildingRecipeId == id && bi.ItemId == dto.ItemId))
             return TypedResults.Conflict();
         db.BuildingRecipeIngredients.Add(new BuildingRecipeIngredient
@@ -210,18 +237,32 @@ public static class BuildingRecipeEndpoints
         return TypedResults.NoContent();
     }
 
-    private static async Task<Results<Created, Conflict, BadRequest<ProblemDetails>>> AddPrerequisite(int id, AddBuildingRecipePrerequisiteDto dto, WorldDbContext db)
+    private static async Task<Results<Created, Conflict, NotFound, BadRequest<ProblemDetails>>> AddPrerequisite(int id, AddBuildingRecipePrerequisiteDto dto, WorldDbContext db)
     {
-        // Guard against a recipe declaring its OWN output building as a
-        // prerequisite — the schema doesn't enforce it but it's nonsense.
+        // Missing parent recipe is a 404 (REST contract) not a 409 — the
+        // 409 in v1 was misleading (Copilot review on PR #164).
         var recipe = await db.BuildingRecipes.FindAsync(id);
-        if (recipe is null) return TypedResults.Conflict();
+        if (recipe is null) return TypedResults.NotFound();
+
         if (recipe.OutputBuildingId == dto.BuildingId)
         {
             return TypedResults.BadRequest(new ProblemDetails
             {
                 Title = "Neplatný požadavek",
                 Detail = "Budova nemůže být požadavkem sama na sebe.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
+
+        // Validate referenced building exists so a stray id surfaces as 400
+        // ProblemDetails instead of an FK exception (500).
+        var buildingExists = await db.Buildings.AnyAsync(b => b.Id == dto.BuildingId);
+        if (!buildingExists)
+        {
+            return TypedResults.BadRequest(new ProblemDetails
+            {
+                Title = "Budova neexistuje",
+                Detail = $"Budova s ID {dto.BuildingId} nebyla nalezena.",
                 Status = StatusCodes.Status400BadRequest
             });
         }
@@ -271,7 +312,7 @@ public static class BuildingRecipeEndpoints
 
     /// <summary>
     /// Compact recipe summary for the BuildingList by-game grid column.
-    /// Format: "3× ingrediencí · 50 zlaťáků · 1 dovednost · 2 budov".
+    /// Format: "3× ingrediencí · 50 zlaťáků · 1 dovednost · 2 budovy".
     /// Returns null when the recipe is empty (no ingredients, no money,
     /// no skills, no prereqs) so the column shows "—" instead of noise.
     /// </summary>
@@ -283,10 +324,21 @@ public static class BuildingRecipeEndpoints
         if (r.MoneyCost is > 0)
             parts.Add($"{r.MoneyCost} zlaťáků");
         if (r.SkillRequirements.Count > 0)
-            parts.Add($"{r.SkillRequirements.Count} dovednost");
+            parts.Add($"{r.SkillRequirements.Count} {PluralCz(r.SkillRequirements.Count, "dovednost", "dovednosti", "dovedností")}");
         if (r.PrerequisiteBuildings.Count > 0)
-            parts.Add($"{r.PrerequisiteBuildings.Count} budov");
+            parts.Add($"{r.PrerequisiteBuildings.Count} {PluralCz(r.PrerequisiteBuildings.Count, "budova", "budovy", "budov")}");
         return parts.Count > 0 ? string.Join(" · ", parts) : null;
+    }
+
+    /// <summary>
+    /// Czech declension picker: 1 → singular, 2-4 → few, 0/5+ → many.
+    /// Mirrors the helper used in LocationList for variant counts.
+    /// </summary>
+    private static string PluralCz(int n, string one, string few, string many)
+    {
+        if (n == 1) return one;
+        if (n >= 2 && n <= 4) return few;
+        return many;
     }
 
     private static BuildingRecipeDetailDto ToDetailDto(BuildingRecipe r) => new(
