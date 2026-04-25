@@ -75,8 +75,20 @@ else if (!Catalog && GameContext.SelectedGameId is null)
 }
 else if (!Catalog && gameItems.Count == 0)
 {
+    @* Drozd knocking — "nothing here yet, add some items to the game".
+       State-flag fallback per feedback_blazor_img_onerror_state_and_key. *@
     <div class="text-center text-muted py-5">
-        <i class="bi bi-box-seam fs-1 d-block mb-2"></i>
+        <div class="oh-lg-drozd-box mx-auto mb-3">
+            @if (!drozdFailed)
+            {
+                <img src="/img/drozd/drozd-knocking.svg" alt=""
+                     @onerror="() => drozdFailed = true" />
+            }
+            else
+            {
+                <i class="bi bi-box-seam" style="font-size:3rem;color:var(--oh-primary-light)"></i>
+            }
+        </div>
         <p>Žádné předměty přiřazeny k této hře.</p>
         <button class="btn btn-outline-primary" @onclick='() => Nav.NavigateTo("/items?catalog=true")'>Otevřít katalog</button>
     </div>
@@ -665,7 +677,7 @@ else
 
     private List<ItemListDto> catalogItems = [];
     private List<GameItemListDto> gameItems = [];
-    private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
+    private bool loading = true, isModalVisible, isDeleteVisible, isSaving, drozdFailed;
 
     // Quick-peek popup state (issue: replaces edit-modal-on-row-click per the brief).
     private bool isQuickPeekVisible;

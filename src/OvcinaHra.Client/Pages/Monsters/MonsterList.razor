@@ -65,8 +65,21 @@ else
 
     @if (filtered.Count == 0 && monsters.Count == 0 && !Catalog)
     {
+        @* Drozd knocking — "nothing here yet, assign some monsters".
+           The filter-empty state below keeps the bi-funnel glyph; the brief
+           reserved drozd-confused for a future pass. *@
         <div class="oh-mon-empty">
-            <div class="oh-mon-empty-icon"><i class="bi bi-bug-fill"></i></div>
+            <div class="oh-mon-empty-icon">
+                @if (!drozdFailed)
+                {
+                    <img src="/img/drozd/drozd-knocking.svg" alt=""
+                         @onerror="() => drozdFailed = true" />
+                }
+                else
+                {
+                    <i class="bi bi-bug-fill"></i>
+                }
+            </div>
             <div class="oh-mon-empty-msg">Žádné příšery přiřazeny k této hře.</div>
             <div class="oh-mon-empty-actions">
                 <button class="btn btn-outline-primary"
@@ -293,7 +306,7 @@ else
     public bool Catalog { get; set; }
 
     private List<MonsterListDto> monsters = [];
-    private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
+    private bool loading = true, isModalVisible, isDeleteVisible, isSaving, drozdFailed;
     private string modalTitle = "", name = "";
     private string? error, abilities, aiBehavior, rewardNotes, notes;
     private int? editingId;
