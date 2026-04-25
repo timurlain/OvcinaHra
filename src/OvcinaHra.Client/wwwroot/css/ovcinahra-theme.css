@@ -2584,3 +2584,187 @@
     display:flex;align-items:center;gap:8px;max-width:min(520px,calc(100% - 24px));
     margin:0;padding:8px 12px;font-size:.875rem}
 .oh-map-overlay-error .btn-close{margin-left:auto}
+
+/* ============================================================
+   Spells — catalog · detail (3 tabs) · A5 print (issue #148)
+   Class prefix: .oh-sp-*  (cells .oh-sp-c-*, peek .oh-sp-peek-*,
+   karta .oh-sp-karta-*, level badges .oh-sp-lvl-*, print
+   .oh-sp-print-*). Mana keeps the .oh-mana-* prefix; school chip
+   keeps .oh-school + --oh-school-{key} custom properties.
+   ============================================================ */
+
+/* 9 school palette tokens, parchment-compatible. Distinct from
+   --oh-kingdom-* + --oh-stage-*; never blur the three palettes. */
+:root{
+    --oh-school-fire:    #B23A2A;
+    --oh-school-frost:   #6DA3C8;
+    --oh-school-water:   #2E5A87;
+    --oh-school-earth:   #7A5A2F;
+    --oh-school-wind:    #8F9EA8;
+    --oh-school-poison:  #5A8B3A;
+    --oh-school-mental:  #6E4A8F;
+    --oh-school-support: #C19A3A;
+    --oh-school-utility: #6E6E6E;
+}
+
+/* School chip — 1.5px outlined with small color dot + mono Czech label */
+.oh-school{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;
+    border:1.5px solid var(--oh-c,#888);border-radius:99px;
+    background:rgba(245,237,227,.55);color:var(--oh-text,#2a2a2a);
+    font:600 .75rem var(--oh-font-mono,JetBrains Mono,Menlo,monospace);white-space:nowrap}
+.oh-school::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--oh-c,#888);flex-shrink:0}
+.oh-school[data-school="fire"]   {--oh-c:var(--oh-school-fire)}
+.oh-school[data-school="frost"]  {--oh-c:var(--oh-school-frost)}
+.oh-school[data-school="water"]  {--oh-c:var(--oh-school-water)}
+.oh-school[data-school="earth"]  {--oh-c:var(--oh-school-earth)}
+.oh-school[data-school="wind"]   {--oh-c:var(--oh-school-wind)}
+.oh-school[data-school="poison"] {--oh-c:var(--oh-school-poison)}
+.oh-school[data-school="mental"] {--oh-c:var(--oh-school-mental)}
+.oh-school[data-school="support"]{--oh-c:var(--oh-school-support)}
+.oh-school[data-school="utility"]{--oh-c:var(--oh-school-utility)}
+
+/* Mana rings — SVG concentric, rainbow conic-gradient stroke. Lg/Md/Sm
+   match the issue body brief (14/12/10px). 6 per row, then wrap. */
+.oh-mana{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;line-height:1}
+.oh-mana svg{display:block;flex:0 0 auto}
+.oh-mana--lg svg{width:14px;height:14px}
+.oh-mana svg{width:12px;height:12px}
+.oh-mana--sm svg{width:10px;height:10px}
+.oh-mana-scroll{display:inline-block;padding:2px 8px;border-radius:99px;
+    background:rgba(193,154,58,.18);color:#6c5212;border:1px solid rgba(193,154,58,.55);
+    font:600 .7rem var(--oh-font-mono,JetBrains Mono,Menlo,monospace);white-space:nowrap}
+.oh-mana-free{display:inline-block;padding:2px 8px;border-radius:99px;
+    background:var(--oh-surface-alt,#f5f0e1);color:var(--oh-text-secondary,#6a6a6a);
+    border:1px dashed var(--oh-border,#d8d2be);
+    font:600 .7rem var(--oh-font-mono,JetBrains Mono,Menlo,monospace);white-space:nowrap}
+
+/* Level badge — Roman I-V or "S" for scroll */
+.oh-sp-lvl-badge{display:inline-flex;align-items:center;justify-content:center;
+    width:30px;height:30px;border-radius:50%;
+    border:1.5px solid var(--oh-c,var(--oh-text-secondary,#6a6a6a));
+    background:var(--oh-surface,#fff);color:var(--oh-text,#2a2a2a);
+    font:700 .85rem var(--oh-font-mono,JetBrains Mono,Menlo,monospace);
+    line-height:1}
+.oh-sp-lvl-badge--lg{width:42px;height:42px;font-size:1.1rem}
+.oh-sp-lvl-roman{font-variant-caps:small-caps;letter-spacing:.04em}
+.oh-sp-lvl-scroll{background:rgba(193,154,58,.15);border-color:#C19A3A;color:#6c5212}
+
+/* Reaction pill (small) — yellow glow per designer note */
+.oh-sp-reaction{display:inline-flex;align-items:center;gap:3px;
+    padding:1px 7px;border-radius:99px;
+    background:rgba(218,165,32,.18);color:#6c5212;border:1px solid rgba(218,165,32,.6);
+    font:700 .65rem var(--oh-font-mono,JetBrains Mono,Menlo,monospace);text-transform:uppercase;letter-spacing:.06em}
+.oh-sp-reaction i{font-size:.7rem}
+
+/* List grid cells. .oh-sp-c-* mirrors the mockup column-cell helpers. */
+.oh-sp-c-name{font:600 .9375rem var(--oh-font-body);color:var(--oh-text,#2a2a2a);display:flex;align-items:center;gap:6px}
+.oh-sp-c-fx{font:400 .8125rem var(--oh-font-body);color:var(--oh-text,#2a2a2a);
+    overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-clamp:2}
+.oh-sp-c-price{font-family:var(--oh-font-mono,JetBrains Mono,Menlo,monospace);font-size:.8125rem;color:var(--oh-text,#2a2a2a)}
+.oh-sp-c-price--free{color:var(--oh-text-secondary,#6a6a6a)}
+.oh-sp-c-price-coin{display:inline-flex;align-items:center;gap:3px}
+
+/* Quick-peek popup body grid — 720px wide popup. Hero left, fields right. */
+.oh-sp-peek-grid{display:grid;grid-template-columns:1fr 240px;gap:18px;padding:6px 4px 14px}
+.oh-sp-peek-head{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.oh-sp-peek-name{font:800 1.25rem var(--oh-font-heading,Merriweather,Georgia,serif);color:var(--oh-primary,#243525);margin:0}
+.oh-sp-peek-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 12px}
+.oh-sp-peek-fx{font:400 .9375rem/1.5 var(--oh-font-serif,Georgia,Merriweather,serif);
+    color:var(--oh-text,#2a2a2a);text-align:justify;hyphens:auto;white-space:pre-wrap;
+    border-left:3px solid var(--oh-school-c,var(--oh-border,#d8d2be));padding:6px 12px;background:var(--oh-surface-alt,#f5f0e1);
+    border-radius:4px}
+.oh-sp-peek-desc{font:italic 400 .875rem/1.5 var(--oh-font-serif,Georgia,Merriweather,serif);color:var(--oh-text-secondary,#6a6a6a);margin-top:10px;white-space:pre-wrap}
+.oh-sp-peek-side{display:flex;flex-direction:column;gap:10px;border-left:1px solid var(--oh-border,#d8d2be);padding-left:14px}
+.oh-sp-peek-side-row{display:flex;justify-content:space-between;gap:6px;font:600 .8125rem var(--oh-font-body);color:var(--oh-text-secondary,#6a6a6a)}
+.oh-sp-peek-side-row strong{color:var(--oh-text,#2a2a2a);font-family:var(--oh-font-mono,JetBrains Mono,Menlo,monospace)}
+.oh-sp-peek-foot{display:flex;justify-content:space-between;gap:10px;padding-top:10px;border-top:1px solid var(--oh-border,#d8d2be);margin-top:6px}
+
+/* Karta tab — illuminated parchment page, two-column 62fr/38fr */
+.oh-sp-karta-grid{display:grid;grid-template-columns:62fr 38fr;gap:20px;align-items:start}
+@media (max-width:880px){.oh-sp-karta-grid{grid-template-columns:1fr}}
+.oh-sp-karta{position:relative;background:#fbf6e7;border:1px solid #c8b48a;border-radius:6px;
+    padding:24px 28px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.oh-sp-karta::before{content:"";position:absolute;top:0;bottom:0;left:0;width:3px;background:var(--oh-school-c,#aaa);border-radius:6px 0 0 6px}
+.oh-sp-karta-name{font:900 2.4rem/1.1 var(--oh-font-heading,Merriweather,Georgia,serif);color:var(--oh-primary,#243525);margin:0;text-align:center;letter-spacing:-.01em}
+.oh-sp-karta-name-row{display:flex;align-items:center;justify-content:center;gap:14px}
+.oh-sp-karta-meta{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin:14px 0 18px}
+.oh-sp-karta-mana-row{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:14px}
+.oh-sp-karta-mana-lab{font:600 .7rem var(--oh-font-mono,JetBrains Mono,Menlo,monospace);color:var(--oh-text-secondary,#6a6a6a);text-transform:uppercase;letter-spacing:.08em}
+.oh-sp-karta-min{text-align:center;font:italic 400 .85rem var(--oh-font-serif,Georgia,Merriweather,serif);color:var(--oh-text-secondary,#6a6a6a);margin:6px 0}
+.oh-sp-karta-sep{height:1px;background:linear-gradient(90deg,transparent 0,#B26223 20%,#B26223 80%,transparent 100%);margin:14px 0;border:none}
+.oh-sp-karta-fx{font:400 1.1rem/1.55 var(--oh-font-serif,Georgia,Merriweather,serif);color:var(--oh-text,#2a2a2a);text-align:justify;hyphens:auto;white-space:pre-wrap;margin:0}
+.oh-sp-karta-fx::first-letter{font:900 3rem/.9 var(--oh-font-heading,Merriweather,Georgia,serif);color:var(--oh-school-c,#243525);float:left;margin:4px 8px 0 0;line-height:.85}
+.oh-sp-karta-desc{font:italic 400 .95rem/1.55 var(--oh-font-serif,Georgia,Merriweather,serif);color:var(--oh-text-secondary,#6a6a6a);margin:14px 0 0;text-align:justify;hyphens:auto;white-space:pre-wrap}
+
+/* Karta side panel (price, scroll callout, badges) */
+.oh-sp-karta-side{display:flex;flex-direction:column;gap:12px}
+.oh-sp-karta-side-block{background:var(--oh-surface,#fff);border:1px solid var(--oh-border,#d8d2be);border-radius:6px;padding:14px}
+.oh-sp-karta-price-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font:600 .9rem var(--oh-font-body)}
+.oh-sp-karta-price-coin{display:inline-flex;align-items:center;gap:4px;
+    padding:4px 10px;border-radius:99px;background:rgba(193,154,58,.14);color:#6c5212;
+    border:1px solid rgba(193,154,58,.5);font-family:var(--oh-font-mono,JetBrains Mono,Menlo,monospace);font-size:.875rem}
+.oh-sp-karta-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.oh-sp-karta-badge{padding:3px 9px;border-radius:99px;background:var(--oh-surface-alt,#f5f0e1);
+    color:var(--oh-text-secondary,#6a6a6a);border:1px solid var(--oh-border,#d8d2be);
+    font:600 .7rem var(--oh-font-mono,JetBrains Mono,Menlo,monospace);text-transform:uppercase;letter-spacing:.06em}
+.oh-sp-karta-badge--on{background:rgba(45,80,22,.12);color:#2D5016;border-color:rgba(45,80,22,.5)}
+.oh-sp-karta-scroll-callout{background:linear-gradient(135deg,rgba(193,154,58,.16),rgba(193,154,58,.06));
+    border:1px solid rgba(193,154,58,.55);border-radius:6px;padding:14px}
+.oh-sp-karta-scroll-callout h6{font:700 .85rem var(--oh-font-mono,JetBrains Mono,Menlo,monospace);
+    color:#6c5212;text-transform:uppercase;letter-spacing:.06em;margin:0 0 6px}
+.oh-sp-karta-scroll-callout p{font:400 .85rem/1.5 var(--oh-font-body);color:var(--oh-text,#2a2a2a);margin:0 0 10px}
+
+/* Edit (Upravit) — live preview right column */
+.oh-sp-edit-grid{display:grid;grid-template-columns:1fr 360px;gap:24px;align-items:start}
+@media (max-width:1080px){.oh-sp-edit-grid{grid-template-columns:1fr}}
+.oh-sp-edit-preview-stage{position:sticky;top:80px}
+.oh-sp-edit-preview-stage h6{font:600 .75rem var(--oh-font-mono,JetBrains Mono,Menlo,monospace);
+    color:var(--oh-text-secondary,#6a6a6a);text-transform:uppercase;letter-spacing:.06em;margin:0 0 8px}
+
+/* Print stage + toolbar (screen-only chrome) */
+.oh-sp-tisk-toolbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:10px 14px;background:var(--oh-surface,#fff);border-bottom:1px solid var(--oh-border,#d8d2be);margin-bottom:18px}
+.oh-sp-tisk-toolbar-info{font:600 .8125rem var(--oh-font-body);color:var(--oh-text-secondary,#6a6a6a)}
+.oh-sp-print-stage{background:#e8e3d5;padding:18px;display:flex;flex-direction:column;align-items:center;gap:18px;min-height:calc(100vh - 60px)}
+
+/* "Kniha kouzel" spread — physically A4 landscape (297×210mm) holding two
+   A5 portrait pages side by side. The brief called the printed sheet
+   "A5 landscape" but those dimensions are actually A4 landscape; we print
+   on A4 and fold/cut to two A5 booklet leaves. */
+.oh-sp-print-spread{width:297mm;min-height:210mm;background:#fbf6e7;
+    box-shadow:0 4px 18px rgba(0,0,0,.18);
+    display:grid;grid-template-columns:1fr 1fr;
+    border:1px solid #c8b48a;position:relative;page-break-after:always;break-after:page}
+.oh-sp-print-spread::after{content:"";position:absolute;top:8mm;bottom:8mm;left:50%;width:1px;
+    background:linear-gradient(180deg,transparent,#c8b48a,#c8b48a,transparent);transform:translateX(-50%);opacity:.5}
+.oh-sp-print-page{padding:14mm 12mm}
+.oh-sp-print-banner{grid-column:1/-1;text-align:center;padding:8mm 0 4mm;
+    border-bottom:1px solid #c8b48a;background:linear-gradient(180deg,rgba(178,98,35,.07),transparent)}
+.oh-sp-print-banner h1{font:900 22pt var(--oh-font-heading,Merriweather,Georgia,serif);color:#243525;margin:0;letter-spacing:.02em}
+.oh-sp-print-banner-sub{font:italic 400 10pt var(--oh-font-serif,Georgia,Merriweather,serif);color:#6c5212;margin-top:3mm}
+.oh-sp-print-level-hdr{grid-column:1/-1;padding:5mm 12mm 2mm;
+    font:700 11pt var(--oh-font-mono,JetBrains Mono,Menlo,monospace);
+    color:#243525;text-transform:uppercase;letter-spacing:.08em}
+
+/* Tile — ~70×100mm with parchment + burnt-orange border + drop-cap */
+.oh-sp-print-tile{background:#fffbef;border:1px solid #B26223;border-radius:3px;padding:5mm 5mm 4mm;
+    page-break-inside:avoid;break-inside:avoid;display:flex;flex-direction:column;gap:2mm;
+    position:relative;min-height:50mm}
+.oh-sp-print-tile::before{content:"";position:absolute;top:0;bottom:0;left:0;width:2px;background:var(--oh-school-c,#aaa);border-radius:3px 0 0 3px}
+.oh-sp-print-tile-head{display:flex;align-items:baseline;justify-content:space-between;gap:6px}
+.oh-sp-print-tile-name{font:900 11pt var(--oh-font-heading,Merriweather,Georgia,serif);color:#243525;margin:0;line-height:1.15}
+.oh-sp-print-tile-meta{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font:600 8.5pt var(--oh-font-mono,JetBrains Mono,Menlo,monospace);color:#6a6a6a}
+.oh-sp-print-tile-fx{font:400 9.5pt/1.4 var(--oh-font-serif,Georgia,Merriweather,serif);color:#2a2a2a;text-align:justify;hyphens:auto;margin:0;white-space:pre-wrap}
+.oh-sp-print-tile-fx::first-letter{font:900 1.25rem/.9 var(--oh-font-heading,Merriweather,Georgia,serif);color:var(--oh-school-c,#243525);float:left;margin:1px 4px 0 0}
+.oh-sp-print-tile-foot{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:auto;padding-top:2mm;border-top:1px dashed rgba(178,98,35,.4);font:600 8pt var(--oh-font-mono,JetBrains Mono,Menlo,monospace);color:#6c5212}
+
+/* @media print — actual A4 landscape rules (matches the spread above; user
+   folds the printed sheet down the spine into two A5 portrait pages). */
+@media print{
+    @page{size:A4 landscape;margin:8mm}
+    body{background:#fff !important}
+    .oh-sp-tisk-toolbar,.oh-sp-print-stage > nav,nav,header,aside,.sidebar,.oh-app-sidebar{display:none !important}
+    .oh-sp-print-stage{background:transparent;padding:0;gap:0;min-height:0;align-items:stretch}
+    .oh-sp-print-spread{box-shadow:none;border:none;page-break-after:always;break-after:page;width:auto;min-height:auto}
+    .oh-mana svg{width:12px !important;height:12px !important}
+}

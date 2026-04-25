@@ -1,0 +1,72 @@
+@* Mana cost indicator — N concentric rainbow rings (issue #148).
+   Per designer brief:
+     · SVG <circle> with rainbow linearGradient stroke on transparent center.
+     · 14px Lg, 12px Md, 10px Sm. 3px stroke. 6px gap. Wraps at 6.
+     · IsScroll = true ⇒ render the "Svitek" mono chip instead.
+     · Cost == 0 && !IsScroll ⇒ "Zdarma" muted pill.
+   Print fidelity beats a CSS-only conic-gradient hack — SVG renders
+   cleanly through @media print on every browser. *@
+
+@if (IsScroll)
+{
+    <span class="oh-mana-scroll" title="Svitek — jednorázové použití">Svitek · jedno použití</span>
+}
+else if (Cost <= 0)
+{
+    <span class="oh-mana-free" title="Kouzlo bez manové ceny">Zdarma</span>
+}
+else
+{
+    <span class="oh-mana @WrapperClass" aria-label="@($"Mana: {Cost}")">
+        @for (var i = 0; i < Math.Min(Cost, MaxRings); i++)
+        {
+            @* Each <linearGradient> id must be unique across the whole document
+               — duplicates make some browsers latch onto the wrong stops or
+               drop the stroke entirely. _gradId is unique per component
+               instance; we further suffix with the ring index here so a single
+               <ManaRings Cost="6"> rendering 6 SVGs each carries a distinct id. *@
+            var gradId = $"oh-mana-{_gradId}-{i}";
+            <svg viewBox="0 0 14 14" role="img" aria-hidden="true">
+                <defs>
+                    <linearGradient id="@gradId" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%"   stop-color="#E74C3C" />
+                        <stop offset="16%"  stop-color="#F39C12" />
+                        <stop offset="33%"  stop-color="#F1C40F" />
+                        <stop offset="50%"  stop-color="#2ECC71" />
+                        <stop offset="66%"  stop-color="#3498DB" />
+                        <stop offset="83%"  stop-color="#9B59B6" />
+                        <stop offset="100%" stop-color="#E74C3C" />
+                    </linearGradient>
+                </defs>
+                <circle cx="7" cy="7" r="5.5" fill="none" stroke="@($"url(#{gradId})")" stroke-width="3" />
+            </svg>
+        }
+        @if (Cost > MaxRings)
+        {
+            <span class="oh-mana-overflow" title="@($"Plná cena: {Cost} many")">+@(Cost - MaxRings)</span>
+        }
+    </span>
+}
+
+@code {
+    public enum RingSize { Lg, Md, Sm }
+
+    [Parameter] public int Cost { get; set; }
+    [Parameter] public RingSize Size { get; set; } = RingSize.Md;
+    [Parameter] public bool IsScroll { get; set; }
+
+    /// <summary>Cap on rendered rings — designer brief caps at 6 per row, but
+    /// realistic mana costs in the catalog top out at 5. Keep the cap so a
+    /// future high-cost spell still renders without spilling visually.</summary>
+    private const int MaxRings = 6;
+
+    /// <summary>Per-instance gradient id keeps SVG defs unique across the page.</summary>
+    private readonly string _gradId = Guid.NewGuid().ToString("N");
+
+    private string WrapperClass => Size switch
+    {
+        RingSize.Lg => "oh-mana--lg",
+        RingSize.Sm => "oh-mana--sm",
+        _ => string.Empty
+    };
+}

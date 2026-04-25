@@ -1,0 +1,29 @@
+@* School chip — 1.5px outlined pill with small color dot + Czech school
+   label (issue #148). Reads --oh-school-{key} from the global palette;
+   never hard-codes hex (palette stays single-source-of-truth). *@
+
+<span class="oh-school" data-school="@SchoolKey(School)" title="@($"Škola: {School.GetDisplayName()}")">
+    @School.GetDisplayName()
+</span>
+
+@code {
+    [Parameter] public SpellSchool School { get; set; }
+
+    /// <summary>Maps the enum to the lowercase key used as both the
+    /// <c>data-school="..."</c> attribute and the <c>--oh-school-{key}</c>
+    /// CSS custom-property suffix. Keep in sync with the 9 keys in
+    /// ovcinahra-theme.css :root block.</summary>
+    private static string SchoolKey(SpellSchool s) => s switch
+    {
+        SpellSchool.Fire    => "fire",
+        SpellSchool.Frost   => "frost",
+        SpellSchool.Water   => "water",
+        SpellSchool.Earth   => "earth",
+        SpellSchool.Wind    => "wind",
+        SpellSchool.Poison  => "poison",
+        SpellSchool.Mental  => "mental",
+        SpellSchool.Support => "support",
+        SpellSchool.Utility => "utility",
+        _ => "utility"
+    };
+}
