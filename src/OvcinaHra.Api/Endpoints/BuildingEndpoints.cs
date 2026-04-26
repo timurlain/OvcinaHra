@@ -40,14 +40,23 @@ public static class BuildingEndpoints
                 b.LocationId,
                 LocationName = b.Location != null ? b.Location.Name : null,
                 b.IsPrebuilt,
-                b.ImagePath
+                b.ImagePath,
+                b.CostMoney,
+                b.Effect,
+                CraftingRecipesCount = b.CraftingRequirements.Count,
+                GamesCount = b.GameBuildings.Count
             })
             .ToListAsync();
         var buildings = rows.Select(r => new BuildingListDto(
             r.Id, r.Name, r.Description, r.Notes,
             r.LocationId, r.LocationName, r.IsPrebuilt,
             ImagePath: r.ImagePath,
-            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "buildings", r.Id, "small"))).ToList();
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "buildings", r.Id, "small"),
+            RecipeSummary: null,
+            CostMoney: r.CostMoney,
+            Effect: r.Effect,
+            CraftingRecipesCount: r.CraftingRecipesCount,
+            GamesCount: r.GamesCount)).ToList();
         return TypedResults.Ok(buildings);
     }
 
@@ -65,7 +74,11 @@ public static class BuildingEndpoints
                 gb.Building.LocationId,
                 LocationName = gb.Building.Location != null ? gb.Building.Location.Name : null,
                 gb.Building.IsPrebuilt,
-                gb.Building.ImagePath
+                gb.Building.ImagePath,
+                gb.Building.CostMoney,
+                gb.Building.Effect,
+                CraftingRecipesCount = gb.Building.CraftingRequirements.Count,
+                GamesCount = gb.Building.GameBuildings.Count
             })
             .ToListAsync();
 
@@ -91,15 +104,43 @@ public static class BuildingEndpoints
             r.LocationId, r.LocationName, r.IsPrebuilt,
             ImagePath: r.ImagePath,
             ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "buildings", r.Id, "small"),
-            RecipeSummary: summaryByBuildingId.GetValueOrDefault(r.Id))).ToList();
+            RecipeSummary: summaryByBuildingId.GetValueOrDefault(r.Id),
+            CostMoney: r.CostMoney,
+            Effect: r.Effect,
+            CraftingRecipesCount: r.CraftingRecipesCount,
+            GamesCount: r.GamesCount)).ToList();
         return TypedResults.Ok(buildings);
     }
 
-    private static async Task<Results<Ok<BuildingDetailDto>, NotFound>> GetById(int id, WorldDbContext db)
+    private static async Task<Results<Ok<BuildingDetailDto>, NotFound>> GetById(int id, WorldDbContext db, HttpContext http)
     {
-        var b = await db.Buildings.FindAsync(id);
-        if (b is null) return TypedResults.NotFound();
-        return TypedResults.Ok(new BuildingDetailDto(b.Id, b.Name, b.Description, b.Notes, b.ImagePath, b.LocationId, b.IsPrebuilt));
+        var row = await db.Buildings
+            .Where(b => b.Id == id)
+            .Select(b => new
+            {
+                b.Id, b.Name, b.Description, b.Notes, b.ImagePath,
+                b.LocationId,
+                LocationName = b.Location != null ? b.Location.Name : null,
+                b.IsPrebuilt,
+                b.CostMoney, b.Effect,
+                CraftingRecipesCount = b.CraftingRequirements.Count,
+                GamesCount = b.GameBuildings.Count
+            })
+            .FirstOrDefaultAsync();
+        if (row is null) return TypedResults.NotFound();
+
+        var imageUrl = string.IsNullOrWhiteSpace(row.ImagePath)
+            ? null
+            : ImageEndpoints.ThumbUrl(http, "buildings", row.Id, "small");
+
+        return TypedResults.Ok(new BuildingDetailDto(
+            row.Id, row.Name, row.Description, row.Notes, row.ImagePath,
+            row.LocationId, row.LocationName, row.IsPrebuilt,
+            ImageUrl: imageUrl,
+            CostMoney: row.CostMoney,
+            Effect: row.Effect,
+            CraftingRecipesCount: row.CraftingRecipesCount,
+            GamesCount: row.GamesCount));
     }
 
     private static async Task<Created<BuildingDetailDto>> Create(CreateBuildingDto dto, HttpContext http, WorldDbContext db)
@@ -110,7 +151,9 @@ public static class BuildingEndpoints
             Description = dto.Description,
             Notes = dto.Notes,
             LocationId = dto.LocationId,
-            IsPrebuilt = dto.IsPrebuilt
+            IsPrebuilt = dto.IsPrebuilt,
+            CostMoney = dto.CostMoney,
+            Effect = dto.Effect
         };
         db.Buildings.Add(b);
         await db.SaveChangesAsync();
@@ -123,15 +166,35 @@ public static class BuildingEndpoints
             await db.SaveChangesAsync();
         }
 
+        // Resolve LocationName for the freshly-created entity so the client
+        // gets the same shape as GetById without an extra round-trip.
+        string? locationName = null;
+        if (b.LocationId is int locId)
+        {
+            locationName = await db.Locations
+                .Where(l => l.Id == locId)
+                .Select(l => l.Name)
+                .FirstOrDefaultAsync();
+        }
+
         return TypedResults.Created($"/api/buildings/{b.Id}",
-            new BuildingDetailDto(b.Id, b.Name, b.Description, b.Notes, b.ImagePath, b.LocationId, b.IsPrebuilt));
+            new BuildingDetailDto(
+                b.Id, b.Name, b.Description, b.Notes, b.ImagePath,
+                b.LocationId, locationName, b.IsPrebuilt,
+                ImageUrl: null,
+                CostMoney: b.CostMoney,
+                Effect: b.Effect,
+                CraftingRecipesCount: 0,
+                GamesCount: http.Request.Query.ContainsKey("gameId") ? 1 : 0));
     }
 
     private static async Task<Results<NoContent, NotFound>> Update(int id, UpdateBuildingDto dto, WorldDbContext db)
     {
         var b = await db.Buildings.FindAsync(id);
         if (b is null) return TypedResults.NotFound();
-        b.Name = dto.Name; b.Description = dto.Description; b.Notes = dto.Notes; b.LocationId = dto.LocationId; b.IsPrebuilt = dto.IsPrebuilt;
+        b.Name = dto.Name; b.Description = dto.Description; b.Notes = dto.Notes;
+        b.LocationId = dto.LocationId; b.IsPrebuilt = dto.IsPrebuilt;
+        b.CostMoney = dto.CostMoney; b.Effect = dto.Effect;
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
     }

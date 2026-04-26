@@ -1,527 +1,268 @@
 @page "/buildings"
 @attribute [Authorize]
 @inject ApiClient Api
-@inject GameContextService GameContext
 @inject NavigationManager Nav
-@inject SkillService SkillSvc
-@implements IDisposable
+@inject IJSRuntime JS
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="mb-0">@(Catalog ? "Katalog budov" : "Budovy")</h1>
-    <div class="d-flex gap-2">
-        <div class="d-flex gap-2">
-            <button class="btn btn-sm @(Catalog ? "btn-outline-primary" : "btn-primary")"
-                    @onclick='() => Nav.NavigateTo("/buildings")'>Jen tato hra</button>
-            <button class="btn btn-sm @(Catalog ? "btn-primary" : "btn-outline-primary")"
-                    @onclick='() => Nav.NavigateTo("/buildings?catalog=true")'>Katalog</button>
+@* Issue #208 — single-catalog Buildings list with 3-mode toggle:
+   Galerie (5:7 tiles, default) ↔ Karty (horizontal card-rows) ↔ Seznam
+   (DxGrid). The legacy per-game / catalog mode toggle is gone — the
+   building catalog is global per the design brief, and the per-game
+   construction-recipe editor lives at /recipes (BuildingRecipe entity,
+   issue #142, untouched). View choice persists in localStorage. *@
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h1 class="mb-0">Stavby</h1>
+    <div class="d-flex gap-2 align-items-center">
+        <div class="oh-segmented" role="tablist" aria-label="Zobrazení">
+            <button type="button"
+                    class="oh-segmented-btn @(view == "galerie" ? "oh-segmented-btn--on" : "")"
+                    @onclick='() => SetViewAsync("galerie")' aria-selected="@(view == "galerie")">
+                <i class="bi bi-grid-3x3-gap"></i> Galerie
+            </button>
+            <button type="button"
+                    class="oh-segmented-btn @(view == "karty" ? "oh-segmented-btn--on" : "")"
+                    @onclick='() => SetViewAsync("karty")' aria-selected="@(view == "karty")">
+                <i class="bi bi-card-list"></i> Karty
+            </button>
+            <button type="button"
+                    class="oh-segmented-btn @(view == "seznam" ? "oh-segmented-btn--on" : "")"
+                    @onclick='() => SetViewAsync("seznam")' aria-selected="@(view == "seznam")">
+                <i class="bi bi-list-ul"></i> Seznam
+            </button>
         </div>
-        <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nová budova</button>
+        <button class="btn btn-primary" type="button" @onclick="OpenCreateModal">
+            <i class="bi bi-plus-lg"></i> Nová stavba
+        </button>
     </div>
 </div>
 
-@if (loading) { <p>Načítám...</p> }
-else if (!Catalog && buildings.Count == 0)
+<div class="oh-bld-filters mb-3">
+    <DxTextBox Text="@searchText" TextChanged="@((string v) => searchText = v)"
+               NullText="Hledat (název, popis, efekt)…" CssClass="oh-bld-filter-search" />
+    <label class="oh-bld-filter-toggle">
+        <input type="checkbox" @bind="onlyWithImage" />
+        <span>jen s obrázkem</span>
+    </label>
+    <label class="oh-bld-filter-toggle">
+        <input type="checkbox" @bind="onlyWithRecipes" />
+        <span>jen s recepty</span>
+    </label>
+    <label class="oh-bld-filter-toggle">
+        <input type="checkbox" @bind="onlyWithEffect" />
+        <span>jen s efektem</span>
+    </label>
+</div>
+
+@if (loading)
+{
+    <p class="text-muted">Načítám…</p>
+}
+else if (filtered.Count == 0)
 {
     <div class="text-center text-muted py-5">
         <i class="bi bi-house fs-1 d-block mb-2"></i>
-        <p>Žádné budovy přiřazeny k této hře.</p>
-        <button class="btn btn-outline-primary" @onclick='() => Nav.NavigateTo("/buildings?catalog=true")'>Otevřít katalog</button>
+        <p>Žádné stavby zatím nejsou.</p>
+        <button class="btn btn-outline-primary" type="button"
+                @onclick="ClearFilters">Zrušit filtry</button>
+    </div>
+}
+else if (view == "galerie")
+{
+    <div class="oh-bld-gallery">
+        @foreach (var b in filtered)
+        {
+            <BuildingTile @key="b.Id" Building="@b"
+                          OnClick="@(_ => Nav.NavigateTo($"/buildings/{b.Id}"))" />
+        }
+    </div>
+}
+else if (view == "karty")
+{
+    <div class="oh-bld-cardrow-wrap">
+        @foreach (var b in filtered)
+        {
+            <BuildingCardRow @key="b.Id" Building="@b"
+                             OnClick="@(_ => Nav.NavigateTo($"/buildings/{b.Id}"))" />
+        }
     </div>
 }
 else
 {
-    <OvcinaGrid Data="@buildings" KeyFieldName="Id" LayoutKey="grid-layout-buildings-v3"
-                RowClick="@(e => OpenModal((BuildingListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+    @* Seznam mode — LayoutKey bumped to grid-layout-buildings-v2 because
+       column schema changed (image, recipe pair, counts).
+       Memory rule: feedback_ovcinagrid_layoutkey_bump. *@
+    <OvcinaGrid Data="@filtered" KeyFieldName="Id" LayoutKey="grid-layout-buildings-v2"
+                RowClick="@(e => Nav.NavigateTo($"/buildings/{((BuildingListDto)e.Grid.GetDataItem(e.VisibleIndex)).Id}"))">
         <Columns>
-            <DxGridDataColumn FieldName="Name" Caption="Název" />
-            <DxGridDataColumn FieldName="LocationName" Caption="Lokace" Width="180px" />
+            <DxGridDataColumn Caption="" Width="60px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{ var b = (BuildingListDto)context.DataItem; }
+                    <div class="oh-bld-mini-tile @(string.IsNullOrEmpty(b.ImageUrl) ? "oh-bld-mini-tile--placeholder" : "")">
+                        @if (!string.IsNullOrEmpty(b.ImageUrl))
+                        {
+                            <img src="@b.ImageUrl" alt="@b.Name" />
+                        }
+                        else
+                        {
+                            <i class="bi bi-house-fill"></i>
+                        }
+                    </div>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="Name" Caption="Název" MinWidth="220" />
+            <DxGridDataColumn FieldName="CostMoney" Caption="Cena" Width="120px">
+                <CellDisplayTemplate>
+                    @{ var b = (BuildingListDto)context.DataItem; }
+                    <CoinPill Cost="@b.CostMoney" />
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="Effect" Caption="Efekt" MinWidth="280">
+                <CellDisplayTemplate>
+                    @{ var b = (BuildingListDto)context.DataItem; }
+                    @if (string.IsNullOrWhiteSpace(b.Effect))
+                    {
+                        <span class="text-muted fst-italic">Bez efektu</span>
+                    }
+                    else
+                    {
+                        @* Sacred prose — full text in DOM (line-clamp via CSS); never truncated server-side. *@
+                        <span class="oh-bld-effect-cell" title="@b.Effect">@b.Effect</span>
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="LocationName" Caption="Lokace" Width="160px" />
+            <DxGridDataColumn FieldName="CraftingRecipesCount" Caption="Recepty" Width="100px">
+                <CellDisplayTemplate>
+                    @{ var b = (BuildingListDto)context.DataItem; }
+                    <span class="oh-pill-mono">@b.CraftingRecipesCount</span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
             <DxGridDataColumn FieldName="IsPrebuilt" Caption="Představěná" Width="120px">
                 <CellDisplayTemplate>@(((bool)context.Value) ? "Ano" : "Ne")</CellDisplayTemplate>
             </DxGridDataColumn>
-            @* Issue #142 — per-game crafting cost summary. Catalog mode leaves
-               the field null (no recipes there); game mode populates a compact
-               "3× ingrediencí · 50 zlaťáků · 1 dovednost" via the by-game endpoint. *@
-            @if (!Catalog)
-            {
-                <DxGridDataColumn FieldName="RecipeSummary" Caption="Cena výstavby" Width="280px">
-                    <CellDisplayTemplate>
-                        @{ var b = (BuildingListDto)context.DataItem; }
-                        @if (string.IsNullOrWhiteSpace(b.RecipeSummary))
-                        {
-                            <span class="text-muted">—</span>
-                        }
-                        else
-                        {
-                            <span class="text-secondary"><i class="bi bi-hammer me-1"></i>@b.RecipeSummary</span>
-                        }
-                    </CellDisplayTemplate>
-                </DxGridDataColumn>
-            }
-            <DxGridDataColumn FieldName="Description" Caption="Popis" Width="260px" Visible="false" />
-            <DxGridDataColumn FieldName="Notes" Caption="Poznámky" Width="260px" Visible="false" />
-@if (Catalog)
-            {
-                <DxGridDataColumn Caption="" Width="120px" TextAlignment="GridTextAlignment.Center">
-                    <CellDisplayTemplate>
-                        @{
-                            var b = (BuildingListDto)context.DataItem;
-                            var isAssigned = assignedBuildingIds.Contains(b.Id);
-                        }
-                        @if (isAssigned)
-                        {
-                            <button class="btn btn-sm btn-outline-danger" @onclick="() => UnassignBuildingAsync(b.Id)" @onclick:stopPropagation="true">Odebrat</button>
-                        }
-                        else
-                        {
-                            <button class="btn btn-sm btn-outline-success" @onclick="() => AssignBuildingAsync(b.Id)" @onclick:stopPropagation="true">Přiřadit</button>
-                        }
-                    </CellDisplayTemplate>
-                </DxGridDataColumn>
-            }
+            <DxGridDataColumn FieldName="Description" Caption="Popis" MinWidth="240" Visible="false" />
+            <DxGridDataColumn FieldName="Notes" Caption="Poznámky" MinWidth="240" Visible="false" />
         </Columns>
     </OvcinaGrid>
 }
 
-<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="900px">
-    <BodyContentTemplate Context="popupContext">
-        <div class="row g-3">
-            @if (editingId.HasValue)
-            {
-                <div class="col-md-5">
-                    <ImagePicker EntityType="buildings" EntityId="editingId.Value" Alt="Obrázek budovy" AspectRatio="3:2" />
-                </div>
-            }
-            <div class="@(editingId.HasValue ? "col-md-7" : "col-md-12")">
-                <DxFormLayout>
-                    <DxFormLayoutItem Caption="Název" ColSpanMd="12">
-                        <DxTextBox @bind-Text="@name" />
-                    </DxFormLayoutItem>
-                    <DxFormLayoutItem Caption="Popis" ColSpanMd="12">
-                        <DxMemo @bind-Text="@description" Rows="3" />
-                    </DxFormLayoutItem>
-                    <DxFormLayoutItem Caption="Poznámky" ColSpanMd="12">
-                        <DxMemo @bind-Text="@notes" Rows="3" />
-                    </DxFormLayoutItem>
-                    <DxFormLayoutItem Caption="Lokace" ColSpanMd="12">
-                        <DxComboBox Data="@gameLocations" @bind-Value="@locationId"
-                                    TextFieldName="Name" ValueFieldName="Id"
-                                    NullText="Bez lokace" ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
-                    </DxFormLayoutItem>
-                    <DxFormLayoutItem Caption="" ColSpanMd="12">
-                        <DxCheckBox @bind-Checked="@isPrebuilt">Představěná organizátory</DxCheckBox>
-                    </DxFormLayoutItem>
-                </DxFormLayout>
-            </div>
-        </div>
-
-        @* Issue #142 — Building crafting cost (per-game). Hidden in catalog
-           mode (recipes are per-game) and in the new-building branch (need
-           the building Id first). Mirrors the Item-side editor in
-           ItemList.razor; the duplication is tracked as a follow-up issue
-           for extracting a shared CraftingRecipeEditor. *@
-        @if (editingId.HasValue && !Catalog && GameContext.SelectedGameId.HasValue)
+@* "+ Nová stavba" minimal create modal. After create, nav to /buildings/{id}
+   for full editing on the Upravit tab. *@
+<DxPopup AllowResize="true" @bind-Visible="@isCreateVisible" HeaderText="Nová stavba" Width="560px">
+    <BodyContentTemplate Context="cCtx">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Název" ColSpanMd="12">
+                <DxTextBox @bind-Text="@createName" />
+            </DxFormLayoutItem>
+        </DxFormLayout>
+        @if (createError is not null)
         {
-            <div class="mt-3 p-3 border rounded" style="background: var(--oh-surface);">
-                <h6 class="mb-2"><i class="bi bi-hammer me-1"></i> Cena výstavby (aktuální hra)</h6>
-                @if (recipe is not null)
-                {
-                    <div class="mb-2">
-                        <strong class="small">Cena v zlaťácích:</strong>
-                        <div class="d-flex gap-2 align-items-end mt-1">
-                            <div style="width:140px">
-                                <DxSpinEdit @bind-Value="@recipeMoneyCost" MinValue="0" NullText="(žádná)" />
-                            </div>
-                            <button class="btn btn-sm btn-outline-primary"
-                                    disabled="@(recipeMoneyCost == recipe.MoneyCost)"
-                                    @onclick="SaveRecipeMoneyAsync">
-                                Uložit cenu
-                            </button>
-                        </div>
-                    </div>
-                    <RecipeIngredientPicker
-                        Ingredients="@_ingredientRows"
-                        AvailableItems="@allItems"
-                        OnAdd="@AddIngredientAsync"
-                        OnRemove="@RemoveIngredientAsync" />
-
-                    <RecipeNotesEditor
-                        PersistedValue="@recipe.IngredientNotes"
-                        OnSave="@SaveRecipeNotesAsync" />
-
-                    <RecipeBuildingPicker
-                        Caption="Předpoklady (jiné budovy)"
-                        AddPlaceholder="(přidat předpoklad)"
-                        Buildings="@_prerequisiteRows"
-                        AvailableBuildings="@AvailablePrereqBuildings"
-                        OnAdd="@AddPrereqAsync"
-                        OnRemove="@RemovePrereqAsync" />
-
-                    <RecipeSkillPicker
-                        SelectedSkillIds="@recipe.RequiredSkillIds"
-                        AllGameSkills="@gameSkills"
-                        AvailableSkills="@AvailableGameSkills"
-                        OnAdd="@AddSkillAsync"
-                        OnRemove="@RemoveSkillAsync" />
-
-                    <button class="btn btn-sm btn-outline-danger" @onclick="() => isDeleteRecipeVisible = true">Smazat recept</button>
-                }
-                else
-                {
-                    <p class="text-muted small mb-2">Tato budova nemá nastavenou cenu výstavby pro tuto hru.</p>
-                    <button class="btn btn-sm btn-outline-primary" @onclick="CreateRecipeAsync"><i class="bi bi-plus-circle me-1"></i>Vytvořit cenu</button>
-                }
-            </div>
+            <div class="alert alert-danger mt-2">@createError</div>
         }
-
-        @if (error is not null) { <div class="alert alert-danger mt-2">@error</div> }
-        <div class="d-flex gap-2 mt-3">
-            @if (editingId.HasValue) { <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true">Smazat</button> }
-            <div style="flex: 1"></div>
-            <button class="btn btn-secondary" @onclick="() => isModalVisible = false">Zrušit</button>
-            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving">Uložit</button>
-        </div>
-    </BodyContentTemplate>
-</DxPopup>
-
-<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
-    <BodyContentTemplate Context="popupContext">
-        <p>Smazat budovu <strong>@name</strong>?</p>
-        <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
-            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
-        </div>
-    </BodyContentTemplate>
-</DxPopup>
-
-@* Issue #142 — destructive recipe-delete confirmation, per the
-   destructive-action-confirm memory rule. *@
-<DxPopup @bind-Visible="@isDeleteRecipeVisible" HeaderText="Smazat recept?" Width="420px">
-    <BodyContentTemplate Context="popupContext">
-        <p>Opravdu chcete smazat cenu výstavby pro budovu <strong>@name</strong>? Ingredience, předpoklady a požadované dovednosti se odeberou společně s receptem.</p>
-        <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" @onclick="() => isDeleteRecipeVisible = false">Zrušit</button>
-            <button class="btn btn-danger" @onclick="ConfirmDeleteRecipeAsync">Smazat recept</button>
+        <div class="d-flex gap-2 justify-content-end mt-3">
+            <button class="btn btn-secondary" type="button" @onclick="() => isCreateVisible = false" disabled="@isCreating">Zrušit</button>
+            <button class="btn btn-primary" type="button" @onclick="CreateAsync"
+                    disabled="@(isCreating || string.IsNullOrWhiteSpace(createName))">
+                @if (isCreating) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Vytvořit a otevřít
+            </button>
         </div>
     </BodyContentTemplate>
 </DxPopup>
 
 @code {
-    [SupplyParameterFromQuery] public bool Catalog { get; set; }
+    private List<BuildingListDto> buildings = [];
+    private bool loading = true;
 
-    private List<BuildingListDto> buildings = []; private bool loading = true, isModalVisible, isDeleteVisible, isSaving, isPrebuilt;
-    private string modalTitle = "", name = ""; private string? error, description, notes; private int? editingId;
-    private int? locationId;
-    private List<LocationListDto> gameLocations = [];
-    private HashSet<int> assignedBuildingIds = [];
-    private int gameId => GameContext.SelectedGameId ?? 1;
+    private string view = "galerie"; // galerie | karty | seznam — persisted
+    private string searchText = "";
+    private bool onlyWithImage;
+    private bool onlyWithRecipes;
+    private bool onlyWithEffect;
 
-    // ----- Building crafting recipe state (issue #142) -----
-    // Mirrors the Item recipe pattern in ItemList.razor's edit popup. The
-    // Issue #163 — leaf components (RecipeIngredientPicker /
-    // RecipeBuildingPicker / RecipeSkillPicker / RecipeNotesEditor) own
-    // their own input state, so the parallel `newIngItemId`/`newSkillId`/
-    // etc fields that lived here are gone. The Building-only Cena
-    // (`recipeMoneyCost`) stays page-level — Item recipes don't have it.
-    private BuildingRecipeDetailDto? recipe;
-    private List<ItemListDto> allItems = [];
-    private List<BuildingListDto> allCatalogBuildings = [];
-    private List<GameSkillDto> gameSkills = [];
-    private int? recipeMoneyCost;
-    private bool isDeleteRecipeVisible;
-    // Pre-projected leaf-row caches, refreshed once per recipe load so
-    // popup re-renders don't allocate fresh lists every frame
-    // (Copilot review on PR #173).
-    private IReadOnlyList<RecipeIngredientPicker.IngredientRow> _ingredientRows = [];
-    private IReadOnlyList<RecipeBuildingPicker.BuildingRow> _prerequisiteRows = [];
+    private bool isCreateVisible;
+    private bool isCreating;
+    private string? createError;
+    private string createName = "";
 
-    // Skills already required by the recipe shouldn't appear in the picker.
-    private List<GameSkillDto> AvailableGameSkills =>
-        recipe is null
-            ? []
-            : gameSkills.Where(gs => !recipe.RequiredSkillIds.Contains(gs.Id)).ToList();
-
-    // Prerequisite candidates exclude the building being edited (a recipe
-    // can't depend on its own output) and any building already added.
-    private List<BuildingListDto> AvailablePrereqBuildings =>
-        recipe is null
-            ? []
-            : allCatalogBuildings
-                .Where(b => b.Id != editingId
-                    && !recipe.PrerequisiteBuildings.Any(pb => pb.BuildingId == b.Id))
-                .ToList();
-
-    private bool _previousCatalog;
+    private List<BuildingListDto> filtered =>
+        buildings.Where(b =>
+            (string.IsNullOrWhiteSpace(searchText)
+                || b.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase)
+                || (b.Description?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (b.Effect?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false))
+            && (!onlyWithImage || !string.IsNullOrEmpty(b.ImageUrl))
+            && (!onlyWithRecipes || b.CraftingRecipesCount > 0)
+            && (!onlyWithEffect || !string.IsNullOrWhiteSpace(b.Effect)))
+            .ToList();
 
     protected override async Task OnInitializedAsync()
     {
-        await GameContext.InitializeAsync();
-        GameContext.OnGameChanged += OnGameChanged;
-        _previousCatalog = Catalog;
+        try
+        {
+            view = await JS.InvokeAsync<string>("localStorage.getItem", "oh-building-view") ?? "galerie";
+            if (view != "galerie" && view != "karty" && view != "seznam") view = "galerie";
+        }
+        catch { view = "galerie"; }
         await LoadAsync();
     }
 
-    protected override async Task OnParametersSetAsync()
-    {
-        if (Catalog != _previousCatalog)
-        {
-            _previousCatalog = Catalog;
-            await LoadAsync();
-        }
-    }
     private async Task LoadAsync()
     {
         loading = true;
-        if (Catalog)
+        try
         {
             buildings = await Api.GetListAsync<BuildingListDto>("/api/buildings");
-            var assigned = await Api.GetListAsync<BuildingListDto>($"/api/buildings/by-game/{gameId}");
-            assignedBuildingIds = assigned.Select(b => b.Id).ToHashSet();
         }
-        else
-        {
-            buildings = await Api.GetListAsync<BuildingListDto>($"/api/buildings/by-game/{gameId}");
-        }
-        loading = false;
-    }
-    private async void OnGameChanged() { await LoadAsync(); StateHasChanged(); }
-    public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
-
-    private async void OpenModal(BuildingListDto? b)
-    {
-        error = null;
-        gameLocations = await Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gameId}");
-        if (b is null) { editingId = null; name = ""; description = null; notes = null; locationId = null; isPrebuilt = false; modalTitle = "Nová budova"; }
-        else { editingId = b.Id; name = b.Name; description = b.Description; notes = b.Notes; locationId = b.LocationId; isPrebuilt = b.IsPrebuilt; modalTitle = $"Upravit: {b.Name}"; }
-
-        // Issue #142 — load recipe state for the building-cost editor. Only
-        // meaningful in game mode for an existing building; the editor markup
-        // already gates rendering on those conditions.
-        recipe = null;
-        recipeMoneyCost = null;
-        if (editingId.HasValue && !Catalog && GameContext.SelectedGameId is int gid)
-        {
-            // Items eligible as ingredients are catalog-wide (the recipe
-            // structure references catalog Items, not GameItems).
-            allItems = await Api.GetListAsync<ItemListDto>("/api/items");
-            // Prerequisite buildings come from the catalog so an organizer
-            // can require a building that's also assigned to other games.
-            allCatalogBuildings = await Api.GetListAsync<BuildingListDto>("/api/buildings");
-            gameSkills = (await SkillSvc.GetGameSkillsAsync(gid)).ToList();
-            await LoadRecipeAsync(editingId.Value);
-        }
-
-        isModalVisible = true;
-        StateHasChanged();
+        finally { loading = false; }
     }
 
-    // ---- Recipe load + CRUD handlers (issue #142) ----
-
-    private async Task LoadRecipeAsync(int buildingId)
+    private async Task SetViewAsync(string newView)
     {
-        recipe = null;
-        recipeMoneyCost = null;
-        _ingredientRows = [];
-        _prerequisiteRows = [];
-        if (GameContext.SelectedGameId is not int gid) return;
+        if (view == newView) return;
+        view = newView;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "oh-building-view", view); }
+        catch { /* localStorage unavailable — ignore */ }
+    }
 
-        // /api/building-recipes/by-game/{gid} returns one entry per recipe,
-        // plus the OutputBuildingId so we can pick the one for THIS building.
-        var recipes = await Api.GetListAsync<BuildingRecipeListDto>($"/api/building-recipes/by-game/{gid}");
-        var match = recipes.FirstOrDefault(r => r.OutputBuildingId == buildingId);
-        if (match is not null)
+    private void OpenCreateModal()
+    {
+        createName = "";
+        createError = null;
+        isCreateVisible = true;
+    }
+
+    private async Task CreateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(createName)) return;
+        createError = null;
+        isCreating = true;
+        try
         {
-            recipe = await Api.GetAsync<BuildingRecipeDetailDto>($"/api/building-recipes/{match.Id}");
-            recipeMoneyCost = recipe?.MoneyCost;
-            // Project DTO collections once per recipe load (Copilot on PR #173).
-            if (recipe is not null)
+            var (ok, created, problem) = await Api.PostWithProblemAsync<CreateBuildingDto, BuildingDetailDto>(
+                "/api/buildings",
+                new CreateBuildingDto(createName.Trim()));
+            if (!ok)
             {
-                _ingredientRows = recipe.Ingredients
-                    .Select(i => new RecipeIngredientPicker.IngredientRow(i.ItemId, i.ItemName, i.Quantity))
-                    .ToList();
-                _prerequisiteRows = recipe.PrerequisiteBuildings
-                    .Select(pb => new RecipeBuildingPicker.BuildingRow(pb.BuildingId, pb.BuildingName))
-                    .ToList();
+                createError = problem ?? "Vytvoření stavby se nepodařilo.";
+                return;
             }
+            isCreateVisible = false;
+            if (created is not null)
+                Nav.NavigateTo($"/buildings/{created.Id}");
+            else
+                await LoadAsync();
         }
+        catch (Exception ex) { createError = ex.Message; }
+        finally { isCreating = false; }
     }
 
-    private async Task CreateRecipeAsync()
+    private void ClearFilters()
     {
-        if (editingId is null || GameContext.SelectedGameId is not int gid) return;
-        try
-        {
-            await Api.PostAsync<CreateBuildingRecipeDto, BuildingRecipeDetailDto>("/api/building-recipes",
-                new CreateBuildingRecipeDto(gid, editingId.Value));
-            await LoadRecipeAsync(editingId.Value);
-            StateHasChanged();
-        }
-        catch (Exception ex) { error = ex.Message; }
-    }
-
-    private async Task ConfirmDeleteRecipeAsync()
-    {
-        if (recipe is null) return;
-        try
-        {
-            await Api.DeleteAsync($"/api/building-recipes/{recipe.Id}");
-            recipe = null;
-            recipeMoneyCost = null;
-            isDeleteRecipeVisible = false;
-            StateHasChanged();
-        }
-        catch (Exception ex) { error = ex.Message; isDeleteRecipeVisible = false; }
-    }
-
-    private async Task AddIngredientAsync((int ItemId, int Quantity) ev)
-    {
-        if (recipe is null) return;
-        try
-        {
-            await Api.PostAsync<AddBuildingRecipeIngredientDto, object>($"/api/building-recipes/{recipe.Id}/ingredients",
-                new AddBuildingRecipeIngredientDto(ev.ItemId, ev.Quantity));
-            await LoadRecipeAsync(editingId!.Value);
-            StateHasChanged();
-        }
-        catch (Exception ex) { error = ex.Message; }
-    }
-
-    private async Task RemoveIngredientAsync(int itemId)
-    {
-        if (recipe is null) return;
-        try
-        {
-            await Api.DeleteAsync($"/api/building-recipes/{recipe.Id}/ingredients/{itemId}");
-            await LoadRecipeAsync(editingId!.Value);
-            StateHasChanged();
-        }
-        catch (Exception ex) { error = ex.Message; }
-    }
-
-    private async Task AddPrereqAsync(int buildingId)
-    {
-        if (recipe is null) return;
-        try
-        {
-            await Api.PostAsync<AddBuildingRecipePrerequisiteDto, object>($"/api/building-recipes/{recipe.Id}/prerequisites",
-                new AddBuildingRecipePrerequisiteDto(buildingId));
-            await LoadRecipeAsync(editingId!.Value);
-            StateHasChanged();
-        }
-        catch (Exception ex) { error = ex.Message; }
-    }
-
-    private async Task RemovePrereqAsync(int buildingId)
-    {
-        if (recipe is null) return;
-        try
-        {
-            await Api.DeleteAsync($"/api/building-recipes/{recipe.Id}/prerequisites/{buildingId}");
-            await LoadRecipeAsync(editingId!.Value);
-            StateHasChanged();
-        }
-        catch (Exception ex) { error = ex.Message; }
-    }
-
-    private async Task AddSkillAsync(int skillId)
-    {
-        if (recipe is null) return;
-        var next = recipe.RequiredSkillIds.ToList();
-        if (next.Contains(skillId)) return;
-        next.Add(skillId);
-        await PutRecipeAsync(
-            moneyCost: recipe.MoneyCost,
-            skillIds: next,
-            ingredientNotes: recipe.IngredientNotes);
-    }
-
-    private async Task RemoveSkillAsync(int skillId)
-    {
-        if (recipe is null) return;
-        var next = recipe.RequiredSkillIds.Where(s => s != skillId).ToList();
-        await PutRecipeAsync(
-            moneyCost: recipe.MoneyCost,
-            skillIds: next,
-            ingredientNotes: recipe.IngredientNotes);
-    }
-
-    private async Task SaveRecipeMoneyAsync()
-    {
-        if (recipe is null) return;
-        // Use the editor's current value verbatim — null means "clear it",
-        // not "leave unchanged" (Copilot review on PR #164: ?? fallback
-        // prevented users from clearing MoneyCost back to null).
-        await PutRecipeAsync(
-            moneyCost: recipeMoneyCost,
-            skillIds: recipe.RequiredSkillIds.ToList(),
-            ingredientNotes: recipe.IngredientNotes);
-    }
-
-    private async Task SaveRecipeNotesAsync(string? newValue)
-    {
-        if (recipe is null || editingId is null) return;
-        var normalized = string.IsNullOrWhiteSpace(newValue) ? null : newValue.Trim();
-        // Same shape as money — pass `normalized` (which may be null) verbatim
-        // so clearing the memo actually persists as null.
-        await PutRecipeAsync(
-            moneyCost: recipe.MoneyCost,
-            skillIds: recipe.RequiredSkillIds.ToList(),
-            ingredientNotes: normalized);
-    }
-
-    /// <summary>
-    /// Single PUT helper that requires explicit values for every mutable
-    /// field. Callers are responsible for sending the recipe's current
-    /// server-side values for fields they don't want to change — without
-    /// that contract, a null param meant "preserve" and clearing a field
-    /// silently no-op'd (Copilot review on PR #164).
-    /// </summary>
-    private async Task PutRecipeAsync(
-        int? moneyCost, IReadOnlyList<int> skillIds, string? ingredientNotes)
-    {
-        if (recipe is null) return;
-        try
-        {
-            var dto = new UpdateBuildingRecipeDto(
-                recipe.OutputBuildingId,
-                MoneyCost: moneyCost,
-                RequiredSkillIds: skillIds,
-                IngredientNotes: ingredientNotes);
-            await Api.PutAsync($"/api/building-recipes/{recipe.Id}", dto);
-            await LoadRecipeAsync(editingId!.Value);
-            StateHasChanged();
-        }
-        catch (Exception ex) { error = ex.Message; }
-    }
-
-    private async Task SaveAsync()
-    {
-        error = null; isSaving = true;
-        try
-        {
-            if (editingId.HasValue) await Api.PutAsync($"/api/buildings/{editingId}", new UpdateBuildingDto(name, description, notes, locationId, isPrebuilt));
-            else await Api.PostAsync<CreateBuildingDto, BuildingDetailDto>($"/api/buildings?gameId={gameId}", new CreateBuildingDto(name, description, notes, locationId, isPrebuilt));
-            isModalVisible = false; await LoadAsync();
-        }
-        catch (Exception ex) { error = ex.Message; } finally { isSaving = false; }
-    }
-
-    private async Task ConfirmDeleteAsync()
-    {
-        try { await Api.DeleteAsync($"/api/buildings/{editingId}"); isDeleteVisible = false; isModalVisible = false; await LoadAsync(); }
-        catch (Exception ex) { error = ex.Message; }
-    }
-
-    private async Task AssignBuildingAsync(int buildingId)
-    {
-        await Api.PostAsync<GameBuildingDto, object>("/api/buildings/by-game", new GameBuildingDto(gameId, buildingId));
-        assignedBuildingIds.Add(buildingId);
-        StateHasChanged();
-    }
-
-    private async Task UnassignBuildingAsync(int buildingId)
-    {
-        await Api.DeleteAsync($"/api/buildings/by-game/{gameId}/{buildingId}");
-        assignedBuildingIds.Remove(buildingId);
-        StateHasChanged();
+        searchText = "";
+        onlyWithImage = false;
+        onlyWithRecipes = false;
+        onlyWithEffect = false;
     }
 }

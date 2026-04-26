@@ -1,0 +1,23 @@
+@* Shared coin/groše pill — reuse on Items + Recipes catalogs in follow-ups.
+   `Cost` null or 0 → render muted "Zdarma" pill. Otherwise renders the
+   coin icon + "{N} gr" in mono. Forest-green accent on the coin glyph. *@
+
+<span class="oh-coin-pill @(IsFree ? "oh-coin-pill--free" : "")"
+      title="@(IsFree ? "Zdarma" : $"{Cost} grošů")">
+    @if (IsFree)
+    {
+        <i class="bi bi-circle"></i>
+        <span>Zdarma</span>
+    }
+    else
+    {
+        <i class="bi bi-coin"></i>
+        <span>@Cost gr</span>
+    }
+</span>
+
+@code {
+    [Parameter] public int? Cost { get; set; }
+
+    private bool IsFree => Cost is null or 0;
+}

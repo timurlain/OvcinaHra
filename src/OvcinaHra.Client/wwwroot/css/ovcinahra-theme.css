@@ -3693,3 +3693,128 @@
         box-shadow:0 1px 4px rgba(0,0,0,.18)}
 }
 }
+
+/* ===========================================================================
+ * Shared coin/groše pill — extracted from buildings port (#208). Reuse on
+ * Items + Recipes catalogs in follow-ups.
+ * =========================================================================== */
+.oh-coin-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;
+    border-radius:999px;background:rgba(45,80,22,.08);color:#2D5016;
+    border:1px solid rgba(45,80,22,.4);font:600 .8rem/1.3 var(--oh-font-mono,ui-monospace,monospace);
+    white-space:nowrap}
+.oh-coin-pill i{font-size:.95rem;color:#7a5b00}
+.oh-coin-pill--free{background:#f5f0e1;color:#7a6f50;border-color:#d8d2be}
+.oh-coin-pill--free i{color:#a89e7a}
+.oh-coin-input{max-width:160px}
+
+/* ===========================================================================
+ * Buildings — /buildings catalog (3-mode toggle Galerie/Karty/Seznam) +
+ * /buildings/{id} 2-tab detail (Karta · Upravit). Recipe pair (CostMoney →
+ * Effect) is the building's identity surface (issue #208).
+ * Class prefix .oh-bld-* — reserved per design canon.
+ * =========================================================================== */
+
+/* — Filters — */
+.oh-bld-filters{display:flex;gap:12px;align-items:center;flex-wrap:wrap;
+    padding:10px 12px;background:#FFF8F0;border:1px solid #ead9b8;border-radius:8px}
+.oh-bld-filter-search{min-width:240px;flex:1 1 240px}
+.oh-bld-filter-toggle{display:inline-flex;align-items:center;gap:6px;font:500 .875rem/1 var(--oh-font-body,inherit);color:#5a5642;cursor:pointer;user-select:none}
+.oh-bld-filter-toggle input{cursor:pointer}
+
+/* — Galerie tile (5:7 portrait) — */
+.oh-bld-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:18px}
+.oh-bld-tile{position:relative;display:flex;flex-direction:column;
+    background:#FFF8F0;border:1px solid #d8d2be;border-radius:10px;overflow:hidden;
+    cursor:pointer;text-align:left;padding:0;transition:.18s ease;font-family:inherit}
+.oh-bld-tile:hover{border-color:#2D5016;box-shadow:0 6px 14px rgba(45,80,22,.18);transform:translateY(-2px)}
+.oh-bld-tile:focus-visible{outline:3px solid #2D5016;outline-offset:2px}
+.oh-bld-tile-art{position:relative;aspect-ratio:5/7;background:#f5f0e1;overflow:hidden}
+.oh-bld-tile-art img{width:100%;height:100%;object-fit:cover;display:block}
+.oh-bld-tile-fade{position:absolute;left:0;right:0;bottom:0;height:50%;
+    background:linear-gradient(180deg,rgba(0,0,0,0) 0%,rgba(20,12,4,.8) 100%);
+    pointer-events:none}
+.oh-bld-tile-name-on-img{position:absolute;left:12px;right:12px;bottom:10px;
+    color:#FFF8F0;font:700 1rem/1.2 var(--oh-font-headline,Merriweather,Georgia,serif);
+    text-shadow:0 1px 2px rgba(0,0,0,.6);
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.oh-bld-tile-parchment{position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:8px;padding:14px;text-align:center;
+    background:repeating-linear-gradient(45deg,#FFF8F0 0 8px,#f4ead2 8px 9px);color:#7a5520}
+.oh-bld-tile-parchment > i{font-size:2.2rem;opacity:.6}
+.oh-bld-tile-parchment-name{font:700 1rem/1.2 var(--oh-font-headline,Merriweather,Georgia,serif);color:#3a2e1a}
+.oh-bld-tile-prebuilt{position:absolute;top:8px;right:8px;display:inline-flex;align-items:center;justify-content:center;
+    width:26px;height:26px;border-radius:50%;background:rgba(178,98,35,.85);color:#FFF8F0;font-size:.85rem}
+.oh-bld-tile-body{padding:10px 12px 12px;display:flex;flex-direction:column;gap:8px}
+.oh-bld-tile-foot{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:.72rem;color:#5a5642}
+.oh-bld-tile-foot-loc{display:inline-flex;align-items:center;gap:3px;font-style:italic;color:#7a6f50}
+
+/* — Mini-tile inside Seznam grid first column — */
+.oh-bld-mini-tile{width:40px;height:56px;border-radius:4px;background:#f5f0e1;
+    border:1px solid #d8d2be;overflow:hidden;display:flex;align-items:center;justify-content:center;color:#7a6f50}
+.oh-bld-mini-tile img{width:100%;height:100%;object-fit:cover;display:block}
+
+/* — Karty mode (horizontal card-rows) — */
+.oh-bld-cardrow-wrap{display:flex;flex-direction:column;gap:10px}
+.oh-bld-cardrow{display:grid;grid-template-columns:86px 1fr auto;gap:14px;align-items:center;
+    background:#FFF8F0;border:1px solid #ead9b8;border-radius:10px;overflow:hidden;
+    cursor:pointer;text-align:left;padding:10px;transition:.15s ease;font-family:inherit;
+    min-height:120px}
+.oh-bld-cardrow:hover{border-color:#2D5016;box-shadow:0 4px 10px rgba(45,80,22,.14)}
+.oh-bld-cardrow:focus-visible{outline:3px solid #2D5016;outline-offset:2px}
+.oh-bld-cardrow-thumb{width:86px;height:120px;border-radius:6px;overflow:hidden;background:#f5f0e1;
+    display:flex;align-items:center;justify-content:center;color:#7a6f50;font-size:1.6rem}
+.oh-bld-cardrow-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.oh-bld-cardrow-thumb--placeholder{background:repeating-linear-gradient(45deg,#FFF8F0 0 6px,#f4ead2 6px 7px)}
+.oh-bld-cardrow-body{display:flex;flex-direction:column;gap:6px;min-width:0}
+.oh-bld-cardrow-name{font:700 1.2rem/1.2 var(--oh-font-headline,Merriweather,Georgia,serif);color:#2a2218;margin:0;display:flex;align-items:center;gap:8px}
+.oh-bld-cardrow-prebuilt{display:inline-flex;align-items:center;color:#B26223;font-size:.95rem}
+.oh-bld-cardrow-desc{font:italic 400 .9rem/1.4 Georgia,serif;color:#5a5642;margin:0;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.oh-bld-cardrow-stats{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0}
+
+/* — Recipe block (cost → effect formula) — */
+.oh-bld-rec{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.8rem;color:#3a2e1a;line-height:1.4}
+.oh-bld-rec--compact{font-size:.75rem}
+.oh-bld-rec-arrow{display:inline-flex;align-items:center;color:#7a5520;font-size:.95rem;flex-shrink:0}
+.oh-bld-rec-effect{font:400 .85rem/1.4 Georgia,serif;color:#2a2218;flex:1;min-width:0;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.oh-bld-rec--compact .oh-bld-rec-effect{font-size:.78rem}
+.oh-bld-rec-effect--empty{font-style:italic;color:#a89e7a}
+
+/* — Effect cell in Seznam — */
+.oh-bld-effect-cell{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+    overflow:hidden;font:400 .85rem/1.4 Georgia,serif;color:#2a2218}
+
+/* — Karta tab — */
+.oh-bld-karta{background:#FFF8F0;border:1px solid #ead9b8;border-radius:10px;padding:24px}
+.oh-bld-karta-hero{display:grid;grid-template-columns:60fr 40fr;gap:24px;align-items:start;margin-bottom:18px}
+@media (max-width:880px){.oh-bld-karta-hero{grid-template-columns:1fr}}
+.oh-bld-karta-img-wrap{display:flex;justify-content:center}
+.oh-bld-karta-img{width:100%;max-width:380px;aspect-ratio:5/7;object-fit:cover;
+    border-radius:6px;border:1px solid #d8d2be;background:#f5f0e1;display:block}
+.oh-bld-karta-img--placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+    background:repeating-linear-gradient(45deg,#FFF8F0 0 8px,#f4ead2 8px 9px);color:#7a5520}
+.oh-bld-karta-img--placeholder i{font-size:3rem;opacity:.55}
+.oh-bld-karta-img-name{font:700 1.1rem/1.2 var(--oh-font-headline,Merriweather,Georgia,serif);color:#3a2e1a;text-align:center;padding:0 14px}
+.oh-bld-karta-side{display:flex;flex-direction:column;gap:14px;position:sticky;top:14px}
+.oh-bld-karta-name{font:900 2.2rem/1.15 var(--oh-font-headline,Merriweather,Georgia,serif);color:#2a2218;margin:0}
+.oh-bld-karta-stats{background:#fff;border:1px solid #ead9b8;border-radius:8px;padding:10px 14px;display:flex;flex-direction:column;gap:6px}
+.oh-bld-karta-stat-row{display:flex;justify-content:space-between;align-items:center;font-size:.875rem;color:#3a2e1a}
+.oh-bld-karta-stat-row strong{font:600 .9rem/1 var(--oh-font-mono,ui-monospace,monospace);color:#2D5016}
+.oh-bld-karta-cluster-title{font:700 .85rem/1 var(--oh-font-headline,Merriweather,Georgia,serif);
+    text-transform:uppercase;letter-spacing:.04em;color:#5a3a18;margin:0}
+.oh-bld-karta-cluster{display:flex;gap:6px;flex-wrap:wrap}
+.oh-bld-karta-desc{font:400 1.02rem/1.65 Georgia,serif;color:#2a2218;margin:0 0 8px;text-align:justify;white-space:pre-wrap}
+.oh-bld-karta-desc::first-letter{font:900 2.6rem/1 var(--oh-font-headline,Merriweather,Georgia,serif);
+    float:left;margin-right:8px;color:#2D5016;line-height:.9}
+.oh-bld-karta-notes{font:italic 400 .9rem/1.55 Georgia,serif;color:#5a5642;margin:0;white-space:pre-wrap}
+
+/* — Upravit tab — */
+.oh-bld-edit{background:#FFF8F0;border:1px solid #ead9b8;border-radius:10px;padding:18px}
+.oh-bld-edit-foot{display:flex;gap:8px;align-items:center;margin-top:18px;padding-top:14px;border-top:1px solid #ead9b8;
+    position:sticky;bottom:0;background:#FFF8F0;z-index:1;flex-wrap:wrap}
+.oh-bld-delete-blocked{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;
+    border-radius:6px;background:rgba(178,98,35,.08);color:#7a5520;
+    border:1px solid rgba(178,98,35,.3);font:500 .825rem/1.3 var(--oh-font-body,inherit)}
+.oh-bld-delete-blocked i{color:#B26223}
+.oh-bld-delete-blocked strong{color:#3a2e1a}

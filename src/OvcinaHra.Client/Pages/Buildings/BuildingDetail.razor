@@ -1,0 +1,373 @@
+@page "/buildings/{Id:int}"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject GameContextService GameContext
+@implements IDisposable
+
+@* Issue #208 — 2-tab building detail page (Karta · Upravit). Karta hero
+   shows the recipe block (cost → effect) + "Použito v" cluster. Upravit
+   3 sections: Identita / Recept (sacred banner over Effect memo) / Obsah.
+   Smazat blocked when CraftingRecipesCount > 0. *@
+
+<div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+    <button class="btn btn-sm btn-outline-secondary" type="button"
+            @onclick='() => Nav.NavigateTo("/buildings")'>
+        <i class="bi bi-arrow-left"></i> Zpět
+    </button>
+    <h1 class="mb-0">@(building?.Name ?? "Stavba")</h1>
+    @if (building is not null && building.IsPrebuilt)
+    {
+        <span class="oh-pill" title="Představěná organizátory">
+            <i class="bi bi-flag-fill"></i> Představěná
+        </span>
+    }
+</div>
+
+@if (loading)
+{
+    <p class="text-muted">Načítám…</p>
+}
+else if (building is null && error is not null)
+{
+    <div class="alert alert-danger d-flex align-items-center gap-2">
+        <i class="bi bi-wifi-off"></i>
+        <span>Nepodařilo se načíst stavbu: @error</span>
+        <button type="button" class="btn btn-sm btn-outline-primary ms-auto" @onclick="LoadAsync">Zkusit znovu</button>
+    </div>
+}
+else if (building is null)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-emoji-frown fs-1 d-block mb-2"></i>
+        <p>Stavba nenalezena.</p>
+    </div>
+}
+else
+{
+    <div class="d-flex gap-2 mb-3">
+        <button class="btn btn-sm @(activeTab == "karta" ? "btn-primary" : "btn-outline-primary")"
+                @onclick='() => activeTab = "karta"'>
+            <i class="bi bi-bookmark-fill"></i> Karta
+        </button>
+        <button class="btn btn-sm @(activeTab == "upravit" ? "btn-primary" : "btn-outline-primary")"
+                @onclick='() => activeTab = "upravit"'>
+            <i class="bi bi-pencil"></i> Upravit
+        </button>
+    </div>
+
+    @if (activeTab == "karta")
+    {
+        <div class="oh-bld-karta">
+            <div class="oh-bld-karta-hero">
+                <div class="oh-bld-karta-img-wrap @(string.IsNullOrEmpty(building.ImageUrl) ? "oh-bld-karta-img-wrap--placeholder" : "")">
+                    @if (!string.IsNullOrEmpty(building.ImageUrl))
+                    {
+                        <img src="@building.ImageUrl" alt="@building.Name" class="oh-bld-karta-img" />
+                    }
+                    else
+                    {
+                        <div class="oh-bld-karta-img oh-bld-karta-img--placeholder">
+                            <i class="bi bi-house-fill"></i>
+                            <span class="oh-bld-karta-img-name">@building.Name</span>
+                        </div>
+                    }
+                </div>
+                <div class="oh-bld-karta-side">
+                    <h2 class="oh-bld-karta-name">@building.Name</h2>
+                    <BuildingRecipeBlock CostMoney="@building.CostMoney" Effect="@building.Effect" />
+
+                    <div class="oh-bld-karta-stats">
+                        @if (!string.IsNullOrWhiteSpace(building.LocationName))
+                        {
+                            <div class="oh-bld-karta-stat-row">
+                                <span><i class="bi bi-geo-alt"></i> Lokace</span>
+                                <strong>@building.LocationName</strong>
+                            </div>
+                        }
+                        <div class="oh-bld-karta-stat-row">
+                            <span><i class="bi bi-flag"></i> Představěná</span>
+                            <strong>@(building.IsPrebuilt ? "Ano" : "Ne")</strong>
+                        </div>
+                    </div>
+
+                    @if (building.CraftingRecipesCount > 0 || building.GamesCount > 0)
+                    {
+                        <h6 class="oh-bld-karta-cluster-title">Použito v</h6>
+                        <div class="oh-bld-karta-cluster">
+                            @if (building.CraftingRecipesCount > 0)
+                            {
+                                <span class="oh-pill-mono" title="Recepty vyžadující tuto stavbu">
+                                    <i class="bi bi-hammer"></i>
+                                    <strong>@building.CraftingRecipesCount</strong>
+                                    receptů
+                                </span>
+                            }
+                            @if (building.GamesCount > 0)
+                            {
+                                <span class="oh-pill-mono" title="Hry používající tuto stavbu">
+                                    <i class="bi bi-controller"></i>
+                                    <strong>@building.GamesCount</strong>
+                                    @(building.GamesCount == 1 ? "hra" : (building.GamesCount < 5 ? "hry" : "her"))
+                                </span>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(building.Description))
+            {
+                <p class="oh-bld-karta-desc">@building.Description</p>
+            }
+            @if (!string.IsNullOrWhiteSpace(building.Notes))
+            {
+                <p class="oh-bld-karta-notes"><em>@building.Notes</em></p>
+            }
+        </div>
+    }
+    else if (activeTab == "upravit")
+    {
+        <div class="oh-bld-edit">
+            <DxFormLayout>
+                <DxFormLayoutGroup Caption="Identita" ColSpanMd="12">
+                    <DxFormLayoutItem Caption="Název" ColSpanMd="8">
+                        <DxTextBox @bind-Text="@editModel.Name" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Lokace" ColSpanMd="4">
+                        <DxComboBox Data="@allLocations" @bind-Value="@editModel.LocationId"
+                                    TextFieldName="Name" ValueFieldName="Id"
+                                    NullText="Bez lokace"
+                                    SearchMode="ListSearchMode.AutoSearch"
+                                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                    </DxFormLayoutItem>
+                    @* "Představěná" is the intentional Czech label per
+                       feedback_ovcinahra_predstavena_term — not a typo. *@
+                    <DxFormLayoutItem Caption="Představěná" ColSpanMd="12">
+                        <DxCheckBox @bind-Checked="@editModel.IsPrebuilt">Představěná organizátory (existuje od začátku hry)</DxCheckBox>
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+
+                <DxFormLayoutGroup Caption="Obrázek (5:7 portrét)" ColSpanMd="12">
+                    <DxFormLayoutItem ColSpanMd="12">
+                        <ImagePicker EntityType="buildings" EntityId="@building.Id"
+                                     AspectRatio="5:7" Width="240px"
+                                     Alt="@building.Name" />
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+
+                <DxFormLayoutGroup Caption="Recept (cena → efekt)" ColSpanMd="12">
+                    <DxFormLayoutItem ColSpanMd="12">
+                        <div class="oh-sacred-banner">
+                            <i class="bi bi-shield-fill-exclamation"></i>
+                            <span>Efekt je <strong>posvátný text</strong> — pište ho tak, jak ho uvidí hráč na herní kartě. Nezkracujte, neparafrázujte.</span>
+                        </div>
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Cena (groše)" ColSpanMd="4">
+                        <DxSpinEdit @bind-Value="@editModel.CostMoney" MinValue="0" MaxValue="999999"
+                                    NullText="Zdarma"
+                                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
+                                    CssClass="oh-coin-input" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Efekt" ColSpanMd="12">
+                        <DxMemo @bind-Text="@editModel.Effect" Rows="3" />
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+
+                <DxFormLayoutGroup Caption="Obsah" ColSpanMd="12">
+                    <DxFormLayoutItem Caption="Popis (organizátor)" ColSpanMd="12">
+                        <DxMemo @bind-Text="@editModel.Description" Rows="3" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Poznámky" ColSpanMd="12">
+                        <DxMemo @bind-Text="@editModel.Notes" Rows="3" />
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+            </DxFormLayout>
+
+            @if (saveError is not null)
+            {
+                <div class="alert alert-danger mt-2">@saveError</div>
+            }
+
+            <div class="oh-bld-edit-foot">
+                @if (building.CraftingRecipesCount > 0)
+                {
+                    <span class="oh-bld-delete-blocked" title="Stavba je odkazovaná recepty — nelze smazat">
+                        <i class="bi bi-lock-fill"></i>
+                        Smazat zablokováno — používá se v <strong>@building.CraftingRecipesCount</strong> receptech
+                    </span>
+                }
+                else
+                {
+                    <button class="btn btn-outline-danger" type="button"
+                            @onclick="() => isDeleteVisible = true" disabled="@isSaving">
+                        <i class="bi bi-trash"></i> Smazat
+                    </button>
+                }
+                <div style="flex:1"></div>
+                <button class="btn btn-secondary" type="button"
+                        @onclick="ResetEditModel" disabled="@isSaving">Zrušit</button>
+                <button class="btn btn-primary" type="button"
+                        @onclick="SaveAsync" disabled="@(isSaving || string.IsNullOrWhiteSpace(editModel.Name))">
+                    @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    Uložit
+                </button>
+            </div>
+        </div>
+    }
+}
+
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Smazat stavbu?" Width="420px">
+    <BodyContentTemplate Context="ctx">
+        <p>Smazat stavbu <strong>@(building?.Name)</strong>? Akce je nevratná.</p>
+        @if (deleteError is not null)
+        {
+            <div class="alert alert-danger">@deleteError</div>
+        }
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" type="button" @onclick="() => isDeleteVisible = false">Zrušit</button>
+            <button class="btn btn-danger" type="button" @onclick="ConfirmDeleteAsync">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private BuildingDetailDto? building;
+    private bool loading = true;
+    private string? error;
+
+    private string activeTab = "karta";
+
+    private EditModel editModel = new();
+    private bool isSaving;
+    private string? saveError;
+
+    private bool isDeleteVisible;
+    private string? deleteError;
+
+    private List<LocationListDto> allLocations = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GameContext.InitializeAsync();
+        GameContext.OnGameChanged += OnGameChanged;
+        await LoadAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (building is not null && building.Id != Id)
+            await LoadAsync();
+    }
+
+    private async void OnGameChanged()
+    {
+        // Location combo is keyed by the current game; refresh.
+        await LoadLocationsAsync();
+        StateHasChanged();
+    }
+
+    public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        error = null;
+        try
+        {
+            building = await Api.GetAsync<BuildingDetailDto>($"/api/buildings/{Id}");
+            if (building is null)
+            {
+                error = "Stavba nenalezena.";
+                return;
+            }
+            ResetEditModel();
+            await LoadLocationsAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { loading = false; }
+    }
+
+    private async Task LoadLocationsAsync()
+    {
+        try
+        {
+            var gid = GameContext.SelectedGameId;
+            allLocations = gid is int g
+                ? await Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{g}")
+                : await Api.GetListAsync<LocationListDto>("/api/locations");
+        }
+        catch { /* picker is non-critical for read view */ }
+    }
+
+    private void ResetEditModel()
+    {
+        if (building is null) return;
+        editModel = new EditModel
+        {
+            Name = building.Name,
+            Description = building.Description,
+            Notes = building.Notes,
+            LocationId = building.LocationId,
+            IsPrebuilt = building.IsPrebuilt,
+            CostMoney = building.CostMoney,
+            Effect = building.Effect
+        };
+        saveError = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (building is null || string.IsNullOrWhiteSpace(editModel.Name)) return;
+        saveError = null;
+        isSaving = true;
+        try
+        {
+            var dto = new UpdateBuildingDto(
+                editModel.Name.Trim(),
+                editModel.Description, editModel.Notes,
+                editModel.LocationId, editModel.IsPrebuilt,
+                editModel.CostMoney, editModel.Effect);
+            var (ok, problem) = await Api.PutWithProblemAsync($"/api/buildings/{building.Id}", dto);
+            if (!ok)
+            {
+                saveError = problem ?? "Uložení se nezdařilo.";
+                return;
+            }
+            await LoadAsync();
+        }
+        catch (Exception ex) { saveError = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (building is null) return;
+        deleteError = null;
+        try
+        {
+            var ok = await Api.DeleteAsync($"/api/buildings/{building.Id}");
+            if (!ok)
+            {
+                deleteError = "Smazání se nezdařilo (stavba může mít odkazy).";
+                return;
+            }
+            isDeleteVisible = false;
+            Nav.NavigateTo("/buildings");
+        }
+        catch (Exception ex) { deleteError = ex.Message; }
+    }
+
+    private sealed class EditModel
+    {
+        public string Name { get; set; } = "";
+        public string? Description { get; set; }
+        public string? Notes { get; set; }
+        public int? LocationId { get; set; }
+        public bool IsPrebuilt { get; set; }
+        public int? CostMoney { get; set; }
+        public string? Effect { get; set; }
+    }
+}

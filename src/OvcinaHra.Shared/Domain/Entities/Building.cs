@@ -10,6 +10,13 @@ public class Building
     public int? LocationId { get; set; }
     public bool IsPrebuilt { get; set; }
 
+    // Issue #208 — every building carries a "build recipe" pair: cost in
+    // groše + sacred effect prose. CostMoney null/0 → "Zdarma" pill; Effect
+    // null → muted "Bez efektu" placeholder. NOT to be conflated with
+    // BuildingRecipe (construction-recipe entity from issue #142).
+    public int? CostMoney { get; set; }
+    public string? Effect { get; set; }
+
     public Location? Location { get; set; }
     public ICollection<GameBuilding> GameBuildings { get; set; } = [];
     public ICollection<CraftingBuildingRequirement> CraftingRequirements { get; set; } = [];
