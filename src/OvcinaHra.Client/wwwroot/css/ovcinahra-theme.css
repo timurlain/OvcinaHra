@@ -3360,3 +3360,241 @@
     .oh-home-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
     .oh-home-qlaunch-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+/* ===========================================================================
+ * Shared utilities — extracted from quest port (#193). Reuse on other surfaces.
+ * =========================================================================== */
+.oh-segmented{display:inline-flex;border:1px solid #d8d2be;border-radius:6px;overflow:hidden;background:#fff}
+.oh-segmented-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;
+    border:0;background:transparent;color:#5a5642;font:500 .875rem/1 var(--oh-font-body,inherit);
+    cursor:pointer;transition:.12s ease}
+.oh-segmented-btn:hover{background:rgba(45,80,22,.06)}
+.oh-segmented-btn--on{background:#2D5016;color:#fff}
+.oh-segmented-btn--on:hover{background:#234012}
+.oh-segmented-btn + .oh-segmented-btn{border-left:1px solid #d8d2be}
+.oh-segmented-btn--on + .oh-segmented-btn,
+.oh-segmented-btn + .oh-segmented-btn--on{border-left-color:transparent}
+
+.oh-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;
+    border-radius:999px;background:rgba(178,98,35,.1);color:#6c4720;
+    border:1px solid rgba(178,98,35,.4);font:500 .75rem/1.4 var(--oh-font-body,inherit)}
+.oh-pill-mono{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;
+    border-radius:999px;background:#f5f0e1;color:#3a2e1a;
+    border:1px solid #d8d2be;font:600 .75rem/1.4 var(--oh-font-mono,ui-monospace,monospace)}
+
+/* ===========================================================================
+ * Quests — /quests catalog gallery + DxGrid · /quests/{id} 5-tab detail ·
+ * /quests/{id}/print A5 · /games/{gid}/quests per-game grid (issue #193).
+ * Class prefix .oh-qst-* — reserved per design canon. State-chip palette is
+ * parchment (Inactive) / forest (Active) / dim-gold (Completed).
+ * =========================================================================== */
+
+/* — Filters above the gallery — */
+.oh-qst-filters{display:flex;gap:12px;align-items:center;flex-wrap:wrap;
+    padding:10px 12px;background:#FFF8F0;border:1px solid #ead9b8;border-radius:8px}
+.oh-qst-filter-search{min-width:240px;flex:1 1 240px}
+.oh-qst-filter-toggle{display:inline-flex;align-items:center;gap:6px;font:500 .875rem/1 var(--oh-font-body,inherit);color:#5a5642;cursor:pointer;user-select:none}
+.oh-qst-filter-toggle input{cursor:pointer}
+
+/* — Gallery (5:7 portrait tiles) — */
+.oh-qst-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:18px}
+.oh-qst-tile{position:relative;display:flex;flex-direction:column;
+    background:#FFF8F0;border:1px solid #d8d2be;border-radius:10px;overflow:hidden;
+    cursor:pointer;text-align:left;padding:0;transition:.18s ease;font-family:inherit}
+.oh-qst-tile:hover{border-color:#2D5016;box-shadow:0 6px 14px rgba(45,80,22,.18);transform:translateY(-2px)}
+.oh-qst-tile:focus-visible{outline:3px solid #2D5016;outline-offset:2px}
+.oh-qst-tile-art{position:relative;aspect-ratio:5/7;background:#f5f0e1;overflow:hidden}
+.oh-qst-tile-art img{width:100%;height:100%;object-fit:cover;display:block}
+.oh-qst-tile-parchment{position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:8px;padding:14px;text-align:center;
+    background:repeating-linear-gradient(45deg,#FFF8F0 0 8px,#f4ead2 8px 9px);color:#7a5520}
+.oh-qst-tile-parchment > i{font-size:2rem;opacity:.55}
+.oh-qst-tile-parchment-name{font:700 .95rem/1.2 var(--oh-font-headline,Merriweather,Georgia,serif);color:#3a2e1a}
+.oh-qst-tile-state{position:absolute;top:8px;right:8px}
+.oh-qst-tile-body{padding:10px 12px 12px}
+.oh-qst-tile-name{font:700 1rem/1.25 var(--oh-font-headline,Merriweather,Georgia,serif);color:#2a2218;
+    margin-bottom:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.oh-qst-tile-foot{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:.75rem;color:#5a5642}
+.oh-qst-tile-foot-pill{display:inline-flex;align-items:center;gap:3px;padding:2px 6px;
+    border-radius:4px;background:#f5f0e1;color:#3a2e1a;font:600 .7rem/1.2 var(--oh-font-mono,ui-monospace,monospace)}
+.oh-qst-tile-foot-type{margin-left:auto;font-style:italic;font-size:.7rem;color:#7a6f50}
+
+/* — Mini-tile inside Seznam grid first column — */
+.oh-qst-mini-tile{width:40px;height:56px;border-radius:4px;background:#f5f0e1;
+    border:1px solid #d8d2be;overflow:hidden;display:flex;align-items:center;justify-content:center;color:#7a6f50}
+.oh-qst-mini-tile img{width:100%;height:100%;object-fit:cover;display:block}
+
+/* — State chip (3 colours) — */
+.oh-qst-state-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;
+    border-radius:999px;font:600 .75rem/1.3 var(--oh-font-body,inherit);
+    border:1px solid currentColor}
+.oh-qst-state-inactive{color:#7a6f50;background:rgba(122,111,80,.1);border-color:rgba(122,111,80,.45)}
+.oh-qst-state-active{color:#2D5016;background:rgba(45,80,22,.1);border-color:rgba(45,80,22,.55)}
+.oh-qst-state-done{color:#8a6c1e;background:rgba(195,148,35,.12);border-color:rgba(195,148,35,.55)}
+.oh-qst-state-chip i{font-size:.85rem}
+
+/* — Tag chip — */
+.oh-qst-tag-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;
+    border-radius:999px;background:#f5f0e1;color:#5a3a18;border:1px solid #e0d3a8;
+    font:500 .75rem/1.4 var(--oh-font-body,inherit)}
+.oh-qst-tag-chip-x{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;
+    border:0;background:transparent;color:#a04020;cursor:pointer;border-radius:50%;padding:0;line-height:1}
+.oh-qst-tag-chip-x:hover{background:rgba(160,64,32,.18);color:#7a2410}
+
+/* — Quick-peek popup (Seznam row click) — */
+.oh-qst-peek-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:18px}
+.oh-qst-peek-meta{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.oh-qst-peek-desc{font:400 .95rem/1.55 Georgia,serif;color:#2a2218;margin:0 0 8px;white-space:pre-wrap}
+.oh-qst-peek-rewards{margin:0 0 8px;font-size:.875rem;color:#3a2e1a}
+.oh-qst-peek-side{display:flex;align-items:flex-start;justify-content:center}
+.oh-qst-peek-img{width:100%;max-width:200px;aspect-ratio:5/7;object-fit:cover;border-radius:6px;
+    border:1px solid #d8d2be;background:#f5f0e1}
+.oh-qst-peek-img--placeholder{display:flex;align-items:center;justify-content:center;font-size:2rem;color:#7a6f50}
+.oh-qst-peek-foot{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+
+/* — Detail tab badges — */
+.oh-qst-d-tab-count{display:inline-flex;align-items:center;justify-content:center;
+    min-width:18px;height:18px;padding:0 4px;margin-left:4px;font-size:.7rem;
+    border-radius:999px;background:rgba(178,98,35,.18);color:#6c4720;font-weight:600}
+.btn-primary .oh-qst-d-tab-count{background:rgba(255,255,255,.25);color:#fff}
+
+/* — Karta tab — */
+.oh-qst-karta-grid{display:grid;grid-template-columns:1.6fr 1fr;gap:24px;align-items:start}
+@media (max-width:880px){.oh-qst-karta-grid{grid-template-columns:1fr}}
+.oh-qst-karta{background:#FFF8F0;border:1px solid #ead9b8;border-radius:10px;padding:24px}
+.oh-qst-karta-hero{margin-bottom:14px}
+.oh-qst-karta-img{width:100%;max-width:380px;aspect-ratio:5/7;object-fit:cover;
+    border-radius:6px;border:1px solid #d8d2be;background:#f5f0e1;display:block;margin:0 auto}
+.oh-qst-karta-img--placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+    background:repeating-linear-gradient(45deg,#FFF8F0 0 8px,#f4ead2 8px 9px);color:#7a5520}
+.oh-qst-karta-img--placeholder i{font-size:3rem;opacity:.55}
+.oh-qst-karta-img-name{font:700 1.1rem/1.2 var(--oh-font-headline,Merriweather,Georgia,serif);color:#3a2e1a;text-align:center;padding:0 14px}
+.oh-qst-karta-name{font:900 2rem/1.15 var(--oh-font-headline,Merriweather,Georgia,serif);color:#2a2218;margin:0 0 8px}
+.oh-qst-karta-meta{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.oh-qst-karta-desc{font:400 1.02rem/1.65 Georgia,serif;color:#2a2218;margin:0;text-align:justify;white-space:pre-wrap}
+.oh-qst-karta-desc::first-letter{font:900 2.6rem/1 var(--oh-font-headline,Merriweather,Georgia,serif);
+    float:left;margin-right:8px;color:#2D5016;line-height:.9}
+.oh-qst-karta-fulltext{font:400 .95rem/1.55 Georgia,serif;color:#3a2e1a;margin:0;white-space:pre-wrap}
+.oh-qst-karta-sep{border:0;border-top:1px solid #d8d2be;margin:14px 0}
+.oh-qst-karta-side{display:flex;flex-direction:column;gap:14px;position:sticky;top:14px}
+.oh-qst-karta-side-block{background:#fff;border:1px solid #ead9b8;border-radius:8px;padding:14px}
+.oh-qst-karta-side-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;
+    border-bottom:1px dashed #ead9b8;font-size:.875rem;color:#3a2e1a}
+.oh-qst-karta-side-row:last-child{border-bottom:0}
+.oh-qst-karta-side-row strong{font:600 .95rem/1 var(--oh-font-mono,ui-monospace,monospace);color:#2D5016}
+.oh-qst-karta-side-title{font:700 .85rem/1 var(--oh-font-headline,Merriweather,Georgia,serif);
+    text-transform:uppercase;letter-spacing:.04em;color:#5a3a18;margin:0 0 8px}
+.oh-qst-state-actions{display:flex;flex-direction:column;gap:6px}
+
+/* — Upravit tab — */
+.oh-qst-edit{background:#FFF8F0;border:1px solid #ead9b8;border-radius:10px;padding:18px}
+.oh-qst-edit-tags{padding-top:12px;border-top:1px dashed #ead9b8}
+.oh-qst-edit-foot{display:flex;gap:8px;align-items:center;margin-top:18px;padding-top:14px;border-top:1px solid #ead9b8;
+    position:sticky;bottom:0;background:#FFF8F0;z-index:1}
+
+/* — Setkání tab (encounter cards + graf) — */
+.oh-qst-enc-toolbar{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap}
+.oh-qst-enc-list{display:flex;flex-direction:column;gap:10px}
+.oh-qst-enc-card{display:grid;grid-template-columns:auto auto 1fr auto;gap:10px;align-items:center;
+    background:#fff;border:1px solid #ead9b8;border-left:4px solid #B26223;border-radius:8px;padding:12px 14px}
+.oh-qst-enc-grip{border:0;background:transparent;color:#a89e7a;cursor:not-allowed;padding:4px;font-size:1.1rem}
+.oh-qst-enc-order{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;
+    border-radius:50%;background:#2D5016;color:#fff;font:700 1rem/1 var(--oh-font-mono,ui-monospace,monospace)}
+.oh-qst-enc-body{display:flex;flex-direction:column;gap:4px;min-width:0}
+.oh-qst-enc-title{font:700 1rem/1.2 var(--oh-font-headline,Merriweather,Georgia,serif);color:#2a2218;margin:0}
+.oh-qst-enc-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:.8rem;color:#5a5642}
+.oh-qst-enc-qty{display:inline-flex;align-items:center;gap:2px;padding:1px 8px;border-radius:4px;
+    background:rgba(178,98,35,.12);color:#6c4720;font:600 .8rem/1.3 var(--oh-font-mono,ui-monospace,monospace)}
+.oh-qst-enc-tag-defer{font-style:italic;color:#a89e7a;font-size:.75rem}
+.oh-qst-enc-actions{display:flex;align-items:center}
+.oh-qst-enc-graph{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    background:repeating-linear-gradient(0deg,#FFF8F0 0 14px,#f7eed3 14px 15px);
+    padding:18px;border:1px solid #ead9b8;border-radius:8px;overflow-x:auto}
+.oh-qst-enc-graph-node{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 16px;
+    background:#fff;border:1px solid #ead9b8;border-radius:8px;min-width:140px}
+.oh-qst-enc-graph-order{font:700 .75rem/1 var(--oh-font-mono,ui-monospace,monospace);color:#2D5016}
+.oh-qst-enc-graph-name{font:600 .95rem/1.2 var(--oh-font-headline,Merriweather,Georgia,serif);color:#2a2218;text-align:center}
+.oh-qst-enc-graph-qty{font:600 .75rem/1 var(--oh-font-mono,ui-monospace,monospace);color:#6c4720}
+.oh-qst-enc-graph-arrow{color:#7a6f50;font-size:1.2rem}
+
+/* — Lokace tab — */
+.oh-qst-loc-list{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.oh-qst-loc-row{display:flex;gap:8px;align-items:center}
+.oh-qst-loc-chip{flex:1;display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:6px;
+    background:#fff;border:1px solid #ead9b8;color:#2a2218;cursor:pointer;text-align:left;font-family:inherit;
+    font-size:.9rem;transition:.12s ease}
+.oh-qst-loc-chip:hover{border-color:#2D5016;background:rgba(45,80,22,.05)}
+.oh-qst-loc-chip i:first-child{color:#5a3a18}
+.oh-qst-loc-chip i:last-child{margin-left:auto;color:#2D5016}
+.oh-qst-loc-add{display:flex;gap:8px;align-items:center}
+.oh-qst-loc-pick{flex:1}
+
+/* — Odměny tab (Kořist + scalars + collapsed Skills/Spells) — */
+.oh-qst-loot-title{font:700 1.05rem/1.2 var(--oh-font-headline,Merriweather,Georgia,serif);color:#2a2218;margin:0 0 12px;display:flex;align-items:center;gap:6px}
+.oh-qst-loot-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.oh-qst-loot-chip{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;
+    background:#fff;border:1px solid #ead9b8}
+.oh-qst-loot-name{flex:1;font:500 .9rem/1.3 var(--oh-font-body,inherit);color:#2a2218}
+.oh-qst-loot-qty{display:inline-flex;align-items:center;padding:2px 8px;border-radius:4px;
+    background:rgba(178,98,35,.12);color:#6c4720;font:600 .8rem/1.3 var(--oh-font-mono,ui-monospace,monospace)}
+.oh-qst-loot-add{display:flex;gap:8px;align-items:center}
+.oh-qst-loot-pick{flex:1}
+.oh-qst-loot-qty-input{width:90px}
+
+.oh-qst-rew-section-title{font:700 1.05rem/1.2 var(--oh-font-headline,Merriweather,Georgia,serif);color:#2a2218;display:flex;align-items:center;gap:6px}
+.oh-qst-rew-scalars{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.oh-qst-rew-scalar{display:flex;flex-direction:column;gap:4px}
+.oh-qst-rew-scalar--wide{grid-column:1 / -1}
+.oh-qst-rew-label{font:600 .8rem/1 var(--oh-font-body,inherit);color:#5a5642;text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:4px}
+.oh-qst-rew-input{width:100%}
+.oh-qst-rew-display{font:600 1rem/1.2 var(--oh-font-mono,ui-monospace,monospace);color:#2D5016}
+
+.oh-qst-rew-collapsed{margin-top:8px;border:1px solid #ead9b8;border-radius:8px;background:#FFF8F0;overflow:hidden}
+.oh-qst-rew-collapsed > summary{padding:10px 14px;cursor:pointer;font:600 .9rem/1 var(--oh-font-body,inherit);color:#5a3a18;list-style:none}
+.oh-qst-rew-collapsed > summary::-webkit-details-marker{display:none}
+.oh-qst-rew-collapsed > summary i{margin-right:6px;color:#a89e7a}
+.oh-qst-rew-disabled{padding:14px;background:rgba(178,98,35,.06);display:flex;flex-direction:column;align-items:flex-start;gap:8px;color:#6c5212}
+.oh-qst-rew-disabled > i{font-size:1.4rem;color:#B26223}
+
+/* — Per-game state filter pills — */
+.oh-qst-state-pillrow{display:flex;gap:6px;flex-wrap:wrap}
+.oh-qst-state-pill{padding:5px 14px;border-radius:999px;border:1px solid #d8d2be;background:#fff;color:#5a5642;
+    font:500 .8rem/1.3 var(--oh-font-body,inherit);cursor:pointer;transition:.12s ease}
+.oh-qst-state-pill:hover{border-color:#2D5016;color:#2D5016}
+.oh-qst-state-pill--on{background:#2D5016;border-color:#2D5016;color:#fff}
+.oh-qst-state-pill--on:hover{color:#fff}
+
+/* — Print export (A5 portrait, single quest) — */
+.oh-qst-print-toolbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;
+    background:#FFF8F0;border-bottom:1px solid #ead9b8;padding:8px 14px;margin-bottom:14px}
+.oh-qst-print-toolbar-info{font:500 .875rem/1 var(--oh-font-body,inherit);color:#5a3a18}
+.oh-qst-print-stage{display:flex;justify-content:center;padding:0 14px 24px}
+.oh-qst-print-card{width:148mm;min-height:210mm;background:#FFF8F0;border:1px solid #ead9b8;border-radius:6px;padding:8mm;
+    page-break-inside:avoid}
+.oh-qst-print-banner{text-align:center;border-bottom:2px solid #2D5016;margin-bottom:6mm;padding-bottom:3mm}
+.oh-qst-print-banner h1{font:900 1.4rem/1.1 var(--oh-font-headline,Merriweather,Georgia,serif);color:#2a2218;margin:0}
+.oh-qst-print-banner-sub{font:500 .85rem/1 var(--oh-font-mono,ui-monospace,monospace);color:#5a3a18;margin:4px 0 0}
+.oh-qst-print-hero{display:grid;grid-template-columns:50mm 1fr;gap:5mm;margin-bottom:5mm;align-items:start}
+.oh-qst-print-img{width:100%;aspect-ratio:5/7;object-fit:cover;border-radius:3px;border:1px solid #d8d2be}
+.oh-qst-print-name{font:900 1.6rem/1.15 var(--oh-font-headline,Merriweather,Georgia,serif);color:#2a2218;margin:0 0 3mm}
+.oh-qst-print-meta{display:flex;gap:4px;flex-wrap:wrap;font-size:.78rem;color:#5a5642;margin-bottom:3mm}
+.oh-qst-print-tag{padding:1px 6px;border-radius:999px;background:#f5f0e1;border:1px solid #e0d3a8;color:#5a3a18}
+.oh-qst-print-desc{font:400 9pt/1.4 Georgia,serif;color:#2a2218;margin:0;text-align:justify;white-space:pre-wrap}
+.oh-qst-print-section{margin-top:4mm}
+.oh-qst-print-section h3{font:700 .95rem/1 var(--oh-font-headline,Merriweather,Georgia,serif);color:#2D5016;
+    text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #ead9b8;padding-bottom:2mm;margin:0 0 3mm}
+.oh-qst-print-fulltext{font:400 9pt/1.45 Georgia,serif;color:#2a2218;margin:0;white-space:pre-wrap}
+.oh-qst-print-enc-list,.oh-qst-print-rew-list{margin:0;padding-left:18px;font:400 9pt/1.45 var(--oh-font-body,inherit);color:#2a2218}
+.oh-qst-print-enc-list li,.oh-qst-print-rew-list li{margin-bottom:2mm}
+.oh-qst-print-enc-qty{display:inline-block;margin-left:4px;font:600 8.5pt/1 var(--oh-font-mono,ui-monospace,monospace);color:#6c4720}
+.oh-qst-print-locs{font:400 9pt/1.4 Georgia,serif;color:#2a2218;margin:0}
+
+@media print{
+    @page { size: A5 portrait; margin: 8mm; }
+    body{background:#fff !important}
+    .oh-qst-print-toolbar{display:none !important}
+    .oh-qst-print-stage{padding:0;display:block}
+    .oh-qst-print-card{width:auto;min-height:0;border:0;padding:0;border-radius:0;box-shadow:none}
+    /* hide Drozd/sidebar/chrome elsewhere on the page if rendered */
+    nav,header.app-header,.app-sidebar,.app-footer,#blazor-error-ui{display:none !important}
+}

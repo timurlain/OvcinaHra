@@ -1,0 +1,66 @@
+@* XP + Money + Notes — three scalar fields on Quest itself (NOT joined entities).
+   Bound through the parent's editModel; this component is purely presentational. *@
+
+<div class="oh-qst-rew-scalars">
+    <div class="oh-qst-rew-scalar">
+        <label class="oh-qst-rew-label"><i class="bi bi-stars"></i> Body zkušenosti</label>
+        @if (Editable)
+        {
+            <DxSpinEdit Value="@Xp" ValueExpression="@(() => Xp)"
+                        ValueChanged="@((int? v) => XpChanged.InvokeAsync(v))"
+                        MinValue="0" MaxValue="9999"
+                        NullText="(žádné)"
+                        ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
+                        CssClass="oh-qst-rew-input" />
+        }
+        else
+        {
+            <span class="oh-qst-rew-display">@(Xp.HasValue ? $"{Xp.Value} XP" : "—")</span>
+        }
+    </div>
+
+    <div class="oh-qst-rew-scalar">
+        <label class="oh-qst-rew-label"><i class="bi bi-coin"></i> Groše</label>
+        @if (Editable)
+        {
+            <DxSpinEdit Value="@Money" ValueExpression="@(() => Money)"
+                        ValueChanged="@((int? v) => MoneyChanged.InvokeAsync(v))"
+                        MinValue="0" MaxValue="99999"
+                        NullText="(žádné)"
+                        ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
+                        CssClass="oh-qst-rew-input" />
+        }
+        else
+        {
+            <span class="oh-qst-rew-display">@(Money.HasValue ? $"{Money.Value} gr" : "—")</span>
+        }
+    </div>
+
+    <div class="oh-qst-rew-scalar oh-qst-rew-scalar--wide">
+        <label class="oh-qst-rew-label"><i class="bi bi-pencil"></i> Poznámka k odměně</label>
+        @if (Editable)
+        {
+            <DxTextBox Text="@Notes" TextExpression="@(() => Notes)"
+                       TextChanged="@((string v) => NotesChanged.InvokeAsync(v))"
+                       NullText="(volitelné)"
+                       CssClass="oh-qst-rew-input" />
+        }
+        else
+        {
+            <span class="oh-qst-rew-display">@(string.IsNullOrWhiteSpace(Notes) ? "—" : Notes)</span>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public int? Xp { get; set; }
+    [Parameter] public EventCallback<int?> XpChanged { get; set; }
+
+    [Parameter] public int? Money { get; set; }
+    [Parameter] public EventCallback<int?> MoneyChanged { get; set; }
+
+    [Parameter] public string? Notes { get; set; }
+    [Parameter] public EventCallback<string?> NotesChanged { get; set; }
+
+    [Parameter] public bool Editable { get; set; }
+}

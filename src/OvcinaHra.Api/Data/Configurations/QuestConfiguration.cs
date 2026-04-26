@@ -11,6 +11,7 @@ public class QuestConfiguration : IEntityTypeConfiguration<Quest>
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Name).IsRequired().HasMaxLength(300);
         builder.Property(e => e.QuestType).HasConversion<string>().HasMaxLength(30);
+        builder.Property(e => e.State).HasConversion<string>().HasMaxLength(20);
         builder.HasOne(e => e.ParentQuest).WithMany(q => q.ChildQuests).HasForeignKey(e => e.ParentQuestId);
         builder.HasOne(e => e.Game).WithMany(g => g.Quests).HasForeignKey(e => e.GameId).IsRequired(false);
 

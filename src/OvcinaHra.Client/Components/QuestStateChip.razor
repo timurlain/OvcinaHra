@@ -1,0 +1,28 @@
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Extensions
+
+@* 3-colour state pill — parchment (Inactive) · forest (Active) · gold (Completed).
+   Render only on per-game rows; never on catalog templates. *@
+
+<span class="oh-qst-state-chip @StateClass" title="@State.GetDisplayName()">
+    <i class="bi @StateIcon"></i>
+    <span>@State.GetDisplayName()</span>
+</span>
+
+@code {
+    [Parameter, EditorRequired] public QuestState State { get; set; }
+
+    private string StateClass => State switch
+    {
+        QuestState.Active    => "oh-qst-state-active",
+        QuestState.Completed => "oh-qst-state-done",
+        _                    => "oh-qst-state-inactive"
+    };
+
+    private string StateIcon => State switch
+    {
+        QuestState.Active    => "bi-fire",
+        QuestState.Completed => "bi-check2-circle",
+        _                    => "bi-circle"
+    };
+}

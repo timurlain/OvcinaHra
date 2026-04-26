@@ -1,538 +1,346 @@
 @page "/quests"
 @attribute [Authorize]
 @inject ApiClient Api
-@inject GameContextService GameContext
 @inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject GameContextService GameContext
 @implements IDisposable
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Extensions
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="mb-0">@(Catalog ? "Katalog questů" : "Questy")</h1>
-    <div class="d-flex gap-2">
-        <div class="btn-group">
-            <button class="btn @(Catalog ? "btn-outline-secondary" : "btn-secondary")" @onclick="() => SetCatalog(false)">Aktuální hra</button>
-            <button class="btn @(Catalog ? "btn-secondary" : "btn-outline-secondary")" @onclick="() => SetCatalog(true)">Katalog</button>
+    <h1 class="mb-0">Katalog úkolů</h1>
+    <div class="d-flex gap-2 align-items-center">
+        @* Mode toggle: Catalog (templates) ↔ Per-game grid. Per-game lives at
+           /games/{gid}/quests so this is just a navigation jump, not a query
+           flag. *@
+        <div class="oh-segmented" role="tablist" aria-label="Režim">
+            <button type="button" class="oh-segmented-btn oh-segmented-btn--on"
+                    aria-selected="true">Šablony katalogu</button>
+            <button type="button" class="oh-segmented-btn"
+                    @onclick="NavigateToGameGrid"
+                    aria-selected="false">Pro tuto hru</button>
         </div>
-        <button class="btn btn-primary" @onclick="() => OpenModal(null)">+ Nový quest</button>
+
+        @* View toggle: Galerie (default) ↔ Seznam (DxGrid). Persisted to
+           localStorage under oh-quest-view. *@
+        <div class="oh-segmented" role="tablist" aria-label="Zobrazení">
+            <button type="button"
+                    class="oh-segmented-btn @(view == "galerie" ? "oh-segmented-btn--on" : "")"
+                    @onclick='() => SetViewAsync("galerie")' aria-selected="@(view == "galerie")">
+                <i class="bi bi-grid-3x3-gap"></i> Galerie
+            </button>
+            <button type="button"
+                    class="oh-segmented-btn @(view == "seznam" ? "oh-segmented-btn--on" : "")"
+                    @onclick='() => SetViewAsync("seznam")' aria-selected="@(view == "seznam")">
+                <i class="bi bi-list-ul"></i> Seznam
+            </button>
+        </div>
+
+        <button class="btn btn-primary" type="button" @onclick="OpenCreateModal">
+            <i class="bi bi-plus-lg"></i> Nový úkol
+        </button>
     </div>
 </div>
 
-@if (loading) { <p>Načítám...</p> }
-else if (Catalog)
+@* Filters apply to both Galerie and Seznam — render once, outside the view
+   branch, so they're reachable in either mode (Copilot #206). *@
+<div class="oh-qst-filters mb-3">
+    <DxTextBox Text="@searchText" TextChanged="@((string v) => searchText = v)"
+               NullText="Hledat (název, popis)…" CssClass="oh-qst-filter-search" />
+    <label class="oh-qst-filter-toggle">
+        <input type="checkbox" @bind="onlyWithImage" />
+        <span>jen s obrázkem</span>
+    </label>
+    <label class="oh-qst-filter-toggle">
+        <input type="checkbox" @bind="onlyWithRewards" />
+        <span>jen s odměnami</span>
+    </label>
+</div>
+
+@if (loading)
 {
-    <OvcinaGrid Data="@catalogQuests" KeyFieldName="Id" LayoutKey="grid-layout-quests-catalog-v2"
-                RowClick="@(e => OpenModalFromCatalog((QuestCatalogDto)e.Grid.GetDataItem(e.VisibleIndex)))">
-        <Columns>
-            <DxGridDataColumn FieldName="Name" Caption="Název" Width="220px" />
-            <DxGridDataColumn FieldName="QuestTypeDisplay" Caption="Typ" Width="130px" />
-            <DxGridDataColumn FieldName="FullText" Caption="Herní text" />
-            <DxGridDataColumn FieldName="Description" Caption="Organizátor" />
-            <DxGridDataColumn FieldName="RewardSummary" Caption="Odměny" Width="220px" />
-            <DxGridDataColumn FieldName="CatalogAction" Caption="Akce" Width="110px"
-                              UnboundType="GridUnboundColumnType.String"
-                              AllowSort="false" AllowGroup="false">
-                <CellDisplayTemplate>
-                    @{
-                        var q = (QuestCatalogDto)context.DataItem;
-                    }
-                    <button class="btn btn-sm btn-outline-success" @onclick:stopPropagation="true"
-                            @onclick="() => OpenCopyPopup(q)">Přidat</button>
-                </CellDisplayTemplate>
-            </DxGridDataColumn>
-        </Columns>
-    </OvcinaGrid>
+    <p class="text-muted">Načítám…</p>
 }
-else if (quests.Count == 0)
+else if (filtered.Count == 0)
 {
     <div class="text-center text-muted py-5">
-        <i class="bi bi-journal-text fs-1 d-block mb-2"></i>
-        <p>Žádné questy přiřazeny k této hře.</p>
-        <button class="btn btn-outline-primary" @onclick="() => SetCatalog(true)">Otevřít katalog</button>
+        <i class="bi bi-journal-richtext fs-1 d-block mb-2"></i>
+        <p>Žádné úkoly v katalogu odpovídají filtru.</p>
+        <button class="btn btn-outline-primary" type="button" @onclick="ClearFilters">Zrušit filtry</button>
+    </div>
+}
+else if (view == "galerie")
+{
+    <div class="oh-qst-gallery">
+        @foreach (var q in filtered)
+        {
+            @* Adapter: gallery shows catalog templates (no GameId, no State
+               chip). Map QuestCatalogDto onto a QuestListDto for the tile. *@
+            <QuestPosterTile @key="q.Id"
+                             Quest="@CatalogToList(q)"
+                             ShowState="false"
+                             OnClick="@(_ => Nav.NavigateTo($"/quests/{q.Id}"))" />
+        }
     </div>
 }
 else
 {
-    <OvcinaGrid Data="@quests" KeyFieldName="Id" LayoutKey="grid-layout-quests"
-                RowClick="@(e => OpenModal((QuestListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+    @* Seznam mode — LayoutKey bumped to grid-layout-quests-v2 because the
+       column schema changed (image, counts, state). Memory rule:
+       feedback_ovcinagrid_layoutkey_bump. *@
+    <OvcinaGrid Data="@filtered" KeyFieldName="Id" LayoutKey="grid-layout-quests-v2"
+                RowClick="@(e => OpenPeek((QuestCatalogDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
-            <DxGridDataColumn FieldName="Name" Caption="Název" />
+            <DxGridDataColumn Caption="" Width="60px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{ var q = (QuestCatalogDto)context.DataItem; }
+                    <div class="oh-qst-mini-tile @(string.IsNullOrEmpty(q.ImageUrl) ? "oh-qst-mini-tile--placeholder" : "")">
+                        @if (!string.IsNullOrEmpty(q.ImageUrl))
+                        {
+                            <img src="@q.ImageUrl" alt="@q.Name" />
+                        }
+                        else
+                        {
+                            <i class="bi bi-journal-richtext"></i>
+                        }
+                    </div>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="Name" Caption="Název" MinWidth="220" />
             <DxGridDataColumn FieldName="QuestTypeDisplay" Caption="Typ" Width="140px" />
-            <DxGridDataColumn FieldName="ChainOrder" Caption="Pořadí v řetězu" Width="140px" Visible="false" />
-            <DxGridDataColumn FieldName="ParentQuestId" Caption="Nadřazený quest" Width="140px" Visible="false" />
-            <DxGridDataColumn FieldName="GameId" Caption="Hra ID" Width="80px" />
+            <DxGridDataColumn FieldName="EncountersCount" Caption="Setkání" Width="100px">
+                <CellDisplayTemplate>
+                    @{ var q = (QuestCatalogDto)context.DataItem; }
+                    <span class="oh-pill-mono">@q.EncountersCount</span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="RewardsCount" Caption="Odměny" Width="100px">
+                <CellDisplayTemplate>
+                    @{ var q = (QuestCatalogDto)context.DataItem; }
+                    <span class="oh-pill-mono">@q.RewardsCount</span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="RewardSummary" Caption="Souhrn odměn" MinWidth="240" />
+            <DxGridDataColumn FieldName="Description" Caption="Popis" MinWidth="240" Visible="false" />
         </Columns>
     </OvcinaGrid>
 }
 
-<DxPopup AllowResize="true" @bind-Visible="@isModalVisible" HeaderText="@modalTitle" Width="900px">
-    <BodyContentTemplate Context="popupContext">
-        <DxFormLayout>
-            <DxFormLayoutItem Caption="Název" ColSpanMd="8">
-                <DxTextBox @bind-Text="@name" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Typ" ColSpanMd="4">
-                <DxComboBox Data="@questTypeValues" @bind-Value="@questType" TextFieldName="Display" ValueFieldName="Value" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Pořadí v řetězu" ColSpanMd="4">
-                <DxSpinEdit @bind-Value="@chainOrder" MinValue="0" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Nadřazený quest ID" ColSpanMd="4">
-                <DxSpinEdit @bind-Value="@parentQuestId" MinValue="0" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Popis (organizátor)" ColSpanMd="12">
-                <DxMemo @bind-Text="@description" Rows="2" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Herní text (hráči)" ColSpanMd="12">
-                <DxMemo @bind-Text="@fullText" Rows="3" />
-            </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Časový slot" ColSpanMd="12">
-                <DxTextBox @bind-Text="@timeSlot" />
-            </DxFormLayoutItem>
-            <DxFormLayoutGroup Caption="Odměny" ColSpanMd="12">
-                <DxFormLayoutItem Caption="XP" ColSpanMd="4">
-                    <DxSpinEdit @bind-Value="@rewardXp" MinValue="0" />
-                </DxFormLayoutItem>
-                <DxFormLayoutItem Caption="Groše" ColSpanMd="4">
-                    <DxSpinEdit @bind-Value="@rewardMoney" MinValue="0" />
-                </DxFormLayoutItem>
-                <DxFormLayoutItem Caption="Poznámky" ColSpanMd="4">
-                    <DxTextBox @bind-Text="@rewardNotes" />
-                </DxFormLayoutItem>
-            </DxFormLayoutGroup>
-        </DxFormLayout>
-
-        @if (editingId.HasValue)
+@* Quick-peek popup — Seznam row click. Same shape as Spell peek. *@
+<DxPopup @bind-Visible="@isPeekVisible" HeaderText="@(peekItem?.Name ?? "Úkol")" Width="720px">
+    <BodyContentTemplate Context="qpCtx">
+        @if (peekItem is null)
         {
-            @* Section 1: Tags *@
-            <div class="mt-3 p-3 border rounded" style="background: var(--oh-primary-surface, #f8f9fa);">
-                <h6 class="mb-2"><i class="bi bi-tags me-1"></i> Tagy</h6>
-                @if (questTags.Count > 0)
-                {
-                    <div class="d-flex flex-wrap gap-1 mb-2">
-                        @foreach (var tag in questTags)
+            <p class="text-muted">Načítám…</p>
+        }
+        else
+        {
+            <div class="oh-qst-peek-grid">
+                <div>
+                    <div class="oh-qst-peek-meta">
+                        <span class="oh-pill">@peekItem.QuestTypeDisplay</span>
+                        @if (peekItem.EncountersCount > 0)
                         {
-                            <span class="badge bg-secondary d-inline-flex align-items-center gap-1">
-                                @tag.Name
-                                <button class="btn btn-sm p-0 text-white border-0" style="line-height:1" @onclick="() => RemoveTagAsync(tag)" @onclick:stopPropagation="true">
-                                    <i class="bi bi-x"></i>
-                                </button>
-                            </span>
+                            <span class="oh-pill-mono"><i class="bi bi-shield-exclamation"></i> @peekItem.EncountersCount setkání</span>
+                        }
+                        @if (peekItem.RewardsCount > 0)
+                        {
+                            <span class="oh-pill-mono"><i class="bi bi-gift"></i> @peekItem.RewardsCount odměn</span>
                         }
                     </div>
-                }
-                else
-                {
-                    <p class="text-muted small mb-2">Žádné tagy.</p>
-                }
-                <div class="d-flex gap-2 align-items-end">
-                    <div style="flex:1">
-                        <label class="form-label small mb-0">Tag</label>
-                        <DxComboBox Data="@allQuestTags" @bind-Value="@newTagId"
-                                    TextFieldName="Name" ValueFieldName="Id"
-                                    NullText="(vyberte tag)" SearchMode="ListSearchMode.AutoSearch" />
-                    </div>
-                    <button class="btn btn-sm btn-outline-primary" style="height:34px" disabled="@(newTagId is null)" @onclick="AddTagAsync">
-                        <i class="bi bi-plus"></i>
-                    </button>
+                    @if (!string.IsNullOrWhiteSpace(peekItem.Description))
+                    {
+                        <p class="oh-qst-peek-desc">@peekItem.Description</p>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(peekItem.RewardSummary))
+                    {
+                        <p class="oh-qst-peek-rewards"><strong>Odměny:</strong> @peekItem.RewardSummary</p>
+                    }
+                </div>
+                <div class="oh-qst-peek-side">
+                    @if (!string.IsNullOrEmpty(peekItem.ImageUrl))
+                    {
+                        <img src="@peekItem.ImageUrl" alt="@peekItem.Name" class="oh-qst-peek-img" />
+                    }
+                    else
+                    {
+                        <div class="oh-qst-peek-img oh-qst-peek-img--placeholder">
+                            <i class="bi bi-journal-richtext"></i>
+                        </div>
+                    }
                 </div>
             </div>
-
-            @* Section 2: Locations *@
-            <div class="mt-3 p-3 border rounded" style="background: var(--oh-primary-surface, #f8f9fa);">
-                <h6 class="mb-2"><i class="bi bi-geo-alt me-1"></i> Lokace</h6>
-                @if (questLocations.Count > 0)
-                {
-                    <table class="table table-sm mb-2">
-                        <thead><tr><th>Lokace</th><th style="width:40px"></th></tr></thead>
-                        <tbody>
-                            @foreach (var loc in questLocations)
-                            {
-                                <tr>
-                                    <td>@loc.LocationName</td>
-                                    <td><button class="btn btn-sm btn-link text-danger p-0" @onclick="() => RemoveLocationAsync(loc)" @onclick:stopPropagation="true"><i class="bi bi-x-circle"></i></button></td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                }
-                else
-                {
-                    <p class="text-muted small mb-2">Žádné lokace.</p>
-                }
-                <div class="d-flex gap-2 align-items-end">
-                    <div style="flex:1">
-                        <label class="form-label small mb-0">Lokace</label>
-                        <DxComboBox Data="@gameLocations" @bind-Value="@newLocationId"
-                                    TextFieldName="Name" ValueFieldName="Id"
-                                    NullText="(vyberte lokaci)" SearchMode="ListSearchMode.AutoSearch" />
-                    </div>
-                    <button class="btn btn-sm btn-outline-primary" style="height:34px" disabled="@(newLocationId is null)" @onclick="AddLocationAsync">
-                        <i class="bi bi-plus"></i>
-                    </button>
-                </div>
-            </div>
-
-            @* Section 3: Encounters *@
-            <div class="mt-3 p-3 border rounded" style="background: var(--oh-primary-surface, #f8f9fa);">
-                <h6 class="mb-2"><i class="bi bi-shield-exclamation me-1"></i> Střetnutí</h6>
-                @if (questEncounters.Count > 0)
-                {
-                    <table class="table table-sm mb-2">
-                        <thead><tr><th>Příšera</th><th style="width:80px">Počet</th><th style="width:40px"></th></tr></thead>
-                        <tbody>
-                            @foreach (var enc in questEncounters)
-                            {
-                                <tr>
-                                    <td>@enc.MonsterName</td>
-                                    <td>@enc.Quantity</td>
-                                    <td><button class="btn btn-sm btn-link text-danger p-0" @onclick="() => RemoveEncounterAsync(enc)" @onclick:stopPropagation="true"><i class="bi bi-x-circle"></i></button></td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                }
-                else
-                {
-                    <p class="text-muted small mb-2">Žádná střetnutí.</p>
-                }
-                <div class="d-flex gap-2 align-items-end">
-                    <div style="flex:1">
-                        <label class="form-label small mb-0">Příšera</label>
-                        <DxComboBox Data="@allMonsters" @bind-Value="@newEncounterMonsterId"
-                                    TextFieldName="Name" ValueFieldName="Id"
-                                    NullText="(vyberte příšeru)" SearchMode="ListSearchMode.AutoSearch" />
-                    </div>
-                    <div style="width:80px">
-                        <label class="form-label small mb-0">Počet</label>
-                        <DxSpinEdit @bind-Value="@newEncounterQuantity" MinValue="1" />
-                    </div>
-                    <button class="btn btn-sm btn-outline-primary" style="height:34px" disabled="@(newEncounterMonsterId is null)" @onclick="AddEncounterAsync">
-                        <i class="bi bi-plus"></i>
-                    </button>
-                </div>
-            </div>
-
-            @* Section 4: Rewards *@
-            <div class="mt-3 p-3 border rounded" style="background: var(--oh-primary-surface, #f8f9fa);">
-                <h6 class="mb-2"><i class="bi bi-gift me-1"></i> Odměny (předměty)</h6>
-                @if (questRewards.Count > 0)
-                {
-                    <table class="table table-sm mb-2">
-                        <thead><tr><th>Předmět</th><th style="width:80px">Počet</th><th style="width:40px"></th></tr></thead>
-                        <tbody>
-                            @foreach (var rew in questRewards)
-                            {
-                                <tr>
-                                    <td>@rew.ItemName</td>
-                                    <td>@rew.Quantity</td>
-                                    <td><button class="btn btn-sm btn-link text-danger p-0" @onclick="() => RemoveRewardAsync(rew)" @onclick:stopPropagation="true"><i class="bi bi-x-circle"></i></button></td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                }
-                else
-                {
-                    <p class="text-muted small mb-2">Žádné předměty.</p>
-                }
-                <div class="d-flex gap-2 align-items-end">
-                    <div style="flex:1">
-                        <label class="form-label small mb-0">Předmět</label>
-                        <DxComboBox Data="@allItems" @bind-Value="@newRewardItemId"
-                                    TextFieldName="Name" ValueFieldName="Id"
-                                    NullText="(vyberte předmět)" SearchMode="ListSearchMode.AutoSearch" />
-                    </div>
-                    <div style="width:80px">
-                        <label class="form-label small mb-0">Počet</label>
-                        <DxSpinEdit @bind-Value="@newRewardQuantity" MinValue="1" />
-                    </div>
-                    <button class="btn btn-sm btn-outline-primary" style="height:34px" disabled="@(newRewardItemId is null)" @onclick="AddRewardAsync">
-                        <i class="bi bi-plus"></i>
-                    </button>
-                </div>
+            <div class="oh-qst-peek-foot">
+                <button class="btn btn-secondary" type="button" @onclick="() => isPeekVisible = false">Zavřít</button>
+                <button class="btn btn-primary" type="button"
+                        @onclick="@(() => Nav.NavigateTo($"/quests/{peekItem!.Id}"))">
+                    Otevřít detail <i class="bi bi-arrow-right"></i>
+                </button>
             </div>
         }
-
-        @if (error is not null) { <div class="alert alert-danger mt-2">@error</div> }
-        <div class="d-flex gap-2 mt-3">
-            @if (editingId.HasValue) { <button class="btn btn-outline-danger" @onclick="() => isDeleteVisible = true">Smazat</button> }
-            <div style="flex: 1"></div>
-            <button class="btn btn-secondary" @onclick="() => isModalVisible = false">Zrušit</button>
-            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving">Uložit</button>
-        </div>
     </BodyContentTemplate>
 </DxPopup>
 
-<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Potvrdit smazání" Width="400px">
-    <BodyContentTemplate Context="popupContext">
-        <p>Smazat quest <strong>@name</strong>?</p>
-        <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" @onclick="() => isDeleteVisible = false">Zrušit</button>
-            <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Smazat</button>
-        </div>
-    </BodyContentTemplate>
-</DxPopup>
+@* "+ Nový úkol" create modal — minimal (Name + QuestType). After create we
+   navigate to /quests/{id} for full editing on the Upravit tab. *@
+<DxPopup AllowResize="true" @bind-Visible="@isCreateVisible" HeaderText="Nový úkol (šablona)" Width="560px">
+    <BodyContentTemplate Context="cCtx">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Název" ColSpanMd="12">
+                <DxTextBox @bind-Text="@createName" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Typ" ColSpanMd="12">
+                <DxComboBox Data="@questTypeValues" @bind-Value="@createType"
+                            TextFieldName="Display" ValueFieldName="Value" />
+            </DxFormLayoutItem>
+        </DxFormLayout>
 
-<DxPopup @bind-Visible="@isCopyVisible" HeaderText="Kopírovat quest" Width="450px">
-    <BodyContentTemplate Context="popupContext">
-        @if (copySource is not null)
+        @if (createError is not null)
         {
-            <p>Quest: <strong>@copySource.Name</strong></p>
-            @if (copySource.GameName is not null)
-            {
-                <p class="text-muted">Zdrojová hra: @copySource.GameName (edice @copySource.GameEdition)</p>
-            }
-            @if (copyWarnings.Count > 0)
-            {
-                <div class="alert alert-warning">
-                    <strong>Upozornění:</strong>
-                    <ul class="mb-0">
-                        @foreach (var w in copyWarnings) { <li>@w</li> }
-                    </ul>
-                </div>
-            }
-            @if (copyDone)
-            {
-                <div class="alert alert-success">Quest byl zkopírován.</div>
-            }
-            @if (copyError is not null) { <div class="alert alert-danger">@copyError</div> }
+            <div class="alert alert-danger mt-2">@createError</div>
         }
+
         <div class="d-flex gap-2 justify-content-end mt-3">
-            <button class="btn btn-secondary" @onclick="() => isCopyVisible = false">Zavřít</button>
-            @if (!copyDone)
-            {
-                <button class="btn btn-primary" @onclick="ConfirmCopyAsync" disabled="@isCopying">Kopírovat do aktuální hry</button>
-            }
+            <button class="btn btn-secondary" type="button" @onclick="() => isCreateVisible = false" disabled="@isCreating">Zrušit</button>
+            <button class="btn btn-primary" type="button" @onclick="CreateAsync"
+                    disabled="@(isCreating || string.IsNullOrWhiteSpace(createName))">
+                @if (isCreating) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Vytvořit a otevřít
+            </button>
         </div>
     </BodyContentTemplate>
 </DxPopup>
 
 @code {
-    [SupplyParameterFromQuery] public bool Catalog { get; set; }
+    private List<QuestCatalogDto> catalog = [];
+    private bool loading = true;
 
-    private List<QuestListDto> quests = []; private List<QuestCatalogDto> catalogQuests = [];
-    private bool loading = true, isModalVisible, isDeleteVisible, isSaving;
-    private string modalTitle = "", name = ""; private string? error, description, fullText, timeSlot, rewardNotes;
-    private int? editingId; private QuestType questType = QuestType.General;
-    private int chainOrder, parentQuestId, rewardXp, rewardMoney;
-    private int gameId => GameContext.SelectedGameId ?? 1;
+    private string view = "galerie"; // galerie | seznam — persisted in localStorage
+    private string searchText = "";
+    private bool onlyWithImage;
+    private bool onlyWithRewards;
 
-    // Catalog copy state
-    private bool isCopyVisible, isCopying, copyDone;
-    private QuestCatalogDto? copySource;
-    private string? copyError;
-    private List<string> copyWarnings = [];
+    private bool isPeekVisible;
+    private QuestCatalogDto? peekItem;
 
-    // Tags state
-    private List<TagDto> questTags = [];
-    private List<TagDto> allQuestTags = [];
-    private int? newTagId;
-
-    // Locations state
-    private List<QuestLocationDto> questLocations = [];
-    private List<LocationListDto> gameLocations = [];
-    private int? newLocationId;
-
-    // Encounters state
-    private List<QuestEncounterDto> questEncounters = [];
-    private List<MonsterListDto> allMonsters = [];
-    private int? newEncounterMonsterId;
-    private int newEncounterQuantity = 1;
-
-    // Rewards state
-    private List<QuestRewardDto> questRewards = [];
-    private List<ItemListDto> allItems = [];
-    private int? newRewardItemId;
-    private int newRewardQuantity = 1;
+    private bool isCreateVisible;
+    private bool isCreating;
+    private string? createError;
+    private string createName = "";
+    private QuestType createType = QuestType.General;
 
     private static readonly List<EnumItem<QuestType>> questTypeValues = Enum.GetValues<QuestType>()
         .Select(v => new EnumItem<QuestType>(v, v.GetDisplayName())).ToList();
-    record EnumItem<T>(T Value, string Display);
+
+    private record EnumItem<T>(T Value, string Display);
+
+    private List<QuestCatalogDto> filtered =>
+        catalog.Where(q =>
+            (string.IsNullOrWhiteSpace(searchText)
+                || q.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase)
+                || (q.Description?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (q.FullText?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false))
+            && (!onlyWithImage || !string.IsNullOrEmpty(q.ImageUrl))
+            // "jen s odměnami" must accept scalar-only rewards (XP/groše/notes)
+            // even when there are no item rewards — RewardSummary is non-null
+            // whenever any of those four reward kinds is set.
+            && (!onlyWithRewards || q.RewardsCount > 0 || !string.IsNullOrWhiteSpace(q.RewardSummary)))
+            .ToList();
 
     protected override async Task OnInitializedAsync()
     {
         await GameContext.InitializeAsync();
-        GameContext.OnGameChanged += OnGameChanged;
-    }
-
-    protected override async Task OnParametersSetAsync()
-    {
+        try
+        {
+            view = await JS.InvokeAsync<string>("localStorage.getItem", "oh-quest-view") ?? "galerie";
+            if (view != "galerie" && view != "seznam") view = "galerie";
+        }
+        catch { view = "galerie"; }
         await LoadAsync();
     }
 
     private async Task LoadAsync()
     {
         loading = true;
-        if (Catalog)
-            catalogQuests = await Api.GetListAsync<QuestCatalogDto>("/api/quests/all");
-        else
-            quests = await Api.GetListAsync<QuestListDto>($"/api/quests/by-game/{gameId}");
-        loading = false;
-    }
-
-    private void SetCatalog(bool catalog)
-    {
-        Nav.NavigateTo($"/quests{(catalog ? "?catalog=true" : "")}", forceLoad: false);
-    }
-
-    private void OpenCopyPopup(QuestCatalogDto q)
-    {
-        copySource = q; copyWarnings = []; copyError = null; copyDone = false;
-        isCopyVisible = true;
-    }
-
-    private void OpenModalFromCatalog(QuestCatalogDto q)
-    {
-        OpenModal(new QuestListDto(q.Id, q.Name, q.QuestType, null, null, q.GameId));
-    }
-
-    private async Task ConfirmCopyAsync()
-    {
-        if (copySource is null) return;
-        isCopying = true; copyError = null;
         try
         {
-            var result = await Api.PostAsync<object, QuestCopyResultDto>($"/api/quests/{copySource.Id}/copy-to-game/{gameId}", new { });
-            if (result is not null) { copyWarnings = result.Warnings; copyDone = true; }
+            catalog = await Api.GetListAsync<QuestCatalogDto>("/api/quests/all");
         }
-        catch (Exception ex) { copyError = ex.Message; }
-        finally { isCopying = false; }
+        finally { loading = false; }
     }
 
-    private async void OnGameChanged() { await LoadAsync(); StateHasChanged(); }
-    public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
-
-    private void OpenModal(QuestListDto? q)
+    private async Task SetViewAsync(string newView)
     {
-        error = null;
-        if (q is null)
+        if (view == newView) return;
+        view = newView;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "oh-quest-view", view); }
+        catch { /* localStorage unavailable — ignore */ }
+    }
+
+    private void NavigateToGameGrid()
+    {
+        var gameId = GameContext.SelectedGameId;
+        if (gameId is null)
         {
-            editingId = null; name = ""; questType = QuestType.General; chainOrder = 0; parentQuestId = 0;
-            description = null; fullText = null; timeSlot = null; rewardXp = 0; rewardMoney = 0; rewardNotes = null;
-            modalTitle = "Nový quest";
+            // No game picked — keep user on catalog and surface a hint inline
+            return;
         }
-        else
-        {
-            editingId = q.Id; name = q.Name; questType = q.QuestType; chainOrder = q.ChainOrder ?? 0; parentQuestId = q.ParentQuestId ?? 0;
-            modalTitle = $"Upravit: {q.Name}";
-            _ = LoadDetailAsync(q.Id);
-            _ = LoadPickerDataAsync();
-        }
-        isModalVisible = true;
+        Nav.NavigateTo($"/games/{gameId.Value}/quests");
     }
 
-    private async Task LoadPickerDataAsync()
+    private void OpenPeek(QuestCatalogDto q)
     {
-        var tagsTask = Api.GetListAsync<TagDto>("/api/tags");
-        var locationsTask = Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gameId}");
-        var monstersTask = Api.GetListAsync<MonsterListDto>("/api/monsters");
-        var itemsTask = Api.GetListAsync<ItemListDto>("/api/items");
-        await Task.WhenAll(tagsTask, locationsTask, monstersTask, itemsTask);
-        allQuestTags = (await tagsTask).Where(t => t.Kind == TagKind.Quest).ToList();
-        gameLocations = await locationsTask;
-        allMonsters = await monstersTask;
-        allItems = await itemsTask;
-        StateHasChanged();
+        peekItem = q;
+        isPeekVisible = true;
     }
 
-    private async Task LoadDetailAsync(int id)
+    private void OpenCreateModal()
     {
-        var d = await Api.GetAsync<QuestDetailDto>($"/api/quests/{id}");
-        if (d is not null)
-        {
-            description = d.Description; fullText = d.FullText; timeSlot = d.TimeSlot;
-            rewardXp = d.RewardXp ?? 0; rewardMoney = d.RewardMoney ?? 0; rewardNotes = d.RewardNotes;
-            questTags = d.Tags.ToList();
-            questLocations = d.Locations.ToList();
-            questEncounters = d.Encounters.ToList();
-            questRewards = d.Rewards.ToList();
-            newTagId = null; newLocationId = null; newEncounterMonsterId = null; newEncounterQuantity = 1;
-            newRewardItemId = null; newRewardQuantity = 1;
-            StateHasChanged();
-        }
+        createName = "";
+        createType = QuestType.General;
+        createError = null;
+        isCreateVisible = true;
     }
 
-    // Tags
-    private async Task AddTagAsync()
+    private async Task CreateAsync()
     {
-        if (editingId is null || newTagId is null) return;
-        try { await Api.PostAsync($"/api/quests/{editingId}/tags/{newTagId}"); newTagId = null; var d = await Api.GetAsync<QuestDetailDto>($"/api/quests/{editingId}"); if (d is not null) questTags = d.Tags.ToList(); StateHasChanged(); }
-        catch (Exception ex) { error = ex.Message; }
-    }
-
-    private async Task RemoveTagAsync(TagDto tag)
-    {
-        if (editingId is null) return;
-        try { await Api.DeleteAsync($"/api/quests/{editingId}/tags/{tag.Id}"); questTags.Remove(tag); StateHasChanged(); }
-        catch (Exception ex) { error = ex.Message; }
-    }
-
-    // Locations
-    private async Task AddLocationAsync()
-    {
-        if (editingId is null || newLocationId is null) return;
-        try { await Api.PostAsync<AddQuestLocationDto, object>($"/api/quests/{editingId}/locations", new AddQuestLocationDto(newLocationId.Value)); newLocationId = null; var d = await Api.GetAsync<QuestDetailDto>($"/api/quests/{editingId}"); if (d is not null) questLocations = d.Locations.ToList(); StateHasChanged(); }
-        catch (Exception ex) { error = ex.Message; }
-    }
-
-    private async Task RemoveLocationAsync(QuestLocationDto loc)
-    {
-        if (editingId is null) return;
-        try { await Api.DeleteAsync($"/api/quests/{editingId}/locations/{loc.LocationId}"); questLocations.Remove(loc); StateHasChanged(); }
-        catch (Exception ex) { error = ex.Message; }
-    }
-
-    // Encounters
-    private async Task AddEncounterAsync()
-    {
-        if (editingId is null || newEncounterMonsterId is null) return;
-        try { await Api.PostAsync<AddQuestEncounterDto, object>($"/api/quests/{editingId}/encounters", new AddQuestEncounterDto(newEncounterMonsterId.Value, newEncounterQuantity)); newEncounterMonsterId = null; newEncounterQuantity = 1; var d = await Api.GetAsync<QuestDetailDto>($"/api/quests/{editingId}"); if (d is not null) questEncounters = d.Encounters.ToList(); StateHasChanged(); }
-        catch (Exception ex) { error = ex.Message; }
-    }
-
-    private async Task RemoveEncounterAsync(QuestEncounterDto enc)
-    {
-        if (editingId is null) return;
-        try { await Api.DeleteAsync($"/api/quests/{editingId}/encounters/{enc.MonsterId}"); questEncounters.Remove(enc); StateHasChanged(); }
-        catch (Exception ex) { error = ex.Message; }
-    }
-
-    // Rewards
-    private async Task AddRewardAsync()
-    {
-        if (editingId is null || newRewardItemId is null) return;
-        try { await Api.PostAsync<AddQuestRewardDto, object>($"/api/quests/{editingId}/rewards", new AddQuestRewardDto(newRewardItemId.Value, newRewardQuantity)); newRewardItemId = null; newRewardQuantity = 1; var d = await Api.GetAsync<QuestDetailDto>($"/api/quests/{editingId}"); if (d is not null) questRewards = d.Rewards.ToList(); StateHasChanged(); }
-        catch (Exception ex) { error = ex.Message; }
-    }
-
-    private async Task RemoveRewardAsync(QuestRewardDto rew)
-    {
-        if (editingId is null) return;
-        try { await Api.DeleteAsync($"/api/quests/{editingId}/rewards/{rew.ItemId}"); questRewards.Remove(rew); StateHasChanged(); }
-        catch (Exception ex) { error = ex.Message; }
-    }
-
-    private async Task SaveAsync()
-    {
-        error = null; isSaving = true;
+        if (string.IsNullOrWhiteSpace(createName)) return;
+        createError = null;
+        isCreating = true;
         try
         {
-            int? xp = rewardXp > 0 ? rewardXp : null; int? money = rewardMoney > 0 ? rewardMoney : null;
-            int? chain = chainOrder > 0 ? chainOrder : null; int? parent = parentQuestId > 0 ? parentQuestId : null;
-            if (editingId.HasValue)
-                await Api.PutAsync($"/api/quests/{editingId}", new UpdateQuestDto(name, questType, description, fullText, timeSlot, xp, money, rewardNotes, chain, parent));
-            else
+            var (ok, created, problem) = await Api.PostWithProblemAsync<CreateQuestDto, QuestListDto>(
+                "/api/quests",
+                new CreateQuestDto(createName.Trim(), createType, GameId: null));
+            if (!ok)
             {
-                var gameIdForCreate = Catalog ? (int?)null : gameId;
-                await Api.PostAsync<CreateQuestDto, QuestListDto>("/api/quests", new CreateQuestDto(name, questType, gameIdForCreate, description, fullText, timeSlot, xp, money, rewardNotes, chain, parent));
+                createError = problem ?? "Vytvoření úkolu se nepodařilo.";
+                return;
             }
-            isModalVisible = false; await LoadAsync();
+            isCreateVisible = false;
+            if (created is not null)
+                Nav.NavigateTo($"/quests/{created.Id}");
+            else
+                await LoadAsync();
         }
-        catch (Exception ex) { error = ex.Message; } finally { isSaving = false; }
+        catch (Exception ex) { createError = ex.Message; }
+        finally { isCreating = false; }
     }
 
-    private async Task ConfirmDeleteAsync()
+    private void ClearFilters()
     {
-        try { await Api.DeleteAsync($"/api/quests/{editingId}"); isDeleteVisible = false; isModalVisible = false; await LoadAsync(); }
-        catch (Exception ex) { error = ex.Message; }
+        searchText = "";
+        onlyWithImage = false;
+        onlyWithRewards = false;
     }
+
+    private static QuestListDto CatalogToList(QuestCatalogDto c) =>
+        new(c.Id, c.Name, c.QuestType, ChainOrder: null, ParentQuestId: null, GameId: c.GameId,
+            State: QuestState.Inactive,  // catalog has no runtime state — chip hidden via ShowState=false
+            ImagePath: c.ImagePath, ImageUrl: c.ImageUrl,
+            EncountersCount: c.EncountersCount, RewardsCount: c.RewardsCount,
+            LocationsCount: 0, TagsCount: 0);
+
+    public void Dispose() { /* GameContext not subscribed; nothing to dispose */ }
 }

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Shared.Domain.Entities;
+using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Endpoints;
@@ -17,6 +18,7 @@ public static class QuestEndpoints
         group.MapGet("/{id:int}", GetById);
         group.MapPost("/", Create);
         group.MapPut("/{id:int}", Update);
+        group.MapPatch("/{id:int}/state", UpdateState);
         group.MapDelete("/{id:int}", Delete);
         group.MapPost("/{id:int}/copy-to-game/{gameId:int}", CopyToGame);
         group.MapPut("/{id:int}/game", MoveToGame);
@@ -41,9 +43,8 @@ public static class QuestEndpoints
         return group;
     }
 
-    private static async Task<Ok<List<QuestCatalogDto>>> GetAll(WorldDbContext db)
+    private static async Task<Ok<List<QuestCatalogDto>>> GetAll(WorldDbContext db, HttpContext http)
     {
-        // Project to a lightweight shape in EF so we don't pull full Quest + Item entities.
         var rows = await db.Quests
             .AsNoTracking()
             .Where(q => q.GameId == null)
@@ -58,6 +59,9 @@ public static class QuestEndpoints
                 q.RewardXp,
                 q.RewardMoney,
                 q.RewardNotes,
+                q.ImagePath,
+                EncountersCount = q.QuestEncounters.Count,
+                RewardsCount = q.QuestRewards.Count,
                 Rewards = q.QuestRewards
                     .OrderBy(r => r.Item.Name)
                     .Select(r => new { ItemName = r.Item.Name, r.Quantity })
@@ -70,7 +74,10 @@ public static class QuestEndpoints
             null, null, null,
             r.Description, r.FullText,
             BuildRewardSummary(r.RewardXp, r.RewardMoney, r.RewardNotes,
-                r.Rewards.Select(x => (x.ItemName, x.Quantity))))).ToList();
+                r.Rewards.Select(x => (x.ItemName, x.Quantity))),
+            r.ImagePath,
+            string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "quests", r.Id, "small"),
+            r.EncountersCount, r.RewardsCount)).ToList();
 
         return TypedResults.Ok(dtos);
     }
@@ -93,7 +100,7 @@ public static class QuestEndpoints
         return parts.Count > 0 ? string.Join(" · ", parts) : null;
     }
 
-    private static async Task<Results<Created<QuestCopyResultDto>, NotFound>> CopyToGame(int id, int gameId, WorldDbContext db)
+    private static async Task<Results<Created<QuestCopyResultDto>, NotFound>> CopyToGame(int id, int gameId, WorldDbContext db, HttpContext http)
     {
         var source = await db.Quests
             .Include(q => q.QuestTags).ThenInclude(qt => qt.Tag)
@@ -110,7 +117,8 @@ public static class QuestEndpoints
             Name = source.Name, QuestType = source.QuestType, Description = source.Description,
             FullText = source.FullText, TimeSlot = source.TimeSlot,
             RewardXp = source.RewardXp, RewardMoney = source.RewardMoney, RewardNotes = source.RewardNotes,
-            ChainOrder = null, ParentQuestId = null, GameId = gameId
+            ChainOrder = null, ParentQuestId = null, GameId = gameId,
+            ImagePath = source.ImagePath, State = QuestState.Inactive
         };
         db.Quests.Add(copy);
         await db.SaveChangesAsync();
@@ -141,23 +149,45 @@ public static class QuestEndpoints
 
         await db.SaveChangesAsync();
 
+        var thumb = string.IsNullOrWhiteSpace(copy.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "quests", copy.Id, "small");
         return TypedResults.Created($"/api/quests/{copy.Id}",
             new QuestCopyResultDto(
-                new QuestListDto(copy.Id, copy.Name, copy.QuestType, copy.ChainOrder, copy.ParentQuestId, copy.GameId),
+                new QuestListDto(copy.Id, copy.Name, copy.QuestType, copy.ChainOrder, copy.ParentQuestId, copy.GameId,
+                    copy.State, copy.ImagePath, thumb,
+                    EncountersCount: source.QuestEncounters.Count,
+                    RewardsCount: source.QuestRewards.Count(r => targetItemIds.Contains(r.ItemId)),
+                    LocationsCount: source.QuestLocations.Count(l => targetLocationIds.Contains(l.LocationId)),
+                    TagsCount: source.QuestTags.Count),
                 warnings));
     }
 
-    private static async Task<Ok<List<QuestListDto>>> GetByGame(int gameId, WorldDbContext db)
+    private static async Task<Ok<List<QuestListDto>>> GetByGame(int gameId, WorldDbContext db, HttpContext http)
     {
-        var quests = await db.Quests
+        var rows = await db.Quests
+            .AsNoTracking()
             .Where(q => q.GameId == gameId)
             .OrderBy(q => q.ParentQuestId).ThenBy(q => q.ChainOrder).ThenBy(q => q.Name)
-            .Select(q => new QuestListDto(q.Id, q.Name, q.QuestType, q.ChainOrder, q.ParentQuestId, q.GameId))
+            .Select(q => new
+            {
+                q.Id, q.Name, q.QuestType, q.ChainOrder, q.ParentQuestId, q.GameId,
+                q.State, q.ImagePath,
+                EncountersCount = q.QuestEncounters.Count,
+                RewardsCount = q.QuestRewards.Count,
+                LocationsCount = q.QuestLocations.Count,
+                TagsCount = q.QuestTags.Count
+            })
             .ToListAsync();
+
+        var quests = rows.Select(r => new QuestListDto(
+            r.Id, r.Name, r.QuestType, r.ChainOrder, r.ParentQuestId, r.GameId,
+            r.State, r.ImagePath,
+            string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "quests", r.Id, "small"),
+            r.EncountersCount, r.RewardsCount, r.LocationsCount, r.TagsCount)).ToList();
+
         return TypedResults.Ok(quests);
     }
 
-    private static async Task<Results<Ok<QuestDetailDto>, NotFound>> GetById(int id, WorldDbContext db)
+    private static async Task<Results<Ok<QuestDetailDto>, NotFound>> GetById(int id, WorldDbContext db, HttpContext http)
     {
         var q = await db.Quests
             .Include(q => q.QuestTags).ThenInclude(qt => qt.Tag)
@@ -167,9 +197,12 @@ public static class QuestEndpoints
             .FirstOrDefaultAsync(q => q.Id == id);
         if (q is null) return TypedResults.NotFound();
 
+        var imageUrl = string.IsNullOrWhiteSpace(q.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "quests", q.Id, "small");
+
         return TypedResults.Ok(new QuestDetailDto(
             q.Id, q.Name, q.QuestType, q.Description, q.FullText, q.TimeSlot,
             q.RewardXp, q.RewardMoney, q.RewardNotes, q.ChainOrder, q.ParentQuestId, q.GameId,
+            q.State, q.ImagePath, imageUrl,
             q.QuestTags.Select(qt => new TagDto(qt.Tag.Id, qt.Tag.Name, qt.Tag.Kind)).ToList(),
             q.QuestLocations.Select(ql => new QuestLocationDto(ql.QuestId, ql.LocationId, ql.Location.Name)).ToList(),
             q.QuestEncounters.Select(qe => new QuestEncounterDto(qe.QuestId, qe.MonsterId, qe.Monster.Name, qe.Quantity)).ToList(),
@@ -183,12 +216,15 @@ public static class QuestEndpoints
             Name = dto.Name, QuestType = dto.QuestType, GameId = dto.GameId,
             Description = dto.Description, FullText = dto.FullText, TimeSlot = dto.TimeSlot,
             RewardXp = dto.RewardXp, RewardMoney = dto.RewardMoney, RewardNotes = dto.RewardNotes,
-            ChainOrder = dto.ChainOrder, ParentQuestId = dto.ParentQuestId
+            ChainOrder = dto.ChainOrder, ParentQuestId = dto.ParentQuestId,
+            State = QuestState.Inactive
         };
         db.Quests.Add(q);
         await db.SaveChangesAsync();
         return TypedResults.Created($"/api/quests/{q.Id}",
-            new QuestListDto(q.Id, q.Name, q.QuestType, q.ChainOrder, q.ParentQuestId, q.GameId));
+            new QuestListDto(q.Id, q.Name, q.QuestType, q.ChainOrder, q.ParentQuestId, q.GameId,
+                q.State, q.ImagePath, ImageUrl: null,
+                EncountersCount: 0, RewardsCount: 0, LocationsCount: 0, TagsCount: 0));
     }
 
     private static async Task<Results<NoContent, NotFound>> Update(int id, UpdateQuestDto dto, WorldDbContext db)
@@ -201,6 +237,19 @@ public static class QuestEndpoints
         q.RewardXp = dto.RewardXp; q.RewardMoney = dto.RewardMoney; q.RewardNotes = dto.RewardNotes;
         q.ChainOrder = dto.ChainOrder; q.ParentQuestId = dto.ParentQuestId;
 
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
+    }
+
+    private static async Task<Results<NoContent, NotFound, BadRequest<string>>> UpdateState(int id, UpdateQuestStateDto dto, WorldDbContext db)
+    {
+        var q = await db.Quests.FindAsync(id);
+        if (q is null) return TypedResults.NotFound();
+
+        if (!Enum.IsDefined(dto.State))
+            return TypedResults.BadRequest($"Unknown state '{dto.State}'.");
+
+        q.State = dto.State;
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
     }
