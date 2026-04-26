@@ -3675,6 +3675,18 @@
    move an existing one). Class toggled by map-interop.js keydown/keyup. */
 .oh-map-ctrl-held .maplibregl-canvas-container,
 .oh-map-ctrl-held .maplibregl-canvas{cursor:crosshair !important}
+
+/* Issue #258 — zoom-conditional location labels. Default hidden so
+   tightly-clustered pins (e.g. 22 in 280 m) don't render an unreadable
+   blob at low zoom. Towns (kingdom seats) override the default and are
+   always visible — they're the most important wayfinding anchors. */
+.oh-map-pin-label{display:none;position:absolute;top:100%;left:50%;
+    transform:translate(-50%,4px);white-space:nowrap;
+    font:600 .72rem var(--oh-font-body,sans-serif);color:#1a1a2e;
+    text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;
+    pointer-events:none;user-select:none;z-index:1}
+.oh-map-pin-loc[data-kind="town"] .oh-map-pin-label{display:block}
+.oh-map-zoomed-in .oh-map-pin-label{display:block}
 .oh-map-peek-backdrop{position:fixed;inset:0;background:rgba(20,16,8,.32);z-index:1070}
 .oh-map-peek{position:fixed;top:64px;right:0;bottom:0;width:min(420px,90vw);
     background:var(--oh-surface,#FAF6EC);border-left:1px solid var(--oh-border,#d8d2be);
