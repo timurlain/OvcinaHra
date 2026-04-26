@@ -3,7 +3,9 @@
 @inject ApiClient Api
 @inject GameContextService GameContext
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 @implements IDisposable
+@using System.Web
 @using OvcinaHra.Shared.Dtos
 
 <AuthorizeView>
@@ -70,6 +72,18 @@
     // a newer one if the user clicks pins faster than the network responds.
     private int _peekRequestId;
 
+    // Issue #215 — URL state. Per-field hydration flags (Copilot caught
+    // the broad _urlHydratedFromQuery suppressing layer localStorage when
+    // only ?mode=... was present). _urlPushReady gates PushUrl() until
+    // first-load completes so we don't write a fresh URL on every
+    // hydrate-driven state change during boot. _selectedLocationId tracks
+    // the active peek separately from _peek so PushUrl() emits a stable
+    // value even while a slow peek fetch is still in flight.
+    private bool _urlLayersHydratedFromQuery;
+    private bool _urlPushReady;
+    private int? _urlPendingSelectedLocationId;
+    private int? _selectedLocationId;
+
     private MapDataDto? _data;
     private bool _peekVisible;
     private bool _peekLoading;
@@ -79,6 +93,9 @@
     {
         await GameContext.InitializeAsync();
         GameContext.OnGameChanged += HandleGameChanged;
+        // Issue #215 — read URL state BEFORE the basemap loads so the
+        // first paint uses the right layers / style / selected pin.
+        HydrateFromUrl();
     }
 
     private void HandleGameChanged()
@@ -98,15 +115,40 @@
         // OnStyleLoaded fires both on first basemap load AND after every
         // SwitchStyle. The data fetch + localStorage hydrate only need to
         // run once; subsequent style swaps just need to repaint the pins
-        // since the new style wipes the old layer (Copilot C3).
+        // since the new style wipes the old layer.
         if (_firstStyleLoadDone)
         {
             await PaintPinsAsync();
             return;
         }
         _firstStyleLoadDone = true;
-        await HydrateLayerStateAsync();
+        // Issue #215 — URL > localStorage > defaults, applied per-field.
+        // Only the layer-visibility hydration consults localStorage, so
+        // we only skip it when the URL actually provided ?layers=...
+        // (Copilot caught the broad flag suppressing layer prefs when
+        // unrelated params like ?mode=... were present).
+        if (!_urlLayersHydratedFromQuery)
+        {
+            await HydrateLayerStateAsync();
+        }
+        // Apply URL-derived style now that the basemap is ready (default
+        // is "tourist", so we only need to switch when URL asked for
+        // something else). Calling switchStyle directly here — going
+        // through SetStyleAsync would push a fresh URL during hydrate.
+        if (_activeStyle != "tourist")
+        {
+            await JS.InvokeVoidAsync("ovcinaMap.switchStyle", _activeStyle);
+        }
         await ReloadDataAndRenderAsync();
+        // Auto-open the URL-pinned peek after data lands, if one was
+        // requested via ?selected=loc:N.
+        if (_urlPendingSelectedLocationId is int pinned)
+        {
+            _urlPendingSelectedLocationId = null;
+            await OpenPeekAsync(pinned);
+        }
+        // First load complete — future state changes are safe to push.
+        _urlPushReady = true;
     }
 
     private async Task HydrateLayerStateAsync()
@@ -183,6 +225,7 @@
         await JS.InvokeVoidAsync("ovcinaMap.setMapPageLayerVisibility",
             change.Layer, change.Visible);
         await PersistLayerStateAsync();
+        PushUrl();
     }
 
     private Task OnModeChange(string mode)
@@ -191,6 +234,7 @@
         // Katalog mode is wired up the same way as Pro hru today —
         // a follow-up issue will add cross-game data + clustering.
         // Switching modes simply re-fires the data load (no-op in MVP).
+        PushUrl();
         return Task.CompletedTask;
     }
 
@@ -200,6 +244,7 @@
         await JS.InvokeVoidAsync("ovcinaMap.switchStyle", style);
         // Style change disposes/re-creates the basemap; pins must repaint.
         await PaintPinsAsync();
+        PushUrl();
     }
 
     private async Task OnPinClickedAsync((string Kind, int Id) click)
@@ -212,8 +257,12 @@
     {
         // Token guard against fast successive pin clicks — the older
         // request must not be allowed to overwrite the newer peek state
-        // when its response lands late (Copilot C7).
+        // when its response lands late.
         var requestId = ++_peekRequestId;
+        // Issue #215 — track the selected id separately from _peek so an
+        // unrelated PushUrl() (style/layers/mode change) during the peek
+        // fetch still emits ?selected=loc:N (Copilot caught this drop).
+        _selectedLocationId = locationId;
         _peekVisible = true;
         _peekLoading = true;
         _peek = null;
@@ -234,12 +283,92 @@
         _peek = loaded;
         _peekLoading = false;
         await InvokeAsync(StateHasChanged);
+        // _selectedLocationId already set at the top of this method.
+        PushUrl();
     }
 
     private void ClosePeek()
     {
         _peekVisible = false;
         _peek = null;
+        _selectedLocationId = null;
+        PushUrl();
+    }
+
+    /// <summary>
+    /// Issue #215 — read state from the current URL's query string. Called
+    /// once during OnInitializedAsync, before the first basemap load, so
+    /// the page paints with URL-derived layers / mode / style on first
+    /// render. Sets <see cref="_urlHydratedFromQuery"/> when any param is
+    /// present so the localStorage fallback is skipped (URL wins).
+    /// </summary>
+    private void HydrateFromUrl()
+    {
+        var uri = new Uri(Nav.Uri);
+        if (string.IsNullOrEmpty(uri.Query)) return;
+        var qs = HttpUtility.ParseQueryString(uri.Query);
+
+        var layers = qs["layers"];
+        if (layers is not null)
+        {
+            // Empty string is meaningful — both layers off.
+            var set = layers.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => s.Trim().ToLowerInvariant())
+                .ToHashSet();
+            _locationsVisible = set.Contains("loc");
+            _stashesVisible = set.Contains("stash");
+            _urlLayersHydratedFromQuery = true;
+        }
+
+        var mode = qs["mode"];
+        if (mode is "pro-hru" or "katalog") _mode = mode;
+
+        var style = qs["style"];
+        if (style is "tourist" or "aerial" or "basic" or "osm")
+            _activeStyle = style;
+
+        var selected = qs["selected"];
+        if (!string.IsNullOrEmpty(selected)
+            && selected.StartsWith("loc:", StringComparison.Ordinal)
+            && int.TryParse(selected[4..], out var id))
+        {
+            _urlPendingSelectedLocationId = id;
+        }
+    }
+
+    /// <summary>
+    /// Issue #215 — emit the current state into the URL via
+    /// NavigationManager.NavigateTo with replace:true so back/forward
+    /// don't accumulate one history entry per click. Default values are
+    /// omitted from the query string so a fresh load reads cleanly.
+    /// Selection is sourced from <c>_selectedLocationId</c> (set
+    /// immediately on pin click) rather than the loaded peek payload
+    /// so a slow peek fetch can't drop ?selected= mid-load.
+    /// </summary>
+    private void PushUrl()
+    {
+        if (!_urlPushReady) return;
+
+        var pairs = new List<string>();
+
+        // Layers — emit only when not the default (both visible).
+        if (!(_locationsVisible && _stashesVisible))
+        {
+            var parts = new List<string>(2);
+            if (_locationsVisible) parts.Add("loc");
+            if (_stashesVisible) parts.Add("stash");
+            // Empty string is meaningful (both off); always emit the key.
+            pairs.Add($"layers={Uri.EscapeDataString(string.Join(',', parts))}");
+        }
+
+        if (_mode != "pro-hru") pairs.Add($"mode={Uri.EscapeDataString(_mode)}");
+        if (_activeStyle != "tourist") pairs.Add($"style={Uri.EscapeDataString(_activeStyle)}");
+
+        if (_selectedLocationId is int sel)
+            pairs.Add($"selected={Uri.EscapeDataString($"loc:{sel}")}");
+
+        var query = pairs.Count == 0 ? "" : "?" + string.Join('&', pairs);
+        Nav.NavigateTo($"/map{query}", forceLoad: false, replace: true);
     }
 
     private record LayerState(bool Locations, bool Stashes);
