@@ -82,6 +82,9 @@
     [Parameter] public EventCallback OnStyleLoaded { get; set; }
     [Parameter] public EventCallback<int> OnPieMarkerClick { get; set; }
     [Parameter] public EventCallback<PiePayloadEventArgs> OnPieMarkerDrop { get; set; }
+    /// <summary>Issue #207 — fires when a Map page pin is clicked.
+    /// Tuple is (kind, id) where kind is currently always "location".</summary>
+    [Parameter] public EventCallback<(string Kind, int Id)> OnMapPagePinClick { get; set; }
 
     /// <summary>
     /// When set, the map loads the game's vector overlay (issue #96) and
@@ -309,6 +312,19 @@
                 await JS.InvokeVoidAsync("ovcinaOverlay.clearSelection", _elementId);
         }
         StateHasChanged();
+    }
+
+    /// <summary>
+    /// Issue #207 — pin click hook for the Map page (cartographer's
+    /// workshop). The new `addLocationPin` / `addStashPin` interop calls
+    /// fire this with `kind = "location"` and the local entity id; the
+    /// page surfaces the right peek panel for the host location.
+    /// </summary>
+    [JSInvokable]
+    public async Task OnMapPinClicked(string kind, int id)
+    {
+        if (OnMapPagePinClick.HasDelegate)
+            await OnMapPagePinClick.InvokeAsync((kind, id));
     }
 
     [JSInvokable]

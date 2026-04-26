@@ -3598,3 +3598,98 @@
     /* hide Drozd/sidebar/chrome elsewhere on the page if rendered */
     nav,header.app-header,.app-sidebar,.app-footer,#blazor-error-ui{display:none !important}
 }
+
+/* ======================================================================
+   Issue #207 — Map page (cartographer's workshop). Two layers (Lokace,
+   Skrýše & Poklady), sliding right peek, treasures-by-stage block.
+   Reuses --oh-stage-* tokens already on :root from earlier work; no new
+   palette tokens needed in this PR.
+   ====================================================================== */
+.oh-map-page{display:flex;flex-direction:column;gap:10px;height:calc(100vh - 110px)}
+.oh-map-tb{display:flex;align-items:center;gap:12px;padding:8px 12px;
+    background:var(--oh-surface,#FAF6EC);border:1px solid var(--oh-border,#d8d2be);border-radius:8px}
+.oh-map-tb-modes{display:inline-flex;gap:4px}
+.oh-map-tb-mode{display:inline-flex;align-items:center;padding:4px 10px;border-radius:99px;
+    background:var(--oh-surface-alt,#F2EBD8);border:1px solid var(--oh-border,#d8d2be);
+    color:var(--oh-text,#2a2a2a);font:600 .8rem var(--oh-font-body);cursor:pointer}
+.oh-map-tb-mode.is-active{background:#2D5016;border-color:#2D5016;color:#fff}
+.oh-map-tb-counts{margin-left:auto;font-variant-numeric:tabular-nums}
+.oh-map-shell{display:grid;grid-template-columns:220px 1fr;gap:10px;flex:1;min-height:0;position:relative}
+.oh-map-layer-rail{padding:10px 12px;background:var(--oh-surface,#FAF6EC);
+    border:1px solid var(--oh-border,#d8d2be);border-radius:8px;align-self:start}
+.oh-map-layer-title{margin:0 0 8px;font:700 .95rem var(--oh-font-heading)}
+.oh-map-layer-row{display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;border-radius:5px}
+.oh-map-layer-row:hover{background:var(--oh-surface-alt,#F2EBD8)}
+.oh-map-layer-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;background:#2D5016}
+.oh-map-layer-stash{background:#C19A3A}
+.oh-map-layer-lbl{flex:1}
+.oh-map-layer-num{font-variant-numeric:tabular-nums}
+.oh-map-layer-hint{margin-top:8px;line-height:1.3}
+.oh-map-canvas{position:relative;border:1px solid var(--oh-border,#d8d2be);border-radius:8px;overflow:hidden}
+.oh-map-style-toolbar{position:absolute;top:8px;right:8px;z-index:10;display:flex;gap:4px;
+    background:rgba(250,246,236,.92);padding:3px;border-radius:99px;
+    box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.oh-map-style-btn{padding:3px 9px;border-radius:99px;border:none;background:transparent;
+    color:var(--oh-text,#2a2a2a);font:600 .72rem var(--oh-font-body);cursor:pointer}
+.oh-map-style-btn.is-active{background:#2D5016;color:#fff}
+.oh-map-pin{position:relative;width:18px;height:18px;border-radius:50%;
+    border:2px solid #fff;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.45)}
+.oh-map-pin-loc{background:#2D5016}
+.oh-map-pin-stash{background:#C19A3A;width:20px;height:20px}
+.oh-map-pin-stash[data-stage="Start"]   {background:#7FA657}
+.oh-map-pin-stash[data-stage="Early"]   {background:#D4A63C}
+.oh-map-pin-stash[data-stage="Midgame"] {background:#C17B3D}
+.oh-map-pin-stash[data-stage="Lategame"]{background:#8C2423}
+.oh-map-pin-count{position:absolute;top:-6px;right:-6px;background:#fff;color:#2a2a2a;
+    border-radius:99px;padding:0 4px;font:700 .65rem var(--oh-font-body);
+    border:1px solid var(--oh-border,#d8d2be);min-width:14px;text-align:center}
+.oh-map-peek-backdrop{position:fixed;inset:0;background:rgba(20,16,8,.32);z-index:1070}
+.oh-map-peek{position:fixed;top:64px;right:0;bottom:0;width:min(420px,90vw);
+    background:var(--oh-surface,#FAF6EC);border-left:1px solid var(--oh-border,#d8d2be);
+    box-shadow:-6px 0 24px rgba(0,0,0,.18);z-index:1075;
+    transform:translateX(100%);transition:transform .3s cubic-bezier(.2,.7,.2,1);
+    overflow-y:auto;padding:14px 18px}
+.oh-map-peek.is-on{transform:translateX(0)}
+.oh-map-peek-hd{display:flex;align-items:flex-start;gap:10px;padding-bottom:10px;
+    border-bottom:1px solid var(--oh-border,#d8d2be);margin-bottom:10px}
+.oh-map-peek-thumb{width:64px;height:64px;border-radius:6px;overflow:hidden;flex-shrink:0;
+    background:var(--oh-surface-alt,#F2EBD8);display:flex;align-items:center;justify-content:center}
+.oh-map-peek-thumb img{width:100%;height:100%;object-fit:cover}
+.oh-map-peek-thumb-fallback i{font-size:1.6rem;color:rgba(45,80,22,.45)}
+.oh-map-peek-hd-body{flex:1;min-width:0}
+.oh-map-peek-hd-body h2{margin:0;font:700 1.1rem var(--oh-font-heading)}
+.oh-map-peek-close{margin-left:auto;background:transparent;border:none;color:var(--oh-text-muted,#6b6453);
+    cursor:pointer;font-size:1.1rem;padding:4px 8px}
+.oh-map-peek-close:hover{color:var(--oh-text,#2a2a2a)}
+.oh-map-peek-sec{padding:10px 0;border-bottom:1px solid var(--oh-border,#d8d2be)}
+.oh-map-peek-sec:last-child{border-bottom:none}
+.oh-map-peek-sec h3{margin:0 0 6px;font:700 .85rem var(--oh-font-heading);text-transform:uppercase;letter-spacing:.04em;color:var(--oh-text-muted,#6b6453)}
+.oh-map-peek-link{display:flex;align-items:center;gap:8px;padding:6px 4px;border-radius:5px;
+    color:var(--oh-text,#2a2a2a);text-decoration:none}
+.oh-map-peek-link:hover{background:var(--oh-surface-alt,#F2EBD8)}
+.oh-map-peek-lore{font:400 .9rem var(--oh-font-body);color:var(--oh-text,#2a2a2a);margin:0 0 6px;line-height:1.5}
+.oh-map-peek-loading{padding:14px 0;color:var(--oh-text-muted,#6b6453)}
+.oh-map-kind-chip{display:inline-flex;padding:1px 7px;border-radius:99px;background:var(--oh-surface-alt,#F2EBD8);
+    border:1px solid var(--oh-border,#d8d2be);font:600 .7rem var(--oh-font-body)}
+.oh-map-tbs{display:flex;flex-direction:column;gap:6px}
+.oh-map-tbs-row{padding:6px 8px;border-radius:5px;background:var(--oh-surface-alt,#F2EBD8)}
+.oh-map-tbs-head{display:flex;align-items:center;gap:8px;font-weight:600}
+.oh-map-tbs-dot{width:9px;height:9px;border-radius:50%;background:#999}
+.oh-map-tbs-row[data-stage="start"]  .oh-map-tbs-dot{background:#7FA657}
+.oh-map-tbs-row[data-stage="rozvoj"] .oh-map-tbs-dot{background:#D4A63C}
+.oh-map-tbs-row[data-stage="stred"]  .oh-map-tbs-dot{background:#C17B3D}
+.oh-map-tbs-row[data-stage="zaver"]  .oh-map-tbs-dot{background:#8C2423}
+.oh-map-tbs-num{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--oh-text-muted,#6b6453)}
+.oh-map-tbs-body{display:flex;flex-direction:column;padding-left:17px;margin-top:2px}
+.oh-map-tbs-item{padding:2px 4px;border-radius:3px;color:var(--oh-text,#2a2a2a);text-decoration:none;font-size:.88rem}
+.oh-map-tbs-item:hover{background:var(--oh-surface,#FAF6EC)}
+.oh-map-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:10px;padding:60px 20px;text-align:center}
+.oh-map-empty-art i{font-size:4rem;color:rgba(45,80,22,.35)}
+.oh-map-empty h2{font:700 1.4rem var(--oh-font-heading);margin:0}
+@media (max-width:900px){
+    .oh-map-shell{grid-template-columns:1fr}
+    .oh-map-layer-rail{position:absolute;left:8px;top:8px;z-index:5;width:200px;
+        box-shadow:0 1px 4px rgba(0,0,0,.18)}
+}
+}

@@ -1,0 +1,43 @@
+@* Issue #207 — "Wow #2" — treasures grouped by stage. Always renders
+   all four stages (Start / Rozvoj / Střed / Závěr) in canonical order
+   so empty buckets show "Žádné poklady" rather than collapsing the row.
+   Stage colors come from `--oh-stage-*` tokens already on :root. *@
+
+<section class="oh-map-tbs" aria-label="Poklady podle fáze">
+    @foreach (var row in Rows ?? [])
+    {
+        <div class="oh-map-tbs-row" data-stage="@StageKey(row.Stage)">
+            <div class="oh-map-tbs-head">
+                <span class="oh-map-tbs-dot"></span>
+                <span class="oh-map-tbs-lbl">@row.StageDisplay</span>
+                <span class="oh-map-tbs-num">@row.Count</span>
+            </div>
+            <div class="oh-map-tbs-body">
+                @if (row.Treasures.Count == 0)
+                {
+                    <span class="text-muted small fst-italic">Žádné poklady</span>
+                }
+                else
+                {
+                    @foreach (var t in row.Treasures)
+                    {
+                        <a class="oh-map-tbs-item" href="@($"/treasures/{t.Id}")">@t.Name</a>
+                    }
+                }
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public IReadOnlyList<TreasuresByStageRowDto>? Rows { get; set; }
+
+    private static string StageKey(GameTimePhase stage) => stage switch
+    {
+        GameTimePhase.Start    => "start",
+        GameTimePhase.Early    => "rozvoj",
+        GameTimePhase.Midgame  => "stred",
+        GameTimePhase.Lategame => "zaver",
+        _ => "other",
+    };
+}

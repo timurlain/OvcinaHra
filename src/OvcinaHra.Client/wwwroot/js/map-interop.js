@@ -791,3 +791,84 @@ window.ovcinaBboxMap = {
         delete this._instances[elementId];
     }
 };
+
+// ======================================================================
+// Issue #207 — Map page (cartographer's workshop) pin layer.
+// DOM markers (extending the existing ovcinaMap pattern) for the two
+// active layers — Lokace and Skrýše & Poklady. Click events bubble
+// through `_dotnetRef.invokeMethodAsync('OnMapPinClicked', kind, id)`
+// so MapPage.razor can open the right-peek panel for the location.
+// ======================================================================
+window.ovcinaMap._mapPagePins = { loc: {}, stash: {} };
+
+window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
+    if (!this._map) return;
+    this.removeLocationPin(id);
+    var pin = document.createElement('div');
+    pin.className = 'oh-map-pin oh-map-pin-loc';
+    pin.setAttribute('data-kind', (kind || 'wilderness').toLowerCase());
+    pin.title = name || '';
+    var self = this;
+    pin.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (self._dotnetRef) self._dotnetRef.invokeMethodAsync('OnMapPinClicked', 'location', id);
+    });
+    var marker = new maplibregl.Marker({ element: pin, anchor: 'center' })
+        .setLngLat([lon, lat])
+        .addTo(this._map);
+    this._mapPagePins.loc[id] = marker;
+};
+
+window.ovcinaMap.removeLocationPin = function (id) {
+    var m = this._mapPagePins.loc[id];
+    if (m) { try { m.remove(); } catch (e) { /* ignore */ } delete this._mapPagePins.loc[id]; }
+};
+
+window.ovcinaMap.addStashPin = function (id, locationId, lat, lon, name, count, stage) {
+    if (!this._map) return;
+    this.removeStashPin(id);
+    var pin = document.createElement('div');
+    pin.className = 'oh-map-pin oh-map-pin-stash';
+    if (stage) pin.setAttribute('data-stage', stage);
+    pin.title = (name || '') + (count ? ' · ' + count + ' pokladů' : '');
+    if (count > 0) {
+        var badge = document.createElement('span');
+        badge.className = 'oh-map-pin-count';
+        badge.textContent = String(count);
+        pin.appendChild(badge);
+    }
+    var self = this;
+    pin.addEventListener('click', function (e) {
+        e.stopPropagation();
+        // Stash pins open the host location's peek per the brief —
+        // "stash IS at the location" — keeps one peek surface.
+        if (self._dotnetRef) self._dotnetRef.invokeMethodAsync('OnMapPinClicked', 'location', locationId);
+    });
+    var marker = new maplibregl.Marker({ element: pin, anchor: 'center' })
+        .setLngLat([lon, lat])
+        .addTo(this._map);
+    this._mapPagePins.stash[id] = marker;
+};
+
+window.ovcinaMap.removeStashPin = function (id) {
+    var m = this._mapPagePins.stash[id];
+    if (m) { try { m.remove(); } catch (e) { /* ignore */ } delete this._mapPagePins.stash[id]; }
+};
+
+window.ovcinaMap.clearMapPagePins = function () {
+    for (var lid in this._mapPagePins.loc) {
+        try { this._mapPagePins.loc[lid].remove(); } catch (e) { /* ignore */ }
+    }
+    for (var sid in this._mapPagePins.stash) {
+        try { this._mapPagePins.stash[sid].remove(); } catch (e) { /* ignore */ }
+    }
+    this._mapPagePins = { loc: {}, stash: {} };
+};
+
+window.ovcinaMap.setMapPageLayerVisibility = function (layer, visible) {
+    var bag = layer === 'stash' ? this._mapPagePins.stash : this._mapPagePins.loc;
+    for (var k in bag) {
+        var el = bag[k].getElement();
+        if (el) el.style.display = visible ? '' : 'none';
+    }
+};

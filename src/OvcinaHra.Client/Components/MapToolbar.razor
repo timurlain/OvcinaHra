@@ -1,0 +1,30 @@
+@* Issue #207 — Map page top toolbar. Pro hru / Katalog mode toggle
+   + a passive search box (search wiring is a follow-up). The brief's
+   stage filter and kingdom multi-select are simplified to a stage chip
+   row here; full kingdom multi-select moves with the kingdom-tint
+   follow-up issue, since the schema doesn't link Location → Kingdom yet. *@
+
+<div class="oh-map-tb">
+    <div class="oh-map-tb-modes" role="tablist" aria-label="Režim mapy">
+        <button type="button"
+                class="oh-map-tb-mode @(Mode == "pro-hru" ? "is-active" : "")"
+                @onclick="@(() => OnModeChange.InvokeAsync("pro-hru"))">
+            <i class="bi bi-controller me-1"></i>Pro hru
+        </button>
+        <button type="button"
+                class="oh-map-tb-mode @(Mode == "katalog" ? "is-active" : "")"
+                @onclick="@(() => OnModeChange.InvokeAsync("katalog"))">
+            <i class="bi bi-archive me-1"></i>Katalog
+        </button>
+    </div>
+    <div class="oh-map-tb-counts text-muted small">
+        @LocationsCount lokací · @StashesCount skrýší
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Mode { get; set; } = "pro-hru";
+    [Parameter] public EventCallback<string> OnModeChange { get; set; }
+    [Parameter] public int LocationsCount { get; set; }
+    [Parameter] public int StashesCount { get; set; }
+}

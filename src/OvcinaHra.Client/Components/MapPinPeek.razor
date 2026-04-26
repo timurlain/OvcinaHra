@@ -1,0 +1,100 @@
+@* Issue #207 — right slide-in peek panel. Backdrop dim with click-to-
+   close. CSS transform animates from translateX(100%) → 0 in 0.3s.
+   Brief explicitly says NOT a DxPopup — needs the slide-in transition. *@
+
+@if (Visible)
+{
+    <div class="oh-map-peek-backdrop" @onclick="OnBackdropClick"></div>
+}
+<aside class="oh-map-peek @(Visible ? "is-on" : "")" aria-hidden="@(!Visible)">
+    @if (Peek is not null)
+    {
+        <header class="oh-map-peek-hd">
+            @if (!string.IsNullOrEmpty(Peek.ThumbnailUrl) && !_thumbFailed)
+            {
+                <img class="oh-map-peek-thumb" src="@Peek.ThumbnailUrl" alt="@Peek.Name"
+                     @onerror="() => _thumbFailed = true" />
+            }
+            else
+            {
+                <div class="oh-map-peek-thumb oh-map-peek-thumb-fallback">
+                    <i class="bi bi-geo-alt-fill"></i>
+                </div>
+            }
+            <div class="oh-map-peek-hd-body">
+                <h2>@Peek.Name</h2>
+                <div class="text-muted small">
+                    <span class="oh-map-kind-chip">@Peek.KindDisplay</span>
+                    <span class="ms-2">@Peek.Lat.ToString("F5"), @Peek.Lon.ToString("F5")</span>
+                </div>
+            </div>
+            <button type="button" class="oh-map-peek-close" aria-label="Zavřít"
+                    @onclick="OnCloseClick">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </header>
+
+        <section class="oh-map-peek-sec">
+            <h3>Skrýše tady</h3>
+            @if (Peek.Stashes.Count == 0)
+            {
+                <p class="text-muted small fst-italic mb-0">Žádné skrýše.</p>
+            }
+            else
+            {
+                @foreach (var s in Peek.Stashes)
+                {
+                    <a class="oh-map-peek-link" href="@($"/secret-stashes/{s.Id}")">
+                        <i class="bi bi-archive"></i>
+                        <span>@s.Name</span>
+                        <span class="text-muted small ms-auto">@s.TreasureCount pokladů</span>
+                    </a>
+                }
+            }
+        </section>
+
+        <section class="oh-map-peek-sec">
+            <h3>Poklady podle fáze</h3>
+            <TreasuresByStageBlock Rows="Peek.TreasuresByStage" />
+        </section>
+
+        @if (!string.IsNullOrWhiteSpace(Peek.LorePreview))
+        {
+            <section class="oh-map-peek-sec">
+                <h3>Z náhledu lóru</h3>
+                <p class="oh-map-peek-lore">@Peek.LorePreview</p>
+                <a class="oh-map-peek-link" href="@($"/locations/{Peek.Id}")">
+                    Otevřít detail lokace <i class="bi bi-arrow-right-short"></i>
+                </a>
+            </section>
+        }
+    }
+    else if (Loading)
+    {
+        <div class="oh-map-peek-loading">
+            <span class="spinner-border spinner-border-sm me-1"></span>
+            Načítám…
+        </div>
+    }
+</aside>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public LocationPeekDto? Peek { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private bool _thumbFailed;
+    private string? _lastThumb;
+
+    protected override void OnParametersSet()
+    {
+        // Reset error flag when the peeked location changes — feedback
+        // rule: state-flag onerror, not inline DOM mutation.
+        var current = Peek?.ThumbnailUrl;
+        if (_lastThumb != current) { _lastThumb = current; _thumbFailed = false; }
+    }
+
+    private async Task OnBackdropClick() => await OnClose.InvokeAsync();
+    private async Task OnCloseClick() => await OnClose.InvokeAsync();
+}
