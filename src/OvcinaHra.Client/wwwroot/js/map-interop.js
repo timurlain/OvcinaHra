@@ -858,7 +858,16 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
     // origin while tiles slide underneath, looking like the pin "drifts"
     // on zoom. The clean wrapper has no positioning of its own so MapLibre
     // can apply transform: translate(...) freely.
+    // display:flex sizes the wrapper to the inner pin (18×18) instead of
+    // letting it stretch to the map container's full width. Without it,
+    // MapLibre's drag hit-testing happens on a giant invisible box and
+    // mousedown on the visible pin doesn't register as "on the marker"
+    // — drag never starts. Matches the still-working addMarker pattern
+    // for LocationDetail's mini-map.
     var wrapper = document.createElement('div');
+    wrapper.style.display = 'flex';
+    wrapper.style.alignItems = 'center';
+    wrapper.style.justifyContent = 'center';
     wrapper.style.cursor = 'pointer';
     var pin = document.createElement('div');
     pin.className = 'oh-map-pin oh-map-pin-loc';
@@ -905,7 +914,16 @@ window.ovcinaMap.addStashPin = function (id, locationId, lat, lon, name, count, 
     // apply its positioning transform cleanly. The pin keeps its own
     // `position: relative` for the count badge (`.oh-map-pin-count` is
     // absolutely positioned relative to the pin, not the wrapper).
+    // display:flex sizes the wrapper to the inner pin (18×18) instead of
+    // letting it stretch to the map container's full width. Without it,
+    // MapLibre's drag hit-testing happens on a giant invisible box and
+    // mousedown on the visible pin doesn't register as "on the marker"
+    // — drag never starts. Matches the still-working addMarker pattern
+    // for LocationDetail's mini-map.
     var wrapper = document.createElement('div');
+    wrapper.style.display = 'flex';
+    wrapper.style.alignItems = 'center';
+    wrapper.style.justifyContent = 'center';
     wrapper.style.cursor = 'pointer';
     var pin = document.createElement('div');
     pin.className = 'oh-map-pin oh-map-pin-stash';
