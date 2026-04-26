@@ -38,19 +38,19 @@
                             <span class="text-muted small ms-1">· @wp.LocationName</span>
                         }
                     </span>
-                    <button class="btn btn-sm btn-outline-secondary oh-qwp-mv"
+                    <button type="button" class="btn btn-sm btn-outline-secondary oh-qwp-mv"
                             @onclick="() => MoveAsync(idx, idx - 1)"
                             disabled="@(idx == 0 || _busy)"
                             title="Posunout nahoru" aria-label="Posunout nahoru">
                         <i class="bi bi-arrow-up"></i>
                     </button>
-                    <button class="btn btn-sm btn-outline-secondary oh-qwp-mv"
+                    <button type="button" class="btn btn-sm btn-outline-secondary oh-qwp-mv"
                             @onclick="() => MoveAsync(idx, idx + 1)"
                             disabled="@(idx == _waypoints.Count - 1 || _busy)"
                             title="Posunout dolů" aria-label="Posunout dolů">
                         <i class="bi bi-arrow-down"></i>
                     </button>
-                    <button class="btn btn-sm btn-outline-danger oh-qwp-rm"
+                    <button type="button" class="btn btn-sm btn-outline-danger oh-qwp-rm"
                             @onclick="() => RemoveAsync(wp.Id)"
                             disabled="@_busy"
                             title="Odebrat" aria-label="Odebrat">
@@ -72,7 +72,7 @@
         </select>
         <input class="form-control form-control-sm" placeholder="Popisek (volitelný, např. Brod)"
                @bind="_addLabel" maxlength="120" disabled="@_busy" />
-        <button class="btn btn-sm btn-primary"
+        <button type="button" class="btn btn-sm btn-primary"
                 @onclick="AddAsync"
                 disabled="@(_busy || _addLocationId <= 0)">
             <i class="bi bi-plus-lg me-1"></i>Přidat
