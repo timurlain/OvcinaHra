@@ -113,7 +113,7 @@ else if (Catalog)
                 CustomizeEditModel="OnCatalogCustomizeEdit"
                 EditModelSaving="OnCatalogSaving"
                 EmptyDataAreaTemplate="ItemsConfusedEmpty"
-                RowClick="@(e => OpenQuickPeek((ItemListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+                RowDoubleClick="@(e => OpenQuickPeek((ItemListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             @* Akce — fixed left. Otevřít detail → /items/{id} mirrors the LocationList
                pattern (PR #106). Destructive delete stays on the edit popup; not
@@ -194,6 +194,7 @@ else if (Catalog)
             <DxGridDataColumn FieldName="Effect" Caption="Efekt" Width="320px">
                 <CellEditTemplate>
                     <DxTextBox Text="@(((ItemInlineEditBuffer)context.EditModel).Effect)"
+                               TextExpression="@(() => ((ItemInlineEditBuffer)context.EditModel).Effect)"
                                TextChanged="@(v => ((ItemInlineEditBuffer)context.EditModel).Effect = v)"
                                NullText="(žádný efekt)" />
                 </CellEditTemplate>
@@ -204,6 +205,7 @@ else if (Catalog)
             <DxGridDataColumn FieldName="Note" Caption="Poznámka" Width="240px">
                 <CellEditTemplate>
                     <DxTextBox Text="@(((ItemInlineEditBuffer)context.EditModel).Note)"
+                               TextExpression="@(() => ((ItemInlineEditBuffer)context.EditModel).Note)"
                                TextChanged="@(v => ((ItemInlineEditBuffer)context.EditModel).Note = v)"
                                NullText="(žádná poznámka)" />
                 </CellEditTemplate>
@@ -264,7 +266,7 @@ else
                 CustomizeEditModel="OnGameCustomizeEdit"
                 EditModelSaving="OnGameSaving"
                 EmptyDataAreaTemplate="ItemsConfusedEmpty"
-                RowClick="@(e => OpenQuickPeek((GameItemListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+                RowDoubleClick="@(e => OpenQuickPeek((GameItemListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
             @* Akce — fixed left. Primary "Otevřít detail" button per issue #97.
                The 3-dot context menu column below still owns Upravit / Odebrat /
@@ -415,6 +417,7 @@ else
             <DxGridDataColumn FieldName="Note" Caption="Poznámka" Width="240px" Visible="false">
                 <CellEditTemplate>
                     <DxTextBox Text="@(((GameItemInlineEditBuffer)context.EditModel).Note)"
+                               TextExpression="@(() => ((GameItemInlineEditBuffer)context.EditModel).Note)"
                                TextChanged="@(v => ((GameItemInlineEditBuffer)context.EditModel).Note = v)"
                                NullText="(žádná poznámka)" />
                 </CellEditTemplate>
@@ -429,6 +432,7 @@ else
             <DxGridDataColumn FieldName="SaleCondition" Caption="Podmínka prodeje" Width="240px" Visible="false">
                 <CellEditTemplate>
                     <DxTextBox Text="@(((GameItemInlineEditBuffer)context.EditModel).SaleCondition)"
+                               TextExpression="@(() => ((GameItemInlineEditBuffer)context.EditModel).SaleCondition)"
                                TextChanged="@(v => ((GameItemInlineEditBuffer)context.EditModel).SaleCondition = v)"
                                NullText="(bez podmínky)" />
                 </CellEditTemplate>
@@ -660,8 +664,11 @@ else
                             <DxTextBox @bind-Text="@giSaleCondition" NullText="(bez podmínky)" />
                         </DxFormLayoutItem>
                     </DxFormLayout>
+                    @* Issue #185 — per-game settings persist via the main popup
+                       Save button below; no separate "Uložit nastavení" click needed.
+                       The destructive Odebrat z hry stays separate per the
+                       feedback_ovcinahra_destructive_confirm pattern. *@
                     <div class="d-flex gap-2 mt-2">
-                        <button class="btn btn-sm btn-primary" @onclick="SaveGameItemAsync" disabled="@isSaving">Uložit nastavení</button>
                         <button class="btn btn-sm btn-outline-danger" @onclick="RemoveGameItemAsync" disabled="@isSaving">Odebrat z hry</button>
                     </div>
                 }
@@ -1421,13 +1428,53 @@ else
 
     private async Task SaveAsync()
     {
-        error = null; isSaving = true;
+        error = null;
+
+        // Issue #185 — when the popup also surfaces per-game settings,
+        // mirror ItemDetail.razor's price guards so the unified Save can't
+        // ship an inconsistent state. Negative is blocked at the SpinEdit
+        // input layer too; this is a paranoia check + clear Czech message.
+        if (editingId.HasValue && gameItemExists && GameContext.SelectedGameId.HasValue)
+        {
+            if (giPrice.HasValue && giPrice.Value < 0)
+            {
+                error = "Cena nesmí být záporná.";
+                return;
+            }
+            if (giIsSold && (!giPrice.HasValue || giPrice.Value <= 0))
+            {
+                error = "Prodávaný předmět musí mít cenu vyšší než nula.";
+                return;
+            }
+        }
+
+        isSaving = true;
         try
         {
             if (editingId.HasValue)
+            {
+                // 1) Catalog item.
                 await Api.PutAsync($"/api/items/{editingId}",
                     new UpdateItemDto(name, itemType, effect, physicalForm, isCraftable, reqWarrior, reqArcher, reqMage, reqThief, isUnique, isLimited,
                         Note: note));
+
+                // 2) Per-game GameItem (#185) — only when the item is actually
+                // assigned to the active game. Same DTO + endpoint as the
+                // standalone /items/{id} detail page so the two surfaces stay
+                // coherent. Surfaces the server's Czech ProblemDetails verbatim
+                // (e.g. the #99 GameItem-in-use block).
+                if (gameItemExists && GameContext.SelectedGameId is int gid)
+                {
+                    var (ok, problem) = await Api.PutWithProblemAsync(
+                        $"/api/items/game-item/{gid}/{editingId}",
+                        new UpdateGameItemDto(giPrice, giStockCount, giIsSold, giSaleCondition, giIsFindable));
+                    if (!ok)
+                    {
+                        error = problem ?? "Uložení nastavení pro hru selhalo.";
+                        return;
+                    }
+                }
+            }
             else
             {
                 var created = await Api.PostAsync<CreateItemDto, ItemDetailDto>("/api/items",
