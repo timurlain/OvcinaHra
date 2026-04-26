@@ -102,16 +102,32 @@ try
     builder.Services.AddSingleton(logBuffer);
     builder.Logging.AddProvider(new RingBufferLoggerProvider(logBuffer));
 
-    // CORS for Blazor WASM client
+    // CORS for Blazor WASM client. Configured origins (prod hostname) plus
+    // any localhost / 127.0.0.1 origin so a developer can run the Client
+    // locally with appsettings.LocalAgainstProd.json pointing here. Browsers
+    // can't fake the Origin header across machines, so the localhost branch
+    // is safe — it can only be exercised from the user's own machine.
     builder.Services.AddCors(options =>
     {
+        var configuredOrigins =
+            builder.Configuration.GetSection("Cors:Origins").Get<string[]>()
+            ?? ["https://localhost:5290", "http://localhost:5290"];
         options.AddPolicy("BlazorClient", policy => policy
-            .WithOrigins(
-                builder.Configuration.GetSection("Cors:Origins").Get<string[]>()
-                ?? ["https://localhost:5290", "http://localhost:5290"])
+            .SetIsOriginAllowed(origin =>
+                configuredOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase)
+                || IsLocalhostOrigin(origin))
             .AllowAnyHeader()
             .AllowAnyMethod());
     });
+
+    static bool IsLocalhostOrigin(string origin)
+    {
+        if (string.IsNullOrEmpty(origin)) return false;
+        return origin.StartsWith("https://localhost:", StringComparison.OrdinalIgnoreCase)
+            || origin.StartsWith("http://localhost:", StringComparison.OrdinalIgnoreCase)
+            || origin.StartsWith("https://127.0.0.1:", StringComparison.OrdinalIgnoreCase)
+            || origin.StartsWith("http://127.0.0.1:", StringComparison.OrdinalIgnoreCase);
+    }
 
     var app = builder.Build();
 
