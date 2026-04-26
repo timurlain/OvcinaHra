@@ -59,7 +59,8 @@
                         <MapView @ref="_mapView"
                                  Height="calc(100vh - 200px)"
                                  OnStyleLoaded="OnMapReadyAsync"
-                                 OnMapPagePinClick="OnPinClickedAsync" />
+                                 OnMapPagePinClick="OnPinClickedAsync"
+                                 OnMapPagePinDrag="OnPinDraggedAsync" />
                     </div>
 
                     <MapPinPeek Visible="@_peekVisible"
@@ -284,6 +285,43 @@
             change.Layer, change.Visible);
         await PersistLayerStateAsync();
         PushUrl();
+    }
+
+    /// <summary>
+    /// PC drag-drop relocate. Fired by MapView when a /map location pin
+    /// is dragged. Coarse pointers (touch / tablet) never get the dragend
+    /// event because the marker is created without `draggable: true` on
+    /// those devices — see addLocationPin in map-interop.js.
+    /// </summary>
+    private async Task OnPinDraggedAsync((int Id, double Lat, double Lng) e)
+    {
+        try
+        {
+            // Round-trip GET → PUT so we don't accidentally wipe Description /
+            // Details / NpcInfo when only GPS is changing. UpdateLocationDto's
+            // string fields all default to null and would clear the row otherwise.
+            var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{e.Id}");
+            if (detail is null) return;
+            await Api.PutAsync($"/api/locations/{e.Id}",
+                new UpdateLocationDto(
+                    detail.Name, detail.LocationKind,
+                    Latitude: (decimal)e.Lat, Longitude: (decimal)e.Lng,
+                    Description: detail.Description,
+                    Details: detail.Details,
+                    GamePotential: detail.GamePotential,
+                    Prompt: detail.Prompt,
+                    Region: detail.Region,
+                    NpcInfo: detail.NpcInfo,
+                    SetupNotes: detail.SetupNotes,
+                    ParentLocationId: detail.ParentLocationId));
+            // Reload so the next layer-toggle / style-switch repaint picks
+            // up the new GPS in _data, and so the peek shows fresh values.
+            await ReloadDataAndRenderAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[map] OnPinDragged failed: {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     private async Task OnKindToggle(LocationKind kind)

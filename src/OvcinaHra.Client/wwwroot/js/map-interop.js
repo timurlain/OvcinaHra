@@ -824,9 +824,31 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
         e.stopPropagation();
         if (self._dotnetRef) self._dotnetRef.invokeMethodAsync('OnMapPinClicked', 'location', id);
     });
-    var marker = new maplibregl.Marker({ element: pin, anchor: 'center' })
+    // Drag-to-relocate. Disabled on coarse pointers (touch / tablet) so
+    // a stray finger drag doesn't accidentally move a placed pin. On PC
+    // the organizer can drag a pin to refine its GPS — `dragend` posts
+    // the new coordinates back to MapPage which PUTs the location.
+    // Default-coarse when detection is unavailable (embedded webviews,
+    // older browsers) — safer to lock drag than to enable it by accident.
+    var isCoarsePointer = true;
+    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+        isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+    } else if (typeof navigator !== 'undefined' && typeof navigator.maxTouchPoints === 'number') {
+        isCoarsePointer = navigator.maxTouchPoints > 0;
+    }
+    var draggable = !isCoarsePointer;
+    var marker = new maplibregl.Marker({ element: pin, anchor: 'center', draggable: draggable })
         .setLngLat([lon, lat])
         .addTo(this._map);
+    if (draggable) {
+        marker.on('dragend', function () {
+            var newPos = marker.getLngLat();
+            if (self._dotnetRef) {
+                // Use `lng` consistently with MapLibre's own LngLat naming.
+                self._dotnetRef.invokeMethodAsync('OnLocationPinDragged', id, newPos.lat, newPos.lng);
+            }
+        });
+    }
     this._mapPagePins.loc[id] = marker;
 };
 
