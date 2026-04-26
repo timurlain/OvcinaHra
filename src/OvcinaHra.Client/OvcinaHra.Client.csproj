@@ -7,7 +7,7 @@
     <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
     <ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>
     <BlazorWebAssemblyLoadAllGlobalizationData>true</BlazorWebAssemblyLoadAllGlobalizationData>
-    <Version>0.15.58</Version>
+    <Version>0.15.59</Version>
   </PropertyGroup>
 
   <ItemGroup>
