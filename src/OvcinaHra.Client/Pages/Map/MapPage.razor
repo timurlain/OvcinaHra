@@ -108,30 +108,38 @@
                can't easily Ctrl+Click; that's by design — placing is a
                PC-only workflow same as drag-relocate. *@
             <DxPopup @bind-Visible="@_placeVisible"
-                     HeaderText="Vyber lokaci k umístění"
+                     HeaderText="@(_placeMode == "move" ? "Přesunout lokaci sem" : "Vyber lokaci k umístění")"
                      Width="540px"
                      CloseOnEscape="true">
                 <BodyContentTemplate>
                     <p class="text-muted small mb-2">
-                        Souřadnice: <code>@_placeLat.ToString("F6"), @_placeLng.ToString("F6")</code>
+                        Nové souřadnice: <code>@_placeLat.ToString("F6"), @_placeLng.ToString("F6")</code>
+                        @if (_placeMode == "move")
+                        {
+                            <span class="ms-2 badge text-bg-warning">Přepíše stávající GPS</span>
+                        }
                     </p>
                     <DxTextBox @bind-Text="@_placeSearch"
                                NullText="Hledat podle názvu nebo oblasti…"
                                CssClass="mb-2" />
-                    @if (_ungeocoded is null)
+                    @if (_placeCandidates is null)
                     {
                         <p class="text-muted small">Načítám…</p>
                     }
                     else
                     {
-                        var filtered = _ungeocoded
+                        var filtered = _placeCandidates
                             .Where(l => string.IsNullOrWhiteSpace(_placeSearch)
                                 || l.Name.Contains(_placeSearch, StringComparison.OrdinalIgnoreCase)
                                 || (l.Region is not null && l.Region.Contains(_placeSearch, StringComparison.OrdinalIgnoreCase)))
                             .ToList();
-                        if (filtered.Count == 0 && _ungeocoded.Count == 0)
+                        if (filtered.Count == 0 && _placeCandidates.Count == 0)
                         {
-                            <p class="text-muted small text-center py-3">Všechny lokace v této hře už mají GPS.</p>
+                            <p class="text-muted small text-center py-3">
+                                @(_placeMode == "move"
+                                    ? "Žádné lokace v této hře."
+                                    : "Všechny lokace v této hře už mají GPS.")
+                            </p>
                         }
                         else if (filtered.Count == 0)
                         {
@@ -142,6 +150,7 @@
                             <div class="list-group" style="max-height:420px;overflow-y:auto;">
                                 @foreach (var loc in filtered)
                                 {
+                                    var hasGps = loc.Latitude.HasValue && loc.Longitude.HasValue;
                                     <button type="button"
                                             class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
                                             disabled="@_placeSaving"
@@ -151,6 +160,16 @@
                                             @if (!string.IsNullOrWhiteSpace(loc.Region))
                                             {
                                                 <small class="text-muted">@loc.Region</small>
+                                            }
+                                            @if (_placeMode == "move" && hasGps)
+                                            {
+                                                <small class="text-muted d-block">
+                                                    Aktuálně: <code>@loc.Latitude!.Value.ToString("F4"), @loc.Longitude!.Value.ToString("F4")</code>
+                                                </small>
+                                            }
+                                            else if (_placeMode == "move" && !hasGps)
+                                            {
+                                                <small class="text-muted d-block fst-italic">Bez GPS</small>
                                             }
                                         </div>
                                         <span class="badge rounded-pill text-bg-secondary">@loc.LocationKindDisplay</span>
@@ -204,12 +223,15 @@
     private bool _pendingDragSaving;
     private string? _pendingDragError;
 
-    // Ctrl+Click placement state — picks an ungeocoded parent location
-    // from the active game and PUTs the clicked coords as its GPS.
+    // Ctrl+Click placement / Ctrl+Shift+Click move state.
+    //   "place" → picker shows only ungeocoded parent locations
+    //   "move"  → picker shows all parent locations (current GPS overwritten)
+    // Same DxPopup, header + list filter swap based on mode.
     private bool _placeVisible;
+    private string _placeMode = "place";
     private double _placeLat;
     private double _placeLng;
-    private List<LocationListDto>? _ungeocoded;
+    private List<LocationListDto>? _placeCandidates;
     private string _placeSearch = "";
     private bool _placeSaving;
     private string? _placeError;
@@ -475,26 +497,26 @@
 
     /// <summary>
     /// Map click handler. Plain click does nothing (peek only opens via
-    /// pin clicks). Ctrl+Click opens the "place ungeocoded location"
-    /// picker — user picks one from the grid and the clicked coords
-    /// become its new GPS.
+    /// pin clicks). Modifier-clicks open the placement picker:
+    ///   Ctrl+Click       → place an ungeocoded parent location
+    ///   Ctrl+Shift+Click → move any parent location (current GPS overwritten)
     /// </summary>
     private async Task OnMapClickAsync(OvcinaMapClickEventArgs e)
     {
         if (!e.CtrlKey) return;
         if (GameContext.SelectedGameId is not int gid) return;
+        _placeMode = e.ShiftKey ? "move" : "place";
         _placeLat = e.Latitude;
         _placeLng = e.Longitude;
         _placeError = null;
         _placeSearch = "";
         _placeSaving = false;
-        // Fetch the per-game location list and filter to ungeocoded
-        // parent rows (no GPS, no parent). Re-fetched on every open so
-        // the list reflects the current state without stale caching.
+        // Fetch the per-game location list. Filter depends on mode:
+        // place mode = only ungeocoded parents; move mode = all parents.
         var all = await Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gid}");
-        _ungeocoded = all
+        _placeCandidates = all
             .Where(l => l.ParentLocationId is null
-                && (l.Latitude is null || l.Longitude is null))
+                && (_placeMode == "move" || l.Latitude is null || l.Longitude is null))
             .OrderBy(l => l.Name)
             .ToList();
         _placeVisible = true;
@@ -524,7 +546,7 @@
                     SetupNotes: detail.SetupNotes,
                     ParentLocationId: detail.ParentLocationId));
             _placeVisible = false;
-            _ungeocoded = null;
+            _placeCandidates = null;
             await ReloadDataAndRenderAsync();
         }
         catch (Exception ex) { _placeError = ex.Message; }

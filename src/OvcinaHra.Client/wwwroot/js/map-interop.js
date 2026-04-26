@@ -82,10 +82,13 @@ window.ovcinaMap = {
 
         this._map.on('click', (e) => {
             if (this._dotnetRef) {
-                // Forward Ctrl/Meta state — /map uses Ctrl+Click to
-                // place an ungeocoded location at the clicked point.
-                var ctrl = !!(e.originalEvent && (e.originalEvent.ctrlKey || e.originalEvent.metaKey));
-                this._dotnetRef.invokeMethodAsync('OnMapClicked', e.lngLat.lat, e.lngLat.lng, ctrl);
+                // Forward Ctrl/Meta + Shift state — /map uses
+                //   Ctrl+Click       → place ungeocoded location
+                //   Ctrl+Shift+Click → move existing location (any)
+                var orig = e.originalEvent;
+                var ctrl = !!(orig && (orig.ctrlKey || orig.metaKey));
+                var shift = !!(orig && orig.shiftKey);
+                this._dotnetRef.invokeMethodAsync('OnMapClicked', e.lngLat.lat, e.lngLat.lng, ctrl, shift);
             }
         });
 
@@ -893,31 +896,29 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
     pin.className = 'oh-map-pin oh-map-pin-loc';
     pin.setAttribute('data-kind', (kind || 'wilderness').toLowerCase());
     wrapper.title = name || '';
-    // Always-on label below the pin (issue #258 will add zoom-conditional
-    // visibility). The label is absolutely positioned relative to the
-    // pin (which has position:relative) so it doesn't expand the wrapper
-    // — that keeps MapLibre's drag hit-test on the pin alone.
-    if (name) {
-        var label = document.createElement('div');
-        label.className = 'oh-map-pin-label';
-        label.textContent = name;
-        pin.appendChild(label);
-    }
+    // Labels deferred to issue #258 (conditional zoom-based visibility).
+    // Always-on labels visually overlapped neighbouring pins in clustered
+    // areas — the label's pointer-events:none made events fall through to
+    // the map canvas, blocking marker drag on what looked like a pin.
     wrapper.appendChild(pin);
     var self = this;
     wrapper.addEventListener('click', function (e) {
         e.stopPropagation();
         if (self._dotnetRef) self._dotnetRef.invokeMethodAsync('OnMapPinClicked', 'location', id);
     });
-    // Drag-to-relocate on PC; disabled for coarse pointers. Default-coarse
-    // when detection unavailable (embedded webviews) — safer to lock.
-    var isCoarsePointer = true;
+    // Drag-to-relocate. Enabled when ANY fine pointer is available
+    // (mouse, trackpad). The earlier `(pointer: coarse)` gate broke on
+    // Windows touchscreen laptops where the primary pointer reports as
+    // coarse even with a mouse plugged in. `(any-pointer: fine)` matches
+    // if a fine input exists at all, which is the right gate. Pure-touch
+    // tablets with no mouse fall back to Ctrl+Shift+Click via the click
+    // picker.
+    var draggable = true;
     if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
-        isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+        draggable = window.matchMedia('(any-pointer: fine)').matches;
     } else if (typeof navigator !== 'undefined' && typeof navigator.maxTouchPoints === 'number') {
-        isCoarsePointer = navigator.maxTouchPoints > 0;
+        draggable = navigator.maxTouchPoints === 0;
     }
-    var draggable = !isCoarsePointer;
     var marker = new maplibregl.Marker({ element: wrapper, anchor: 'center', draggable: draggable })
         .setLngLat([lon, lat])
         .addTo(this._map);
