@@ -3,6 +3,7 @@
 @inject ApiClient Api
 @inject NavigationManager Nav
 @inject GameContextService GameContext
+@inject SkillService SkillSvc
 @implements IDisposable
 
 @* Issue #208 — 2-tab building detail page (Karta · Upravit). Karta hero
@@ -184,6 +185,75 @@ else
                 </DxFormLayoutGroup>
             </DxFormLayout>
 
+            @* Issue #142 — per-game construction recipe editor. Only meaningful
+               when a game is selected. Ported verbatim from the legacy
+               BuildingList popup so organizers don't lose access to the recipe
+               CRUD when this page replaces it. Sits outside the DxFormLayout
+               because its leaf-pickers manage their own state (issue #163). *@
+            @if (GameContext.SelectedGameId.HasValue)
+            {
+                <div class="mt-3 p-3 border rounded oh-bld-recpanel">
+                    <h6 class="mb-2"><i class="bi bi-hammer me-1"></i> Konstrukce v této hře (Cena výstavby)</h6>
+                    @if (recipe is not null)
+                    {
+                        <div class="mb-2">
+                            <strong class="small">Cena v zlaťácích:</strong>
+                            <div class="d-flex gap-2 align-items-end mt-1">
+                                <div style="width:140px">
+                                    <DxSpinEdit @bind-Value="@recipeMoneyCost" MinValue="0" NullText="(žádná)"
+                                                ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-primary"
+                                        disabled="@(recipeMoneyCost == recipe.MoneyCost)"
+                                        @onclick="SaveRecipeMoneyAsync">
+                                    Uložit cenu
+                                </button>
+                            </div>
+                        </div>
+                        <RecipeIngredientPicker
+                            Ingredients="@_ingredientRows"
+                            AvailableItems="@allItems"
+                            OnAdd="@AddIngredientAsync"
+                            OnRemove="@RemoveIngredientAsync" />
+
+                        <RecipeNotesEditor
+                            PersistedValue="@recipe.IngredientNotes"
+                            OnSave="@SaveRecipeNotesAsync" />
+
+                        <RecipeBuildingPicker
+                            Caption="Předpoklady (jiné budovy)"
+                            AddPlaceholder="(přidat předpoklad)"
+                            Buildings="@_prerequisiteRows"
+                            AvailableBuildings="@AvailablePrereqBuildings"
+                            OnAdd="@AddPrereqAsync"
+                            OnRemove="@RemovePrereqAsync" />
+
+                        <RecipeSkillPicker
+                            SelectedSkillIds="@recipe.RequiredSkillIds"
+                            AllGameSkills="@gameSkills"
+                            AvailableSkills="@AvailableGameSkills"
+                            OnAdd="@AddSkillAsync"
+                            OnRemove="@RemoveSkillAsync" />
+
+                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                @onclick="() => isDeleteRecipeVisible = true">
+                            Smazat recept
+                        </button>
+                    }
+                    else
+                    {
+                        <p class="text-muted small mb-2">Tato budova nemá nastavenou cenu výstavby pro tuto hru.</p>
+                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="CreateRecipeAsync">
+                            <i class="bi bi-plus-circle me-1"></i>Vytvořit cenu
+                        </button>
+                    }
+                    @if (recipeError is not null)
+                    {
+                        <div class="alert alert-danger mt-2">@recipeError</div>
+                    }
+                </div>
+            }
+
             @if (saveError is not null)
             {
                 <div class="alert alert-danger mt-2">@saveError</div>
@@ -231,6 +301,18 @@ else
     </BodyContentTemplate>
 </DxPopup>
 
+@* Issue #142 — destructive recipe-delete confirmation, per the
+   destructive-action-confirm memory rule. *@
+<DxPopup @bind-Visible="@isDeleteRecipeVisible" HeaderText="Smazat recept?" Width="420px">
+    <BodyContentTemplate Context="ctx">
+        <p>Opravdu chcete smazat cenu výstavby pro budovu <strong>@(building?.Name)</strong>? Ingredience, předpoklady a požadované dovednosti se odeberou společně s receptem.</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" type="button" @onclick="() => isDeleteRecipeVisible = false">Zrušit</button>
+            <button class="btn btn-danger" type="button" @onclick="ConfirmDeleteRecipeAsync">Smazat recept</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
 @code {
     [Parameter] public int Id { get; set; }
 
@@ -249,6 +331,35 @@ else
 
     private List<LocationListDto> allLocations = [];
 
+    // ----- Per-game construction recipe state (issue #142) -----
+    // Ported from the legacy BuildingList popup so the recipe CRUD survives
+    // the move to a 2-tab detail page. Only loaded/rendered when a game is
+    // selected (the recipe is per-game). Leaf pickers own their input state
+    // (issue #163) — _ingredientRows / _prerequisiteRows are pre-projected
+    // once per recipe load to avoid re-allocating each render.
+    private BuildingRecipeDetailDto? recipe;
+    private List<ItemListDto> allItems = [];
+    private List<BuildingListDto> allCatalogBuildings = [];
+    private List<GameSkillDto> gameSkills = [];
+    private int? recipeMoneyCost;
+    private bool isDeleteRecipeVisible;
+    private string? recipeError;
+    private IReadOnlyList<RecipeIngredientPicker.IngredientRow> _ingredientRows = [];
+    private IReadOnlyList<RecipeBuildingPicker.BuildingRow> _prerequisiteRows = [];
+
+    private List<GameSkillDto> AvailableGameSkills =>
+        recipe is null
+            ? []
+            : gameSkills.Where(gs => !recipe.RequiredSkillIds.Contains(gs.Id)).ToList();
+
+    private List<BuildingListDto> AvailablePrereqBuildings =>
+        recipe is null
+            ? []
+            : allCatalogBuildings
+                .Where(b => b.Id != building?.Id
+                    && !recipe.PrerequisiteBuildings.Any(pb => pb.BuildingId == b.Id))
+                .ToList();
+
     protected override async Task OnInitializedAsync()
     {
         await GameContext.InitializeAsync();
@@ -264,8 +375,10 @@ else
 
     private async void OnGameChanged()
     {
-        // Location combo is keyed by the current game; refresh.
+        // Location combo + recipe panel are keyed by the current game; refresh.
         await LoadLocationsAsync();
+        await LoadRecipePickerDataAsync();
+        await LoadRecipeAsync();
         StateHasChanged();
     }
 
@@ -285,9 +398,204 @@ else
             }
             ResetEditModel();
             await LoadLocationsAsync();
+            await LoadRecipePickerDataAsync();
+            await LoadRecipeAsync();
         }
         catch (Exception ex) { error = ex.Message; }
         finally { loading = false; }
+    }
+
+    private async Task LoadRecipePickerDataAsync()
+    {
+        if (GameContext.SelectedGameId is not int gid) return;
+        try
+        {
+            var itemsTask = Api.GetListAsync<ItemListDto>("/api/items");
+            var catalogTask = Api.GetListAsync<BuildingListDto>("/api/buildings");
+            var skillsTask = SkillSvc.GetGameSkillsAsync(gid);
+            await Task.WhenAll(itemsTask, catalogTask, skillsTask);
+            allItems = await itemsTask;
+            allCatalogBuildings = await catalogTask;
+            gameSkills = (await skillsTask).ToList();
+        }
+        catch { /* picker data is non-critical */ }
+    }
+
+    private async Task LoadRecipeAsync()
+    {
+        recipe = null;
+        recipeMoneyCost = null;
+        _ingredientRows = [];
+        _prerequisiteRows = [];
+        recipeError = null;
+        if (building is null || GameContext.SelectedGameId is not int gid) return;
+
+        try
+        {
+            // /api/building-recipes/by-game/{gid} returns one entry per recipe,
+            // plus the OutputBuildingId so we can pick the one for THIS building.
+            var recipes = await Api.GetListAsync<BuildingRecipeListDto>($"/api/building-recipes/by-game/{gid}");
+            var match = recipes.FirstOrDefault(r => r.OutputBuildingId == building.Id);
+            if (match is not null)
+            {
+                recipe = await Api.GetAsync<BuildingRecipeDetailDto>($"/api/building-recipes/{match.Id}");
+                recipeMoneyCost = recipe?.MoneyCost;
+                if (recipe is not null)
+                {
+                    _ingredientRows = recipe.Ingredients
+                        .Select(i => new RecipeIngredientPicker.IngredientRow(i.ItemId, i.ItemName, i.Quantity))
+                        .ToList();
+                    _prerequisiteRows = recipe.PrerequisiteBuildings
+                        .Select(pb => new RecipeBuildingPicker.BuildingRow(pb.BuildingId, pb.BuildingName))
+                        .ToList();
+                }
+            }
+        }
+        catch (Exception ex) { recipeError = ex.Message; }
+    }
+
+    private async Task CreateRecipeAsync()
+    {
+        if (building is null || GameContext.SelectedGameId is not int gid) return;
+        recipeError = null;
+        try
+        {
+            await Api.PostAsync<CreateBuildingRecipeDto, BuildingRecipeDetailDto>("/api/building-recipes",
+                new CreateBuildingRecipeDto(gid, building.Id));
+            await LoadRecipeAsync();
+        }
+        catch (Exception ex) { recipeError = ex.Message; }
+    }
+
+    private async Task ConfirmDeleteRecipeAsync()
+    {
+        if (recipe is null) return;
+        recipeError = null;
+        try
+        {
+            await Api.DeleteAsync($"/api/building-recipes/{recipe.Id}");
+            recipe = null;
+            recipeMoneyCost = null;
+            isDeleteRecipeVisible = false;
+        }
+        catch (Exception ex) { recipeError = ex.Message; isDeleteRecipeVisible = false; }
+    }
+
+    private async Task AddIngredientAsync((int ItemId, int Quantity) ev)
+    {
+        if (recipe is null) return;
+        recipeError = null;
+        try
+        {
+            await Api.PostAsync<AddBuildingRecipeIngredientDto, object>($"/api/building-recipes/{recipe.Id}/ingredients",
+                new AddBuildingRecipeIngredientDto(ev.ItemId, ev.Quantity));
+            await LoadRecipeAsync();
+        }
+        catch (Exception ex) { recipeError = ex.Message; }
+    }
+
+    private async Task RemoveIngredientAsync(int itemId)
+    {
+        if (recipe is null) return;
+        recipeError = null;
+        try
+        {
+            await Api.DeleteAsync($"/api/building-recipes/{recipe.Id}/ingredients/{itemId}");
+            await LoadRecipeAsync();
+        }
+        catch (Exception ex) { recipeError = ex.Message; }
+    }
+
+    private async Task AddPrereqAsync(int buildingId)
+    {
+        if (recipe is null) return;
+        recipeError = null;
+        try
+        {
+            await Api.PostAsync<AddBuildingRecipePrerequisiteDto, object>($"/api/building-recipes/{recipe.Id}/prerequisites",
+                new AddBuildingRecipePrerequisiteDto(buildingId));
+            await LoadRecipeAsync();
+        }
+        catch (Exception ex) { recipeError = ex.Message; }
+    }
+
+    private async Task RemovePrereqAsync(int buildingId)
+    {
+        if (recipe is null) return;
+        recipeError = null;
+        try
+        {
+            await Api.DeleteAsync($"/api/building-recipes/{recipe.Id}/prerequisites/{buildingId}");
+            await LoadRecipeAsync();
+        }
+        catch (Exception ex) { recipeError = ex.Message; }
+    }
+
+    private async Task AddSkillAsync(int skillId)
+    {
+        if (recipe is null) return;
+        var next = recipe.RequiredSkillIds.ToList();
+        if (next.Contains(skillId)) return;
+        next.Add(skillId);
+        await PutRecipeAsync(
+            moneyCost: recipe.MoneyCost,
+            skillIds: next,
+            ingredientNotes: recipe.IngredientNotes);
+    }
+
+    private async Task RemoveSkillAsync(int skillId)
+    {
+        if (recipe is null) return;
+        var next = recipe.RequiredSkillIds.Where(s => s != skillId).ToList();
+        await PutRecipeAsync(
+            moneyCost: recipe.MoneyCost,
+            skillIds: next,
+            ingredientNotes: recipe.IngredientNotes);
+    }
+
+    private async Task SaveRecipeMoneyAsync()
+    {
+        if (recipe is null) return;
+        // Pass `recipeMoneyCost` verbatim — null clears the field.
+        await PutRecipeAsync(
+            moneyCost: recipeMoneyCost,
+            skillIds: recipe.RequiredSkillIds.ToList(),
+            ingredientNotes: recipe.IngredientNotes);
+    }
+
+    private async Task SaveRecipeNotesAsync(string? newValue)
+    {
+        if (recipe is null) return;
+        var normalized = string.IsNullOrWhiteSpace(newValue) ? null : newValue.Trim();
+        await PutRecipeAsync(
+            moneyCost: recipe.MoneyCost,
+            skillIds: recipe.RequiredSkillIds.ToList(),
+            ingredientNotes: normalized);
+    }
+
+    /// <summary>
+    /// Single PUT helper that requires explicit values for every mutable
+    /// field. Callers pass the recipe's current server-side values for
+    /// fields they don't want to change — without that contract a null
+    /// param meant "preserve" and clearing a field silently no-op'd
+    /// (Copilot review on the original PR #164).
+    /// </summary>
+    private async Task PutRecipeAsync(
+        int? moneyCost, IReadOnlyList<int> skillIds, string? ingredientNotes)
+    {
+        if (recipe is null) return;
+        recipeError = null;
+        try
+        {
+            var dto = new UpdateBuildingRecipeDto(
+                recipe.OutputBuildingId,
+                MoneyCost: moneyCost,
+                RequiredSkillIds: skillIds,
+                IngredientNotes: ingredientNotes);
+            await Api.PutAsync($"/api/building-recipes/{recipe.Id}", dto);
+            await LoadRecipeAsync();
+        }
+        catch (Exception ex) { recipeError = ex.Message; }
     }
 
     private async Task LoadLocationsAsync()
