@@ -1,0 +1,92 @@
+@* Issue #158 — Drozd welcome takeover. Full-viewport overlay shown
+   on first nav after login per browser session. sessionStorage (NOT
+   localStorage) so a fresh tab fires it again. Auto-dismisses on
+   click anywhere, on the dedicated button, or after 4s timeout. *@
+
+@inject IJSRuntime JS
+@implements IDisposable
+
+@if (_visible)
+{
+    <div class="oh-home-takeover" @onclick="Dismiss" role="dialog" aria-label="Vítej v OvčinaHře">
+        <div class="oh-home-drozd-card" @onclick:stopPropagation>
+            <div class="oh-home-drozd-art">
+                @* Inline SVG placeholder until designer ships drozd-welcome.png.
+                   Single warm-tone silhouette — keeps the takeover from looking
+                   broken before the real asset lands. *@
+                <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <circle cx="100" cy="100" r="92" fill="#F2EBD8" stroke="#8B5A2B" stroke-width="3" />
+                    <ellipse cx="100" cy="118" rx="42" ry="50" fill="#8B5A2B" />
+                    <circle cx="100" cy="76" r="32" fill="#A4733E" />
+                    <polygon points="128,80 152,72 128,90" fill="#C19A3A" />
+                    <circle cx="92" cy="74" r="3.5" fill="#2A2A2A" />
+                </svg>
+            </div>
+            <div class="oh-home-drozd-greet">
+                <h2>Dobrý den, @(UserName ?? "organizátore")!</h2>
+                <p>Drozd vás vítá ve vašem světě. Klikněte kdekoli, ať se pustíme do práce.</p>
+                <button class="btn btn-primary" type="button" @onclick="Dismiss">Pochopeno</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private const string SessionFlag = "oh-drozd-welcome-dismissed";
+    private bool _visible;
+    private CancellationTokenSource? _autoDismissCts;
+
+    [Parameter] public string? UserName { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            var dismissed = await JS.InvokeAsync<string?>(
+                "sessionStorage.getItem", SessionFlag);
+            if (string.IsNullOrEmpty(dismissed))
+            {
+                _visible = true;
+                StartAutoDismiss();
+                StateHasChanged();
+            }
+        }
+        catch
+        {
+            // sessionStorage unavailable (prerender, locked-down browser) —
+            // skip the takeover rather than crashing the home page.
+        }
+    }
+
+    private void StartAutoDismiss()
+    {
+        _autoDismissCts = new CancellationTokenSource();
+        var token = _autoDismissCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(4), token);
+                if (!token.IsCancellationRequested)
+                    await InvokeAsync(Dismiss);
+            }
+            catch (TaskCanceledException) { /* user dismissed first */ }
+        }, token);
+    }
+
+    private async Task Dismiss()
+    {
+        if (!_visible) return;
+        _visible = false;
+        _autoDismissCts?.Cancel();
+        try
+        {
+            await JS.InvokeVoidAsync("sessionStorage.setItem", SessionFlag, "1");
+        }
+        catch { /* same fallback as above */ }
+        StateHasChanged();
+    }
+
+    public void Dispose() => _autoDismissCts?.Cancel();
+}

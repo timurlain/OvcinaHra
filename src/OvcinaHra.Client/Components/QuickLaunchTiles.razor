@@ -1,0 +1,34 @@
+@* Issue #158 — 8 square 1:1 tiles, 4×2 desktop / 2×4 tablet / 1-col
+   phone (flow handled in CSS via grid auto-fit). Each `<a href>` to
+   its catalog so Blazor enhanced nav handles routing. *@
+
+<section class="oh-home-qlaunch" aria-labelledby="oh-home-q-title">
+    <header class="oh-home-qlaunch-head">
+        <h2 id="oh-home-q-title">Rychlý přístup</h2>
+    </header>
+    <div class="oh-home-qlaunch-grid">
+        @foreach (var tile in Tiles)
+        {
+            <a class="oh-home-tile oh-home-k-@tile.Key" href="@tile.Href">
+                <i class="bi @tile.Icon"></i>
+                <span class="oh-home-tile-lbl">@tile.Label</span>
+            </a>
+        }
+    </div>
+</section>
+
+@code {
+    private record Tile(string Key, string Label, string Icon, string Href);
+
+    private static readonly Tile[] Tiles =
+    {
+        new("loc",   "Lokace",     "bi-geo-alt-fill",   "/locations"),
+        new("itm",   "Předměty",   "bi-box-seam",       "/items"),
+        new("mon",   "Příšery",    "bi-bug",            "/monsters"),
+        new("qst",   "Úkoly",      "bi-list-check",     "/quests"),
+        new("skl",   "Dovednosti", "bi-mortarboard",    "/skills"),
+        new("spl",   "Kouzla",     "bi-magic",          "/spells"),
+        new("stash", "Skrýše",     "bi-archive",        "/secret-stashes"),
+        new("tre",   "Poklady",    "bi-gem",            "/treasures"),
+    };
+}

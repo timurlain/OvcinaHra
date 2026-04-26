@@ -1,0 +1,77 @@
+@* Issue #158 — last-N edits with 1:1 thumbs. Verb is hard-coded
+   "upravil" until the WorldChange audit log lands (flagged as
+   follow-up). Each row navigates to the entity's detail page. *@
+
+<section class="oh-home-act" aria-labelledby="oh-home-act-title">
+    <header class="oh-home-act-head">
+        <h2 id="oh-home-act-title">Co se nedávno dělo</h2>
+    </header>
+    @if (Rows is null)
+    {
+        @for (var i = 0; i < 3; i++)
+        {
+            <div class="oh-home-act-row oh-home-act-skel">
+                <span class="oh-home-act-thumb"></span>
+                <span class="oh-home-skel-line-lg"></span>
+            </div>
+        }
+    }
+    else if (Rows.Count == 0)
+    {
+        <p class="text-muted small fst-italic mb-0">Zatím žádné úpravy.</p>
+    }
+    else
+    {
+        @foreach (var row in Rows)
+        {
+            <a class="oh-home-act-row" href="@RouteFor(row)">
+                <span class="oh-home-act-thumb">
+                    @if (!string.IsNullOrEmpty(row.ThumbnailUrl))
+                    {
+                        <img src="@row.ThumbnailUrl" alt="" />
+                    }
+                    else
+                    {
+                        <i class="bi @IconFor(row.EntityType)"></i>
+                    }
+                </span>
+                <span class="oh-home-act-body">
+                    <span class="oh-home-act-name">@row.EntityName</span>
+                    <span class="oh-home-act-meta text-muted small">
+                        @row.Verb · @TimeAgo(row.OccurredUtc)
+                    </span>
+                </span>
+            </a>
+        }
+    }
+</section>
+
+@code {
+    [Parameter] public IReadOnlyList<DashboardActivityDto>? Rows { get; set; }
+
+    private static string RouteFor(DashboardActivityDto r) => r.EntityType switch
+    {
+        "character" => $"/characters/{r.EntityId}",
+        "event"     => $"/timeline",
+        "npc"       => $"/npcs/{r.EntityId}",
+        _           => "/",
+    };
+
+    private static string IconFor(string entityType) => entityType switch
+    {
+        "character" => "bi-person",
+        "event"     => "bi-calendar-event",
+        "npc"       => "bi-person-badge",
+        _           => "bi-circle",
+    };
+
+    private static string TimeAgo(DateTime utc)
+    {
+        var delta = DateTime.UtcNow - utc;
+        if (delta.TotalMinutes < 1) return "před chvílí";
+        if (delta.TotalMinutes < 60) return $"před {(int)delta.TotalMinutes} min";
+        if (delta.TotalHours  < 24) return $"před {(int)delta.TotalHours} h";
+        if (delta.TotalDays   < 30) return $"před {(int)delta.TotalDays} dny";
+        return utc.ToLocalTime().ToString("d. M.");
+    }
+}

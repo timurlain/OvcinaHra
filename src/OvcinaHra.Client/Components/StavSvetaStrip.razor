@@ -1,0 +1,30 @@
+@* Issue #158 — Home cockpit "Stav světa" stats strip. 7 cells, each
+   `<a href>` to a catalog so Blazor enhanced nav handles the route
+   without a click handler race. Counts come from /api/dashboard/stats. *@
+
+<div class="oh-home-stats" role="navigation" aria-label="Stav světa">
+    @foreach (var cell in Cells)
+    {
+        <a class="oh-home-cell" href="@cell.Href">
+            <span class="oh-home-cell-lbl">@cell.Label</span>
+            <span class="oh-home-cell-num">@cell.Count</span>
+        </a>
+    }
+</div>
+
+@code {
+    [Parameter] public DashboardStatsDto? Stats { get; set; }
+
+    private record Cell(string Label, int Count, string Href);
+
+    private IEnumerable<Cell> Cells => new[]
+    {
+        new Cell("Lokace",      Stats?.LocationsCount  ?? 0, "/locations"),
+        new Cell("Postavy",     Stats?.CharactersCount ?? 0, "/characters"),
+        new Cell("Předměty",    Stats?.ItemsCount      ?? 0, "/items"),
+        new Cell("Kouzla",      Stats?.SpellsCount     ?? 0, "/spells"),
+        new Cell("Dovednosti",  Stats?.SkillsCount     ?? 0, "/skills"),
+        new Cell("Poklady",     Stats?.TreasuresCount  ?? 0, "/treasures"),
+        new Cell("Úkoly",       Stats?.QuestsCount     ?? 0, "/quests"),
+    };
+}

@@ -1,0 +1,61 @@
+@* Issue #158 — Hra běží only. Top row expanded if currently active.
+   Server returns just IsRunning (UTC-safe); the "Brzy/Zítra/Později"
+   buckets are computed here from local time so a slot starting at
+   23:30 local time doesn't show as "Zítra" for users east of UTC. *@
+
+@using System.Globalization
+
+<section class="oh-home-tl" aria-labelledby="oh-home-tl-title">
+    <header class="oh-home-tl-head">
+        <h2 id="oh-home-tl-title">Časový plán</h2>
+        <a class="text-muted small" href="/timeline">Otevřít celý plán →</a>
+    </header>
+    @if (Rows is null)
+    {
+        <div class="oh-home-tl-row oh-home-tl-skel">
+            <span class="oh-home-skel-line-lg"></span>
+        </div>
+    }
+    else if (Rows.Count == 0)
+    {
+        <p class="text-muted small fst-italic mb-0">Žádné nadcházející úseky.</p>
+    }
+    else
+    {
+        @foreach (var row in Rows)
+        {
+            var startLocal = row.StartTime.ToLocalTime();
+            var status = StatusLabel(row, startLocal, DateTime.Now);
+            <div class="oh-home-tl-row @(row.IsRunning ? "oh-home-tl-cur" : "")">
+                <div class="oh-home-tl-when">
+                    <strong>@startLocal.ToString("HH:mm", _cs)</strong>
+                    <span class="text-muted small">@startLocal.ToString("d. M.", _cs)</span>
+                </div>
+                <div class="oh-home-tl-body">
+                    <div class="oh-home-tl-title">@(string.IsNullOrWhiteSpace(row.Title) ? "Volný úsek" : row.Title)</div>
+                    @if (!string.IsNullOrWhiteSpace(row.LocationName))
+                    {
+                        <div class="text-muted small">
+                            <i class="bi bi-geo-alt"></i> @row.LocationName
+                        </div>
+                    }
+                </div>
+                <span class="oh-home-tl-status">@status</span>
+            </div>
+        }
+    }
+</section>
+
+@code {
+    [Parameter] public IReadOnlyList<TimelineRowDto>? Rows { get; set; }
+
+    private static readonly CultureInfo _cs = new("cs-CZ");
+
+    private static string StatusLabel(TimelineRowDto row, DateTime startLocal, DateTime nowLocal)
+    {
+        if (row.IsRunning) return "Probíhá";
+        if (startLocal.Date == nowLocal.Date) return "Brzy";
+        if (startLocal.Date == nowLocal.Date.AddDays(1)) return "Zítra";
+        return "Později";
+    }
+}

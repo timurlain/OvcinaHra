@@ -1,0 +1,76 @@
+@* Issue #158 — Home cockpit hero. 16:9 game cover (reuses Game.ImagePath
+   per memory rule "secondary-image entity-type alias"), title + edition
+   date strip, prep-or-stage chip, and a Změnit hru control that flips a
+   GameSelector inline picker. *@
+
+<div class="oh-home-hero">
+    <div class="oh-home-hero-art">
+        @if (!string.IsNullOrEmpty(GameImageUrl) && !_imgFailed)
+        {
+            <img src="@GameImageUrl" alt="@GameName"
+                 @onerror="() => _imgFailed = true" />
+        }
+        else
+        {
+            <div class="oh-home-hero-art-fallback">
+                <i class="bi bi-shield-fill"></i>
+            </div>
+        }
+        <div class="oh-home-hero-scrim"></div>
+    </div>
+    <div class="oh-home-hero-body">
+        <div class="oh-home-hero-meta">
+            @if (IsGameRunning)
+            {
+                <span class="oh-home-stage-chip" title="Hra běží">@(StageLabel ?? "Hra běží")</span>
+            }
+            else
+            {
+                <span class="oh-home-prep-chip">příprava</span>
+            }
+            @* Real <button> instead of span+role — Enter/Space activate
+               for keyboard users without a custom @onkeydown handler. *@
+            <button type="button" class="oh-home-game-chip" @onclick="OnChangeGameClick"
+                    title="Změnit aktivní hru">
+                <i class="bi bi-shield-fill me-1"></i>
+                @(GameName ?? "Žádná hra")
+                <i class="bi bi-chevron-down ms-1"></i>
+            </button>
+        </div>
+        <h1 class="oh-home-hero-title">@(GameName ?? "Vyber hru")</h1>
+        @if (StartDate.HasValue && EndDate.HasValue)
+        {
+            <p class="oh-home-hero-dates">
+                @StartDate.Value.ToString("d. M. yyyy") – @EndDate.Value.ToString("d. M. yyyy")
+                · ročník @Edition
+            </p>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? GameName { get; set; }
+    [Parameter] public int Edition { get; set; }
+    [Parameter] public DateOnly? StartDate { get; set; }
+    [Parameter] public DateOnly? EndDate { get; set; }
+    [Parameter] public string? GameImageUrl { get; set; }
+    [Parameter] public bool IsGameRunning { get; set; }
+    [Parameter] public string? StageLabel { get; set; }
+    [Parameter] public EventCallback OnChangeGame { get; set; }
+
+    private bool _imgFailed;
+    private string? _lastImageUrl;
+
+    protected override void OnParametersSet()
+    {
+        // State-flag onerror reset on URL change per
+        // feedback_blazor_img_onerror_state_and_key.
+        if (_lastImageUrl != GameImageUrl)
+        {
+            _lastImageUrl = GameImageUrl;
+            _imgFailed = false;
+        }
+    }
+
+    private async Task OnChangeGameClick() => await OnChangeGame.InvokeAsync();
+}
