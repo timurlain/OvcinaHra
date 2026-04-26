@@ -22,7 +22,19 @@
                             LocationsCount="@(_data?.Locations.Count ?? 0)"
                             StashesCount="@(_data?.Stashes.Count ?? 0)" />
 
-                <div class="oh-map-shell">
+                <div class="oh-map-shell @(_railOpen ? "is-rail-open" : "")">
+                    @* Issue #216 — phone-only hamburger toggle. CSS hides
+                       the button >900px and hides the rail <900px until
+                       this flag flips. Backdrop closes the rail on tap. *@
+                    <button type="button" class="oh-map-rail-toggle"
+                            @onclick="() => _railOpen = !_railOpen"
+                            aria-label="Vrstvy mapy" title="Vrstvy mapy">
+                        <i class="bi @(_railOpen ? "bi-x-lg" : "bi-list")"></i>
+                    </button>
+                    @if (_railOpen)
+                    {
+                        <div class="oh-map-rail-backdrop" @onclick="() => _railOpen = false"></div>
+                    }
                     <MapLayerRail LocationsVisible="@_locationsVisible"
                                   StashesVisible="@_stashesVisible"
                                   LocationsCount="@(_data?.Locations.Count ?? 0)"
@@ -67,6 +79,9 @@
     private string _activeStyle = "tourist";
     private bool _locationsVisible = true;
     private bool _stashesVisible = true;
+    // Issue #216 — phone-only layer rail toggle. CSS gates the visible
+    // surface so on tablet/desktop this flag has no effect.
+    private bool _railOpen;
     private bool _firstStyleLoadDone;
     // Monotonically increasing token so a slow peek fetch doesn't overwrite
     // a newer one if the user clicks pins faster than the network responds.
