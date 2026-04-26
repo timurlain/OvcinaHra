@@ -448,6 +448,12 @@ else
             </details>
         </div>
     }
+    else if (activeTab == "trasa")
+    {
+        @* Issue #214 — ordered location waypoints. Map page (#207) uses
+           these to draw the animated quest path Start → … → Finále. *@
+        <QuestWaypointEditor QuestId="@quest.Id" />
+    }
 }
 
 <DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Smazat úkol?" Width="400px">
@@ -506,7 +512,11 @@ else
         new("upravit", "Upravit",   "bi-pencil",              null),
         new("setkani", "Setkání",   "bi-shield-exclamation",  quest.Encounters.Count),
         new("lokace",  "Lokace",    "bi-geo-alt",             quest.Locations.Count),
-        new("odmeny",  "Odměny",    "bi-gift",                quest.Rewards.Count)
+        new("odmeny",  "Odměny",    "bi-gift",                quest.Rewards.Count),
+        // Issue #214 — Trasa is loaded lazily by the editor itself
+        // (separate /api/quests/{id}/waypoints call); no badge count
+        // until QuestDetailDto exposes it.
+        new("trasa",   "Trasa",     "bi-signpost-2",          null)
     ];
 
     private static readonly List<EnumItem<QuestType>> questTypeValues = Enum.GetValues<QuestType>()
