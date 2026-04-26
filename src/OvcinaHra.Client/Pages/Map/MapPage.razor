@@ -69,6 +69,36 @@
                                 OnClose="ClosePeek" />
                 </div>
             </div>
+
+            @* Drag-drop relocate confirm — destructive-action gate per
+               feedback_ovcinahra_destructive_confirm. Cancel reverts the
+               pin's visible position via PaintPinsAsync (no server edit). *@
+            <DxPopup @bind-Visible="@_pendingDragVisible"
+                     HeaderText="Přesunout lokaci?"
+                     Width="440px"
+                     CloseOnEscape="true">
+                <BodyContentTemplate>
+                    <p class="mb-2">
+                        Opravdu chcete přesunout <strong>@_pendingDragName</strong>
+                        na nové souřadnice
+                        <code>@_pendingDragLat.ToString("F6") , @_pendingDragLng.ToString("F6")</code>?
+                    </p>
+                    <p class="text-muted small mb-3">
+                        Zrušit vrátí pin na původní místo. Tato změna se uloží okamžitě a přepíše GPS lokace.
+                    </p>
+                    @if (_pendingDragError is not null)
+                    {
+                        <div class="alert alert-danger py-2 mb-3">@_pendingDragError</div>
+                    }
+                    <div class="d-flex gap-2 justify-content-end">
+                        <button class="btn btn-secondary" @onclick="CancelDragAsync" disabled="@_pendingDragSaving">Zrušit</button>
+                        <button class="btn btn-primary" @onclick="ConfirmDragAsync" disabled="@_pendingDragSaving">
+                            @if (_pendingDragSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                            Přesunout
+                        </button>
+                    </div>
+                </BodyContentTemplate>
+            </DxPopup>
         }
     </Authorized>
     <NotAuthorized>
@@ -93,6 +123,17 @@
     // Built from _data on every reload so the legend chip counters stay
     // in sync with the active game's data.
     private IReadOnlyDictionary<LocationKind, int>? _locationsByKind;
+
+    // Drag-drop relocate confirm state (popup gate per
+    // feedback_ovcinahra_destructive_confirm). Cancel reverts the visible
+    // pin via PaintPinsAsync — server data is never touched on cancel.
+    private bool _pendingDragVisible;
+    private int? _pendingDragId;
+    private string _pendingDragName = "";
+    private double _pendingDragLat;
+    private double _pendingDragLng;
+    private bool _pendingDragSaving;
+    private string? _pendingDragError;
     // Issue #216 — phone-only layer rail toggle. CSS gates the visible
     // surface so on tablet/desktop this flag has no effect.
     private bool _railOpen;
@@ -288,24 +329,39 @@
     }
 
     /// <summary>
-    /// PC drag-drop relocate. Fired by MapView when a /map location pin
-    /// is dragged. Coarse pointers (touch / tablet) never get the dragend
-    /// event because the marker is created without `draggable: true` on
-    /// those devices — see addLocationPin in map-interop.js.
+    /// PC drag-drop relocate. Fired by MapView on dragend. Coarse pointers
+    /// (touch / tablet) never reach this — the marker is created without
+    /// `draggable: true` on those devices. Opens a confirm popup before
+    /// persisting so a stray drag doesn't silently clobber GPS data.
     /// </summary>
-    private async Task OnPinDraggedAsync((int Id, double Lat, double Lng) e)
+    private Task OnPinDraggedAsync((int Id, double Lat, double Lng) e)
     {
+        _pendingDragId = e.Id;
+        _pendingDragName = _data?.Locations.FirstOrDefault(l => l.Id == e.Id)?.Name ?? "tato lokace";
+        _pendingDragLat = e.Lat;
+        _pendingDragLng = e.Lng;
+        _pendingDragError = null;
+        _pendingDragSaving = false;
+        _pendingDragVisible = true;
+        return Task.CompletedTask;
+    }
+
+    private async Task ConfirmDragAsync()
+    {
+        if (_pendingDragId is not int id) return;
+        _pendingDragError = null;
+        _pendingDragSaving = true;
         try
         {
             // Round-trip GET → PUT so we don't accidentally wipe Description /
             // Details / NpcInfo when only GPS is changing. UpdateLocationDto's
             // string fields all default to null and would clear the row otherwise.
-            var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{e.Id}");
-            if (detail is null) return;
-            await Api.PutAsync($"/api/locations/{e.Id}",
+            var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{id}");
+            if (detail is null) { _pendingDragError = "Lokace nenalezena."; return; }
+            await Api.PutAsync($"/api/locations/{id}",
                 new UpdateLocationDto(
                     detail.Name, detail.LocationKind,
-                    Latitude: (decimal)e.Lat, Longitude: (decimal)e.Lng,
+                    Latitude: (decimal)_pendingDragLat, Longitude: (decimal)_pendingDragLng,
                     Description: detail.Description,
                     Details: detail.Details,
                     GamePotential: detail.GamePotential,
@@ -314,14 +370,28 @@
                     NpcInfo: detail.NpcInfo,
                     SetupNotes: detail.SetupNotes,
                     ParentLocationId: detail.ParentLocationId));
-            // Reload so the next layer-toggle / style-switch repaint picks
-            // up the new GPS in _data, and so the peek shows fresh values.
+            _pendingDragVisible = false;
+            _pendingDragId = null;
+            // Reload so the peek + pin position pick up the saved GPS.
             await ReloadDataAndRenderAsync();
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[map] OnPinDragged failed: {ex.GetType().Name}: {ex.Message}");
+            _pendingDragError = ex.Message;
         }
+        finally
+        {
+            _pendingDragSaving = false;
+        }
+    }
+
+    private async Task CancelDragAsync()
+    {
+        // Repaint pins from _data — that snaps the dragged marker back to
+        // the original coordinates (since we never saved the new ones).
+        _pendingDragVisible = false;
+        _pendingDragId = null;
+        await PaintPinsAsync();
     }
 
     private async Task OnKindToggle(LocationKind kind)
