@@ -1,0 +1,73 @@
+@using OvcinaHra.Shared.Dtos
+
+@* Galerie 5:7 portrait tile. Full-bleed image with bottom-fade gradient
+   carrying the name overlay; recipe block below. Parchment placeholder
+   when no image. State-flag `_imageFailed` reset on URL change so a
+   reused tile (filtered list) tries the new image. *@
+
+<button type="button" class="oh-bld-tile @(string.IsNullOrEmpty(Building.ImageUrl) || _imageFailed ? "oh-bld-tile--placeholder" : "")"
+        @key="Building.Id" @onclick="HandleClick">
+    <div class="oh-bld-tile-art">
+        @if (!string.IsNullOrEmpty(Building.ImageUrl) && !_imageFailed)
+        {
+            <img src="@Building.ImageUrl" alt="@Building.Name" @onerror="() => _imageFailed = true" />
+            <div class="oh-bld-tile-fade"></div>
+            <div class="oh-bld-tile-name-on-img">@Building.Name</div>
+        }
+        else
+        {
+            <div class="oh-bld-tile-parchment">
+                <i class="bi bi-house-fill"></i>
+                <span class="oh-bld-tile-parchment-name">@Building.Name</span>
+            </div>
+        }
+        @if (Building.IsPrebuilt)
+        {
+            <span class="oh-bld-tile-prebuilt" title="Představěná organizátory">
+                <i class="bi bi-flag-fill"></i>
+            </span>
+        }
+    </div>
+    <div class="oh-bld-tile-body">
+        <BuildingRecipeBlock CostMoney="@Building.CostMoney" Effect="@Building.Effect" Compact="true" />
+        <div class="oh-bld-tile-foot">
+            @if (Building.CraftingRecipesCount > 0)
+            {
+                <span class="oh-pill-mono" title="Receptů které tuto stavbu vyžadují">
+                    <i class="bi bi-hammer"></i>@Building.CraftingRecipesCount
+                </span>
+            }
+            @if (Building.GamesCount > 0)
+            {
+                <span class="oh-pill-mono" title="Her používajících tuto stavbu">
+                    <i class="bi bi-controller"></i>@Building.GamesCount
+                </span>
+            }
+            @if (!string.IsNullOrWhiteSpace(Building.LocationName))
+            {
+                <span class="oh-bld-tile-foot-loc" title="Lokace">
+                    <i class="bi bi-geo-alt"></i>@Building.LocationName
+                </span>
+            }
+        </div>
+    </div>
+</button>
+
+@code {
+    [Parameter, EditorRequired] public BuildingListDto Building { get; set; } = null!;
+    [Parameter] public EventCallback<BuildingListDto> OnClick { get; set; }
+
+    private bool _imageFailed;
+    private string? _lastImageUrl;
+
+    protected override void OnParametersSet()
+    {
+        if (_lastImageUrl != Building.ImageUrl)
+        {
+            _lastImageUrl = Building.ImageUrl;
+            _imageFailed = false;
+        }
+    }
+
+    private async Task HandleClick() => await OnClick.InvokeAsync(Building);
+}

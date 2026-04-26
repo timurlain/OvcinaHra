@@ -1,0 +1,24 @@
+@* The "build recipe" formula: cost → effect. Reused on tile, card-row,
+   Karta hero, and Seznam cell. Effect is sacred prose — never truncate or
+   decorate; CSS handles wrapping. Null Effect → muted "Bez efektu". *@
+
+<div class="oh-bld-rec @(Compact ? "oh-bld-rec--compact" : "")">
+    <CoinPill Cost="@CostMoney" />
+    <span class="oh-bld-rec-arrow" aria-hidden="true">
+        <i class="bi bi-arrow-right"></i>
+    </span>
+    @if (string.IsNullOrWhiteSpace(Effect))
+    {
+        <span class="oh-bld-rec-effect oh-bld-rec-effect--empty">Bez efektu</span>
+    }
+    else
+    {
+        <span class="oh-bld-rec-effect">@Effect</span>
+    }
+</div>
+
+@code {
+    [Parameter] public int? CostMoney { get; set; }
+    [Parameter] public string? Effect { get; set; }
+    [Parameter] public bool Compact { get; set; }
+}

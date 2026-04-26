@@ -1,0 +1,73 @@
+@using OvcinaHra.Shared.Dtos
+
+@* Karty mode — horizontal card-row (~120px tall). 86×120 5:7 thumb on
+   left, name + description preview center, recipe block right with
+   stats cluster. Click navigates to detail. *@
+
+<button type="button" class="oh-bld-cardrow" @key="Building.Id" @onclick="HandleClick">
+    <div class="oh-bld-cardrow-thumb @(string.IsNullOrEmpty(Building.ImageUrl) || _imageFailed ? "oh-bld-cardrow-thumb--placeholder" : "")">
+        @if (!string.IsNullOrEmpty(Building.ImageUrl) && !_imageFailed)
+        {
+            <img src="@Building.ImageUrl" alt="@Building.Name" @onerror="() => _imageFailed = true" />
+        }
+        else
+        {
+            <i class="bi bi-house-fill"></i>
+        }
+    </div>
+    <div class="oh-bld-cardrow-body">
+        <h3 class="oh-bld-cardrow-name">
+            @Building.Name
+            @if (Building.IsPrebuilt)
+            {
+                <span class="oh-bld-cardrow-prebuilt" title="Představěná">
+                    <i class="bi bi-flag"></i>
+                </span>
+            }
+        </h3>
+        @if (!string.IsNullOrWhiteSpace(Building.Description))
+        {
+            <p class="oh-bld-cardrow-desc">@Building.Description</p>
+        }
+        <BuildingRecipeBlock CostMoney="@Building.CostMoney" Effect="@Building.Effect" />
+    </div>
+    <div class="oh-bld-cardrow-stats">
+        @if (Building.CraftingRecipesCount > 0)
+        {
+            <span class="oh-pill-mono" title="Recepty vyžadující tuto stavbu">
+                <i class="bi bi-hammer"></i>@Building.CraftingRecipesCount receptů
+            </span>
+        }
+        @if (Building.GamesCount > 0)
+        {
+            <span class="oh-pill-mono" title="Hry používající tuto stavbu">
+                <i class="bi bi-controller"></i>@Building.GamesCount her
+            </span>
+        }
+        @if (!string.IsNullOrWhiteSpace(Building.LocationName))
+        {
+            <span class="oh-pill" title="Lokace">
+                <i class="bi bi-geo-alt"></i>@Building.LocationName
+            </span>
+        }
+    </div>
+</button>
+
+@code {
+    [Parameter, EditorRequired] public BuildingListDto Building { get; set; } = null!;
+    [Parameter] public EventCallback<BuildingListDto> OnClick { get; set; }
+
+    private bool _imageFailed;
+    private string? _lastImageUrl;
+
+    protected override void OnParametersSet()
+    {
+        if (_lastImageUrl != Building.ImageUrl)
+        {
+            _lastImageUrl = Building.ImageUrl;
+            _imageFailed = false;
+        }
+    }
+
+    private async Task HandleClick() => await OnClick.InvokeAsync(Building);
+}
