@@ -75,6 +75,17 @@ window.ovcinaMap = {
             }
         });
 
+        // Fire OnStyleLoadedCallback once the initial basemap style is fully
+        // loaded so MapPage / TreasurePlanning can paint pins. Without this,
+        // the callback only fires after a style switch — Map page never gets
+        // its first paint trigger and ends up with 0 lokací (regression from
+        // #212 which only wired the switchStyle path).
+        this._map.once('load', () => {
+            if (this._dotnetRef) {
+                this._dotnetRef.invokeMethodAsync('OnStyleLoadedCallback');
+            }
+        });
+
         this._map.addControl(new maplibregl.NavigationControl(), 'top-right');
         this._map.addControl(new maplibregl.ScaleControl(), 'bottom-left');
     },
