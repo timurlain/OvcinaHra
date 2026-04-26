@@ -2449,8 +2449,8 @@
 .oh-tp-pin-zero[data-kind="magical"]{--c:var(--oh-kind-magical)}
 .oh-tp-pin-zero[data-kind="hobbit"]{--c:var(--oh-kind-hobbit)}
 .oh-tp-pin-zero[data-kind="wilderness"]{--c:var(--oh-kind-wilderness)}
-.oh-tp-pin-zero[data-kind="pointofinterest"]{--c:var(--oh-kind-town)}
-.oh-tp-pin-zero[data-kind="dungeon"]{--c:var(--oh-kind-magical)}
+.oh-tp-pin-zero[data-kind="pointofinterest"]{--c:var(--oh-kind-pointofinterest)}
+.oh-tp-pin-zero[data-kind="dungeon"]{--c:var(--oh-kind-dungeon)}
 .oh-tp-pin-dragtarget{transform:scale(1.18);filter:drop-shadow(0 0 0 4px rgba(212,166,60,.55)) drop-shadow(0 4px 8px rgba(40,25,5,.5));z-index:9;position:relative}
 .oh-tp-pin-dragtarget::after{content:"+";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font:700 1.6rem var(--oh-font-mono);color:var(--oh-stage-early);text-shadow:0 1px 2px rgba(0,0,0,.5);pointer-events:none}
 
@@ -3625,6 +3625,24 @@
 .oh-map-layer-lbl{flex:1}
 .oh-map-layer-num{font-variant-numeric:tabular-nums}
 .oh-map-layer-hint{margin-top:8px;line-height:1.3}
+/* Per-LocationKind sub-chips inside the Lokace section. Indented under the
+   master Lokace toggle. Click toggles hidden state — faded to 35% opacity
+   when hidden so the user can see what's filtered out. */
+.oh-map-kind-list{margin:4px 0 6px 18px;padding:0;list-style:none;display:flex;flex-direction:column;gap:2px}
+.oh-map-kind-row{display:flex;align-items:center;gap:8px;padding:4px 6px;cursor:pointer;border-radius:5px;
+    background:transparent;border:0;width:100%;text-align:left;color:inherit;font:inherit}
+.oh-map-kind-row:hover{background:var(--oh-surface-alt,#F2EBD8)}
+.oh-map-kind-row.is-hidden{opacity:.35}
+.oh-map-kind-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;border:1px solid rgba(0,0,0,.18)}
+.oh-map-kind-dot[data-kind="town"]            {background:var(--oh-kind-town)}
+.oh-map-kind-dot[data-kind="village"]         {background:var(--oh-kind-village)}
+.oh-map-kind-dot[data-kind="magical"]         {background:var(--oh-kind-magical)}
+.oh-map-kind-dot[data-kind="hobbit"]          {background:var(--oh-kind-hobbit)}
+.oh-map-kind-dot[data-kind="wilderness"]      {background:var(--oh-kind-wilderness);border-color:#2a2a2a}
+.oh-map-kind-dot[data-kind="dungeon"]         {background:var(--oh-kind-dungeon)}
+.oh-map-kind-dot[data-kind="pointofinterest"] {background:var(--oh-kind-pointofinterest)}
+.oh-map-kind-lbl{flex:1;font-size:.875rem}
+.oh-map-kind-num{font-variant-numeric:tabular-nums;font-size:.8rem;color:var(--oh-text-muted,#6b6453)}
 .oh-map-canvas{position:relative;border:1px solid var(--oh-border,#d8d2be);border-radius:8px;overflow:hidden}
 .oh-map-style-toolbar{position:absolute;top:8px;right:8px;z-index:10;display:flex;gap:4px;
     background:rgba(250,246,236,.92);padding:3px;border-radius:99px;
@@ -3634,7 +3652,16 @@
 .oh-map-style-btn.is-active{background:#2D5016;color:#fff}
 .oh-map-pin{position:relative;width:18px;height:18px;border-radius:50%;
     border:2px solid #fff;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.45)}
-.oh-map-pin-loc{background:#2D5016}
+.oh-map-pin-loc{background:var(--oh-kind-village,#2D5016)}
+/* Per-LocationKind pin colors — palette tokens in app.css.
+   Wilderness is white so it gets a dark border to stay visible. */
+.oh-map-pin-loc[data-kind="town"]            {background:var(--oh-kind-town)}
+.oh-map-pin-loc[data-kind="village"]         {background:var(--oh-kind-village)}
+.oh-map-pin-loc[data-kind="magical"]         {background:var(--oh-kind-magical)}
+.oh-map-pin-loc[data-kind="hobbit"]          {background:var(--oh-kind-hobbit)}
+.oh-map-pin-loc[data-kind="wilderness"]      {background:var(--oh-kind-wilderness);border-color:#2a2a2a}
+.oh-map-pin-loc[data-kind="dungeon"]         {background:var(--oh-kind-dungeon)}
+.oh-map-pin-loc[data-kind="pointofinterest"] {background:var(--oh-kind-pointofinterest)}
 .oh-map-pin-stash{background:#C19A3A;width:20px;height:20px}
 .oh-map-pin-stash[data-stage="Start"]   {background:#7FA657}
 .oh-map-pin-stash[data-stage="Early"]   {background:#D4A63C}

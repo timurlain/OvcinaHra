@@ -7,6 +7,7 @@
 @implements IDisposable
 @using System.Web
 @using OvcinaHra.Shared.Dtos
+@using OvcinaHra.Shared.Domain.Enums
 
 <AuthorizeView>
     <Authorized Context="auth">
@@ -39,7 +40,10 @@
                                   StashesVisible="@_stashesVisible"
                                   LocationsCount="@(_data?.Locations.Count ?? 0)"
                                   StashesCount="@(_data?.Stashes.Count ?? 0)"
-                                  OnVisibilityChange="OnLayerVisibilityChange" />
+                                  LocationsByKind="@_locationsByKind"
+                                  HiddenKinds="@_hiddenKinds"
+                                  OnVisibilityChange="OnLayerVisibilityChange"
+                                  OnKindToggle="OnKindToggle" />
 
                     <div class="oh-map-canvas">
                         <div class="oh-map-style-toolbar">
@@ -72,13 +76,22 @@
 </AuthorizeView>
 
 @code {
-    private const string LayerStateKey = "oh-map-layers";
+    // Bumped to v2 when the per-kind chip filter was added (schema now
+    // also persists HiddenKinds). Old v1 entries without HiddenKinds
+    // continue to deserialize via the record's default value.
+    private const string LayerStateKey = "oh-map-layers-v2";
 
     private MapView? _mapView;
     private string _mode = "pro-hru";
     private string _activeStyle = "tourist";
     private bool _locationsVisible = true;
     private bool _stashesVisible = true;
+    // Per-LocationKind hide set. Empty (default) = all kinds visible.
+    // Persists alongside the layer-visibility flags.
+    private HashSet<LocationKind> _hiddenKinds = new();
+    // Built from _data on every reload so the legend chip counters stay
+    // in sync with the active game's data.
+    private IReadOnlyDictionary<LocationKind, int>? _locationsByKind;
     // Issue #216 — phone-only layer rail toggle. CSS gates the visible
     // surface so on tablet/desktop this flag has no effect.
     private bool _railOpen;
@@ -181,6 +194,10 @@
             if (saved is null) return;
             _locationsVisible = saved.Locations;
             _stashesVisible = saved.Stashes;
+            if (saved.HiddenKinds is { Count: > 0 })
+            {
+                _hiddenKinds = saved.HiddenKinds.ToHashSet();
+            }
         }
         catch { /* localStorage unavailable / malformed — keep defaults */ }
     }
@@ -190,7 +207,7 @@
         try
         {
             var json = System.Text.Json.JsonSerializer.Serialize(
-                new LayerState(_locationsVisible, _stashesVisible));
+                new LayerState(_locationsVisible, _stashesVisible, _hiddenKinds.ToList()));
             await JS.InvokeVoidAsync("localStorage.setItem", LayerStateKey, json);
         }
         catch { /* same fallback */ }
@@ -215,6 +232,13 @@
             Console.Error.WriteLine($"[map-diag] /api/map/data FAILED: {ex.GetType().Name}: {ex.Message}");
         }
 
+        // Refresh per-kind counts for the legend chips. Group on the same
+        // payload that PaintPinsAsync iterates, so chip totals always match
+        // what the user sees on the map.
+        _locationsByKind = _data?.Locations
+            .GroupBy(l => l.Kind)
+            .ToDictionary(g => g.Key, g => g.Count());
+
         await PaintPinsAsync();
         await InvokeAsync(StateHasChanged);
     }
@@ -233,6 +257,10 @@
         {
             foreach (var l in _data.Locations)
             {
+                // Skip kinds the user has hidden via the legend chips. The
+                // counts in the rail still show the underlying total, but
+                // the pins drop out of the painted set.
+                if (_hiddenKinds.Contains(l.Kind)) continue;
                 await JS.InvokeVoidAsync("ovcinaMap.addLocationPin",
                     l.Id, l.Lat, l.Lon, l.Name, l.Kind.ToString());
             }
@@ -254,6 +282,16 @@
         else if (change.Layer == "stash") _stashesVisible = change.Visible;
         await JS.InvokeVoidAsync("ovcinaMap.setMapPageLayerVisibility",
             change.Layer, change.Visible);
+        await PersistLayerStateAsync();
+        PushUrl();
+    }
+
+    private async Task OnKindToggle(LocationKind kind)
+    {
+        if (!_hiddenKinds.Add(kind)) _hiddenKinds.Remove(kind);
+        // Repaint instead of toggling the loc layer wholesale — the master
+        // Lokace toggle stays on; only the filtered set changes.
+        await PaintPinsAsync();
         await PersistLayerStateAsync();
         PushUrl();
     }
@@ -364,6 +402,20 @@
         {
             _urlPendingSelectedLocationId = id;
         }
+
+        // Per-kind hide list. URL form: ?hiddenKinds=village,wilderness.
+        // Empty / missing = no kinds hidden (default). Unknown values are
+        // dropped silently so a stale shared link can't break the parser.
+        var hiddenKinds = qs["hiddenKinds"];
+        if (hiddenKinds is not null)
+        {
+            _hiddenKinds = hiddenKinds.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => Enum.TryParse<LocationKind>(s.Trim(), ignoreCase: true, out var k) ? k : (LocationKind?)null)
+                .Where(k => k.HasValue)
+                .Select(k => k!.Value)
+                .ToHashSet();
+            _urlLayersHydratedFromQuery = true;
+        }
     }
 
     /// <summary>
@@ -397,11 +449,20 @@
         if (_selectedLocationId is int sel)
             pairs.Add($"selected={Uri.EscapeDataString($"loc:{sel}")}");
 
+        if (_hiddenKinds.Count > 0)
+        {
+            var kinds = string.Join(',', _hiddenKinds.Select(k => k.ToString().ToLowerInvariant()));
+            pairs.Add($"hiddenKinds={Uri.EscapeDataString(kinds)}");
+        }
+
         var query = pairs.Count == 0 ? "" : "?" + string.Join('&', pairs);
         Nav.NavigateTo($"/map{query}", forceLoad: false, replace: true);
     }
 
-    private record LayerState(bool Locations, bool Stashes);
+    // Persistence schema. HiddenKinds defaults to an empty list so a v1
+    // entry without the field deserializes cleanly (System.Text.Json
+    // tolerates missing properties on records with default values).
+    private record LayerState(bool Locations, bool Stashes, List<LocationKind>? HiddenKinds = null);
 
     public void Dispose() => GameContext.OnGameChanged -= HandleGameChanged;
 }
