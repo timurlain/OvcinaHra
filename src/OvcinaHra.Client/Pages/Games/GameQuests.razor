@@ -12,10 +12,10 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <div>
-        <h1 class="mb-0">Úkoly hry @(game?.Name)</h1>
+        <h1 class="mb-0">Questy hry @(game?.Name)</h1>
         @if (game is not null)
         {
-            <p class="text-muted small mb-0">edice @game.Edition · @quests.Count úkolů</p>
+            <p class="text-muted small mb-0">edice @game.Edition · @quests.Count questů</p>
         }
     </div>
     <div class="d-flex gap-2">
@@ -52,7 +52,7 @@ else if (filtered.Count == 0)
 {
     <div class="text-center text-muted py-5">
         <i class="bi bi-journal-richtext fs-1 d-block mb-2"></i>
-        <p>Žádné úkoly v této hře odpovídají filtru.</p>
+        <p>Žádné questy v této hře odpovídají filtru.</p>
     </div>
 }
 else
@@ -117,7 +117,7 @@ else
 @* Add-from-template popup: pick a catalog quest, server CopyToGame creates
    the per-game fork with deep-copied tags/locations/encounters/rewards. *@
 <DxPopup AllowResize="true" @bind-Visible="@isFromTemplateVisible"
-         HeaderText="Přidat úkol ze šablony" Width="640px">
+         HeaderText="Přidat quest ze šablony" Width="640px">
     <BodyContentTemplate Context="ctx">
         @if (catalog is null)
         {
@@ -125,7 +125,7 @@ else
         }
         else if (catalog.Count == 0)
         {
-            <p class="text-muted">V katalogu nejsou žádné šablony úkolů.</p>
+            <p class="text-muted">V katalogu nejsou žádné šablony questů.</p>
         }
         else
         {
@@ -164,7 +164,7 @@ else
 </DxPopup>
 
 @* Blank create popup *@
-<DxPopup AllowResize="true" @bind-Visible="@isBlankVisible" HeaderText="Nový úkol (od nuly)" Width="560px">
+<DxPopup AllowResize="true" @bind-Visible="@isBlankVisible" HeaderText="Nový quest (od nuly)" Width="560px">
     <BodyContentTemplate Context="ctx">
         <DxFormLayout>
             <DxFormLayoutItem Caption="Název" ColSpanMd="12">
@@ -324,7 +324,7 @@ else
                 new CreateQuestDto(createName.Trim(), createType, GameId: GameId));
             if (!ok)
             {
-                createError = problem ?? "Vytvoření úkolu se nepodařilo.";
+                createError = problem ?? "Vytvoření questu se nepodařilo.";
                 return;
             }
             isBlankVisible = false;

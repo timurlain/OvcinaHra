@@ -93,18 +93,21 @@ public class DashboardEndpointsTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task Issues_AllEight_AlwaysReturned()
+    public async Task Issues_AllSix_AlwaysReturned()
     {
         // Even when a fresh game has zero issues across the board, the
-        // endpoint returns all eight issue rows so the UI keeps a stable
-        // shape. Severity for all should be "low" (count == 0).
+        // endpoint returns all six issue rows so the UI keeps a stable
+        // shape. The 'quests-no-encounters' and 'monsters-no-loot' rows
+        // were dropped by design — quest encounters and monster loot are
+        // optional, so flagging "missing" was noise. Severity for all
+        // remaining rows should be "low" (count == 0).
         var game = await CreateGameAsync();
 
         var issues = await Client.GetFromJsonAsync<DashboardIssuesDto>(
             $"/api/dashboard/issues?gameId={game.Id}");
 
         Assert.NotNull(issues);
-        Assert.Equal(8, issues.Issues.Count);
+        Assert.Equal(6, issues.Issues.Count);
         Assert.All(issues.Issues, i => Assert.Equal("low", i.Severity));
     }
 

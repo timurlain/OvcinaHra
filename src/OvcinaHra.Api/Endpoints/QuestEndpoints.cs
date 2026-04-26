@@ -487,7 +487,7 @@ public static class QuestEndpoints
         {
             return TypedResults.Problem(
                 title: "Neplatné pořadí.",
-                detail: "Seznam ID musí přesně odpovídat existujícím waypointům tohoto úkolu.",
+                detail: "Seznam ID musí přesně odpovídat existujícím waypointům tohoto questu.",
                 statusCode: StatusCodes.Status400BadRequest);
         }
 

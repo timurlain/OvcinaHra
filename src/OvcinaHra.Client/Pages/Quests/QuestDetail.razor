@@ -12,7 +12,7 @@
             @onclick='() => Nav.NavigateTo("/quests")'>
         <i class="bi bi-arrow-left"></i> Zpět
     </button>
-    <h1 class="mb-0">@(quest?.Name ?? "Úkol")</h1>
+    <h1 class="mb-0">@(quest?.Name ?? "Quest")</h1>
     @if (quest is not null && quest.GameId is not null)
     {
         <QuestStateChip State="@quest.State" />
@@ -22,7 +22,7 @@
         {
             <button class="btn btn-sm btn-outline-secondary" type="button"
                     @onclick="@(() => Nav.NavigateTo($"/quests/{Id}/print"))"
-                    title="Otevřít A5 kartu úkolu k tisku">
+                    title="Otevřít A5 kartu questu k tisku">
                 <i class="bi bi-printer"></i> Tisk A5
             </button>
         }
@@ -37,7 +37,7 @@ else if (quest is null && error is not null)
 {
     <div class="alert alert-danger d-flex align-items-center gap-2">
         <i class="bi bi-wifi-off"></i>
-        <span>Nepodařilo se načíst úkol: @error</span>
+        <span>Nepodařilo se načíst quest: @error</span>
         <button type="button" class="btn btn-sm btn-outline-primary ms-auto" @onclick="LoadAsync">Zkusit znovu</button>
     </div>
 }
@@ -45,7 +45,7 @@ else if (quest is null)
 {
     <div class="text-center text-muted py-5">
         <i class="bi bi-emoji-frown fs-1 d-block mb-2"></i>
-        <p>Úkol nenalezen.</p>
+        <p>Quest nenalezen.</p>
     </div>
 }
 else
@@ -186,7 +186,7 @@ else
                                     NullText="(žádné)"
                                     ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
                     </DxFormLayoutItem>
-                    <DxFormLayoutItem Caption="Nadřazený úkol (ID)" ColSpanMd="4">
+                    <DxFormLayoutItem Caption="Nadřazený quest (ID)" ColSpanMd="4">
                         <DxSpinEdit @bind-Value="@editModel.ParentQuestId" MinValue="0"
                                     NullText="(žádný)"
                                     ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
@@ -366,7 +366,7 @@ else
     else if (activeTab == "lokace")
     {
         <div class="oh-qst-loc">
-            <h3 class="mb-3"><i class="bi bi-geo-alt"></i> Lokace tohoto úkolu</h3>
+            <h3 class="mb-3"><i class="bi bi-geo-alt"></i> Lokace tohoto questu</h3>
             @if (quest.Locations.Count == 0)
             {
                 <p class="text-muted">Žádné lokace zatím nejsou přiřazeny.</p>
@@ -430,7 +430,7 @@ else
                 <summary><i class="bi bi-mortarboard"></i> Dovednosti — odměny</summary>
                 <div class="oh-qst-rew-disabled">
                     <i class="bi bi-hourglass-split"></i>
-                    <p class="mb-1">Dovednosti jako odměna úkolu vyžadují novou tabulku QuestSkillReward — plánováno v migraci 0.16.x (#193 follow-up).</p>
+                    <p class="mb-1">Dovednosti jako odměna questu vyžadují novou tabulku QuestSkillReward — plánováno v migraci 0.16.x (#193 follow-up).</p>
                     <button type="button" class="btn btn-outline-secondary btn-sm" disabled>
                         <i class="bi bi-plus"></i> Přidat dovednost (Phase 2)
                     </button>
@@ -440,7 +440,7 @@ else
                 <summary><i class="bi bi-magic"></i> Kouzla — odměny</summary>
                 <div class="oh-qst-rew-disabled">
                     <i class="bi bi-hourglass-split"></i>
-                    <p class="mb-1">Kouzla jako odměna úkolu vyžadují novou tabulku QuestSpellReward — plánováno v migraci 0.16.x (#193 follow-up).</p>
+                    <p class="mb-1">Kouzla jako odměna questu vyžadují novou tabulku QuestSpellReward — plánováno v migraci 0.16.x (#193 follow-up).</p>
                     <button type="button" class="btn btn-outline-secondary btn-sm" disabled>
                         <i class="bi bi-plus"></i> Přidat kouzlo (Phase 2)
                     </button>
@@ -456,9 +456,9 @@ else
     }
 }
 
-<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Smazat úkol?" Width="400px">
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Smazat quest?" Width="400px">
     <BodyContentTemplate Context="ctx">
-        <p>Smazat úkol <strong>@(quest?.Name)</strong>? Setkání, lokace, odměny a tagy budou odpojeny.</p>
+        <p>Smazat quest <strong>@(quest?.Name)</strong>? Setkání, lokace, odměny a tagy budou odpojeny.</p>
         @if (deleteError is not null)
         {
             <div class="alert alert-danger">@deleteError</div>
@@ -554,7 +554,7 @@ else
             quest = await Api.GetAsync<QuestDetailDto>($"/api/quests/{Id}");
             if (quest is null)
             {
-                error = "Úkol nenalezen.";
+                error = "Quest nenalezen.";
                 return;
             }
             ResetEditModel();
@@ -633,7 +633,7 @@ else
             var ok = await Api.DeleteAsync($"/api/quests/{quest.Id}");
             if (!ok)
             {
-                deleteError = "Smazání se nezdařilo (úkol může mít odkazy).";
+                deleteError = "Smazání se nezdařilo (quest může mít odkazy).";
                 return;
             }
             isDeleteVisible = false;

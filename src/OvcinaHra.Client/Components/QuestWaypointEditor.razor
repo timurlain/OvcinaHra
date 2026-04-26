@@ -14,13 +14,13 @@
     else if (_waypoints.Count == 0)
     {
         <p class="text-muted small fst-italic mb-2">
-            Tento úkol zatím nemá žádné body trasy.
+            Tento quest zatím nemá žádné body trasy.
             Přidej první lokaci níže — Mapa pak nakreslí cestu mezi nimi.
         </p>
     }
     else
     {
-        <ol class="oh-qwp-list" aria-label="Trasa úkolu">
+        <ol class="oh-qwp-list" aria-label="Trasa questu">
             @for (var i = 0; i < _waypoints.Count; i++)
             {
                 var idx = i;

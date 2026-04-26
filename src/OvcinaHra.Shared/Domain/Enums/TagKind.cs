@@ -9,6 +9,6 @@ public enum TagKind
     [Display(Name = "Příšera")]
     Monster,
 
-    [Display(Name = "Úkol")]
+    [Display(Name = "Quest")]
     Quest
 }
