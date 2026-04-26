@@ -92,6 +92,23 @@ window.ovcinaMap = {
             }
         });
 
+        // Issue #258 — zoom-conditional labels. Toggle .oh-map-zoomed-in
+        // on the map container at zoom >= 15 so non-town labels become
+        // visible only when pins are spread out enough to avoid overlap.
+        // Town pins (kingdom seats) are always-visible via a separate
+        // CSS rule that doesn't depend on this class.
+        var LABEL_ZOOM_THRESHOLD = 15;
+        var mc = this._map.getContainer();
+        var applyZoomLabelClass = () => {
+            if (this._map.getZoom() >= LABEL_ZOOM_THRESHOLD) {
+                mc.classList.add('oh-map-zoomed-in');
+            } else {
+                mc.classList.remove('oh-map-zoomed-in');
+            }
+        };
+        applyZoomLabelClass(); // initial state
+        this._map.on('zoomend', applyZoomLabelClass);
+
         // Crosshair cursor while Ctrl/Meta is held — visual hint that
         // Ctrl+Click will place an ungeocoded location. Pure CSS via a
         // class toggle so MapLibre's own cursor logic still works the
@@ -896,10 +913,20 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
     pin.className = 'oh-map-pin oh-map-pin-loc';
     pin.setAttribute('data-kind', (kind || 'wilderness').toLowerCase());
     wrapper.title = name || '';
-    // Labels deferred to issue #258 (conditional zoom-based visibility).
-    // Always-on labels visually overlapped neighbouring pins in clustered
-    // areas — the label's pointer-events:none made events fall through to
-    // the map canvas, blocking marker drag on what looked like a pin.
+    // Issue #258 — zoom-conditional labels. The label is always rendered,
+    // CSS controls visibility:
+    //   - Town pins (kingdom seats): always shown
+    //   - Other kinds: only shown when the map container has class
+    //     `oh-map-zoomed-in` (set by the zoom listener in init() once
+    //     map.getZoom() >= 15)
+    // pointer-events:none + position:absolute keep the wrapper at 18×18
+    // so MapLibre's drag hit-test stays accurate.
+    if (name) {
+        var label = document.createElement('div');
+        label.className = 'oh-map-pin-label';
+        label.textContent = name;
+        pin.appendChild(label);
+    }
     wrapper.appendChild(pin);
     var self = this;
     wrapper.addEventListener('click', function (e) {
