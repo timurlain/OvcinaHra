@@ -106,27 +106,32 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Console.WriteLine("[map-diag] OnInitializedAsync entry");
         await GameContext.InitializeAsync();
+        Console.WriteLine($"[map-diag] After InitializeAsync — SelectedGameId={GameContext.SelectedGameId?.ToString() ?? "null"}");
         GameContext.OnGameChanged += HandleGameChanged;
         // Issue #215 — read URL state BEFORE the basemap loads so the
         // first paint uses the right layers / style / selected pin.
         HydrateFromUrl();
+        Console.WriteLine($"[map-diag] After HydrateFromUrl — _locationsVisible={_locationsVisible}, _stashesVisible={_stashesVisible}, _activeStyle={_activeStyle}, _urlLayersHydratedFromQuery={_urlLayersHydratedFromQuery}");
     }
 
     private void HandleGameChanged()
     {
+        Console.WriteLine($"[map-diag] HandleGameChanged fired — new SelectedGameId={GameContext.SelectedGameId?.ToString() ?? "null"}");
         // Marshal back onto the renderer thread + observe exceptions so a
         // JS interop blow-up during a circuit hiccup doesn't end up as an
         // unobserved task (Copilot finding).
         _ = InvokeAsync(async () =>
         {
             try { await ReloadDataAndRenderAsync(); }
-            catch (Exception ex) { Console.Error.WriteLine($"map reload after game change: {ex}"); }
+            catch (Exception ex) { Console.Error.WriteLine($"[map-diag] reload after game change FAILED: {ex}"); }
         });
     }
 
     private async Task OnMapReadyAsync()
     {
+        Console.WriteLine($"[map-diag] OnMapReadyAsync entry — _firstStyleLoadDone={_firstStyleLoadDone}");
         // OnStyleLoaded fires both on first basemap load AND after every
         // SwitchStyle. The data fetch + localStorage hydrate only need to
         // run once; subsequent style swaps just need to repaint the pins
@@ -194,13 +199,21 @@
     private async Task ReloadDataAndRenderAsync()
     {
         var gameId = GameContext.SelectedGameId;
-        if (gameId is null) { _data = null; return; }
+        Console.WriteLine($"[map-diag] ReloadDataAndRenderAsync entry — gameId={gameId?.ToString() ?? "null"}");
+        if (gameId is null) { _data = null; Console.WriteLine("[map-diag] ReloadData early-return — gameId is null"); return; }
 
         try
         {
-            _data = await Api.GetAsync<MapDataDto>($"/api/map/data?gameId={gameId.Value}");
+            var url = $"/api/map/data?gameId={gameId.Value}";
+            Console.WriteLine($"[map-diag] Fetching {url}");
+            _data = await Api.GetAsync<MapDataDto>(url);
+            Console.WriteLine($"[map-diag] Fetch result — _data is {(_data is null ? "null" : "not null")}, Locations={_data?.Locations.Count ?? -1}, Stashes={_data?.Stashes.Count ?? -1}");
         }
-        catch { _data = null; }
+        catch (Exception ex)
+        {
+            _data = null;
+            Console.Error.WriteLine($"[map-diag] /api/map/data FAILED: {ex.GetType().Name}: {ex.Message}");
+        }
 
         await PaintPinsAsync();
         await InvokeAsync(StateHasChanged);
@@ -208,11 +221,13 @@
 
     private async Task PaintPinsAsync()
     {
+        Console.WriteLine($"[map-diag] PaintPinsAsync entry — _data null? {_data is null}, _locationsVisible={_locationsVisible}, _stashesVisible={_stashesVisible}");
         // Wipe and repaint — small dataset (~50 pins per layer in Pro hru
         // mode); incremental diffing would be over-engineered for the
         // expected scale and the brief explicitly defers clustering.
         await JS.InvokeVoidAsync("ovcinaMap.clearMapPagePins");
-        if (_data is null) return;
+        if (_data is null) { Console.WriteLine("[map-diag] PaintPinsAsync exit — _data is null"); return; }
+        Console.WriteLine($"[map-diag] PaintPinsAsync data — Locations={_data.Locations.Count}, Stashes={_data.Stashes.Count}");
 
         if (_locationsVisible)
         {
