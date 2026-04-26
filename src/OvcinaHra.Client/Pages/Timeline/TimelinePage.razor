@@ -30,9 +30,9 @@
             <button type="button" class="oh-tl-seg-btn @(view == "agenda" ? "on" : "")"
                     role="tab" aria-selected="@(view == "agenda")"
                     @onclick='() => SetViewAsync("agenda")'>Agenda</button>
-            <button type="button" class="oh-tl-seg-btn @(view == "gantt" ? "on" : "")"
-                    role="tab" aria-selected="@(view == "gantt")"
-                    @onclick='() => SetViewAsync("gantt")'>Gantt</button>
+            <button type="button" class="oh-tl-seg-btn @(view == "list" ? "on" : "")"
+                    role="tab" aria-selected="@(view == "list")"
+                    @onclick='() => SetViewAsync("list")'>Seznam</button>
         </div>
         <button type="button" class="btn btn-primary btn-sm" @onclick="OpenCreate">
             <i class="bi bi-plus-lg"></i> Nový časový blok
@@ -75,15 +75,90 @@ else if (slots.Count == 0)
     <div class="oh-tl-empty">
         <i class="bi bi-clock-history"></i>
         <div class="oh-tl-empty-title">Žádné časové bloky pro tuto hru</div>
-        <p>Začni rozkreslovat harmonogram – Agenda i Gantt pohled jsou připravené.</p>
+        <p>Začni rozkreslovat harmonogram – Agenda i Seznam pohled jsou připravené.</p>
         <button type="button" class="btn btn-primary mt-2" @onclick="OpenCreate">
             <i class="bi bi-plus-lg"></i> Nový časový blok
         </button>
     </div>
 }
-else if (view == "gantt")
+else if (view == "list")
 {
-    <GanttCanvas Slots="@FilteredSlots" Now="@_now" OnEdit="OpenEdit" />
+    @* Issue #189 ask 1+2: simpler tabular Seznam pohled — denser than the
+       Agenda cards. One row per slot, click to edit. No day separators
+       (the time column carries the date so chronology is obvious). *@
+    <div class="oh-tl-list">
+        <table class="oh-tl-list-table">
+            <thead>
+                <tr>
+                    <th style="width:200px">Čas</th>
+                    <th style="width:140px">Fáze</th>
+                    <th>Název</th>
+                    <th>Obsah</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var s in FilteredSlots)
+                {
+                    var local = s.StartTime.ToLocalTime();
+                    var endLocal = s.EndTime.ToLocalTime();
+                    var stageMod = s.Stage switch
+                    {
+                        GameTimePhase.Start => "start",
+                        GameTimePhase.Early => "early",
+                        GameTimePhase.Midgame => "midgame",
+                        GameTimePhase.Lategame => "lategame",
+                        GameTimePhase.EndGame => "endgame",
+                        _ => "start"
+                    };
+                    var isActive = IsActive(s);
+                    var isPast = IsPast(s);
+                    var rowCss = "oh-tl-list-row" + (isActive ? " oh-tl-list-row--active" : "")
+                                                  + (isPast ? " oh-tl-list-row--past" : "");
+                    <tr class="@rowCss" @key="s.Id" @onclick="() => OpenEdit(s.Id)" role="button" tabindex="0">
+                        <td>
+                            <div class="oh-tl-list-time">
+                                <span class="oh-tl-list-day">@local.ToString("ddd d. M.", cs)</span>
+                                <span class="oh-tl-list-clock">@local.ToString("HH:mm", cs) – @endLocal.ToString("HH:mm", cs)</span>
+                            </div>
+                        </td>
+                        <td><StageChip Difficulty="@s.Stage" /></td>
+                        <td>
+                            <div class="oh-tl-list-title">
+                                @(string.IsNullOrWhiteSpace(s.Rules) ? $"Blok – {s.Stage.GetDisplayName()}"
+                                                                     : s.Rules.Split('\n')[0].Trim())
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(s.Rules) && s.Rules.Contains('\n'))
+                            {
+                                <div class="oh-tl-list-rules">@s.Rules</div>
+                            }
+                        </td>
+                        <td>
+                            <div class="oh-tl-list-chips">
+                                @foreach (var ev in s.LinkedEvents)
+                                {
+                                    var (chipMod, icon) = ev.Kind switch
+                                    {
+                                        GameEventKind.Quest => ("oh-tl-chip--quest", "bi-journal-bookmark"),
+                                        GameEventKind.Encounter => ("oh-tl-chip--encounter", "bi-bug"),
+                                        _ => ("oh-tl-chip--other", "bi-three-dots")
+                                    };
+                                    <span class="oh-tl-chip @chipMod" @key="ev.Id">
+                                        <i class="bi @icon"></i>@ev.Name
+                                    </span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(s.BattlefieldBonusName))
+                                {
+                                    <span class="oh-tl-chip oh-tl-chip--bonus">
+                                        <i class="bi bi-shield-check"></i>@s.BattlefieldBonusName
+                                    </span>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
 }
 else
 {
@@ -273,7 +348,7 @@ else
         try
         {
             var stored = await JS.InvokeAsync<string?>("localStorage.getItem", ViewKey);
-            if ((stored == "agenda" || stored == "gantt") && stored != view)
+            if ((stored == "agenda" || stored == "list") && stored != view)
             {
                 view = stored;
                 StateHasChanged();
