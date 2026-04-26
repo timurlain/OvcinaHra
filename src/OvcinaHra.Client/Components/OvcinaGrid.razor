@@ -26,6 +26,7 @@
         SelectedDataItems="@SelectedDataItems"
         SelectedDataItemsChanged="@SelectedDataItemsChanged"
         RowClick="@RowClick"
+        RowDoubleClick="@RowDoubleClick"
         ShowGroupPanel="@ShowGroupPanel"
         VirtualScrollingEnabled="true"
         ColumnResizeMode="GridColumnResizeMode.NextColumn"
@@ -63,6 +64,7 @@
     [Parameter] public IReadOnlyList<object>? SelectedDataItems { get; set; }
     [Parameter] public EventCallback<IReadOnlyList<object>> SelectedDataItemsChanged { get; set; }
     [Parameter] public EventCallback<GridRowClickEventArgs> RowClick { get; set; }
+    [Parameter] public EventCallback<GridRowClickEventArgs> RowDoubleClick { get; set; }
     [Parameter] public Action<GridCustomizeElementEventArgs>? CustomizeElement { get; set; }
     [Parameter] public bool ShowSearchBox { get; set; } = true;
     [Parameter] public string? SearchText { get; set; }
