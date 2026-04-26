@@ -86,6 +86,13 @@
     /// Tuple is (kind, id) where kind is currently always "location".</summary>
     [Parameter] public EventCallback<(string Kind, int Id)> OnMapPagePinClick { get; set; }
 
+    /// <summary>Fires when the user drag-drops a Map-page location pin.
+    /// PC only — touch/tablet users have drag disabled to prevent stray
+    /// finger movement from relocating pins. Tuple = (id, newLat, newLng)
+    /// using MapLibre's LngLat naming for consistency across the JS / C#
+    /// boundary.</summary>
+    [Parameter] public EventCallback<(int Id, double Lat, double Lng)> OnMapPagePinDrag { get; set; }
+
     /// <summary>
     /// When set, the map loads the game's vector overlay (issue #96) and
     /// surfaces the "Upravit překryv" editor button.
@@ -436,6 +443,10 @@
     [JSInvokable]
     public async Task OnMarkerDragged(int id, double lat, double lng, double origLat, double origLng)
         => await OnMarkerDrag.InvokeAsync(new OvcinaMarkerDragEventArgs(id, lat, lng, origLat, origLng));
+
+    [JSInvokable]
+    public async Task OnLocationPinDragged(int id, double lat, double lng)
+        => await OnMapPagePinDrag.InvokeAsync((id, lat, lng));
 
     [JSInvokable]
     public async Task OnStyleLoadedCallback()
