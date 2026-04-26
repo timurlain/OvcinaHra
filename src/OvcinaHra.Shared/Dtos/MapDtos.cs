@@ -69,9 +69,21 @@ public record LocationPeekDto(
     string KindDisplay,
     IReadOnlyList<LocationPeekStashDto> Stashes,
     IReadOnlyList<TreasuresByStageRowDto> TreasuresByStage,
-    string? LorePreview);
+    string? LorePreview,
+    IReadOnlyList<LocationPeekChildDto>? Children = null);
 
 public record LocationPeekStashDto(int Id, string Name, int TreasureCount);
+
+/// <summary>
+/// A child / variant location nested under a parent (e.g. "Pod borovicí"
+/// inside parent "Lesní mýtina"). Children never get pins on the map,
+/// but the parent's peek lists them so the user can navigate to them.
+/// </summary>
+public record LocationPeekChildDto(int Id, string Name, LocationKind Kind)
+{
+    [JsonIgnore]
+    public string KindDisplay => Kind.GetDisplayName();
+}
 
 /// <summary>
 /// One row in the treasures-by-stage block. The cockpit renders all

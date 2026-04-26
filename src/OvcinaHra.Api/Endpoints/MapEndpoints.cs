@@ -181,6 +181,15 @@ public static class MapEndpoints
 
         var lorePreview = MakeLorePreview(loc.Description);
 
+        // Children / variants — sub-locations of this parent. They never
+        // get pins on the map (parent-only rule) but the peek lists them
+        // so the organizer can navigate to a variant via /locations/{id}.
+        var children = await db.Locations
+            .Where(l => l.ParentLocationId == id)
+            .OrderBy(l => l.Name)
+            .Select(l => new LocationPeekChildDto(l.Id, l.Name, l.LocationKind))
+            .ToListAsync();
+
         return TypedResults.Ok(new LocationPeekDto(
             loc.Id, loc.Name,
             string.IsNullOrWhiteSpace(loc.ImagePath) ? null : blob.GetSasUrl(loc.ImagePath),
@@ -191,7 +200,8 @@ public static class MapEndpoints
             loc.LocationKind, loc.LocationKind.GetDisplayName(),
             stashDtos,
             stageRows,
-            lorePreview));
+            lorePreview,
+            children));
     }
 
     /// <summary>

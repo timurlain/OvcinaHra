@@ -3670,6 +3670,19 @@
 .oh-map-pin-count{position:absolute;top:-6px;right:-6px;background:#fff;color:#2a2a2a;
     border-radius:99px;padding:0 4px;font:700 .65rem var(--oh-font-body);
     border:1px solid var(--oh-border,#d8d2be);min-width:14px;text-align:center}
+/* Always-on location name label below the pin. Absolutely positioned
+   relative to the pin (position:relative) so the wrapper stays at 18×18
+   and MapLibre's drag hit-test stays on the pin alone. Issue #258 will
+   add zoom-conditional visibility. */
+.oh-map-pin-label{position:absolute;top:100%;left:50%;transform:translate(-50%,4px);
+    white-space:nowrap;font:600 .72rem var(--oh-font-body,sans-serif);color:#1a1a2e;
+    text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;
+    pointer-events:none;user-select:none;z-index:1}
+/* Ctrl/Meta held over the map → crosshair cursor (visual hint that
+   Ctrl+Click will place an ungeocoded location). Class toggled by
+   map-interop.js keydown/keyup listeners. */
+.oh-map-ctrl-held .maplibregl-canvas-container,
+.oh-map-ctrl-held .maplibregl-canvas{cursor:crosshair !important}
 .oh-map-peek-backdrop{position:fixed;inset:0;background:rgba(20,16,8,.32);z-index:1070}
 .oh-map-peek{position:fixed;top:64px;right:0;bottom:0;width:min(420px,90vw);
     background:var(--oh-surface,#FAF6EC);border-left:1px solid var(--oh-border,#d8d2be);

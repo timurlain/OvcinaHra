@@ -82,9 +82,29 @@ window.ovcinaMap = {
 
         this._map.on('click', (e) => {
             if (this._dotnetRef) {
-                this._dotnetRef.invokeMethodAsync('OnMapClicked', e.lngLat.lat, e.lngLat.lng);
+                // Forward Ctrl/Meta state — /map uses Ctrl+Click to
+                // place an ungeocoded location at the clicked point.
+                var ctrl = !!(e.originalEvent && (e.originalEvent.ctrlKey || e.originalEvent.metaKey));
+                this._dotnetRef.invokeMethodAsync('OnMapClicked', e.lngLat.lat, e.lngLat.lng, ctrl);
             }
         });
+
+        // Crosshair cursor while Ctrl/Meta is held — visual hint that
+        // Ctrl+Click will place an ungeocoded location. Pure CSS via a
+        // class toggle so MapLibre's own cursor logic still works the
+        // rest of the time. Listeners cleared in dispose().
+        var mapContainer = this._map.getContainer();
+        var keyDown = function (e) {
+            if (e.key === 'Control' || e.key === 'Meta') mapContainer.classList.add('oh-map-ctrl-held');
+        };
+        var keyUp = function (e) {
+            if (e.key === 'Control' || e.key === 'Meta') mapContainer.classList.remove('oh-map-ctrl-held');
+        };
+        var blur = function () { mapContainer.classList.remove('oh-map-ctrl-held'); };
+        document.addEventListener('keydown', keyDown);
+        document.addEventListener('keyup', keyUp);
+        window.addEventListener('blur', blur);
+        this._ctrlListeners = { keyDown: keyDown, keyUp: keyUp, blur: blur };
 
         // Fire OnStyleLoadedCallback once the initial basemap style is fully
         // loaded so MapPage / TreasurePlanning can paint pins. Without this,
@@ -873,6 +893,16 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
     pin.className = 'oh-map-pin oh-map-pin-loc';
     pin.setAttribute('data-kind', (kind || 'wilderness').toLowerCase());
     wrapper.title = name || '';
+    // Always-on label below the pin (issue #258 will add zoom-conditional
+    // visibility). The label is absolutely positioned relative to the
+    // pin (which has position:relative) so it doesn't expand the wrapper
+    // — that keeps MapLibre's drag hit-test on the pin alone.
+    if (name) {
+        var label = document.createElement('div');
+        label.className = 'oh-map-pin-label';
+        label.textContent = name;
+        pin.appendChild(label);
+    }
     wrapper.appendChild(pin);
     var self = this;
     wrapper.addEventListener('click', function (e) {

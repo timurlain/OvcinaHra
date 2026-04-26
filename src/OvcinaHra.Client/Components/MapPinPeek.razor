@@ -74,6 +74,24 @@
                 </a>
             </section>
         }
+
+        @* Variants / sub-locations under this parent. They never appear
+           on the map (parent-only rule) but the peek lists them so the
+           organizer can navigate to a child via /locations/{id}. *@
+        @if (Peek.Children is { Count: > 0 } children)
+        {
+            <section class="oh-map-peek-sec">
+                <h3>Podlokace (@children.Count)</h3>
+                @foreach (var c in children)
+                {
+                    <a class="oh-map-peek-link" href="@($"/locations/{c.Id}")">
+                        <i class="bi bi-diagram-3"></i>
+                        <span>@c.Name</span>
+                        <span class="text-muted small ms-auto">@c.KindDisplay</span>
+                    </a>
+                }
+            </section>
+        }
     }
     else if (Loading)
     {
