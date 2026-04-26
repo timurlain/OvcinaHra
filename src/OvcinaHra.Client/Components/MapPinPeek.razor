@@ -10,17 +10,23 @@
     @if (Peek is not null)
     {
         <header class="oh-map-peek-hd">
-            @if (!string.IsNullOrEmpty(Peek.ThumbnailUrl) && !_thumbFailed)
-            {
-                <img class="oh-map-peek-thumb" src="@Peek.ThumbnailUrl" alt="@Peek.Name"
-                     @onerror="() => _thumbFailed = true" />
-            }
-            else
-            {
-                <div class="oh-map-peek-thumb oh-map-peek-thumb-fallback">
-                    <i class="bi bi-geo-alt-fill"></i>
-                </div>
-            }
+            <div class="oh-map-peek-thumb">
+                @if (!string.IsNullOrEmpty(Peek.ThumbnailUrl) && !_thumbFailed)
+                {
+                    @* CSS sizes the wrapper; the <img> inherits via
+                       .oh-map-peek-thumb img. Pre-fixup the bare <img>
+                       carried the wrapper class and the object-fit rule
+                       never matched. *@
+                    <img src="@Peek.ThumbnailUrl" alt="@Peek.Name"
+                         @onerror="() => _thumbFailed = true" />
+                }
+                else
+                {
+                    <span class="oh-map-peek-thumb-fallback">
+                        <i class="bi bi-geo-alt-fill"></i>
+                    </span>
+                }
+            </div>
             <div class="oh-map-peek-hd-body">
                 <h2>@Peek.Name</h2>
                 <div class="text-muted small">

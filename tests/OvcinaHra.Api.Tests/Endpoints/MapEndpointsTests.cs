@@ -129,6 +129,37 @@ public class MapEndpointsTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Peek_LocationInDifferentGame_Returns404()
+    {
+        // Regression for the Copilot-caught game-scope bypass — peek
+        // must enforce GameLocations membership, not just LocationId.
+        var gameA = await CreateGameAsync();
+        var gameB = await CreateGameAsync();
+        int locationId;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var loc = new Location
+            {
+                Name = "Tied to A",
+                LocationKind = LocationKind.Wilderness,
+                Coordinates = new GpsCoordinates(49.5m, 17.1m),
+            };
+            db.Locations.Add(loc);
+            await db.SaveChangesAsync();
+            db.GameLocations.Add(new GameLocation { GameId = gameA.Id, LocationId = loc.Id });
+            await db.SaveChangesAsync();
+            locationId = loc.Id;
+        }
+
+        // Peek with gameB.Id — location isn't part of that game.
+        var response = await Client.GetAsync(
+            $"/api/map/locations/{locationId}/peek?gameId={gameB.Id}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Peek_AlwaysReturnsAllFourStageRows()
     {
         // Even when a location has zero treasures across the board, the
@@ -145,6 +176,11 @@ public class MapEndpointsTests(PostgresFixture postgres)
                 Coordinates = new GpsCoordinates(49.5m, 17.1m),
             };
             db.Locations.Add(loc);
+            await db.SaveChangesAsync();
+            // Link to game — the peek endpoint now joins through GameLocations
+            // to enforce game scope (Copilot fixup). Pre-fixup this test
+            // wouldn't have caught the cross-game leak.
+            db.GameLocations.Add(new GameLocation { GameId = game.Id, LocationId = loc.Id });
             await db.SaveChangesAsync();
             locationId = loc.Id;
         }

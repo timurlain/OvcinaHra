@@ -872,3 +872,18 @@ window.ovcinaMap.setMapPageLayerVisibility = function (layer, visible) {
         if (el) el.style.display = visible ? '' : 'none';
     }
 };
+
+// Hook into dispose so map-page pins clear when the user navigates away —
+// pre-fixup these markers + their DOM elements stuck around after the
+// MapLibre instance was removed (Copilot finding).
+(function () {
+    if (window.ovcinaMap._mapPageDisposeHooked) return;
+    window.ovcinaMap._mapPageDisposeHooked = true;
+    var originalDispose = window.ovcinaMap.dispose;
+    if (typeof originalDispose === 'function') {
+        window.ovcinaMap.dispose = function () {
+            try { this.clearMapPagePins(); } catch (e) { /* ignore */ }
+            return originalDispose.apply(this, arguments);
+        };
+    }
+})();

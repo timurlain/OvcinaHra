@@ -4,6 +4,7 @@ using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
+using OvcinaHra.Shared.Extensions;
 
 namespace OvcinaHra.Api.Endpoints;
 
@@ -102,24 +103,31 @@ public static class MapEndpoints
     private static async Task<Results<Ok<LocationPeekDto>, NotFound>> GetLocationPeek(
         int id, int gameId, WorldDbContext db, IBlobStorageService blob)
     {
-        // Project Coordinates components directly — projecting the owned
-        // GpsCoordinates type into an anonymous wrapper trips EF's tracking
-        // query rule (owned entity without owner). Pulling Latitude /
-        // Longitude into nullable decimals sidesteps it cleanly.
-        var loc = await db.Locations
-            .Where(l => l.Id == id)
-            .Select(l => new
+        // Game-scoped lookup. Joining through GameLocations enforces that
+        // the location is actually part of the requested game — pre-fixup
+        // any caller knowing a valid (gameId, locationId) pair could peek
+        // an arbitrary location. Coordinates components are projected as
+        // nullable decimals so the owned GpsCoordinates value object
+        // doesn't trip EF's tracking-without-owner rule.
+        var loc = await db.GameLocations
+            .Where(gl => gl.GameId == gameId
+                && gl.LocationId == id
+                && gl.Location.ParentLocationId == null)
+            .Select(gl => new
             {
-                l.Id,
-                l.Name,
-                l.LocationKind,
-                l.Description,
-                l.ImagePath,
-                Lat = l.Coordinates != null ? (decimal?)l.Coordinates.Latitude : null,
-                Lon = l.Coordinates != null ? (decimal?)l.Coordinates.Longitude : null,
+                gl.Location.Id,
+                gl.Location.Name,
+                gl.Location.LocationKind,
+                gl.Location.Description,
+                gl.Location.ImagePath,
+                Lat = gl.Location.Coordinates != null ? (decimal?)gl.Location.Coordinates.Latitude : null,
+                Lon = gl.Location.Coordinates != null ? (decimal?)gl.Location.Coordinates.Longitude : null,
             })
             .FirstOrDefaultAsync();
         if (loc is null) return TypedResults.NotFound();
+        // GPS-less location → 404 rather than (0,0) which would render
+        // the pin / centering at the Gulf of Guinea (Copilot C6).
+        if (loc.Lat is null || loc.Lon is null) return TypedResults.NotFound();
 
         // Stashes for this location in this game.
         var stashes = await db.GameSecretStashes
@@ -176,9 +184,11 @@ public static class MapEndpoints
         return TypedResults.Ok(new LocationPeekDto(
             loc.Id, loc.Name,
             string.IsNullOrWhiteSpace(loc.ImagePath) ? null : blob.GetSasUrl(loc.ImagePath),
-            (double)(loc.Lat ?? 0m), (double)(loc.Lon ?? 0m),
+            (double)loc.Lat!.Value, (double)loc.Lon!.Value,
             KingdomId: null, KingdomName: null,
-            loc.LocationKind, loc.LocationKind.ToString(),
+            // Use the localized [Display] label so the peek chip reads
+            // "Pustina" not "Wilderness" (Copilot C5).
+            loc.LocationKind, loc.LocationKind.GetDisplayName(),
             stashDtos,
             stageRows,
             lorePreview));

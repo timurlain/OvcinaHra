@@ -65,6 +65,10 @@
     private string _activeStyle = "tourist";
     private bool _locationsVisible = true;
     private bool _stashesVisible = true;
+    private bool _firstStyleLoadDone;
+    // Monotonically increasing token so a slow peek fetch doesn't overwrite
+    // a newer one if the user clicks pins faster than the network responds.
+    private int _peekRequestId;
 
     private MapDataDto? _data;
     private bool _peekVisible;
@@ -77,11 +81,30 @@
         GameContext.OnGameChanged += HandleGameChanged;
     }
 
-    private void HandleGameChanged() => _ = ReloadDataAndRenderAsync();
+    private void HandleGameChanged()
+    {
+        // Marshal back onto the renderer thread + observe exceptions so a
+        // JS interop blow-up during a circuit hiccup doesn't end up as an
+        // unobserved task (Copilot finding).
+        _ = InvokeAsync(async () =>
+        {
+            try { await ReloadDataAndRenderAsync(); }
+            catch (Exception ex) { Console.Error.WriteLine($"map reload after game change: {ex}"); }
+        });
+    }
 
     private async Task OnMapReadyAsync()
     {
-        // First style load completes, basemap is ready — pull data + paint pins.
+        // OnStyleLoaded fires both on first basemap load AND after every
+        // SwitchStyle. The data fetch + localStorage hydrate only need to
+        // run once; subsequent style swaps just need to repaint the pins
+        // since the new style wipes the old layer (Copilot C3).
+        if (_firstStyleLoadDone)
+        {
+            await PaintPinsAsync();
+            return;
+        }
+        _firstStyleLoadDone = true;
         await HydrateLayerStateAsync();
         await ReloadDataAndRenderAsync();
     }
@@ -187,17 +210,28 @@
 
     private async Task OpenPeekAsync(int locationId)
     {
+        // Token guard against fast successive pin clicks — the older
+        // request must not be allowed to overwrite the newer peek state
+        // when its response lands late (Copilot C7).
+        var requestId = ++_peekRequestId;
         _peekVisible = true;
         _peekLoading = true;
         _peek = null;
         StateHasChanged();
+
+        LocationPeekDto? loaded = null;
         try
         {
             var gameId = GameContext.SelectedGameId ?? 0;
-            _peek = await Api.GetAsync<LocationPeekDto>(
+            loaded = await Api.GetAsync<LocationPeekDto>(
                 $"/api/map/locations/{locationId}/peek?gameId={gameId}");
         }
-        catch { _peek = null; }
+        catch { /* swallow — UI shows the empty / loading-failed state */ }
+
+        // Stale response — a newer click already started.
+        if (requestId != _peekRequestId) return;
+
+        _peek = loaded;
         _peekLoading = false;
         await InvokeAsync(StateHasChanged);
     }
