@@ -44,7 +44,18 @@ window.ovcinaMap = {
         return this._makeRasterStyle('outdoor', apiKey);
     },
 
+    // Diagnostic logging gate — opt in via the browser console with
+    // `localStorage.setItem('oh-map-pin-diag', '1');` then reload. Default
+    // OFF so production users don't see lat/lon flooding the console.
+    _pinDiag: function () {
+        try { return typeof localStorage !== 'undefined' && localStorage.getItem('oh-map-pin-diag') === '1'; }
+        catch (e) { return false; }
+    },
+
     init: function (elementId, dotnetRef, centerLat, centerLon, zoom, mapyCzApiKey, glyphsUrl) {
+        if (this._pinDiag()) {
+            console.log('[pin-diag] init() — elementId=' + elementId + ', existingMap=' + (this._map ? 'YES' : 'no') + ', center=[' + centerLon + ',' + centerLat + '], zoom=' + zoom);
+        }
         this._dotnetRef = dotnetRef;
         this._elementId = elementId;
         this._apiKey = (mapyCzApiKey && mapyCzApiKey.length > 5) ? mapyCzApiKey : null;
@@ -81,9 +92,27 @@ window.ovcinaMap = {
         // its first paint trigger and ends up with 0 lokací (regression from
         // #212 which only wired the switchStyle path).
         this._map.once('load', () => {
+            if (this._pinDiag()) {
+                console.log('[pin-diag] map load fired — bounds=' + JSON.stringify(this._map.getBounds()));
+            }
             if (this._dotnetRef) {
                 this._dotnetRef.invokeMethodAsync('OnStyleLoadedCallback');
             }
+        });
+
+        // Sample marker positions on every zoomend so we can correlate
+        // pin-screen-position with map-zoom-level. Gated to avoid console
+        // spam in normal use — flip the localStorage flag to enable.
+        this._map.on('zoomend', () => {
+            if (!this._pinDiag()) return;
+            var ids = Object.keys(this._mapPagePins.loc);
+            if (ids.length === 0) return;
+            var sample = ids.slice(0, 3).map((id) => {
+                var m = this._mapPagePins.loc[id];
+                var ll = m.getLngLat();
+                return id + '@[' + ll.lng.toFixed(6) + ',' + ll.lat.toFixed(6) + ']';
+            }).join(', ');
+            console.log('[pin-diag] zoomend zoom=' + this._map.getZoom().toFixed(2) + ' pinCount=' + ids.length + ' sample=' + sample);
         });
 
         this._map.addControl(new maplibregl.NavigationControl(), 'top-right');
@@ -813,7 +842,13 @@ window.ovcinaBboxMap = {
 window.ovcinaMap._mapPagePins = { loc: {}, stash: {} };
 
 window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
-    if (!this._map) return;
+    if (!this._map) {
+        if (this._pinDiag()) console.warn('[pin-diag] addLocationPin called but no map — id=' + id);
+        return;
+    }
+    if (this._pinDiag()) {
+        console.log('[pin-diag] addLocationPin id=' + id + ' lat=' + lat + ' lon=' + lon + ' kind=' + kind + ' name=' + (name || '?'));
+    }
     this.removeLocationPin(id);
     var pin = document.createElement('div');
     pin.className = 'oh-map-pin oh-map-pin-loc';
