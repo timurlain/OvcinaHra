@@ -3171,3 +3171,24 @@
 .oh-registrace-picker-row:hover{border-color:#2D5016}
 .oh-registrace-picker-row.is-on{background:#2D5016;border-color:#2D5016;color:#fff}
 .oh-registrace-picker-row.is-on .text-muted{color:rgba(255,255,255,.78) !important}
+
+/* Timeline — Seznam pohled (issue #189). Denser table style, click-to-edit. */
+.oh-tl-list{background:var(--oh-surface,#FAF6EC);border:1px solid var(--oh-border,#D9CFB6);
+    border-radius:8px;overflow:hidden}
+.oh-tl-list-table{width:100%;border-collapse:collapse;font-size:.92rem}
+.oh-tl-list-table thead th{background:#F2EBD8;text-align:left;padding:.6rem .9rem;
+    font-family:'Merriweather',serif;font-weight:600;border-bottom:1px solid var(--oh-border,#D9CFB6)}
+.oh-tl-list-table tbody td{padding:.6rem .9rem;border-bottom:1px solid var(--oh-border,#D9CFB6);
+    vertical-align:top}
+.oh-tl-list-table tbody tr:last-child td{border-bottom:none}
+.oh-tl-list-row{cursor:pointer;transition:background .12s ease}
+.oh-tl-list-row:hover{background:#F7F2E2}
+.oh-tl-list-row--past{opacity:.7}
+.oh-tl-list-row--active{background:rgba(127,166,87,.08)}
+.oh-tl-list-row--active:hover{background:rgba(127,166,87,.14)}
+.oh-tl-list-time{display:flex;flex-direction:column;font-family:'JetBrains Mono',monospace;font-size:.85rem}
+.oh-tl-list-day{color:var(--oh-text-secondary,#666);font-size:.78rem;text-transform:capitalize}
+.oh-tl-list-clock{color:var(--oh-text,#2a2a2a);font-weight:500}
+.oh-tl-list-title{font-weight:600;margin-bottom:.15rem}
+.oh-tl-list-rules{color:var(--oh-text-secondary,#666);font-size:.85rem;white-space:pre-wrap}
+.oh-tl-list-chips{display:flex;flex-wrap:wrap;gap:.3rem}

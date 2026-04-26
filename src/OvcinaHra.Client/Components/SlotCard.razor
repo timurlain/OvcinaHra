@@ -11,7 +11,9 @@
     var cs = CultureInfo.GetCultureInfo("cs-CZ");
     var startLocal = Slot.StartTime.ToLocalTime();
     var endLocal = Slot.EndTime.ToLocalTime();
-    var rulesExpanded = IsActive || forceExpanded;
+    // Issue #189 ask 3: Rules expanded by default; user can collapse per-slot.
+    // IsActive still forces open (active slot can't be collapsed).
+    var rulesExpanded = IsActive || !forceCollapsed;
 }
 
 <div class="@classes" @onclick="OnCardClick" role="button" tabindex="0"
@@ -59,13 +61,22 @@
         if (rulesExpanded)
         {
             <div class="oh-tl-slot-rules">@Slot.Rules</div>
+            @if (!IsActive)
+            {
+                <button type="button" class="oh-tl-seg-btn"
+                        style="padding:4px 0;color:var(--oh-text-secondary);font-size:.8rem"
+                        @onclick:stopPropagation="true"
+                        @onclick="() => forceCollapsed = true">
+                    <i class="bi bi-chevron-up"></i> Skrýt pravidla
+                </button>
+            }
         }
         else
         {
             <button type="button" class="oh-tl-seg-btn"
                     style="padding:4px 0;color:var(--oh-text-secondary);font-size:.8rem"
                     @onclick:stopPropagation="true"
-                    @onclick="() => forceExpanded = true">
+                    @onclick="() => forceCollapsed = false">
                 <i class="bi bi-chevron-down"></i> Pravidla
             </button>
         }
@@ -80,7 +91,7 @@
     [Parameter] public GameTimePhase? StageTransitionFrom { get; set; }
     [Parameter] public EventCallback<int> OnEdit { get; set; }
 
-    private bool forceExpanded;
+    private bool forceCollapsed;
 
     // Title falls back to a Czech default since GameTimeSlot has no Name field —
     // the slot's identity is its time + stage. If Rules starts with a heading-like
