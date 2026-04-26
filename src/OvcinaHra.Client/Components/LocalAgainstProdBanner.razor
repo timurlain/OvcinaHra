@@ -1,0 +1,14 @@
+@inject Microsoft.AspNetCore.Components.WebAssembly.Hosting.IWebAssemblyHostEnvironment Env
+
+@* Red sticky banner shown only when ASPNETCORE_ENVIRONMENT == "LocalAgainstProd"
+   (i.e. the user ran `dotnet run --launch-profile https-against-prod`). It's
+   intentionally not dismissable — every misclick on this build hits the real
+   production database. *@
+@if (string.Equals(Env.Environment, "LocalAgainstProd", System.StringComparison.OrdinalIgnoreCase))
+{
+    <div class="oh-prod-warning-banner" role="alert" aria-live="polite">
+        <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+        <strong>DEV → PROD API</strong>
+        <span>Tato instance míří na <code>api.hra.ovcina.cz</code> + skutečnou databázi. Každé Smazat = trvalé smazání. Ber to vážně.</span>
+    </div>
+}

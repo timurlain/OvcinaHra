@@ -102,16 +102,34 @@ try
     builder.Services.AddSingleton(logBuffer);
     builder.Logging.AddProvider(new RingBufferLoggerProvider(logBuffer));
 
-    // CORS for Blazor WASM client
+    // CORS for Blazor WASM client. Configured origins (prod hostname) plus
+    // any localhost / 127.0.0.1 origin so a developer can run the Client
+    // locally with appsettings.LocalAgainstProd.json pointing here. Browsers
+    // can't fake the Origin header across machines, so the localhost branch
+    // is safe — it can only be exercised from the user's own machine.
     builder.Services.AddCors(options =>
     {
+        var configuredOrigins =
+            builder.Configuration.GetSection("Cors:Origins").Get<string[]>()
+            ?? ["https://localhost:5290", "http://localhost:5290"];
         options.AddPolicy("BlazorClient", policy => policy
-            .WithOrigins(
-                builder.Configuration.GetSection("Cors:Origins").Get<string[]>()
-                ?? ["https://localhost:5290", "http://localhost:5290"])
+            .SetIsOriginAllowed(origin =>
+                configuredOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase)
+                || IsLocalhostOrigin(origin))
             .AllowAnyHeader()
             .AllowAnyMethod());
     });
+
+    static bool IsLocalhostOrigin(string origin)
+    {
+        // Use Uri.IsLoopback rather than StartsWith — covers IPv6 ([::1]),
+        // missing-port forms, and any future loopback aliases without
+        // brittle string prefix checks.
+        if (string.IsNullOrWhiteSpace(origin)) return false;
+        if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri)) return false;
+        return (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+            && uri.IsLoopback;
+    }
 
     var app = builder.Build();
 
