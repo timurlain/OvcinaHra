@@ -31,6 +31,17 @@
     </div>
 }
 
+@* Issue #209 — import errors must render at top of page. The save/delete `error`
+   field renders inside the edit DxPopup, which is closed during the import flow,
+   so a separate banner is needed for the organizer to see why import failed. *@
+@if (importError is not null)
+{
+    <div class="alert alert-danger alert-dismissible mb-3">
+        <strong>Import z registrace selhal.</strong> @importError
+        <button type="button" class="btn-close" @onclick="() => importError = null"></button>
+    </div>
+}
+
 @if (loading)
 {
     <p>Načítám...</p>
@@ -314,6 +325,7 @@ else
     private bool isPlayedCharacter;
     private string searchText = "";
     private ImportResultDto? importResult;
+    private string? importError;
 
     private IEnumerable<CharacterListDto> ParentCandidates =>
         allCharacters.Where(c => editingId is null || c.Id != editingId);
@@ -464,25 +476,27 @@ else
     private async Task ImportAsync()
     {
         if (!GameContext.SelectedGameId.HasValue) return;
-        isImporting = true; importResult = null; error = null;
+        isImporting = true; importResult = null; importError = null;
         try
         {
             // Issue #191 — server may return 400 ProblemDetails when the
             // local game is not yet linked to registrace. PostWithProblemAsync
             // surfaces the Czech detail string verbatim ("…klikněte na
             // „Propojit s registrací"") so the organizer knows what to do.
+            // Issue #209 — surface as `importError` (top-of-page banner), not
+            // `error` (which only renders inside the edit popup).
             var (ok, value, problem) = await Api.PostWithProblemAsync<object, ImportResultDto>(
                 $"/api/characters/import/{GameContext.SelectedGameId}", new { });
             if (!ok)
             {
-                error = problem ?? "Server odmítl požadavek bez podrobností.";
+                importError = problem ?? "Server odmítl požadavek bez podrobností.";
                 return;
             }
             importResult = value;
             await LoadAsync();
             await LoadParentSourceAsync();
         }
-        catch (Exception ex) { error = ex.Message; }
+        catch (Exception ex) { importError = ex.Message; }
         finally { isImporting = false; }
     }
 }
