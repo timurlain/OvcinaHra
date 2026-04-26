@@ -112,23 +112,111 @@ else
                         </span>
                     </div>
                 }
-                <div class="oh-tp-map-host" id="oh-tp-map-host">
-                    <MapView @ref="mapView"
-                             Height="100%"
-                             CenterLat="49.4532461" CenterLon="18.0203242" Zoom="12"
-                             OnPieMarkerClick="HandlePieClick"
-                             OnPieMarkerDrop="HandlePieDrop"
-                             OnStyleLoaded="HandleStyleLoaded" />
-                </div>
-                <div class="oh-tp-map-toolbar">
-                    <span>Legenda:</span>
-                    @foreach (var s in stageKeys)
+                @* Issue #200: view toggle Mapa ↔ Karty. Cards mode is the
+                   organizer-friendly fallback when locations don't have GPS
+                   yet — group by Region, filter by LocationKind, click a
+                   card to open the same focus/assign flow as the map markers. *@
+                <div class="oh-tp-view-toggle">
+                    <div class="oh-tl-seg" role="tablist" aria-label="Pohled">
+                        <button type="button" class="oh-tl-seg-btn @(treasuresView == "map" ? "on" : "")"
+                                role="tab" aria-selected="@(treasuresView == "map")"
+                                @onclick='() => SetTreasuresViewAsync("map")'>
+                            <i class="bi bi-map"></i> Mapa
+                        </button>
+                        <button type="button" class="oh-tl-seg-btn @(treasuresView == "cards" ? "on" : "")"
+                                role="tab" aria-selected="@(treasuresView == "cards")"
+                                @onclick='() => SetTreasuresViewAsync("cards")'>
+                            <i class="bi bi-grid"></i> Karty
+                        </button>
+                    </div>
+                    @if (treasuresView == "cards" && locationCards.Count > 0)
                     {
-                        <span class="oh-tp-focus-stats"><span class="sw" style="background:var(--oh-stage-@s.SoftKey)"></span>@s.Label</span>
+                        <div class="oh-tp-kind-filter">
+                            <span class="text-muted small">Typ:</span>
+                            <button type="button"
+                                    class="oh-tp-kind-pill @(treasuresKindFilter is null ? "on" : "")"
+                                    @onclick="() => treasuresKindFilter = null">vše</button>
+                            @foreach (var kind in locationCards.Select(l => l.LocationKind).Distinct().OrderBy(k => k.GetDisplayName()))
+                            {
+                                var k = kind;
+                                <button type="button"
+                                        class="oh-tp-kind-pill @(treasuresKindFilter == k ? "on" : "")"
+                                        @onclick="() => treasuresKindFilter = k">@k.GetDisplayName()</button>
+                            }
+                        </div>
                     }
-                    <div class="oh-tp-map-toolbar-spacer"></div>
-                    <span class="oh-tp-map-count">@locationCards.Count lokací · @(summary?.Placed ?? 0) umístěno</span>
                 </div>
+                @if (treasuresView == "cards")
+                {
+                    @* Cards view: groups by Region, click a card → focus/assign flow *@
+                    var filtered = treasuresKindFilter.HasValue
+                        ? locationCards.Where(l => l.LocationKind == treasuresKindFilter.Value).ToList()
+                        : locationCards.ToList();
+                    var grouped = filtered
+                        .GroupBy(l => string.IsNullOrWhiteSpace(l.Region) ? "(bez regionu)" : l.Region!)
+                        .OrderBy(g => g.Key)
+                        .ToList();
+                    if (grouped.Count == 0)
+                    {
+                        <p class="text-muted small">Žádné lokace neodpovídají filtru.</p>
+                    }
+                    else
+                    {
+                        <div class="oh-tp-cards-host">
+                            @foreach (var grp in grouped)
+                            {
+                                <div class="oh-tp-cards-region" @key="grp.Key">
+                                    <h6 class="oh-tp-cards-region-hdr">@grp.Key <span class="text-muted small">· @grp.Count() lokací</span></h6>
+                                    <div class="oh-tp-cards-grid">
+                                        @foreach (var loc in grp.OrderBy(l => l.LocationName))
+                                        {
+                                            var isFocused = focusedLocationId == loc.LocationId;
+                                            <button type="button"
+                                                    class="oh-tp-card @(isFocused ? "is-focused" : "")"
+                                                    @key="loc.LocationId"
+                                                    @onclick="() => HandlePieClick(loc.LocationId)">
+                                                <div class="oh-tp-card-hdr">
+                                                    <span class="oh-tp-card-kind">@loc.LocationKind.GetDisplayName()</span>
+                                                    @if (loc.TotalItems > 0)
+                                                    {
+                                                        <span class="oh-tp-card-count">@loc.TotalItems pokladů</span>
+                                                    }
+                                                </div>
+                                                <div class="oh-tp-card-name">@loc.LocationName</div>
+                                                @if (loc.StashCount > 0)
+                                                {
+                                                    <div class="oh-tp-card-stash">
+                                                        <i class="bi bi-archive"></i> @loc.StashCount / @loc.MaxStashes skrýší
+                                                    </div>
+                                                }
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="oh-tp-map-host" id="oh-tp-map-host">
+                        <MapView @ref="mapView"
+                                 Height="100%"
+                                 CenterLat="49.4532461" CenterLon="18.0203242" Zoom="12"
+                                 OnPieMarkerClick="HandlePieClick"
+                                 OnPieMarkerDrop="HandlePieDrop"
+                                 OnStyleLoaded="HandleStyleLoaded" />
+                    </div>
+                    <div class="oh-tp-map-toolbar">
+                        <span>Legenda:</span>
+                        @foreach (var s in stageKeys)
+                        {
+                            <span class="oh-tp-focus-stats"><span class="sw" style="background:var(--oh-stage-@s.SoftKey)"></span>@s.Label</span>
+                        }
+                        <div class="oh-tp-map-toolbar-spacer"></div>
+                        <span class="oh-tp-map-count">@locationCards.Count lokací · @(summary?.Placed ?? 0) umístěno</span>
+                    </div>
+                }
             </div>
 
             @* RIGHT: assignment panel *@
@@ -593,6 +681,13 @@ else
     // ===== Focus state =====
     private int? focusedLocationId;
     private string focusTab = "prehled";
+
+    // Issue #200: Mapa ↔ Karty toggle. Cards view groups by Region with a
+    // LocationKind filter — works without GPS coords. Persisted via
+    // localStorage key `oh-tp-view`.
+    private const string TreasuresViewKey = "oh-tp-view";
+    private string treasuresView = "map";
+    private OvcinaHra.Shared.Domain.Enums.LocationKind? treasuresKindFilter;
     private GameTimePhase lastUsedDifficulty = GameTimePhase.Start;
 
     // ===== Game context =====
@@ -713,7 +808,32 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            // Issue #200: restore preferred view from localStorage. Falls
+            // through to default "map" if storage is unavailable / empty.
+            try
+            {
+                var stored = await JS.InvokeAsync<string?>("localStorage.getItem", TreasuresViewKey);
+                if ((stored == "map" || stored == "cards") && stored != treasuresView)
+                {
+                    treasuresView = stored;
+                    StateHasChanged();
+                }
+            }
+            catch { /* prerender / JS unavailable */ }
+        }
         await PlaceMarkersIfReadyAsync();
+    }
+
+    // Issue #200: persist Mapa ↔ Karty selection. Same shape as Timeline's
+    // SetViewAsync from #189.
+    private async Task SetTreasuresViewAsync(string next)
+    {
+        if (treasuresView == next) return;
+        treasuresView = next;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", TreasuresViewKey, next); }
+        catch { /* non-fatal */ }
     }
 
     private async Task PlaceMarkersIfReadyAsync()
