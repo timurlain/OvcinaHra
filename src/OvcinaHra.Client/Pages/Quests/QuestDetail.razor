@@ -1,0 +1,755 @@
+@page "/quests/{Id:int}"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject GameContextService GameContext
+@implements IDisposable
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Extensions
+
+<div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+    <button class="btn btn-sm btn-outline-secondary" type="button"
+            @onclick='() => Nav.NavigateTo("/quests")'>
+        <i class="bi bi-arrow-left"></i> Zpět
+    </button>
+    <h1 class="mb-0">@(quest?.Name ?? "Úkol")</h1>
+    @if (quest is not null && quest.GameId is not null)
+    {
+        <QuestStateChip State="@quest.State" />
+    }
+    <div class="ms-auto d-flex gap-2">
+        @if (quest is not null)
+        {
+            <button class="btn btn-sm btn-outline-secondary" type="button"
+                    @onclick="@(() => Nav.NavigateTo($"/quests/{Id}/print"))"
+                    title="Otevřít A5 kartu úkolu k tisku">
+                <i class="bi bi-printer"></i> Tisk A5
+            </button>
+        }
+    </div>
+</div>
+
+@if (loading)
+{
+    <p class="text-muted">Načítám…</p>
+}
+else if (quest is null && error is not null)
+{
+    <div class="alert alert-danger d-flex align-items-center gap-2">
+        <i class="bi bi-wifi-off"></i>
+        <span>Nepodařilo se načíst úkol: @error</span>
+        <button type="button" class="btn btn-sm btn-outline-primary ms-auto" @onclick="LoadAsync">Zkusit znovu</button>
+    </div>
+}
+else if (quest is null)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-emoji-frown fs-1 d-block mb-2"></i>
+        <p>Úkol nenalezen.</p>
+    </div>
+}
+else
+{
+    <div class="d-flex gap-2 mb-3 flex-wrap">
+        @foreach (var tab in tabs)
+        {
+            <button class="btn btn-sm @(activeTab == tab.Key ? "btn-primary" : "btn-outline-primary")"
+                    @onclick="@(() => activeTab = tab.Key)">
+                <i class="bi @tab.Icon"></i> @tab.Label
+                @if (tab.Count is int n && n > 0)
+                {
+                    <span class="oh-qst-d-tab-count">@n</span>
+                }
+            </button>
+        }
+    </div>
+
+    @if (activeTab == "karta")
+    {
+        <div class="oh-qst-karta-grid">
+            <article class="oh-qst-karta">
+                <div class="oh-qst-karta-hero">
+                    @if (!string.IsNullOrEmpty(quest.ImageUrl))
+                    {
+                        <img src="@quest.ImageUrl" alt="@quest.Name" class="oh-qst-karta-img" />
+                    }
+                    else
+                    {
+                        <div class="oh-qst-karta-img oh-qst-karta-img--placeholder">
+                            <i class="bi bi-journal-richtext"></i>
+                            <span class="oh-qst-karta-img-name">@quest.Name</span>
+                        </div>
+                    }
+                </div>
+                <h2 class="oh-qst-karta-name">@quest.Name</h2>
+                <div class="oh-qst-karta-meta">
+                    <span class="oh-pill">@quest.QuestTypeDisplay</span>
+                    @foreach (var t in quest.Tags)
+                    {
+                        <span class="oh-qst-tag-chip">@t.Name</span>
+                    }
+                </div>
+                @if (!string.IsNullOrWhiteSpace(quest.Description))
+                {
+                    <p class="oh-qst-karta-desc">@quest.Description</p>
+                }
+                @if (!string.IsNullOrWhiteSpace(quest.FullText))
+                {
+                    <hr class="oh-qst-karta-sep" />
+                    <p class="oh-qst-karta-fulltext">@quest.FullText</p>
+                }
+            </article>
+            <aside class="oh-qst-karta-side">
+                <div class="oh-qst-karta-side-block">
+                    <div class="oh-qst-karta-side-row">
+                        <span>Setkání</span>
+                        <strong>@quest.Encounters.Count</strong>
+                    </div>
+                    <div class="oh-qst-karta-side-row">
+                        <span>Lokace</span>
+                        <strong>@quest.Locations.Count</strong>
+                    </div>
+                    <div class="oh-qst-karta-side-row">
+                        <span>Odměny (předměty)</span>
+                        <strong>@quest.Rewards.Count</strong>
+                    </div>
+                    @if (quest.RewardXp is int xp && xp > 0)
+                    {
+                        <div class="oh-qst-karta-side-row"><span>XP</span><strong>@xp</strong></div>
+                    }
+                    @if (quest.RewardMoney is int money && money > 0)
+                    {
+                        <div class="oh-qst-karta-side-row"><span>Groše</span><strong>@money gr</strong></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(quest.TimeSlot))
+                    {
+                        <div class="oh-qst-karta-side-row"><span>Časový slot</span><strong>@quest.TimeSlot</strong></div>
+                    }
+                </div>
+
+                @if (quest.GameId is not null)
+                {
+                    <div class="oh-qst-karta-side-block">
+                        <h6 class="oh-qst-karta-side-title">Stav v této hře</h6>
+                        <div class="oh-qst-state-actions">
+                            <button class="btn btn-sm btn-outline-secondary"
+                                    disabled="@(quest.State == QuestState.Inactive)"
+                                    @onclick="@(() => SetStateAsync(QuestState.Inactive))">
+                                <i class="bi bi-circle"></i> Neaktivní
+                            </button>
+                            <button class="btn btn-sm btn-outline-success"
+                                    disabled="@(quest.State == QuestState.Active)"
+                                    @onclick="@(() => SetStateAsync(QuestState.Active))">
+                                <i class="bi bi-fire"></i> Aktivovat
+                            </button>
+                            <button class="btn btn-sm btn-outline-warning"
+                                    disabled="@(quest.State == QuestState.Completed)"
+                                    @onclick="@(() => SetStateAsync(QuestState.Completed))">
+                                <i class="bi bi-check2-circle"></i> Dokončit
+                            </button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="oh-qst-karta-side-block">
+                        <h6 class="oh-qst-karta-side-title">Šablona</h6>
+                        <p class="text-muted small mb-2">Tato šablona se nepoužívá v žádné hře přímo. Stav (Neaktivní / Aktivní / Dokončený) se sleduje až po vytvoření kopie do hry.</p>
+                        @if (GameContext.SelectedGameId is int gid)
+                        {
+                            <button class="btn btn-sm btn-outline-primary w-100" type="button" @onclick="CopyToCurrentGameAsync"
+                                    disabled="@isCopying">
+                                @if (isCopying) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                Vytvořit kopii pro hru #@gid
+                                <i class="bi bi-arrow-right"></i>
+                            </button>
+                        }
+                    </div>
+                }
+            </aside>
+        </div>
+    }
+    else if (activeTab == "upravit")
+    {
+        <div class="oh-qst-edit">
+            <DxFormLayout>
+                <DxFormLayoutGroup Caption="Identita" ColSpanMd="12">
+                    <DxFormLayoutItem Caption="Název" ColSpanMd="8">
+                        <DxTextBox @bind-Text="@editModel.Name" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Typ" ColSpanMd="4">
+                        <DxComboBox Data="@questTypeValues" @bind-Value="@editModel.QuestType"
+                                    TextFieldName="Display" ValueFieldName="Value" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Pořadí v řetězu" ColSpanMd="4">
+                        <DxSpinEdit @bind-Value="@editModel.ChainOrder" MinValue="0" MaxValue="999"
+                                    NullText="(žádné)"
+                                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Nadřazený úkol (ID)" ColSpanMd="4">
+                        <DxSpinEdit @bind-Value="@editModel.ParentQuestId" MinValue="0"
+                                    NullText="(žádný)"
+                                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Časový slot" ColSpanMd="4">
+                        <DxTextBox @bind-Text="@editModel.TimeSlot" />
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+
+                <DxFormLayoutGroup Caption="Obrázek (5:7 portrét)" ColSpanMd="12">
+                    <DxFormLayoutItem ColSpanMd="12">
+                        <ImagePicker EntityType="quests" EntityId="@quest.Id"
+                                     AspectRatio="5:7" Width="280px"
+                                     Alt="@quest.Name" />
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+
+                <DxFormLayoutGroup Caption="Obsah" ColSpanMd="12">
+                    <DxFormLayoutItem ColSpanMd="12">
+                        <div class="oh-sacred-banner">
+                            <i class="bi bi-shield-fill-exclamation"></i>
+                            <span>Popis a herní text jsou <strong>posvátné</strong> — pište je tak, jak je uvidí hráč na herní kartě. Nezkracujte, neparafrázujte.</span>
+                        </div>
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Popis (organizátor)" ColSpanMd="12">
+                        <DxMemo @bind-Text="@editModel.Description" Rows="3" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Herní text (hráči)" ColSpanMd="12">
+                        <DxMemo @bind-Text="@editModel.FullText" Rows="6" />
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+
+                <DxFormLayoutGroup Caption="Skalární odměny" ColSpanMd="12">
+                    <DxFormLayoutItem Caption="XP" ColSpanMd="3">
+                        <DxSpinEdit @bind-Value="@editModel.RewardXp" MinValue="0" MaxValue="9999"
+                                    NullText="(žádné)"
+                                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Groše" ColSpanMd="3">
+                        <DxSpinEdit @bind-Value="@editModel.RewardMoney" MinValue="0" MaxValue="99999"
+                                    NullText="(žádné)"
+                                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Poznámky k odměně" ColSpanMd="6">
+                        <DxTextBox @bind-Text="@editModel.RewardNotes" />
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+            </DxFormLayout>
+
+            @* Tags multi-select — quest tags only (TagKind == Quest) *@
+            <div class="oh-qst-edit-tags mt-3">
+                <h6><i class="bi bi-tags"></i> Tagy</h6>
+                @if (quest.Tags.Count > 0)
+                {
+                    <div class="d-flex flex-wrap gap-1 mb-2">
+                        @foreach (var tag in quest.Tags)
+                        {
+                            <span class="oh-qst-tag-chip">
+                                @tag.Name
+                                <button type="button" class="oh-qst-tag-chip-x"
+                                        @onclick="() => RemoveTagAsync(tag)" @onclick:stopPropagation="true"
+                                        title="Odebrat">
+                                    <i class="bi bi-x"></i>
+                                </button>
+                            </span>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <p class="text-muted small mb-2">Žádné tagy.</p>
+                }
+                <div class="d-flex gap-2 align-items-end">
+                    <div style="flex:1">
+                        <DxComboBox Data="@allQuestTags" @bind-Value="@newTagId"
+                                    TextFieldName="Name" ValueFieldName="Id"
+                                    NullText="(vyberte tag)" SearchMode="ListSearchMode.AutoSearch" />
+                    </div>
+                    <button class="btn btn-sm btn-outline-primary" type="button"
+                            disabled="@(newTagId is null)" @onclick="AddTagAsync">
+                        <i class="bi bi-plus"></i> Přidat tag
+                    </button>
+                </div>
+            </div>
+
+            @if (saveError is not null)
+            {
+                <div class="alert alert-danger mt-2">@saveError</div>
+            }
+
+            <div class="oh-qst-edit-foot">
+                <button class="btn btn-outline-danger" type="button"
+                        @onclick="() => isDeleteVisible = true" disabled="@isSaving">
+                    <i class="bi bi-trash"></i> Smazat
+                </button>
+                <div style="flex:1"></div>
+                <button class="btn btn-secondary" type="button"
+                        @onclick="ResetEditModel" disabled="@isSaving">Zrušit</button>
+                <button class="btn btn-primary" type="button"
+                        @onclick="SaveAsync" disabled="@(isSaving || string.IsNullOrWhiteSpace(editModel.Name))">
+                    @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    Uložit
+                </button>
+            </div>
+        </div>
+    }
+    else if (activeTab == "setkani")
+    {
+        <div class="oh-qst-enc">
+            <div class="oh-qst-enc-toolbar">
+                <div class="oh-segmented" role="tablist" aria-label="Pohled">
+                    <button type="button"
+                            class="oh-segmented-btn @(encView == "seznam" ? "oh-segmented-btn--on" : "")"
+                            @onclick='() => encView = "seznam"'>
+                        <i class="bi bi-list-ul"></i> Seznam
+                    </button>
+                    <button type="button"
+                            class="oh-segmented-btn @(encView == "graf" ? "oh-segmented-btn--on" : "")"
+                            @onclick='() => encView = "graf"'>
+                        <i class="bi bi-diagram-3"></i> Graf
+                    </button>
+                </div>
+                <button class="btn btn-primary btn-sm" type="button" @onclick="() => isEncAddVisible = true">
+                    <i class="bi bi-plus-lg"></i> Nové setkání
+                </button>
+            </div>
+
+            @if (quest.Encounters.Count == 0)
+            {
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-shield-exclamation fs-1 d-block mb-2"></i>
+                    <p class="mb-0">Žádná setkání. Přidejte první setkání tlačítkem výše.</p>
+                </div>
+            }
+            else if (encView == "seznam")
+            {
+                <div class="oh-qst-enc-list">
+                    @{ var idx = 0; }
+                    @foreach (var e in quest.Encounters)
+                    {
+                        idx++;
+                        <EncounterCard @key="e.MonsterId"
+                                       Encounter="@e" Order="@idx" Editable="true"
+                                       OnRemove="@HandleEncounterRemoveRequested" />
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="oh-qst-enc-graph">
+                    @{ var idx = 0; }
+                    @foreach (var e in quest.Encounters)
+                    {
+                        idx++;
+                        <EncounterGraphNode @key="e.MonsterId" Encounter="@e" Order="@idx" />
+                        @if (idx < quest.Encounters.Count)
+                        {
+                            <div class="oh-qst-enc-graph-arrow" aria-hidden="true">
+                                <i class="bi bi-arrow-right"></i>
+                            </div>
+                        }
+                    }
+                </div>
+            }
+
+            <p class="text-muted small mt-3">
+                <i class="bi bi-info-circle"></i>
+                Phase 1 setkání obsahují jen Příšeru + Počet. Pořadí, název, lokace
+                a popis na úrovni setkání přicházejí v migraci 0.16.x (#193 follow-up).
+            </p>
+        </div>
+
+        <EncounterAddPopup @bind-Visible="isEncAddVisible"
+                           QuestId="@quest.Id"
+                           Added="@LoadAsync" />
+    }
+    else if (activeTab == "lokace")
+    {
+        <div class="oh-qst-loc">
+            <h3 class="mb-3"><i class="bi bi-geo-alt"></i> Lokace tohoto úkolu</h3>
+            @if (quest.Locations.Count == 0)
+            {
+                <p class="text-muted">Žádné lokace zatím nejsou přiřazeny.</p>
+            }
+            else
+            {
+                <div class="oh-qst-loc-list">
+                    @foreach (var l in quest.Locations)
+                    {
+                        <div class="oh-qst-loc-row" @key="l.LocationId">
+                            <button type="button" class="oh-qst-loc-chip"
+                                    @onclick="@(() => Nav.NavigateTo($"/locations/{l.LocationId}"))"
+                                    title="Otevřít lokaci">
+                                <i class="bi bi-geo-alt"></i>
+                                <span>@l.LocationName</span>
+                                <i class="bi bi-arrow-right"></i>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-link text-danger p-0"
+                                    @onclick="@(() => HandleLocationRemoveRequested(l))" title="Odebrat lokaci">
+                                <i class="bi bi-x-circle"></i>
+                            </button>
+                        </div>
+                    }
+                </div>
+            }
+            <div class="oh-qst-loc-add mt-3">
+                <DxComboBox Data="@gameLocations" @bind-Value="@newLocationId"
+                            TextFieldName="Name" ValueFieldName="Id"
+                            NullText="(vyberte lokaci)"
+                            SearchMode="ListSearchMode.AutoSearch"
+                            CssClass="oh-qst-loc-pick" />
+                <button type="button" class="btn btn-primary btn-sm"
+                        disabled="@(newLocationId is null)" @onclick="AddLocationAsync">
+                    <i class="bi bi-plus"></i> Přidat lokaci
+                </button>
+            </div>
+            @if (locError is not null)
+            {
+                <div class="alert alert-danger mt-2">@locError</div>
+            }
+        </div>
+    }
+    else if (activeTab == "odmeny")
+    {
+        <div class="oh-qst-rew">
+            <RewardLootList QuestId="@quest.Id"
+                            Rewards="@quest.Rewards.ToList()"
+                            Editable="true"
+                            Changed="@LoadAsync" />
+
+            <h3 class="oh-qst-rew-section-title mt-4"><i class="bi bi-stars"></i> XP, groše, poznámky</h3>
+            <RewardScalarFields Xp="@editModel.RewardXp" XpChanged="@OnXpChanged"
+                                Money="@editModel.RewardMoney" MoneyChanged="@OnMoneyChanged"
+                                Notes="@editModel.RewardNotes" NotesChanged="@OnNotesChanged"
+                                Editable="true" />
+            <p class="text-muted small mt-1">
+                <i class="bi bi-info-circle"></i> Skalární pole se ukládají z Upravit tabu — změny zde nepřepíší databázi, dokud kliknete na <em>Uložit</em>.
+            </p>
+
+            <details class="oh-qst-rew-collapsed mt-4">
+                <summary><i class="bi bi-mortarboard"></i> Dovednosti — odměny</summary>
+                <div class="oh-qst-rew-disabled">
+                    <i class="bi bi-hourglass-split"></i>
+                    <p class="mb-1">Dovednosti jako odměna úkolu vyžadují novou tabulku QuestSkillReward — plánováno v migraci 0.16.x (#193 follow-up).</p>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" disabled>
+                        <i class="bi bi-plus"></i> Přidat dovednost (Phase 2)
+                    </button>
+                </div>
+            </details>
+            <details class="oh-qst-rew-collapsed">
+                <summary><i class="bi bi-magic"></i> Kouzla — odměny</summary>
+                <div class="oh-qst-rew-disabled">
+                    <i class="bi bi-hourglass-split"></i>
+                    <p class="mb-1">Kouzla jako odměna úkolu vyžadují novou tabulku QuestSpellReward — plánováno v migraci 0.16.x (#193 follow-up).</p>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" disabled>
+                        <i class="bi bi-plus"></i> Přidat kouzlo (Phase 2)
+                    </button>
+                </div>
+            </details>
+        </div>
+    }
+}
+
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Smazat úkol?" Width="400px">
+    <BodyContentTemplate Context="ctx">
+        <p>Smazat úkol <strong>@(quest?.Name)</strong>? Setkání, lokace, odměny a tagy budou odpojeny.</p>
+        @if (deleteError is not null)
+        {
+            <div class="alert alert-danger">@deleteError</div>
+        }
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" type="button" @onclick="() => isDeleteVisible = false">Zrušit</button>
+            <button class="btn btn-danger" type="button" @onclick="ConfirmDeleteAsync">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private QuestDetailDto? quest;
+    private bool loading = true;
+    private string? error;
+
+    private string activeTab = "karta";
+
+    // Edit form state
+    private EditModel editModel = new();
+    private bool isSaving;
+    private string? saveError;
+
+    // Delete state
+    private bool isDeleteVisible;
+    private string? deleteError;
+
+    // Tags
+    private List<TagDto> allQuestTags = [];
+    private int? newTagId;
+
+    // Locations
+    private List<LocationListDto> gameLocations = [];
+    private int? newLocationId;
+    private string? locError;
+
+    // Encounters
+    private string encView = "seznam";
+    private bool isEncAddVisible;
+
+    // Copy-to-game
+    private bool isCopying;
+
+    private record TabDef(string Key, string Label, string Icon, int? Count);
+
+    private List<TabDef> tabs => quest is null ? [] :
+    [
+        new("karta",   "Karta",     "bi-bookmark-fill",       null),
+        new("upravit", "Upravit",   "bi-pencil",              null),
+        new("setkani", "Setkání",   "bi-shield-exclamation",  quest.Encounters.Count),
+        new("lokace",  "Lokace",    "bi-geo-alt",             quest.Locations.Count),
+        new("odmeny",  "Odměny",    "bi-gift",                quest.Rewards.Count)
+    ];
+
+    private static readonly List<EnumItem<QuestType>> questTypeValues = Enum.GetValues<QuestType>()
+        .Select(v => new EnumItem<QuestType>(v, v.GetDisplayName())).ToList();
+
+    private record EnumItem<T>(T Value, string Display);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GameContext.InitializeAsync();
+        GameContext.OnGameChanged += OnGameChanged;
+        await LoadAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (quest is not null && quest.Id != Id)
+            await LoadAsync();
+    }
+
+    private async void OnGameChanged()
+    {
+        await LoadPickerDataAsync();
+        StateHasChanged();
+    }
+
+    public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        error = null;
+        try
+        {
+            quest = await Api.GetAsync<QuestDetailDto>($"/api/quests/{Id}");
+            if (quest is null)
+            {
+                error = "Úkol nenalezen.";
+                return;
+            }
+            ResetEditModel();
+            await LoadPickerDataAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { loading = false; }
+    }
+
+    private async Task LoadPickerDataAsync()
+    {
+        if (quest is null) return;
+        try
+        {
+            var tagsTask = Api.GetListAsync<TagDto>("/api/tags");
+            var gid = quest.GameId ?? GameContext.SelectedGameId;
+            var locationsTask = gid is int g
+                ? Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{g}")
+                : Api.GetListAsync<LocationListDto>("/api/locations");
+            await Task.WhenAll(tagsTask, locationsTask);
+            allQuestTags = (await tagsTask).Where(t => t.Kind == TagKind.Quest).ToList();
+            gameLocations = await locationsTask;
+        }
+        catch { /* picker data is non-critical for read view */ }
+    }
+
+    private void ResetEditModel()
+    {
+        if (quest is null) return;
+        editModel = new EditModel
+        {
+            Name = quest.Name,
+            QuestType = quest.QuestType,
+            Description = quest.Description,
+            FullText = quest.FullText,
+            TimeSlot = quest.TimeSlot,
+            RewardXp = quest.RewardXp,
+            RewardMoney = quest.RewardMoney,
+            RewardNotes = quest.RewardNotes,
+            ChainOrder = quest.ChainOrder,
+            ParentQuestId = quest.ParentQuestId
+        };
+        saveError = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (quest is null || string.IsNullOrWhiteSpace(editModel.Name)) return;
+        saveError = null;
+        isSaving = true;
+        try
+        {
+            var dto = new UpdateQuestDto(
+                editModel.Name.Trim(), editModel.QuestType,
+                editModel.Description, editModel.FullText, editModel.TimeSlot,
+                editModel.RewardXp, editModel.RewardMoney, editModel.RewardNotes,
+                editModel.ChainOrder, editModel.ParentQuestId);
+            var (ok, problem) = await Api.PutWithProblemAsync($"/api/quests/{quest.Id}", dto);
+            if (!ok)
+            {
+                saveError = problem ?? "Uložení se nezdařilo.";
+                return;
+            }
+            await LoadAsync();
+        }
+        catch (Exception ex) { saveError = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (quest is null) return;
+        deleteError = null;
+        try
+        {
+            var ok = await Api.DeleteAsync($"/api/quests/{quest.Id}");
+            if (!ok)
+            {
+                deleteError = "Smazání se nezdařilo (úkol může mít odkazy).";
+                return;
+            }
+            isDeleteVisible = false;
+            Nav.NavigateTo("/quests");
+        }
+        catch (Exception ex) { deleteError = ex.Message; }
+    }
+
+    private async Task SetStateAsync(QuestState state)
+    {
+        if (quest is null || quest.GameId is null) return;
+        try
+        {
+            // PATCH /state — server validates the enum value.
+            await Api.PatchAsync($"/api/quests/{quest.Id}/state",
+                new UpdateQuestStateDto(state));
+            await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task CopyToCurrentGameAsync()
+    {
+        if (quest is null) return;
+        var gid = GameContext.SelectedGameId;
+        if (gid is null) return;
+        isCopying = true;
+        try
+        {
+            var result = await Api.PostAsync<object, QuestCopyResultDto>(
+                $"/api/quests/{quest.Id}/copy-to-game/{gid.Value}", new { });
+            if (result is not null)
+            {
+                Nav.NavigateTo($"/quests/{result.Quest.Id}");
+            }
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isCopying = false; }
+    }
+
+    private async Task AddTagAsync()
+    {
+        if (quest is null || newTagId is null) return;
+        try
+        {
+            await Api.PostAsync($"/api/quests/{quest.Id}/tags/{newTagId}");
+            newTagId = null;
+            await LoadAsync();
+        }
+        catch (Exception ex) { saveError = ex.Message; }
+    }
+
+    private async Task RemoveTagAsync(TagDto tag)
+    {
+        if (quest is null) return;
+        try
+        {
+            await Api.DeleteAsync($"/api/quests/{quest.Id}/tags/{tag.Id}");
+            await LoadAsync();
+        }
+        catch (Exception ex) { saveError = ex.Message; }
+    }
+
+    private async Task AddLocationAsync()
+    {
+        if (quest is null || newLocationId is null) return;
+        locError = null;
+        try
+        {
+            var (ok, _, problem) = await Api.PostWithProblemAsync<AddQuestLocationDto, object>(
+                $"/api/quests/{quest.Id}/locations",
+                new AddQuestLocationDto(newLocationId.Value));
+            if (!ok)
+            {
+                locError = problem ?? "Přidání lokace selhalo.";
+                return;
+            }
+            newLocationId = null;
+            await LoadAsync();
+        }
+        catch (Exception ex) { locError = ex.Message; }
+    }
+
+    private async Task HandleLocationRemoveRequested(QuestLocationDto loc)
+    {
+        if (quest is null) return;
+        try
+        {
+            var ok = await Api.DeleteAsync($"/api/quests/{quest.Id}/locations/{loc.LocationId}");
+            if (!ok)
+            {
+                locError = "Odebrání lokace selhalo.";
+                return;
+            }
+            await LoadAsync();
+        }
+        catch (Exception ex) { locError = ex.Message; }
+    }
+
+    private async Task HandleEncounterRemoveRequested(QuestEncounterDto enc)
+    {
+        if (quest is null) return;
+        try
+        {
+            var ok = await Api.DeleteAsync($"/api/quests/{quest.Id}/encounters/{enc.MonsterId}");
+            if (!ok) return;
+            await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private void OnXpChanged(int? v) => editModel.RewardXp = v;
+    private void OnMoneyChanged(int? v) => editModel.RewardMoney = v;
+    private void OnNotesChanged(string? v) => editModel.RewardNotes = v;
+
+    private sealed class EditModel
+    {
+        public string Name { get; set; } = "";
+        public QuestType QuestType { get; set; } = QuestType.General;
+        public string? Description { get; set; }
+        public string? FullText { get; set; }
+        public string? TimeSlot { get; set; }
+        public int? RewardXp { get; set; }
+        public int? RewardMoney { get; set; }
+        public string? RewardNotes { get; set; }
+        public int? ChainOrder { get; set; }
+        public int? ParentQuestId { get; set; }
+    }
+}

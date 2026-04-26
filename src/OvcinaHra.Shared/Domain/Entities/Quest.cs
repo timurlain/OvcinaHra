@@ -16,6 +16,8 @@ public class Quest
     public int? ChainOrder { get; set; }
     public int? ParentQuestId { get; set; }
     public int? GameId { get; set; }
+    public string? ImagePath { get; set; }
+    public QuestState State { get; set; } = QuestState.Inactive;
 
     public Quest? ParentQuest { get; set; }
     public Game? Game { get; set; }

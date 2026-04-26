@@ -1,0 +1,115 @@
+@using OvcinaHra.Shared.Dtos
+@inject ApiClient Api
+
+@* Kořist (item rewards) section — list of chips with quantity pill + Smazat,
+   plus [+ Přidat položku] which uses the existing ItemInlineCreator OR an
+   in-place picker for items that already exist in the current game. *@
+
+<section class="oh-qst-loot">
+    <h3 class="oh-qst-loot-title"><i class="bi bi-box-seam"></i> Kořist</h3>
+    @if (Rewards.Count == 0)
+    {
+        <p class="text-muted small mb-2">Žádné předměty v odměnách.</p>
+    }
+    else
+    {
+        <div class="oh-qst-loot-list">
+            @foreach (var r in Rewards)
+            {
+                <div class="oh-qst-loot-chip" @key="r.ItemId">
+                    <span class="oh-qst-loot-name">@r.ItemName</span>
+                    <span class="oh-qst-loot-qty">×@r.Quantity</span>
+                    @if (Editable)
+                    {
+                        <button type="button" class="btn btn-sm btn-link text-danger p-0"
+                                @onclick="() => HandleRemove(r)" title="Odebrat">
+                            <i class="bi bi-x-circle"></i>
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @if (Editable)
+    {
+        <div class="oh-qst-loot-add">
+            <DxComboBox Data="@allItems" @bind-Value="@newItemId"
+                        TextFieldName="Name" ValueFieldName="Id"
+                        NullText="(vyberte předmět)"
+                        SearchMode="ListSearchMode.AutoSearch"
+                        CssClass="oh-qst-loot-pick" />
+            <DxSpinEdit @bind-Value="@newQuantity" MinValue="1" MaxValue="99"
+                        CssClass="oh-qst-loot-qty-input" />
+            <button type="button" class="btn btn-primary btn-sm"
+                    disabled="@(newItemId is null || isSaving)"
+                    @onclick="HandleAdd">
+                <i class="bi bi-plus"></i> Přidat položku
+            </button>
+        </div>
+        @if (error is not null)
+        {
+            <div class="alert alert-danger mt-2">@error</div>
+        }
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public int QuestId { get; set; }
+    [Parameter, EditorRequired] public List<QuestRewardDto> Rewards { get; set; } = [];
+    [Parameter] public bool Editable { get; set; }
+    [Parameter] public EventCallback Changed { get; set; }
+
+    private List<ItemListDto> allItems = [];
+    private int? newItemId;
+    private int newQuantity = 1;
+    private bool isSaving;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Editable)
+        {
+            allItems = await Api.GetListAsync<ItemListDto>("/api/items");
+        }
+    }
+
+    private async Task HandleAdd()
+    {
+        if (newItemId is null) return;
+        error = null;
+        isSaving = true;
+        try
+        {
+            var (ok, _, problem) = await Api.PostWithProblemAsync<AddQuestRewardDto, object>(
+                $"/api/quests/{QuestId}/rewards",
+                new AddQuestRewardDto(newItemId.Value, newQuantity));
+            if (!ok)
+            {
+                error = problem ?? "Nepodařilo se přidat položku.";
+                return;
+            }
+            newItemId = null;
+            newQuantity = 1;
+            await Changed.InvokeAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task HandleRemove(QuestRewardDto r)
+    {
+        error = null;
+        try
+        {
+            var ok = await Api.DeleteAsync($"/api/quests/{QuestId}/rewards/{r.ItemId}");
+            if (!ok)
+            {
+                error = "Smazání odměny selhalo.";
+                return;
+            }
+            await Changed.InvokeAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+}

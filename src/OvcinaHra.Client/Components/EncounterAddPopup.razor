@@ -1,0 +1,107 @@
+@using OvcinaHra.Shared.Dtos
+@inject ApiClient Api
+
+@* Inline-creator-style popup for adding a setkání. Phase 1: pick a Monster from
+   /api/monsters + Quantity. Phase 2 will add per-encounter title/location/etc. *@
+
+<DxPopup @bind-Visible="@Visible" HeaderText="Nové setkání" Width="540px">
+    <BodyContentTemplate Context="ctx">
+        @if (loading)
+        {
+            <p class="text-muted">Načítám příšery…</p>
+        }
+        else
+        {
+            <DxFormLayout>
+                <DxFormLayoutItem Caption="Příšera" ColSpanMd="9">
+                    <DxComboBox Data="@monsters" @bind-Value="@monsterId"
+                                TextFieldName="Name" ValueFieldName="Id"
+                                NullText="(vyberte příšeru)"
+                                SearchMode="ListSearchMode.AutoSearch" />
+                </DxFormLayoutItem>
+                <DxFormLayoutItem Caption="Počet" ColSpanMd="3">
+                    <DxSpinEdit @bind-Value="@quantity" MinValue="1" MaxValue="99" />
+                </DxFormLayoutItem>
+            </DxFormLayout>
+        }
+
+        @if (error is not null)
+        {
+            <div class="alert alert-danger mt-2">@error</div>
+        }
+
+        <div class="d-flex gap-2 justify-content-end mt-3">
+            <button class="btn btn-secondary" @onclick="Cancel" disabled="@isSaving">Zrušit</button>
+            <button class="btn btn-primary" @onclick="SaveAsync"
+                    disabled="@(isSaving || monsterId is null)">
+                @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Přidat setkání
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter, EditorRequired] public int QuestId { get; set; }
+    [Parameter] public EventCallback Added { get; set; }
+
+    private List<MonsterListDto> monsters = [];
+    private bool loading = true;
+    private bool isSaving;
+    private int? monsterId;
+    private int quantity = 1;
+    private string? error;
+
+    public override async Task SetParametersAsync(ParameterView parameters)
+    {
+        var wasVisible = Visible;
+        await base.SetParametersAsync(parameters);
+        if (!wasVisible && Visible)
+        {
+            monsterId = null;
+            quantity = 1;
+            error = null;
+            isSaving = false;
+            await LoadMonstersAsync();
+        }
+    }
+
+    private async Task LoadMonstersAsync()
+    {
+        loading = true;
+        try
+        {
+            monsters = await Api.GetListAsync<MonsterListDto>("/api/monsters");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (monsterId is null) return;
+        error = null;
+        isSaving = true;
+        try
+        {
+            var (ok, _, problem) = await Api.PostWithProblemAsync<AddQuestEncounterDto, object>(
+                $"/api/quests/{QuestId}/encounters",
+                new AddQuestEncounterDto(monsterId.Value, quantity));
+            if (!ok)
+            {
+                error = problem ?? "Nepodařilo se přidat setkání.";
+                return;
+            }
+            await Added.InvokeAsync();
+            await VisibleChanged.InvokeAsync(false);
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task Cancel() => await VisibleChanged.InvokeAsync(false);
+}

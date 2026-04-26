@@ -1,0 +1,62 @@
+@using OvcinaHra.Shared.Dtos
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Extensions
+
+@* 5:7 portrait gallery tile — full-bleed image (or parchment placeholder),
+   name overlay (gradient), encounters/rewards counts in mono footer.
+   Click → /quests/{id}. *@
+
+<button type="button" class="oh-qst-tile @(string.IsNullOrEmpty(Quest.ImageUrl) || _imageFailed ? "oh-qst-tile--placeholder" : "")"
+        @key="Quest.Id" @onclick="HandleClick">
+    <div class="oh-qst-tile-art">
+        @if (!string.IsNullOrEmpty(Quest.ImageUrl) && !_imageFailed)
+        {
+            <img src="@Quest.ImageUrl" alt="@Quest.Name" @onerror="() => _imageFailed = true" />
+        }
+        else
+        {
+            <div class="oh-qst-tile-parchment">
+                <i class="bi bi-journal-richtext"></i>
+                <span class="oh-qst-tile-parchment-name">@Quest.Name</span>
+            </div>
+        }
+        @if (ShowState && Quest.GameId is not null)
+        {
+            <div class="oh-qst-tile-state">
+                <QuestStateChip State="@Quest.State" />
+            </div>
+        }
+    </div>
+    <div class="oh-qst-tile-body">
+        <div class="oh-qst-tile-name">@Quest.Name</div>
+        <div class="oh-qst-tile-foot">
+            <span class="oh-qst-tile-foot-pill" title="Setkání">
+                <i class="bi bi-shield-exclamation"></i>@Quest.EncountersCount
+            </span>
+            <span class="oh-qst-tile-foot-pill" title="Odměny">
+                <i class="bi bi-gift"></i>@Quest.RewardsCount
+            </span>
+            <span class="oh-qst-tile-foot-type">@Quest.QuestTypeDisplay</span>
+        </div>
+    </div>
+</button>
+
+@code {
+    [Parameter, EditorRequired] public QuestListDto Quest { get; set; } = null!;
+    [Parameter] public bool ShowState { get; set; } = true;
+    [Parameter] public EventCallback<QuestListDto> OnClick { get; set; }
+
+    private bool _imageFailed;
+    private string? _lastImageUrl;
+
+    protected override void OnParametersSet()
+    {
+        if (_lastImageUrl != Quest.ImageUrl)
+        {
+            _lastImageUrl = Quest.ImageUrl;
+            _imageFailed = false;
+        }
+    }
+
+    private async Task HandleClick() => await OnClick.InvokeAsync(Quest);
+}

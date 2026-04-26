@@ -1,0 +1,186 @@
+@page "/quests/{Id:int}/print"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Extensions
+
+@* Karta úkolu — A5 portrait, ONE quest per sheet. Designer brief calls for
+   organizer hand-out, smaller scope than Spellbook (per-quest, not per-game).
+   @media print rules in ovcinahra-theme.css strip the on-screen toolbar. *@
+
+<div class="oh-qst-print-toolbar">
+    <div class="oh-qst-print-toolbar-info">
+        <i class="bi bi-printer"></i> Karta úkolu — A5 portrét
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-outline-secondary" type="button"
+                @onclick='() => Nav.NavigateTo($"/quests/{Id}")'>
+            <i class="bi bi-arrow-left"></i> Zpět na detail
+        </button>
+        <button class="btn btn-sm btn-primary" type="button" @onclick="PrintAsync">
+            <i class="bi bi-printer-fill"></i> Tisk
+        </button>
+    </div>
+</div>
+
+@if (loading)
+{
+    <p class="text-muted text-center mt-5">Načítám…</p>
+}
+else if (quest is null)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-emoji-frown fs-1 d-block mb-2"></i>
+        <p>Úkol nenalezen.</p>
+    </div>
+}
+else
+{
+    <div class="oh-qst-print-stage">
+        <article class="oh-qst-print-card">
+            <header class="oh-qst-print-banner">
+                <h1>Karta úkolu</h1>
+                @if (gameName is not null)
+                {
+                    <p class="oh-qst-print-banner-sub">@gameName</p>
+                }
+            </header>
+
+            <section class="oh-qst-print-hero">
+                @if (!string.IsNullOrEmpty(quest.ImageUrl))
+                {
+                    <img src="@quest.ImageUrl" alt="@quest.Name" class="oh-qst-print-img" />
+                }
+                <div class="oh-qst-print-hero-text">
+                    <h2 class="oh-qst-print-name">@quest.Name</h2>
+                    <div class="oh-qst-print-meta">
+                        <span>@quest.QuestTypeDisplay</span>
+                        @foreach (var t in quest.Tags)
+                        {
+                            <span class="oh-qst-print-tag">@t.Name</span>
+                        }
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(quest.Description))
+                    {
+                        <p class="oh-qst-print-desc">@quest.Description</p>
+                    }
+                </div>
+            </section>
+
+            @if (!string.IsNullOrWhiteSpace(quest.FullText))
+            {
+                <section class="oh-qst-print-section">
+                    <h3>Herní text</h3>
+                    <p class="oh-qst-print-fulltext">@quest.FullText</p>
+                </section>
+            }
+
+            @if (quest.Encounters.Count > 0)
+            {
+                <section class="oh-qst-print-section">
+                    <h3>Setkání</h3>
+                    <ol class="oh-qst-print-enc-list">
+                        @foreach (var e in quest.Encounters)
+                        {
+                            <li>
+                                <strong>@e.MonsterName</strong>
+                                <span class="oh-qst-print-enc-qty">×@e.Quantity</span>
+                            </li>
+                        }
+                    </ol>
+                </section>
+            }
+
+            <section class="oh-qst-print-section">
+                <h3>Odměny</h3>
+                @if (quest.Rewards.Count == 0
+                     && (quest.RewardXp ?? 0) == 0
+                     && (quest.RewardMoney ?? 0) == 0
+                     && string.IsNullOrWhiteSpace(quest.RewardNotes))
+                {
+                    <p class="text-muted">Žádné odměny.</p>
+                }
+                else
+                {
+                    <ul class="oh-qst-print-rew-list">
+                        @foreach (var r in quest.Rewards)
+                        {
+                            <li>@r.ItemName <span class="oh-qst-print-enc-qty">×@r.Quantity</span></li>
+                        }
+                        @if (quest.RewardXp is int xp && xp > 0)
+                        {
+                            <li><strong>@xp XP</strong></li>
+                        }
+                        @if (quest.RewardMoney is int money && money > 0)
+                        {
+                            <li><strong>@money grošů</strong></li>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(quest.RewardNotes))
+                        {
+                            <li><em>@quest.RewardNotes</em></li>
+                        }
+                    </ul>
+                }
+            </section>
+
+            @if (quest.Locations.Count > 0)
+            {
+                <section class="oh-qst-print-section">
+                    <h3>Lokace</h3>
+                    <p class="oh-qst-print-locs">@string.Join(" · ", quest.Locations.Select(l => l.LocationName))</p>
+                </section>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(quest.TimeSlot))
+            {
+                <section class="oh-qst-print-section">
+                    <h3>Časový slot</h3>
+                    <p>@quest.TimeSlot</p>
+                </section>
+            }
+        </article>
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private QuestDetailDto? quest;
+    private bool loading = true;
+    private string? gameName;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (quest is not null && quest.Id != Id) await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        try
+        {
+            quest = await Api.GetAsync<QuestDetailDto>($"/api/quests/{Id}");
+            if (quest?.GameId is int gid)
+            {
+                // Best-effort game label for the print header.
+                try
+                {
+                    var games = await Api.GetListAsync<GameListDto>("/api/games");
+                    var g = games.FirstOrDefault(x => x.Id == gid);
+                    gameName = g is null ? null : $"{g.Name} · edice {g.Edition}";
+                }
+                catch { gameName = null; }
+            }
+        }
+        finally { loading = false; }
+    }
+
+    private async Task PrintAsync()
+    {
+        try { await JS.InvokeVoidAsync("print"); } catch { /* user cancelled */ }
+    }
+}

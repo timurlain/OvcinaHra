@@ -1,0 +1,15 @@
+@using OvcinaHra.Shared.Dtos
+
+@* Setkání graf node — horizontal box rendered next to its peers with arrow
+   connectors. Phase 1 = sequential only (no branching). *@
+
+<div class="oh-qst-enc-graph-node" @key="Encounter.MonsterId">
+    <div class="oh-qst-enc-graph-order">@Order</div>
+    <div class="oh-qst-enc-graph-name">@Encounter.MonsterName</div>
+    <div class="oh-qst-enc-graph-qty">×@Encounter.Quantity</div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public QuestEncounterDto Encounter { get; set; } = null!;
+    [Parameter, EditorRequired] public int Order { get; set; }
+}

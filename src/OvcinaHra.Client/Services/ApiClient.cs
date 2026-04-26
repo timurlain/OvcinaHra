@@ -64,6 +64,14 @@ public class ApiClient
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task PatchAsync<TRequest>(string url, TRequest data)
+    {
+        using var content = JsonContent.Create(data, options: JsonOptions);
+        using var request = new HttpRequestMessage(HttpMethod.Patch, url) { Content = content };
+        var response = await _http.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+    }
+
     public async Task<T?> PostMultipartAsync<T>(string url, MultipartFormDataContent content)
     {
         var response = await _http.PostAsync(url, content);

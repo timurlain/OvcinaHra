@@ -1,0 +1,346 @@
+@page "/games/{GameId:int}/quests"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Extensions
+
+@* Per-game quests grid. Different shape from /quests catalog: each row is a
+   Quest with GameId == this game. State chip is meaningful here (catalog rows
+   hide it). Phase 1 source-badge is omitted — schema has no TemplateQuestId
+   field, deferred to Phase 2 follow-up. *@
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h1 class="mb-0">Úkoly hry @(game?.Name)</h1>
+        @if (game is not null)
+        {
+            <p class="text-muted small mb-0">edice @game.Edition · @quests.Count úkolů</p>
+        }
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary" type="button"
+                @onclick='() => Nav.NavigateTo("/quests")'>
+            <i class="bi bi-journal-richtext"></i> Katalog
+        </button>
+        <button class="btn btn-outline-primary" type="button" @onclick="() => isFromTemplateVisible = true">
+            <i class="bi bi-files"></i> Přidat ze šablony
+        </button>
+        <button class="btn btn-primary" type="button" @onclick="OpenBlankCreateModal">
+            <i class="bi bi-plus-lg"></i> Od nuly
+        </button>
+    </div>
+</div>
+
+@* State filter pill row *@
+<div class="oh-qst-state-pillrow mb-3">
+    @foreach (var (key, label) in stateFilterOptions)
+    {
+        <button type="button"
+                class="oh-qst-state-pill @(stateFilter == key ? "oh-qst-state-pill--on" : "")"
+                @onclick="() => stateFilter = key">
+            @label
+        </button>
+    }
+</div>
+
+@if (loading)
+{
+    <p class="text-muted">Načítám…</p>
+}
+else if (filtered.Count == 0)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-journal-richtext fs-1 d-block mb-2"></i>
+        <p>Žádné úkoly v této hře odpovídají filtru.</p>
+    </div>
+}
+else
+{
+    @* LayoutKey bumped to grid-layout-game-quests-v2 — column schema added
+       state, image, counts. Memory rule: feedback_ovcinagrid_layoutkey_bump. *@
+    <OvcinaGrid Data="@filtered" KeyFieldName="Id" LayoutKey="grid-layout-game-quests-v2"
+                RowClick="@(e => Nav.NavigateTo($"/quests/{((QuestListDto)e.Grid.GetDataItem(e.VisibleIndex)).Id}"))">
+        <Columns>
+            <DxGridDataColumn Caption="" Width="60px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{ var q = (QuestListDto)context.DataItem; }
+                    <div class="oh-qst-mini-tile @(string.IsNullOrEmpty(q.ImageUrl) ? "oh-qst-mini-tile--placeholder" : "")">
+                        @if (!string.IsNullOrEmpty(q.ImageUrl))
+                        {
+                            <img src="@q.ImageUrl" alt="@q.Name" />
+                        }
+                        else
+                        {
+                            <i class="bi bi-journal-richtext"></i>
+                        }
+                    </div>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="StateDisplay" Caption="Stav" Width="130px">
+                <CellDisplayTemplate>
+                    @{ var q = (QuestListDto)context.DataItem; }
+                    <QuestStateChip State="@q.State" />
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="Name" Caption="Název" MinWidth="220" />
+            <DxGridDataColumn FieldName="QuestTypeDisplay" Caption="Typ" Width="140px" />
+            <DxGridDataColumn FieldName="EncountersCount" Caption="Setkání" Width="100px">
+                <CellDisplayTemplate>
+                    @{ var q = (QuestListDto)context.DataItem; }
+                    <span class="oh-pill-mono">@q.EncountersCount</span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="RewardsCount" Caption="Odměny" Width="100px">
+                <CellDisplayTemplate>
+                    @{ var q = (QuestListDto)context.DataItem; }
+                    <span class="oh-pill-mono">@q.RewardsCount</span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="LocationsCount" Caption="Lokace" Width="90px" Visible="false">
+                <CellDisplayTemplate>
+                    @{ var q = (QuestListDto)context.DataItem; }
+                    <span class="oh-pill-mono">@q.LocationsCount</span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="TagsCount" Caption="Tagy" Width="80px" Visible="false">
+                <CellDisplayTemplate>
+                    @{ var q = (QuestListDto)context.DataItem; }
+                    <span class="oh-pill-mono">@q.TagsCount</span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="ChainOrder" Caption="Pořadí" Width="90px" Visible="false" />
+        </Columns>
+    </OvcinaGrid>
+}
+
+@* Add-from-template popup: pick a catalog quest, server CopyToGame creates
+   the per-game fork with deep-copied tags/locations/encounters/rewards. *@
+<DxPopup AllowResize="true" @bind-Visible="@isFromTemplateVisible"
+         HeaderText="Přidat úkol ze šablony" Width="640px">
+    <BodyContentTemplate Context="ctx">
+        @if (catalog is null)
+        {
+            <p class="text-muted">Načítám katalog…</p>
+        }
+        else if (catalog.Count == 0)
+        {
+            <p class="text-muted">V katalogu nejsou žádné šablony úkolů.</p>
+        }
+        else
+        {
+            <DxFormLayout>
+                <DxFormLayoutItem Caption="Šablona" ColSpanMd="12">
+                    <DxComboBox Data="@catalog" @bind-Value="@templateId"
+                                TextFieldName="Name" ValueFieldName="Id"
+                                NullText="(vyberte šablonu)"
+                                SearchMode="ListSearchMode.AutoSearch" />
+                </DxFormLayoutItem>
+            </DxFormLayout>
+        }
+        @if (copyError is not null)
+        {
+            <div class="alert alert-danger mt-2">@copyError</div>
+        }
+        @if (copyWarnings.Count > 0)
+        {
+            <div class="alert alert-warning mt-2">
+                <strong>Upozornění:</strong>
+                <ul class="mb-0">
+                    @foreach (var w in copyWarnings) { <li>@w</li> }
+                </ul>
+            </div>
+        }
+        <div class="d-flex gap-2 justify-content-end mt-3">
+            <button class="btn btn-secondary" type="button" @onclick="() => isFromTemplateVisible = false">Zavřít</button>
+            <button class="btn btn-primary" type="button"
+                    @onclick="CopyFromTemplateAsync"
+                    disabled="@(isCopying || templateId is null)">
+                @if (isCopying) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Vytvořit kopii
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@* Blank create popup *@
+<DxPopup AllowResize="true" @bind-Visible="@isBlankVisible" HeaderText="Nový úkol (od nuly)" Width="560px">
+    <BodyContentTemplate Context="ctx">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Název" ColSpanMd="12">
+                <DxTextBox @bind-Text="@createName" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Typ" ColSpanMd="12">
+                <DxComboBox Data="@questTypeValues" @bind-Value="@createType"
+                            TextFieldName="Display" ValueFieldName="Value" />
+            </DxFormLayoutItem>
+        </DxFormLayout>
+        @if (createError is not null) { <div class="alert alert-danger mt-2">@createError</div> }
+        <div class="d-flex gap-2 justify-content-end mt-3">
+            <button class="btn btn-secondary" type="button" @onclick="() => isBlankVisible = false" disabled="@isCreating">Zrušit</button>
+            <button class="btn btn-primary" type="button" @onclick="CreateBlankAsync"
+                    disabled="@(isCreating || string.IsNullOrWhiteSpace(createName))">
+                @if (isCreating) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Vytvořit a otevřít
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    [Parameter] public int GameId { get; set; }
+
+    private GameListDto? game;
+    private List<QuestListDto> quests = [];
+    private List<QuestCatalogDto>? catalog;
+    private bool loading = true;
+
+    private string stateFilter = "all"; // all | inactive | active | done
+
+    private static readonly (string Key, string Label)[] stateFilterOptions =
+    [
+        ("all",      "Vše"),
+        ("inactive", "Neaktivní"),
+        ("active",   "Aktivní"),
+        ("done",     "Dokončené")
+    ];
+
+    private List<QuestListDto> filtered =>
+        quests.Where(q => stateFilter switch
+        {
+            "inactive" => q.State == QuestState.Inactive,
+            "active"   => q.State == QuestState.Active,
+            "done"     => q.State == QuestState.Completed,
+            _          => true
+        }).ToList();
+
+    // Add-from-template state
+    private bool isFromTemplateVisible;
+    private int? templateId;
+    private bool isCopying;
+    private string? copyError;
+    private List<string> copyWarnings = [];
+
+    // Blank create state
+    private bool isBlankVisible;
+    private string createName = "";
+    private QuestType createType = QuestType.General;
+    private string? createError;
+    private bool isCreating;
+
+    private static readonly List<EnumItem<QuestType>> questTypeValues = Enum.GetValues<QuestType>()
+        .Select(v => new EnumItem<QuestType>(v, v.GetDisplayName())).ToList();
+
+    private record EnumItem<T>(T Value, string Display);
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (game is not null && game.Id != GameId) await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        try
+        {
+            var gamesTask = Api.GetListAsync<GameListDto>("/api/games");
+            var questsTask = Api.GetListAsync<QuestListDto>($"/api/quests/by-game/{GameId}");
+            await Task.WhenAll(gamesTask, questsTask);
+            game = (await gamesTask).FirstOrDefault(g => g.Id == GameId);
+            quests = await questsTask;
+        }
+        finally { loading = false; }
+    }
+
+    public override async Task SetParametersAsync(ParameterView parameters)
+    {
+        var oldGameId = GameId;
+        await base.SetParametersAsync(parameters);
+        // SetParametersAsync runs before OnParametersSetAsync; this is the
+        // explicit reload trigger when the user navigates between two
+        // /games/{x}/quests routes without remounting.
+        if (oldGameId != 0 && oldGameId != GameId && !loading)
+            await LoadAsync();
+    }
+
+    private async Task LoadCatalogIfNeededAsync()
+    {
+        if (catalog is not null) return;
+        try { catalog = await Api.GetListAsync<QuestCatalogDto>("/api/quests/all"); }
+        catch (Exception ex) { copyError = ex.Message; catalog = []; }
+    }
+
+    private async Task CopyFromTemplateAsync()
+    {
+        if (templateId is null) return;
+        copyError = null;
+        copyWarnings = [];
+        isCopying = true;
+        try
+        {
+            var result = await Api.PostAsync<object, QuestCopyResultDto>(
+                $"/api/quests/{templateId.Value}/copy-to-game/{GameId}", new { });
+            if (result is null)
+            {
+                copyError = "Server nevrátil výsledek.";
+                return;
+            }
+            copyWarnings = result.Warnings;
+            templateId = null;
+            await LoadAsync();
+            // Don't auto-close so user sees warnings about skipped locations/items.
+            if (copyWarnings.Count == 0)
+            {
+                isFromTemplateVisible = false;
+                Nav.NavigateTo($"/quests/{result.Quest.Id}");
+            }
+        }
+        catch (Exception ex) { copyError = ex.Message; }
+        finally { isCopying = false; }
+    }
+
+    private async Task OpenBlankCreateModal()
+    {
+        createName = "";
+        createType = QuestType.General;
+        createError = null;
+        isBlankVisible = true;
+        await Task.CompletedTask;
+    }
+
+    private async Task CreateBlankAsync()
+    {
+        if (string.IsNullOrWhiteSpace(createName)) return;
+        createError = null;
+        isCreating = true;
+        try
+        {
+            var (ok, created, problem) = await Api.PostWithProblemAsync<CreateQuestDto, QuestListDto>(
+                "/api/quests",
+                new CreateQuestDto(createName.Trim(), createType, GameId: GameId));
+            if (!ok)
+            {
+                createError = problem ?? "Vytvoření úkolu se nepodařilo.";
+                return;
+            }
+            isBlankVisible = false;
+            if (created is not null)
+                Nav.NavigateTo($"/quests/{created.Id}");
+            else
+                await LoadAsync();
+        }
+        catch (Exception ex) { createError = ex.Message; }
+        finally { isCreating = false; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender || (isFromTemplateVisible && catalog is null))
+        {
+            await LoadCatalogIfNeededAsync();
+            StateHasChanged();
+        }
+    }
+}

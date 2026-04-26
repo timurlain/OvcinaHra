@@ -1,0 +1,39 @@
+@using OvcinaHra.Shared.Dtos
+
+@* Setkání seznam card. Phase 1: monster name + quantity only — designer brief
+   wants per-encounter title/location/description but those fields don't exist
+   in the entity yet (see issue #193 Phase 2 follow-up). Drag handle is visible
+   but disabled until Phase 2 (Order field). *@
+
+<article class="oh-qst-enc-card" @key="Encounter.MonsterId">
+    <button type="button" class="oh-qst-enc-grip"
+            disabled title="Řazení dostupné po migraci 0.16.x">
+        <i class="bi bi-grip-vertical"></i>
+    </button>
+    <div class="oh-qst-enc-order">@Order</div>
+    <div class="oh-qst-enc-body">
+        <h3 class="oh-qst-enc-title">@Encounter.MonsterName</h3>
+        <div class="oh-qst-enc-meta">
+            <span class="oh-qst-enc-qty"><i class="bi bi-x-lg"></i>@Encounter.Quantity</span>
+            <span class="oh-qst-enc-tag-defer">Plánováno: lokace · popis · položky (Phase 2)</span>
+        </div>
+    </div>
+    @if (Editable)
+    {
+        <div class="oh-qst-enc-actions">
+            <button type="button" class="btn btn-sm btn-link text-danger p-0"
+                    @onclick="HandleRemove" title="Smazat setkání">
+                <i class="bi bi-x-circle"></i>
+            </button>
+        </div>
+    }
+</article>
+
+@code {
+    [Parameter, EditorRequired] public QuestEncounterDto Encounter { get; set; } = null!;
+    [Parameter, EditorRequired] public int Order { get; set; }
+    [Parameter] public bool Editable { get; set; }
+    [Parameter] public EventCallback<QuestEncounterDto> OnRemove { get; set; }
+
+    private async Task HandleRemove() => await OnRemove.InvokeAsync(Encounter);
+}
