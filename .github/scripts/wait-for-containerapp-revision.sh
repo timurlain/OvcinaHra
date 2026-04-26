@@ -15,7 +15,7 @@ set -e
 APP=${1:?usage: $0 <container-app-name> <resource-group>}
 RG=${2:?usage: $0 <container-app-name> <resource-group>}
 
-ATTEMPTS=30
+ATTEMPTS=60
 SLEEP_SECONDS=10
 
 echo "Polling latest revision of $APP (up to $((ATTEMPTS * SLEEP_SECONDS))s)..."
