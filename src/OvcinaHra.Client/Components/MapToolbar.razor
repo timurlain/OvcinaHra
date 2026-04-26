@@ -1,0 +1,31 @@
+@* Issue #207 — Map page top toolbar. Pro hru / Katalog mode toggle
+   + location/stash counts. Brief's stage filter, kingdom multi-select,
+   and search box all defer to follow-ups: stage filter becomes useful
+   once stash pins drive a global filter; kingdom multi-select needs
+   the schema to link Location → Kingdom; search wiring needs the same
+   index pass as the locations search elsewhere. *@
+
+<div class="oh-map-tb">
+    <div class="oh-map-tb-modes" role="tablist" aria-label="Režim mapy">
+        <button type="button"
+                class="oh-map-tb-mode @(Mode == "pro-hru" ? "is-active" : "")"
+                @onclick="@(() => OnModeChange.InvokeAsync("pro-hru"))">
+            <i class="bi bi-controller me-1"></i>Pro hru
+        </button>
+        <button type="button"
+                class="oh-map-tb-mode @(Mode == "katalog" ? "is-active" : "")"
+                @onclick="@(() => OnModeChange.InvokeAsync("katalog"))">
+            <i class="bi bi-archive me-1"></i>Katalog
+        </button>
+    </div>
+    <div class="oh-map-tb-counts text-muted small">
+        @LocationsCount lokací · @StashesCount skrýší
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Mode { get; set; } = "pro-hru";
+    [Parameter] public EventCallback<string> OnModeChange { get; set; }
+    [Parameter] public int LocationsCount { get; set; }
+    [Parameter] public int StashesCount { get; set; }
+}

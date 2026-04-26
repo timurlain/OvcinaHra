@@ -2,381 +2,247 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject GameContextService GameContext
+@inject IJSRuntime JS
 @implements IDisposable
+@using OvcinaHra.Shared.Dtos
 
-<div class="d-flex justify-content-between align-items-center mb-2">
-    <h1 class="mb-0">Mapa</h1>
-    <div class="d-flex gap-2 align-items-center">
-        <div class="btn-group btn-group-sm">
-            <button class="btn @(activeStyle == "tourist" ? "btn-secondary" : "btn-outline-secondary")" @onclick='() => ToggleStyle("tourist")'>Turistická</button>
-            <button class="btn @(activeStyle == "aerial" ? "btn-secondary" : "btn-outline-secondary")" @onclick='() => ToggleStyle("aerial")'>Letecká</button>
-            <button class="btn @(activeStyle == "basic" ? "btn-secondary" : "btn-outline-secondary")" @onclick='() => ToggleStyle("basic")'>Základní</button>
-            <button class="btn @(activeStyle == "osm" ? "btn-secondary" : "btn-outline-secondary")" @onclick='() => ToggleStyle("osm")'>OSM</button>
-        </div>
-        @if (placingMode && placingLocation is not null)
+<AuthorizeView>
+    <Authorized Context="auth">
+        @if (GameContext.SelectedGameId is null)
         {
-            <span class="badge bg-warning text-dark">Umísťuji: @placingLocation.Name — klikni na mapu</span>
-            <button class="btn btn-outline-secondary btn-sm" @onclick="CancelPlacing">Zrušit</button>
+            <MapEmptyState />
         }
         else
         {
-            <button class="btn btn-primary btn-sm" @onclick="OpenPlacePicker">Umístit lokaci</button>
-        }
-    </div>
-</div>
+            <div class="oh-map-page">
+                <MapToolbar Mode="@_mode"
+                            OnModeChange="OnModeChange"
+                            LocationsCount="@(_data?.Locations.Count ?? 0)"
+                            StashesCount="@(_data?.Stashes.Count ?? 0)" />
 
-<div style="position: relative;">
-    <MapView @ref="mapView"
-             CenterLat="49.4532461" CenterLon="18.0203242" Zoom="16"
-             GameId="@GameContext.SelectedGameId"
-             OnMapClick="HandleMapClick"
-             OnMarkerClick="HandleMarkerClick"
-             OnMarkerDrag="HandleMarkerDrag"
-             OnStyleLoaded="HandleStyleLoaded" />
+                <div class="oh-map-shell">
+                    <MapLayerRail LocationsVisible="@_locationsVisible"
+                                  StashesVisible="@_stashesVisible"
+                                  LocationsCount="@(_data?.Locations.Count ?? 0)"
+                                  StashesCount="@(_data?.Stashes.Count ?? 0)"
+                                  OnVisibilityChange="OnLayerVisibilityChange" />
 
-    <div class="map-legend">
-        @foreach (var (kind, color) in markerColors)
-        {
-            <div class="map-legend-item" style="cursor: pointer; opacity: @(hiddenKinds.Contains(kind) ? "0.35" : "1")"
-                 @onclick="() => ToggleKind(kind)">
-                <span class="map-legend-dot" style="background-color: @color;"></span>
-                <span>@kind.GetDisplayName()</span>
-            </div>
-        }
-    </div>
-</div>
-
-<LocationEditPopup @ref="locationPopup"
-    AllLocations="locations"
-    OnSaved="LoadAndDisplayLocationsAsync"
-    OnVariantNavigate="NavigateToLocation" />
-
-<DxPopup @bind-Visible="@isPickerVisible" HeaderText="Vyber lokaci k umístění" Width="520px">
-    <BodyContentTemplate Context="popupContext">
-        @{
-            var unplaced = locations
-                .Where(l => l.ParentLocationId is null && (!l.Latitude.HasValue || !l.Longitude.HasValue))
-                .Where(l => string.IsNullOrWhiteSpace(pickerSearch)
-                    || l.Name.Contains(pickerSearch, StringComparison.OrdinalIgnoreCase)
-                    || (l.Region is not null && l.Region.Contains(pickerSearch, StringComparison.OrdinalIgnoreCase)))
-                .OrderBy(l => l.Name)
-                .ToList();
-        }
-
-        <DxTextBox @bind-Text="@pickerSearch" NullText="Hledat podle názvu nebo oblasti..." CssClass="mb-2" />
-
-        @if (unplaced.Count == 0)
-        {
-            <p class="text-muted text-center py-3">
-                @if (string.IsNullOrWhiteSpace(pickerSearch))
-                { <text>Žádné neumístěné lokace v této hře — všechny už mají GPS.</text> }
-                else
-                { <text>Nic nenalezeno.</text> }
-            </p>
-        }
-        else
-        {
-            <div class="list-group" style="max-height: 420px; overflow-y: auto;">
-                @foreach (var loc in unplaced)
-                {
-                    <button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
-                            @onclick="() => SelectForPlacement(loc)">
-                        <div>
-                            <div><strong>@loc.Name</strong></div>
-                            @if (!string.IsNullOrWhiteSpace(loc.Region))
-                            {
-                                <small class="text-muted">@loc.Region</small>
-                            }
+                    <div class="oh-map-canvas">
+                        <div class="oh-map-style-toolbar">
+                            <button class="oh-map-style-btn @(_activeStyle == "tourist" ? "is-active" : "")"
+                                    @onclick='() => SetStyleAsync("tourist")'>Turistická</button>
+                            <button class="oh-map-style-btn @(_activeStyle == "aerial" ? "is-active" : "")"
+                                    @onclick='() => SetStyleAsync("aerial")'>Letecká</button>
+                            <button class="oh-map-style-btn @(_activeStyle == "basic" ? "is-active" : "")"
+                                    @onclick='() => SetStyleAsync("basic")'>Základní</button>
+                            <button class="oh-map-style-btn @(_activeStyle == "osm" ? "is-active" : "")"
+                                    @onclick='() => SetStyleAsync("osm")'>OSM</button>
                         </div>
-                        <span class="badge rounded-pill"
-                              style="background-color: @(markerColors.GetValueOrDefault(loc.LocationKind, "#e74c3c")); color: white;">
-                            @loc.LocationKind.GetDisplayName()
-                        </span>
-                    </button>
-                }
+                        <MapView @ref="_mapView"
+                                 Height="calc(100vh - 200px)"
+                                 OnStyleLoaded="OnMapReadyAsync"
+                                 OnMapPagePinClick="OnPinClickedAsync" />
+                    </div>
+
+                    <MapPinPeek Visible="@_peekVisible"
+                                Loading="@_peekLoading"
+                                Peek="@_peek"
+                                OnClose="ClosePeek" />
+                </div>
             </div>
         }
-
-        <div class="d-flex justify-content-end mt-2">
-            <button class="btn btn-secondary" @onclick="() => isPickerVisible = false">Zavřít</button>
-        </div>
-    </BodyContentTemplate>
-</DxPopup>
-
-<DxPopup @bind-Visible="@isPlaceConfirmVisible" HeaderText="Umístit lokaci?" Width="400px">
-    <BodyContentTemplate Context="popupContext">
-        <p>Umístit <strong>@placingLocation?.Name</strong> na zvolené souřadnice?</p>
-        <p class="text-muted small mb-3">@($"{placeLat:F7}, {placeLng:F7}")</p>
-        <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" @onclick="CancelPlaceConfirm">Zrušit</button>
-            <button class="btn btn-primary" disabled="@isPlaceSaving" @onclick="ConfirmPlace">Umístit</button>
-        </div>
-    </BodyContentTemplate>
-</DxPopup>
-
-<DxPopup @bind-Visible="@isDragConfirmVisible" HeaderText="Přesunout lokaci?" Width="400px">
-    <BodyContentTemplate Context="popupContext">
-        <p>Přesunout <strong>@dragLocationName</strong> na novou pozici?</p>
-        <p class="text-muted small mb-3">@($"{dragNewLat:F7}, {dragNewLng:F7}")</p>
-        <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" @onclick="CancelDrag">Zrušit</button>
-            <button class="btn btn-primary" @onclick="ConfirmDrag">Přesunout</button>
-        </div>
-    </BodyContentTemplate>
-</DxPopup>
+    </Authorized>
+    <NotAuthorized>
+        <p>Pro pokračování se prosím přihlaste.</p>
+    </NotAuthorized>
+</AuthorizeView>
 
 @code {
-    private MapView mapView = null!;
-    private LocationEditPopup locationPopup = null!;
-    private List<LocationListDto> locations = [];
-    private bool placingMode;
-    private LocationListDto? placingLocation;
-    private string activeStyle = "tourist";
-    private HashSet<LocationKind> hiddenKinds = [];
+    private const string LayerStateKey = "oh-map-layers";
 
-    private bool isPickerVisible;
-    private string pickerSearch = "";
+    private MapView? _mapView;
+    private string _mode = "pro-hru";
+    private string _activeStyle = "tourist";
+    private bool _locationsVisible = true;
+    private bool _stashesVisible = true;
+    private bool _firstStyleLoadDone;
+    // Monotonically increasing token so a slow peek fetch doesn't overwrite
+    // a newer one if the user clicks pins faster than the network responds.
+    private int _peekRequestId;
 
-    private bool isPlaceConfirmVisible;
-    private bool isPlaceSaving;
-    private double placeLat, placeLng;
-
-    private bool isDragConfirmVisible;
-    private int dragLocationId;
-    private string dragLocationName = "";
-    private double dragNewLat, dragNewLng, dragOrigLat, dragOrigLng;
-
-    private static readonly Dictionary<LocationKind, string> markerColors = new()
-    {
-        [LocationKind.Town] = "#2c3e50",
-        [LocationKind.Village] = "#27ae60",
-        [LocationKind.Magical] = "#8e44ad",
-        [LocationKind.Hobbit] = "#f39c12",
-        [LocationKind.Wilderness] = "#16a085",
-        [LocationKind.Dungeon] = "#c0392b",
-        [LocationKind.PointOfInterest] = "#2980b9"
-    };
+    private MapDataDto? _data;
+    private bool _peekVisible;
+    private bool _peekLoading;
+    private LocationPeekDto? _peek;
 
     protected override async Task OnInitializedAsync()
     {
         await GameContext.InitializeAsync();
-        GameContext.OnGameChanged += OnGameChanged;
+        GameContext.OnGameChanged += HandleGameChanged;
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    private void HandleGameChanged()
     {
-        if (firstRender)
+        // Marshal back onto the renderer thread + observe exceptions so a
+        // JS interop blow-up during a circuit hiccup doesn't end up as an
+        // unobserved task (Copilot finding).
+        _ = InvokeAsync(async () =>
         {
-            await LoadAndDisplayLocationsAsync();
-            await ApplyGameBoundsOrDefaultAsync();
-        }
+            try { await ReloadDataAndRenderAsync(); }
+            catch (Exception ex) { Console.Error.WriteLine($"map reload after game change: {ex}"); }
+        });
     }
 
-    private async Task ApplyGameBoundsOrDefaultAsync()
+    private async Task OnMapReadyAsync()
     {
-        // If the selected game has a bounding box set, center + zoom there.
-        // Otherwise (or on any failure fetching the game detail) fall back to
-        // the original hardcoded default view — must NEVER break /map render.
-        if (GameContext.SelectedGameId is int gid)
+        // OnStyleLoaded fires both on first basemap load AND after every
+        // SwitchStyle. The data fetch + localStorage hydrate only need to
+        // run once; subsequent style swaps just need to repaint the pins
+        // since the new style wipes the old layer (Copilot C3).
+        if (_firstStyleLoadDone)
         {
-            try
-            {
-                var detail = await Api.GetAsync<GameDetailDto>($"/api/games/{gid}");
-                if (detail is not null
-                    && detail.BoundingBoxSwLat.HasValue && detail.BoundingBoxSwLng.HasValue
-                    && detail.BoundingBoxNeLat.HasValue && detail.BoundingBoxNeLng.HasValue)
-                {
-                    await mapView.FitBoundsAsync(
-                        (double)detail.BoundingBoxSwLat.Value, (double)detail.BoundingBoxSwLng.Value,
-                        (double)detail.BoundingBoxNeLat.Value, (double)detail.BoundingBoxNeLng.Value);
-                    return;
-                }
-            }
-            catch
-            {
-                // Best-effort — fall through to the default view below.
-            }
+            await PaintPinsAsync();
+            return;
         }
-        await mapView.FitBoundsAsync(49.4504644, 18.0177633, 49.4557139, 18.0229133);
+        _firstStyleLoadDone = true;
+        await HydrateLayerStateAsync();
+        await ReloadDataAndRenderAsync();
     }
 
-    private async Task ToggleStyle(string style)
-    {
-        activeStyle = style;
-        await mapView.SwitchStyleAsync(style);
-    }
-
-    private async Task HandleStyleLoaded()
-    {
-        await LoadAndDisplayLocationsAsync();
-    }
-
-    private async void OnGameChanged()
+    private async Task HydrateLayerStateAsync()
     {
         try
         {
-            placingMode = false;
-            placingLocation = null;
-            isPickerVisible = false;
-            isPlaceConfirmVisible = false;
-            isPlaceSaving = false;
-            await LoadAndDisplayLocationsAsync();
-            await ApplyGameBoundsOrDefaultAsync();
-            StateHasChanged();
+            var raw = await JS.InvokeAsync<string?>("localStorage.getItem", LayerStateKey);
+            if (string.IsNullOrEmpty(raw)) return;
+            var saved = System.Text.Json.JsonSerializer.Deserialize<LayerState>(raw);
+            if (saved is null) return;
+            _locationsVisible = saved.Locations;
+            _stashesVisible = saved.Stashes;
         }
-        catch { /* best-effort */ }
+        catch { /* localStorage unavailable / malformed — keep defaults */ }
     }
-    public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
 
-    private async Task LoadAndDisplayLocationsAsync()
+    private async Task PersistLayerStateAsync()
+    {
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(
+                new LayerState(_locationsVisible, _stashesVisible));
+            await JS.InvokeVoidAsync("localStorage.setItem", LayerStateKey, json);
+        }
+        catch { /* same fallback */ }
+    }
+
+    private async Task ReloadDataAndRenderAsync()
     {
         var gameId = GameContext.SelectedGameId;
-        if (gameId.HasValue)
-            locations = await Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gameId.Value}");
-        else
-            locations = await Api.GetListAsync<LocationListDto>("/api/locations");
-        await DisplayMarkersAsync();
+        if (gameId is null) { _data = null; return; }
+
+        try
+        {
+            _data = await Api.GetAsync<MapDataDto>($"/api/map/data?gameId={gameId.Value}");
+        }
+        catch { _data = null; }
+
+        await PaintPinsAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
-    private async Task DisplayMarkersAsync()
+    private async Task PaintPinsAsync()
     {
-        await mapView.ClearMarkersAsync();
-        foreach (var loc in locations.Where(l => l.ParentLocationId is null && l.Latitude.HasValue && l.Longitude.HasValue && !hiddenKinds.Contains(l.LocationKind)))
+        // Wipe and repaint — small dataset (~50 pins per layer in Pro hru
+        // mode); incremental diffing would be over-engineered for the
+        // expected scale and the brief explicitly defers clustering.
+        await JS.InvokeVoidAsync("ovcinaMap.clearMapPagePins");
+        if (_data is null) return;
+
+        if (_locationsVisible)
         {
-            var color = markerColors.GetValueOrDefault(loc.LocationKind, "#e74c3c");
-            await mapView.AddMarkerAsync(loc.Id, (double)loc.Latitude!.Value, (double)loc.Longitude!.Value,
-                loc.Name, loc.LocationKind.GetDisplayName(), color);
+            foreach (var l in _data.Locations)
+            {
+                await JS.InvokeVoidAsync("ovcinaMap.addLocationPin",
+                    l.Id, l.Lat, l.Lon, l.Name, l.Kind.ToString());
+            }
+        }
+        if (_stashesVisible)
+        {
+            foreach (var s in _data.Stashes)
+            {
+                await JS.InvokeVoidAsync("ovcinaMap.addStashPin",
+                    s.Id, s.LocationId, s.Lat, s.Lon, s.Name, s.TreasureCount,
+                    s.HighestStage?.ToString());
+            }
         }
     }
 
-    private async Task ToggleKind(LocationKind kind)
+    private async Task OnLayerVisibilityChange((string Layer, bool Visible) change)
     {
-        if (!hiddenKinds.Remove(kind))
-            hiddenKinds.Add(kind);
-        await DisplayMarkersAsync();
+        if (change.Layer == "loc") _locationsVisible = change.Visible;
+        else if (change.Layer == "stash") _stashesVisible = change.Visible;
+        await JS.InvokeVoidAsync("ovcinaMap.setMapPageLayerVisibility",
+            change.Layer, change.Visible);
+        await PersistLayerStateAsync();
     }
 
-    private void OpenPlacePicker()
+    private Task OnModeChange(string mode)
     {
-        pickerSearch = "";
-        isPickerVisible = true;
-    }
-
-    private void SelectForPlacement(LocationListDto loc)
-    {
-        placingLocation = loc;
-        placingMode = true;
-        isPickerVisible = false;
-    }
-
-    private void CancelPlacing()
-    {
-        placingMode = false;
-        placingLocation = null;
-        isPlaceConfirmVisible = false;
-        isPlaceSaving = false;
-    }
-
-    private Task HandleMapClick(OvcinaMapClickEventArgs e)
-    {
-        if (placingMode && placingLocation is not null)
-        {
-            placeLat = e.Latitude;
-            placeLng = e.Longitude;
-            isPlaceConfirmVisible = true;
-            StateHasChanged();
-        }
+        _mode = mode;
+        // Katalog mode is wired up the same way as Pro hru today —
+        // a follow-up issue will add cross-game data + clustering.
+        // Switching modes simply re-fires the data load (no-op in MVP).
         return Task.CompletedTask;
     }
 
-    private async Task ConfirmPlace()
+    private async Task SetStyleAsync(string style)
     {
-        if (placingLocation is null) return;
-        isPlaceSaving = true;
+        _activeStyle = style;
+        await JS.InvokeVoidAsync("ovcinaMap.switchStyle", style);
+        // Style change disposes/re-creates the basemap; pins must repaint.
+        await PaintPinsAsync();
+    }
+
+    private async Task OnPinClickedAsync((string Kind, int Id) click)
+    {
+        if (click.Kind != "location") return;
+        await OpenPeekAsync(click.Id);
+    }
+
+    private async Task OpenPeekAsync(int locationId)
+    {
+        // Token guard against fast successive pin clicks — the older
+        // request must not be allowed to overwrite the newer peek state
+        // when its response lands late (Copilot C7).
+        var requestId = ++_peekRequestId;
+        _peekVisible = true;
+        _peekLoading = true;
+        _peek = null;
+        StateHasChanged();
+
+        LocationPeekDto? loaded = null;
         try
         {
-            var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{placingLocation.Id}");
-            if (detail is not null)
-            {
-                var dto = new UpdateLocationDto(detail.Name, detail.LocationKind,
-                    (decimal)placeLat, (decimal)placeLng,
-                    detail.Description, detail.Details, detail.GamePotential, detail.Prompt, detail.Region,
-                    detail.NpcInfo, detail.SetupNotes, detail.ParentLocationId);
-                await Api.PutAsync($"/api/locations/{placingLocation.Id}", dto);
-            }
-            isPlaceConfirmVisible = false;
-            placingMode = false;
-            placingLocation = null;
-            await LoadAndDisplayLocationsAsync();
+            var gameId = GameContext.SelectedGameId ?? 0;
+            loaded = await Api.GetAsync<LocationPeekDto>(
+                $"/api/map/locations/{locationId}/peek?gameId={gameId}");
         }
-        catch
-        {
-            // Network or server error — close the popup but keep placing mode so
-            // the user can retry with another click.
-            isPlaceConfirmVisible = false;
-        }
-        finally
-        {
-            isPlaceSaving = false;
-        }
+        catch { /* swallow — UI shows the empty / loading-failed state */ }
+
+        // Stale response — a newer click already started.
+        if (requestId != _peekRequestId) return;
+
+        _peek = loaded;
+        _peekLoading = false;
+        await InvokeAsync(StateHasChanged);
     }
 
-    private void CancelPlaceConfirm()
+    private void ClosePeek()
     {
-        isPlaceConfirmVisible = false;
-        // Stay in placing mode so the user can click again on a different spot.
+        _peekVisible = false;
+        _peek = null;
     }
 
-    private async Task HandleMarkerClick(int id) => await locationPopup.OpenAsync(id);
+    private record LayerState(bool Locations, bool Stashes);
 
-    private Task HandleMarkerDrag(OvcinaMarkerDragEventArgs e)
-    {
-        dragLocationId = e.Id;
-        dragLocationName = locations.FirstOrDefault(l => l.Id == e.Id)?.Name ?? $"Lokace #{e.Id}";
-        dragNewLat = e.Latitude;
-        dragNewLng = e.Longitude;
-        dragOrigLat = e.OrigLatitude;
-        dragOrigLng = e.OrigLongitude;
-        isDragConfirmVisible = true;
-        StateHasChanged();
-        return Task.CompletedTask;
-    }
-
-    private async Task ConfirmDrag()
-    {
-        try
-        {
-            var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{dragLocationId}");
-            if (detail is not null)
-            {
-                var dto = new UpdateLocationDto(detail.Name, detail.LocationKind,
-                    (decimal)dragNewLat, (decimal)dragNewLng,
-                    detail.Description, detail.Details, detail.GamePotential, detail.Prompt, detail.Region,
-                    detail.NpcInfo, detail.SetupNotes, detail.ParentLocationId);
-                await Api.PutAsync($"/api/locations/{dragLocationId}", dto);
-            }
-            isDragConfirmVisible = false;
-            await LoadAndDisplayLocationsAsync();
-        }
-        catch
-        {
-            isDragConfirmVisible = false;
-            await mapView.UpdateMarkerPositionAsync(dragLocationId, dragOrigLat, dragOrigLng);
-            await LoadAndDisplayLocationsAsync();
-        }
-    }
-
-    private async Task CancelDrag()
-    {
-        isDragConfirmVisible = false;
-        await mapView.UpdateMarkerPositionAsync(dragLocationId, dragOrigLat, dragOrigLng);
-    }
-
-    private async Task NavigateToLocation(int id)
-    {
-        locationPopup.Close();
-        StateHasChanged();
-        await Task.Delay(100);
-        await locationPopup.OpenAsync(id);
-    }
+    public void Dispose() => GameContext.OnGameChanged -= HandleGameChanged;
 }

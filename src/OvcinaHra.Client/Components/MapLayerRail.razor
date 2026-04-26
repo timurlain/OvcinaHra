@@ -1,0 +1,33 @@
+@* Issue #207 — left rail with the two active map layers (Lokace +
+   Skrýše & Poklady). Encounters layer dropped from this PR — see
+   MapDtos.cs scope note. Layer state hydrates from / saves to
+   localStorage via MapPage. *@
+
+<aside class="oh-map-layer-rail" aria-label="Vrstvy mapy">
+    <h2 class="oh-map-layer-title">Vrstvy</h2>
+    <label class="oh-map-layer-row">
+        <input type="checkbox" checked="@LocationsVisible"
+               @onchange="@(e => OnVisibilityChange.InvokeAsync(("loc", (bool)e.Value!)))" />
+        <span class="oh-map-layer-dot oh-map-layer-loc"></span>
+        <span class="oh-map-layer-lbl">Lokace</span>
+        <span class="oh-map-layer-num text-muted">@LocationsCount</span>
+    </label>
+    <label class="oh-map-layer-row">
+        <input type="checkbox" checked="@StashesVisible"
+               @onchange="@(e => OnVisibilityChange.InvokeAsync(("stash", (bool)e.Value!)))" />
+        <span class="oh-map-layer-dot oh-map-layer-stash"></span>
+        <span class="oh-map-layer-lbl">Skrýše &amp; Poklady</span>
+        <span class="oh-map-layer-num text-muted">@StashesCount</span>
+    </label>
+    <p class="oh-map-layer-hint text-muted small fst-italic">
+        Setkání úkolů přibydou, jakmile budou mít body na mapě.
+    </p>
+</aside>
+
+@code {
+    [Parameter] public bool LocationsVisible { get; set; } = true;
+    [Parameter] public bool StashesVisible { get; set; } = true;
+    [Parameter] public int LocationsCount { get; set; }
+    [Parameter] public int StashesCount { get; set; }
+    [Parameter] public EventCallback<(string Layer, bool Visible)> OnVisibilityChange { get; set; }
+}
