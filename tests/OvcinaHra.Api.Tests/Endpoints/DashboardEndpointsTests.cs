@@ -93,10 +93,10 @@ public class DashboardEndpointsTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task Issues_AllSeven_AlwaysReturned()
+    public async Task Issues_AllEight_AlwaysReturned()
     {
         // Even when a fresh game has zero issues across the board, the
-        // endpoint returns the full row set so the UI keeps a stable
+        // endpoint returns all eight issue rows so the UI keeps a stable
         // shape. Severity for all should be "low" (count == 0).
         var game = await CreateGameAsync();
 
@@ -106,6 +106,32 @@ public class DashboardEndpointsTests(PostgresFixture postgres)
         Assert.NotNull(issues);
         Assert.Equal(8, issues.Issues.Count);
         Assert.All(issues.Issues, i => Assert.Equal("low", i.Severity));
+    }
+
+    [Fact]
+    public async Task Issues_SkillsWithoutEffect_ScopedToGame()
+    {
+        // Two games. Each gets a GameSkill with empty Effect. The dashboard
+        // for game A must report 1 skill-without-effect, not 2 (regression
+        // guard for the catalog-wide vs game-scoped Copilot finding).
+        var gameA = await CreateGameAsync();
+        var gameB = await CreateGameAsync();
+
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            db.Skills.Add(new Skill { Name = "Catalog skill", Category = SkillCategory.Class });
+            await db.SaveChangesAsync();
+            db.GameSkills.AddRange(
+                new GameSkill { GameId = gameA.Id, Name = "A-skill", Category = SkillCategory.Class, Effect = null },
+                new GameSkill { GameId = gameB.Id, Name = "B-skill", Category = SkillCategory.Class, Effect = null });
+            await db.SaveChangesAsync();
+        }
+
+        var issuesA = await Client.GetFromJsonAsync<DashboardIssuesDto>(
+            $"/api/dashboard/issues?gameId={gameA.Id}");
+        var skillsA = issuesA!.Issues.Single(i => i.Key == "skills-no-effect");
+        Assert.Equal(1, skillsA.Count);
     }
 
     [Fact]
@@ -176,6 +202,6 @@ public class DashboardEndpointsTests(PostgresFixture postgres)
 
         Assert.NotNull(rows);
         var row = Assert.Single(rows);
-        Assert.Equal("Probíhá", row.Status);
+        Assert.True(row.IsRunning);
     }
 }

@@ -73,8 +73,15 @@ public static class DashboardEndpoints
             .Where(gm => gm.GameId == gameId
                 && !db.MonsterLoots.Any(ml => ml.GameId == gameId && ml.MonsterId == gm.MonsterId))
             .CountAsync();
-        var skillsNoEffect = await db.Skills.CountAsync(s => string.IsNullOrEmpty(s.Effect));
-        var spellsNoEffect = await db.Spells.CountAsync(s => string.IsNullOrEmpty(s.Effect));
+        // Game-scoped — Copilot caught these counting catalog-wide and
+        // misreporting issues from other games. The skill/spell text lives
+        // on the catalog Skill/Spell, joined via Game{Skill|Spell}.
+        var skillsNoEffect = await db.GameSkills
+            .Where(gs => gs.GameId == gameId)
+            .CountAsync(gs => string.IsNullOrWhiteSpace(gs.Effect));
+        var spellsNoEffect = await db.GameSpells
+            .Where(gs => gs.GameId == gameId)
+            .CountAsync(gs => string.IsNullOrWhiteSpace(gs.Spell.Effect));
 
         var issues = new List<DashboardIssueDto>
         {
@@ -156,9 +163,13 @@ public static class DashboardEndpoints
     }
 
     /// <summary>
-    /// Powers TimelinePreview — upcoming and currently-active GameTimeSlot
-    /// rows. Excludes slots whose <c>StartTime + Duration</c> is already
-    /// in the past. Status string is computed against DateTime.UtcNow.
+    /// Powers TimelinePreview — upcoming and currently-running GameTimeSlot
+    /// rows. Filter and limit run inside the DB query (Copilot perf fix).
+    /// Title is picked deterministically when a slot has multiple events:
+    /// alphabetic by Name, then GameEventId. Server only reports
+    /// <c>IsRunning</c> (UTC-safe); the "Brzy/Zítra/Později" buckets are
+    /// computed client-side from local time so they don't drift across
+    /// time zones near midnight.
     /// </summary>
     private static async Task<Ok<List<TimelineRowDto>>> GetTimeline(
         int gameId, WorldDbContext db, int? take = 6)
@@ -166,56 +177,34 @@ public static class DashboardEndpoints
         var n = Math.Clamp(take ?? 6, 1, 20);
         var now = DateTime.UtcNow;
 
-        var rows = await db.GameEventTimeSlots
-            .Where(ets => ets.TimeSlot.GameId == gameId)
-            .OrderBy(ets => ets.TimeSlot.StartTime)
-            .Select(ets => new
-            {
-                ets.GameTimeSlotId,
-                ets.TimeSlot.StartTime,
-                ets.TimeSlot.Duration,
-                Title = (string?)ets.GameEvent.Name,
-                LocationName = (string?)null,
-                LocationId = (int?)null,
-            })
-            .ToListAsync();
-
-        // Slots without a linked GameEvent fall through above; pull the
-        // bare time-slot rows so the timeline still lights up structurally.
-        var slotRows = await db.GameTimeSlots
-            .Where(s => s.GameId == gameId)
+        var rows = await db.GameTimeSlots
+            .Where(s => s.GameId == gameId && s.StartTime + s.Duration > now)
             .OrderBy(s => s.StartTime)
+            .Take(n)
             .Select(s => new
             {
-                GameTimeSlotId = s.Id,
+                SlotId = s.Id,
                 s.StartTime,
                 s.Duration,
-                Title = (string?)null,
-                LocationName = (string?)null,
-                LocationId = (int?)null,
+                // Multi-event slot: deterministic pick — alpha by Name then
+                // GameEventId — so the preview doesn't flicker between
+                // events on subsequent loads (Copilot finding).
+                Title = db.GameEventTimeSlots
+                    .Where(ets => ets.GameTimeSlotId == s.Id)
+                    .OrderBy(ets => ets.GameEvent.Name)
+                    .ThenBy(ets => ets.GameEventId)
+                    .Select(ets => (string?)ets.GameEvent.Name)
+                    .FirstOrDefault(),
             })
             .ToListAsync();
 
-        var combined = rows.Concat(slotRows)
-            .GroupBy(r => r.GameTimeSlotId)
-            .Select(g => g.First())
-            .Where(r => r.StartTime + r.Duration > now)
-            .OrderBy(r => r.StartTime)
-            .Take(n)
+        var timeline = rows
             .Select(r => new TimelineRowDto(
-                r.GameTimeSlotId, r.StartTime, r.Duration, r.Title,
-                r.LocationName, r.LocationId,
-                ComputeTimelineStatus(r.StartTime, r.Duration, now)))
+                r.SlotId, r.StartTime, r.Duration, r.Title,
+                LocationName: null, LocationId: null,
+                IsRunning: r.StartTime <= now && r.StartTime + r.Duration > now))
             .ToList();
 
-        return TypedResults.Ok(combined);
-    }
-
-    private static string ComputeTimelineStatus(DateTime start, TimeSpan duration, DateTime now)
-    {
-        if (start <= now && start + duration > now) return "Probíhá";
-        if (start.Date == now.Date) return "Brzy";
-        if (start.Date == now.Date.AddDays(1)) return "Zítra";
-        return "Později";
+        return TypedResults.Ok(timeline);
     }
 }

@@ -3247,7 +3247,7 @@
 .oh-home-prep-chip{display:inline-flex;align-items:center;padding:3px 9px;border-radius:99px;background:rgba(0,0,0,.08);color:rgba(0,0,0,.6);font:500 .72rem var(--oh-font-body)}
 .oh-home-game-chip{display:inline-flex;align-items:center;padding:3px 10px;border-radius:99px;background:var(--oh-surface-alt,#F2EBD8);
     border:1px solid var(--oh-border,#d8d2be);color:var(--oh-text,#2a2a2a);
-    font:600 .8rem var(--oh-font-body);cursor:pointer;margin-left:auto}
+    font:600 .8rem var(--oh-font-body);cursor:pointer;margin-left:auto;line-height:1.4}
 .oh-home-game-chip:hover{background:var(--oh-home-tile-hover)}
 .oh-home-hero-title{margin:0;font:700 1.65rem var(--oh-font-heading)}
 .oh-home-hero-dates{margin:2px 0 0;color:var(--oh-text-muted,#6b6453);font:400 .85rem var(--oh-font-body)}

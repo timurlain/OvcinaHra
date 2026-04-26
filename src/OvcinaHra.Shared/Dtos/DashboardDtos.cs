@@ -5,9 +5,11 @@ namespace OvcinaHra.Shared.Dtos;
 // from the parallel results client-side.
 
 /// <summary>
-/// Powers the StavSvetaStrip — 7 game-scoped catalog counts. Single
-/// roundtrip to /api/dashboard/stats?gameId={id}, internally executed
-/// as a Task.WhenAll over CountAsync queries to avoid 7 sequential trips.
+/// Powers the StavSvetaStrip — 7 game-scoped catalog counts returned
+/// from a single call to /api/dashboard/stats?gameId={id}. The endpoint
+/// aggregates these server-side via sequential CountAsync awaits (one
+/// shared DbContext can't serve concurrent queries; one HTTP roundtrip
+/// from the cockpit is what matters).
 /// </summary>
 public record DashboardStatsDto(
     int LocationsCount,
@@ -49,9 +51,11 @@ public record DashboardActivityDto(
     DateTime OccurredUtc);
 
 /// <summary>
-/// One row in the TimelinePreview. <see cref="Status"/> is computed
+/// One row in the TimelinePreview. <see cref="IsRunning"/> is computed
 /// server-side from <see cref="StartTime"/> + <see cref="Duration"/>
-/// against DateTime.Now.
+/// against DateTime.UtcNow — TZ-safe. The cockpit then localises
+/// "Brzy / Zítra / Později" buckets in the client using local time so
+/// near-midnight slots don't get the wrong day for non-UTC users.
 /// </summary>
 public record TimelineRowDto(
     int SlotId,
@@ -60,4 +64,4 @@ public record TimelineRowDto(
     string? Title,
     string? LocationName,
     int? LocationId,
-    string Status);   /* "Probíhá" | "Brzy" | "Zítra" | "Později" */
+    bool IsRunning);

@@ -1,6 +1,9 @@
 @* Issue #158 — Hra běží only. Top row expanded if currently active.
-   Status string ("Probíhá / Brzy / Zítra / Později") is computed
-   server-side against DateTime.Now. *@
+   Server returns just IsRunning (UTC-safe); the "Brzy/Zítra/Později"
+   buckets are computed here from local time so a slot starting at
+   23:30 local time doesn't show as "Zítra" for users east of UTC. *@
+
+@using System.Globalization
 
 <section class="oh-home-tl" aria-labelledby="oh-home-tl-title">
     <header class="oh-home-tl-head">
@@ -21,11 +24,12 @@
     {
         @foreach (var row in Rows)
         {
-            var isCurrent = row.Status == "Probíhá";
-            <div class="oh-home-tl-row @(isCurrent ? "oh-home-tl-cur" : "")">
+            var startLocal = row.StartTime.ToLocalTime();
+            var status = StatusLabel(row, startLocal, DateTime.Now);
+            <div class="oh-home-tl-row @(row.IsRunning ? "oh-home-tl-cur" : "")">
                 <div class="oh-home-tl-when">
-                    <strong>@row.StartTime.ToString("HH:mm")</strong>
-                    <span class="text-muted small">@row.StartTime.ToString("d. M.")</span>
+                    <strong>@startLocal.ToString("HH:mm", _cs)</strong>
+                    <span class="text-muted small">@startLocal.ToString("d. M.", _cs)</span>
                 </div>
                 <div class="oh-home-tl-body">
                     <div class="oh-home-tl-title">@(string.IsNullOrWhiteSpace(row.Title) ? "Volný úsek" : row.Title)</div>
@@ -36,7 +40,7 @@
                         </div>
                     }
                 </div>
-                <span class="oh-home-tl-status">@row.Status</span>
+                <span class="oh-home-tl-status">@status</span>
             </div>
         }
     }
@@ -44,4 +48,14 @@
 
 @code {
     [Parameter] public IReadOnlyList<TimelineRowDto>? Rows { get; set; }
+
+    private static readonly CultureInfo _cs = new("cs-CZ");
+
+    private static string StatusLabel(TimelineRowDto row, DateTime startLocal, DateTime nowLocal)
+    {
+        if (row.IsRunning) return "Probíhá";
+        if (startLocal.Date == nowLocal.Date) return "Brzy";
+        if (startLocal.Date == nowLocal.Date.AddDays(1)) return "Zítra";
+        return "Později";
+    }
 }

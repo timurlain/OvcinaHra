@@ -96,37 +96,50 @@
             return;
         }
 
-        // Fan out the cockpit endpoints in parallel so the page paints in
-        // a single render after all responses settle, not in waves.
-        var gameTask = Api.GetAsync<GameDetailDto>($"/api/games/{gameId.Value}");
-        var statsTask = Api.GetAsync<DashboardStatsDto>(
-            $"/api/dashboard/stats?gameId={gameId.Value}");
-        var issuesTask = Api.GetAsync<DashboardIssuesDto>(
-            $"/api/dashboard/issues?gameId={gameId.Value}");
-        var activityTask = Api.GetListAsync<DashboardActivityDto>(
-            $"/api/dashboard/activity?gameId={gameId.Value}&limit=10");
-        var timelineTask = Api.GetListAsync<TimelineRowDto>(
-            $"/api/dashboard/timeline?gameId={gameId.Value}&take=6");
-
-        await Task.WhenAll(gameTask, statsTask, issuesTask, activityTask, timelineTask);
-
-        var game = gameTask.Result;
-        if (game is not null)
+        // Fan out the cockpit endpoints. Wrap in try/catch so a single
+        // failed section degrades gracefully — without this a 500 from
+        // any of the five endpoints would tear the whole cockpit down.
+        try
         {
-            _gameName = game.Name;
-            _edition = game.Edition;
-            _startDate = game.StartDate;
-            _endDate = game.EndDate;
-            // Hero image follow-up: ImageEndpoints' ValidEntityTypes
-            // doesn't include "games" yet, so the hero falls back to its
-            // parchment + shield art. Flagged in PR.
-            _gameImageUrl = null;
+            var gameTask = Api.GetAsync<GameDetailDto>($"/api/games/{gameId.Value}");
+            var statsTask = Api.GetAsync<DashboardStatsDto>(
+                $"/api/dashboard/stats?gameId={gameId.Value}");
+            var issuesTask = Api.GetAsync<DashboardIssuesDto>(
+                $"/api/dashboard/issues?gameId={gameId.Value}");
+            var activityTask = Api.GetListAsync<DashboardActivityDto>(
+                $"/api/dashboard/activity?gameId={gameId.Value}&limit=10");
+            var timelineTask = Api.GetListAsync<TimelineRowDto>(
+                $"/api/dashboard/timeline?gameId={gameId.Value}&take=6");
+
+            await Task.WhenAll(gameTask, statsTask, issuesTask, activityTask, timelineTask);
+
+            var game = gameTask.Result;
+            if (game is not null)
+            {
+                _gameName = game.Name;
+                _edition = game.Edition;
+                _startDate = game.StartDate;
+                _endDate = game.EndDate;
+                // Hero image follow-up: ImageEndpoints' ValidEntityTypes
+                // doesn't include "games" yet, so the hero falls back to
+                // its parchment + shield art. Flagged in PR.
+                _gameImageUrl = null;
+            }
+            _stats = statsTask.Result;
+            _issues = issuesTask.Result;
+            _activity = activityTask.Result;
+            _timeline = timelineTask.Result;
+            // Drive Hra běží mode from the explicit server bool, not the
+            // localised label — Copilot caught the brittle string match.
+            _isGameRunning = timelineTask.Result?.Any(r => r.IsRunning) ?? false;
         }
-        _stats = statsTask.Result;
-        _issues = issuesTask.Result;
-        _activity = activityTask.Result;
-        _timeline = timelineTask.Result;
-        _isGameRunning = timelineTask.Result?.Any(r => r.Status == "Probíhá") ?? false;
+        catch (Exception)
+        {
+            // One endpoint flaked — keep whatever data already loaded so
+            // the cockpit shows partial state rather than a broken page.
+            // ApiClient logs the failure; the empty sections render their
+            // own fallback (skeleton or empty-state copy).
+        }
 
         await InvokeAsync(StateHasChanged);
     }

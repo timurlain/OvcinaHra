@@ -28,12 +28,14 @@
             {
                 <span class="oh-home-prep-chip">příprava</span>
             }
-            <span class="oh-home-game-chip" @onclick="OnChangeGameClick" role="button" tabindex="0"
-                  title="Změnit aktivní hru">
+            @* Real <button> instead of span+role — Enter/Space activate
+               for keyboard users without a custom @onkeydown handler. *@
+            <button type="button" class="oh-home-game-chip" @onclick="OnChangeGameClick"
+                    title="Změnit aktivní hru">
                 <i class="bi bi-shield-fill me-1"></i>
                 @(GameName ?? "Žádná hra")
                 <i class="bi bi-chevron-down ms-1"></i>
-            </span>
+            </button>
         </div>
         <h1 class="oh-home-hero-title">@(GameName ?? "Vyber hru")</h1>
         @if (StartDate.HasValue && EndDate.HasValue)
