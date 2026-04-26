@@ -3838,3 +3838,53 @@
 @media (max-width:600px){
     .oh-qwp-add{grid-template-columns:1fr}
 }
+
+/* ======================================================================
+   Issue #216 — Map page mobile / tablet polish.
+   - Phone (<600px): peek slides up from below as a bottom sheet, layer
+     rail collapses behind a hamburger toggle on the canvas.
+   - Tablet (600-900px): existing right slide-in peek + position-absolute
+     rail (already shipped in #207) stays. The hamburger isn't needed.
+   - Desktop (>900px): unchanged.
+   ====================================================================== */
+
+/* Hamburger toggle — only visible on phone, sits over the canvas. */
+.oh-map-rail-toggle{display:none;position:absolute;top:8px;left:8px;z-index:11;
+    width:36px;height:36px;border-radius:99px;border:1px solid var(--oh-border,#d8d2be);
+    background:rgba(250,246,236,.94);color:var(--oh-text,#2a2a2a);cursor:pointer;
+    align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.18)}
+.oh-map-rail-toggle i{font-size:1.05rem}
+.oh-map-rail-backdrop{display:none;position:fixed;inset:0;background:rgba(20,16,8,.32);z-index:9}
+
+@media (max-width:600px){
+    /* Hamburger replaces the always-visible rail. */
+    .oh-map-rail-toggle{display:flex}
+    /* Layer rail hidden by default; slides in via .is-rail-open. */
+    .oh-map-shell .oh-map-layer-rail{
+        position:fixed;top:64px;left:0;bottom:0;width:min(260px,80vw);z-index:10;
+        background:var(--oh-surface,#FAF6EC);border-right:1px solid var(--oh-border,#d8d2be);
+        box-shadow:6px 0 24px rgba(0,0,0,.18);overflow-y:auto;
+        transform:translateX(-100%);transition:transform .25s cubic-bezier(.2,.7,.2,1)}
+    .oh-map-shell.is-rail-open .oh-map-layer-rail{transform:translateX(0)}
+    .oh-map-shell.is-rail-open .oh-map-rail-backdrop{display:block}
+
+    /* Canvas takes full width (rail no longer in flow). */
+    .oh-map-shell{grid-template-columns:1fr}
+
+    /* Peek becomes a bottom sheet — slides up from below covering ~70vh. */
+    .oh-map-peek{
+        top:auto;right:0;left:0;bottom:0;width:100%;height:70vh;
+        border-left:none;border-top:1px solid var(--oh-border,#d8d2be);
+        border-radius:12px 12px 0 0;
+        box-shadow:0 -6px 24px rgba(0,0,0,.18);
+        transform:translateY(100%);
+    }
+    .oh-map-peek.is-on{transform:translateY(0)}
+    /* Drag handle visual cue at the top of the sheet (decorative). */
+    .oh-map-peek::before{content:'';display:block;width:36px;height:4px;border-radius:99px;
+        background:var(--oh-border,#d8d2be);margin:4px auto 8px}
+
+    /* Toolbar wraps cleanly when the counts row drops below the modes. */
+    .oh-map-tb{flex-wrap:wrap;gap:8px}
+    .oh-map-tb-counts{margin-left:0;flex-basis:100%}
+}
