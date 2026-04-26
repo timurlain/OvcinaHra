@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
@@ -382,7 +383,7 @@ public static class QuestEndpoints
         return TypedResults.Ok(rows);
     }
 
-    private static async Task<Results<Created<QuestWaypointDto>, NotFound, ProblemHttpResult>> AddWaypoint(
+    private static async Task<Results<Ok<QuestWaypointDto>, NotFound, ProblemHttpResult>> AddWaypoint(
         int id, AddQuestWaypointDto dto, WorldDbContext db)
     {
         if (!await db.Quests.AnyAsync(q => q.Id == id)) return TypedResults.NotFound();
@@ -392,9 +393,13 @@ public static class QuestEndpoints
                 detail: $"Lokace s ID {dto.LocationId} neexistuje.",
                 statusCode: StatusCodes.Status400BadRequest);
 
-        // Append at end — next free Order. Reorder/insert lives on the
-        // bulk reorder endpoint so the editor's drag-drop has a single
-        // path that's atomic.
+        // Issue #224 — wrap MAX(Order)+1 read-then-write in a SERIALIZABLE
+        // transaction so two concurrent POSTs can't pick the same next
+        // Order and trip the (QuestId, Order) unique-index violation.
+        // Postgres will retry-fail one of the txns; the editor surfaces
+        // the failure as a banner and the user clicks Add again.
+        await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
         var nextOrder = (await db.QuestWaypoints
             .Where(w => w.QuestId == id)
             .Select(w => (int?)w.Order)
@@ -415,8 +420,15 @@ public static class QuestEndpoints
             .Select(l => l.Name)
             .FirstAsync();
 
-        return TypedResults.Created(
-            $"/api/quests/{id}/waypoints/{wp.Id}",
+        await tx.CommitAsync();
+
+        // Issue #224 — return 200 OK with the DTO instead of 201 Created.
+        // The 201 contract previously emitted a Location header pointing
+        // at /api/quests/{id}/waypoints/{wpId} but no GET-by-id route
+        // existed there. The editor reloads the whole list after add, so
+        // GET-by-id was never load-bearing; dropping the header avoids
+        // shipping a stale link.
+        return TypedResults.Ok(
             new QuestWaypointDto(wp.Id, wp.QuestId, wp.LocationId, locationName, wp.Order, wp.Label));
     }
 
@@ -475,7 +487,7 @@ public static class QuestEndpoints
         {
             return TypedResults.Problem(
                 title: "Neplatné pořadí.",
-                detail: "Seznam ID musí přesně odpovídat existujícím waypointům této úkolu.",
+                detail: "Seznam ID musí přesně odpovídat existujícím waypointům tohoto úkolu.",
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
@@ -492,8 +504,10 @@ public static class QuestEndpoints
         for (var i = 0; i < requested.Count; i++)
         {
             var target = byId[requested[i]];
-            // Reload tracked entity, set the final order. ExecuteUpdate
-            // on a single row by Id keeps each step independent.
+            // ExecuteUpdate on a single row by Id keeps each step
+            // independent of the change tracker — no entity is reloaded
+            // here, the SQL writes directly. Stage 1 already flipped
+            // Order to negatives; this stage writes the final positive.
             await db.QuestWaypoints
                 .Where(w => w.Id == target.Id)
                 .ExecuteUpdateAsync(s => s.SetProperty(w => w.Order, _ => i + 1));

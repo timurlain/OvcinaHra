@@ -68,7 +68,7 @@ public class QuestRewardConfiguration : IEntityTypeConfiguration<QuestReward>
 /// <summary>
 /// Issue #214 — ordered location waypoints inside a quest. Surrogate
 /// PK so reordering doesn't cascade-delete waypoint rows the way a
-/// (QuestId, Order) composite PK would. Filtered unique guard on
+/// (QuestId, Order) composite PK would. Plain unique index on
 /// (QuestId, Order) keeps two waypoints from claiming the same step.
 /// </summary>
 public class QuestWaypointConfiguration : IEntityTypeConfiguration<QuestWaypoint>
