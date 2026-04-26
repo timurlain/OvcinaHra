@@ -850,21 +850,28 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
         console.log('[pin-diag] addLocationPin id=' + id + ' lat=' + lat + ' lon=' + lon + ' kind=' + kind + ' name=' + (name || '?'));
     }
     this.removeLocationPin(id);
+    // Wrapper / inner pin pattern (matches the still-working addMarker for
+    // LocationDetail). Passing the .oh-map-pin element directly to MapLibre
+    // — which has `position: relative` for the stash badge — interacts
+    // badly with MapLibre's transform-based positioning: `wrapper.style
+    // .transform` ends up empty and the marker stays at the map container
+    // origin while tiles slide underneath, looking like the pin "drifts"
+    // on zoom. The clean wrapper has no positioning of its own so MapLibre
+    // can apply transform: translate(...) freely.
+    var wrapper = document.createElement('div');
+    wrapper.style.cursor = 'pointer';
     var pin = document.createElement('div');
     pin.className = 'oh-map-pin oh-map-pin-loc';
     pin.setAttribute('data-kind', (kind || 'wilderness').toLowerCase());
-    pin.title = name || '';
+    wrapper.title = name || '';
+    wrapper.appendChild(pin);
     var self = this;
-    pin.addEventListener('click', function (e) {
+    wrapper.addEventListener('click', function (e) {
         e.stopPropagation();
         if (self._dotnetRef) self._dotnetRef.invokeMethodAsync('OnMapPinClicked', 'location', id);
     });
-    // Drag-to-relocate. Disabled on coarse pointers (touch / tablet) so
-    // a stray finger drag doesn't accidentally move a placed pin. On PC
-    // the organizer can drag a pin to refine its GPS — `dragend` posts
-    // the new coordinates back to MapPage which PUTs the location.
-    // Default-coarse when detection is unavailable (embedded webviews,
-    // older browsers) — safer to lock drag than to enable it by accident.
+    // Drag-to-relocate on PC; disabled for coarse pointers. Default-coarse
+    // when detection unavailable (embedded webviews) — safer to lock.
     var isCoarsePointer = true;
     if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
         isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
@@ -872,14 +879,13 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
         isCoarsePointer = navigator.maxTouchPoints > 0;
     }
     var draggable = !isCoarsePointer;
-    var marker = new maplibregl.Marker({ element: pin, anchor: 'center', draggable: draggable })
+    var marker = new maplibregl.Marker({ element: wrapper, anchor: 'center', draggable: draggable })
         .setLngLat([lon, lat])
         .addTo(this._map);
     if (draggable) {
         marker.on('dragend', function () {
             var newPos = marker.getLngLat();
             if (self._dotnetRef) {
-                // Use `lng` consistently with MapLibre's own LngLat naming.
                 self._dotnetRef.invokeMethodAsync('OnLocationPinDragged', id, newPos.lat, newPos.lng);
             }
         });
@@ -895,24 +901,31 @@ window.ovcinaMap.removeLocationPin = function (id) {
 window.ovcinaMap.addStashPin = function (id, locationId, lat, lon, name, count, stage) {
     if (!this._map) return;
     this.removeStashPin(id);
+    // Same wrapper/inner-pin pattern as addLocationPin so MapLibre can
+    // apply its positioning transform cleanly. The pin keeps its own
+    // `position: relative` for the count badge (`.oh-map-pin-count` is
+    // absolutely positioned relative to the pin, not the wrapper).
+    var wrapper = document.createElement('div');
+    wrapper.style.cursor = 'pointer';
     var pin = document.createElement('div');
     pin.className = 'oh-map-pin oh-map-pin-stash';
     if (stage) pin.setAttribute('data-stage', stage);
-    pin.title = (name || '') + (count ? ' · ' + count + ' pokladů' : '');
+    wrapper.title = (name || '') + (count ? ' · ' + count + ' pokladů' : '');
     if (count > 0) {
         var badge = document.createElement('span');
         badge.className = 'oh-map-pin-count';
         badge.textContent = String(count);
         pin.appendChild(badge);
     }
+    wrapper.appendChild(pin);
     var self = this;
-    pin.addEventListener('click', function (e) {
+    wrapper.addEventListener('click', function (e) {
         e.stopPropagation();
         // Stash pins open the host location's peek per the brief —
         // "stash IS at the location" — keeps one peek surface.
         if (self._dotnetRef) self._dotnetRef.invokeMethodAsync('OnMapPinClicked', 'location', locationId);
     });
-    var marker = new maplibregl.Marker({ element: pin, anchor: 'center' })
+    var marker = new maplibregl.Marker({ element: wrapper, anchor: 'center' })
         .setLngLat([lon, lat])
         .addTo(this._map);
     this._mapPagePins.stash[id] = marker;
