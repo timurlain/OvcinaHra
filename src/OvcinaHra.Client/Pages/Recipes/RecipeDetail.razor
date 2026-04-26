@@ -1,0 +1,234 @@
+@page "/recipes/{Id:int}"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject GameContextService GameContext
+@implements IDisposable
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Extensions
+
+@* Issue #218 — single Karta page with Upravit popup. No Karta/Upravit tab
+   split — edit is gated behind the [Upravit] button which opens
+   RecipeEditPopup (shared with /recipes catalog + per-game grid). *@
+
+<div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+    <button class="btn btn-sm btn-outline-secondary" type="button"
+            @onclick='() => Nav.NavigateTo("/recipes")'>
+        <i class="bi bi-arrow-left"></i> Zpět na knihu receptů
+    </button>
+    <h1 class="mb-0">@(detail?.Title ?? "Recept")</h1>
+    @if (detail is not null)
+    {
+        <RecipeCategoryChip Category="@detail.Category" />
+    }
+    <div class="ms-auto d-flex gap-2">
+        @if (detail is not null)
+        {
+            <button class="btn btn-sm btn-outline-primary" type="button" @onclick="() => isEditVisible = true">
+                <i class="bi bi-pencil"></i> Upravit
+            </button>
+            @if (CanDelete)
+            {
+                <button class="btn btn-sm btn-outline-danger" type="button" @onclick="() => isDeleteVisible = true">
+                    <i class="bi bi-trash"></i> Smazat
+                </button>
+            }
+        }
+    </div>
+</div>
+
+@if (loading)
+{
+    <p class="text-muted">Načítám…</p>
+}
+else if (detail is null)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-emoji-frown fs-1 d-block mb-2"></i>
+        <p>Recept nenalezen.</p>
+    </div>
+}
+else
+{
+    @* Hero block — formula card in Hero variant *@
+    <RecipeFormulaCard Recipe="@AsListDto(detail)" Variant="RecipeFormulaCard.FormulaVariant.Hero" />
+
+    @* Below the hero: 4 mini-sections matching the issue spec *@
+    <div class="oh-rec-rel-grid mt-3">
+        <section class="oh-rec-rel-section">
+            <h6><i class="bi bi-basket"></i> Vstupní suroviny</h6>
+            @if (detail.Ingredients.Count == 0)
+            {
+                <p class="text-muted small mb-0">Žádné suroviny.</p>
+            }
+            else
+            {
+                <ul class="oh-rec-rel-list">
+                    @foreach (var ing in detail.Ingredients)
+                    {
+                        <li>
+                            <strong>@ing.Name</strong>
+                            <span class="oh-rec-qty">×@ing.Quantity</span>
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+
+        <section class="oh-rec-rel-section">
+            <h6><i class="bi bi-bag"></i> Výstupní artefakt</h6>
+            <ul class="oh-rec-rel-list">
+                <li>
+                    <strong>@detail.OutputItemName</strong>
+                    @if (detail.OutputQuantity > 1)
+                    {
+                        <span class="oh-rec-qty">×@detail.OutputQuantity</span>
+                    }
+                </li>
+            </ul>
+        </section>
+
+        <section class="oh-rec-rel-section">
+            <h6><i class="bi bi-house"></i> Vyžadováno na stavbě</h6>
+            @if (detail.Buildings.Count == 0)
+            {
+                <p class="text-muted small mb-0">Žádné požadavky na stavbu.</p>
+            }
+            else
+            {
+                <ul class="oh-rec-rel-list">
+                    @foreach (var b in detail.Buildings)
+                    {
+                        <li>
+                            <button type="button" class="oh-rec-rel-link"
+                                    @onclick="@(() => Nav.NavigateTo($"/buildings/{b.BuildingId}"))">
+                                @b.Name <i class="bi bi-arrow-right"></i>
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+
+        <section class="oh-rec-rel-section">
+            <h6><i class="bi bi-mortarboard"></i> Vyžaduje dovednost(i)</h6>
+            @if (detail.Skills.Count == 0)
+            {
+                <p class="text-muted small mb-0">Žádné požadavky na dovednost.</p>
+            }
+            else
+            {
+                <ul class="oh-rec-rel-list">
+                    @foreach (var s in detail.Skills)
+                    {
+                        <li><strong>@s.Name</strong></li>
+                    }
+                </ul>
+            }
+        </section>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(detail.IngredientNotes))
+    {
+        <div class="oh-rec-notes mt-3">
+            <h6><i class="bi bi-info-circle"></i> Poznámka k surovinám</h6>
+            <p>@detail.IngredientNotes</p>
+        </div>
+    }
+
+    @if (detail.GameId is null && detail.ForksCount > 0)
+    {
+        <div class="alert alert-secondary mt-3 d-flex align-items-center gap-2">
+            <i class="bi bi-files"></i>
+            <span>Šablona je rozkopírovaná do <strong>@detail.ForksCount</strong> her — Smazat je zablokované, dokud kopie existují.</span>
+        </div>
+    }
+}
+
+@* Shared edit popup *@
+<RecipeEditPopup @bind-Visible="isEditVisible" RecipeId="@Id" OnSaved="@LoadAsync" />
+
+@* Delete confirmation *@
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Smazat recept?" Width="420px">
+    <BodyContentTemplate Context="ctx">
+        <p>Smazat recept <strong>@(detail?.Title)</strong>? Akce je nevratná.</p>
+        @if (deleteError is not null)
+        {
+            <div class="alert alert-danger">@deleteError</div>
+        }
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" type="button" @onclick="() => isDeleteVisible = false">Zrušit</button>
+            <button class="btn btn-danger" type="button" @onclick="ConfirmDeleteAsync">Smazat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private RecipeDetailDto? detail;
+    private bool loading = true;
+    private string? error;
+
+    private bool isEditVisible;
+    private bool isDeleteVisible;
+    private string? deleteError;
+
+    private bool CanDelete =>
+        detail is not null && (detail.GameId is not null || detail.ForksCount == 0);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GameContext.InitializeAsync();
+        GameContext.OnGameChanged += OnGameChanged;
+        await LoadAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (detail is not null && detail.Id != Id)
+            await LoadAsync();
+    }
+
+    private async void OnGameChanged() => await LoadAsync();
+
+    public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        error = null;
+        try
+        {
+            detail = await Api.GetAsync<RecipeDetailDto>($"/api/recipes/{Id}");
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { loading = false; StateHasChanged(); }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (detail is null) return;
+        deleteError = null;
+        try
+        {
+            var (ok, problem) = await Api.DeleteWithProblemAsync($"/api/recipes/{detail.Id}");
+            if (!ok)
+            {
+                deleteError = problem ?? "Smazání se nezdařilo.";
+                return;
+            }
+            isDeleteVisible = false;
+            Nav.NavigateTo("/recipes");
+        }
+        catch (Exception ex) { deleteError = ex.Message; }
+    }
+
+    // Adapter — RecipeFormulaCard accepts the list DTO; cast detail to it.
+    private static RecipeListDto AsListDto(RecipeDetailDto d) =>
+        new(d.Id, d.Name, d.Title, d.Category, d.GameId, d.TemplateRecipeId,
+            d.OutputItemId, d.OutputItemName, d.OutputItemThumbnailUrl, d.OutputQuantity,
+            d.LocationId, d.LocationName,
+            d.Ingredients, d.Buildings, d.Skills,
+            d.IngredientNotes, d.ForksCount);
+}

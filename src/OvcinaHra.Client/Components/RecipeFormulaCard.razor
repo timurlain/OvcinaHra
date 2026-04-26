@@ -1,0 +1,159 @@
+@using OvcinaHra.Shared.Dtos
+@using OvcinaHra.Shared.Domain.Enums
+
+@* Issue #218 — formula card. Three layout variants share the same
+   ingredient-chips → arrow → output-chip skeleton. List variant is the
+   catalog cookbook row; Hero is the larger detail-page hero; Compact is
+   the Tvorba-tab-style row. Sacred prose rule: ingredient names + qty
+   are NEVER abbreviated server-side, CSS handles wrapping. *@
+
+<div class="oh-rec-fc oh-rec-fc--@VariantClass oh-rec-cat-@CategoryKey @(Clickable ? "oh-rec-fc--clickable" : "")"
+     @key="Recipe.Id"
+     @onclick="HandleClick"
+     role="@(Clickable ? "button" : null)"
+     tabindex="@(Clickable ? "0" : null)">
+    <div class="oh-rec-fc-top">
+        <span class="oh-rec-fc-num">#@Recipe.Id</span>
+        <h3 class="oh-rec-fc-name">@Recipe.Title</h3>
+        <RecipeCategoryChip Category="@Recipe.Category" />
+        @if (Recipe.GameId is null)
+        {
+            <span class="oh-rec-src-badge oh-rec-src-badge--template" title="Šablona katalogu">
+                <i class="bi bi-bookmark-fill"></i>
+            </span>
+        }
+        else if (Recipe.TemplateRecipeId is int tplId)
+        {
+            <span class="oh-rec-src-badge oh-rec-src-badge--fork" title="@($"Šablona #{tplId}")">
+                <i class="bi bi-files"></i> Šablona #@tplId
+            </span>
+        }
+        else
+        {
+            <span class="oh-rec-src-badge oh-rec-src-badge--scratch" title="Od nuly">
+                <i class="bi bi-stars"></i> Od nuly
+            </span>
+        }
+    </div>
+
+    <div class="oh-rec-fc-body">
+        <div class="oh-rec-fc-inputs">
+            @if (Recipe.Ingredients.Count == 0)
+            {
+                <span class="oh-rec-fc-empty">Bez surovin</span>
+            }
+            else
+            {
+                @foreach (var ing in Recipe.Ingredients)
+                {
+                    <span class="oh-rec-fc-ing-chip" @key="ing.ItemId" title="@ing.Name">
+                        @if (!string.IsNullOrEmpty(ing.ThumbnailUrl))
+                        {
+                            <img src="@ing.ThumbnailUrl" alt="@ing.Name" class="oh-rec-fc-ing-thumb" />
+                        }
+                        else
+                        {
+                            <span class="oh-rec-fc-ing-thumb oh-rec-fc-ing-thumb--placeholder">
+                                <i class="bi bi-box"></i>
+                            </span>
+                        }
+                        <span class="oh-rec-fc-ing-name">@ing.Name</span>
+                        <span class="oh-rec-qty">×@ing.Quantity</span>
+                    </span>
+                }
+            }
+        </div>
+
+        <div class="oh-rec-fc-arrow" aria-hidden="true">
+            <i class="bi bi-arrow-right"></i>
+        </div>
+
+        <div class="oh-rec-fc-output">
+            <span class="oh-rec-fc-out-chip" title="@Recipe.OutputItemName">
+                @if (!string.IsNullOrEmpty(Recipe.OutputItemThumbnailUrl))
+                {
+                    <img src="@Recipe.OutputItemThumbnailUrl" alt="@Recipe.OutputItemName" class="oh-rec-fc-out-thumb" />
+                }
+                else
+                {
+                    <span class="oh-rec-fc-out-thumb oh-rec-fc-out-thumb--placeholder">
+                        <i class="bi bi-bag"></i>
+                    </span>
+                }
+                <span class="oh-rec-fc-out-name">@Recipe.OutputItemName</span>
+                @if (Recipe.OutputQuantity > 1)
+                {
+                    <span class="oh-rec-qty oh-rec-qty--out">×@Recipe.OutputQuantity</span>
+                }
+            </span>
+        </div>
+    </div>
+
+    @if (Recipe.Buildings.Count > 0 || Recipe.Skills.Count > 0 || !string.IsNullOrWhiteSpace(Recipe.LocationName))
+    {
+        <div class="oh-rec-fc-req">
+            @foreach (var b in Recipe.Buildings)
+            {
+                <span class="oh-rec-fc-req-chip oh-rec-fc-req-chip--building" @key="b.BuildingId" title="Vyžaduje stavbu">
+                    <i class="bi bi-house"></i>@b.Name
+                </span>
+            }
+            @foreach (var s in Recipe.Skills)
+            {
+                <span class="oh-rec-fc-req-chip oh-rec-fc-req-chip--skill" @key="s.SkillId" title="Vyžaduje dovednost">
+                    <i class="bi bi-mortarboard"></i>@s.Name
+                </span>
+            }
+            @if (!string.IsNullOrWhiteSpace(Recipe.LocationName))
+            {
+                <span class="oh-rec-fc-req-chip oh-rec-fc-req-chip--location" title="Lokace">
+                    <i class="bi bi-geo-alt"></i>@Recipe.LocationName
+                </span>
+            }
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Recipe.IngredientNotes) && Variant != FormulaVariant.Compact)
+    {
+        <div class="oh-rec-fc-notes">
+            <i class="bi bi-info-circle"></i>
+            <span>@Recipe.IngredientNotes</span>
+        </div>
+    }
+
+    @if (ChildContent is not null)
+    {
+        <div class="oh-rec-fc-actions">@ChildContent</div>
+    }
+</div>
+
+@code {
+    public enum FormulaVariant { List, Hero, Compact }
+
+    [Parameter, EditorRequired] public RecipeListDto Recipe { get; set; } = null!;
+    [Parameter] public FormulaVariant Variant { get; set; } = FormulaVariant.List;
+    [Parameter] public bool Clickable { get; set; }
+    [Parameter] public EventCallback<RecipeListDto> OnClick { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private string VariantClass => Variant switch
+    {
+        FormulaVariant.Hero    => "hero",
+        FormulaVariant.Compact => "compact",
+        _                       => "list"
+    };
+
+    private string CategoryKey => Recipe.Category switch
+    {
+        RecipeCategory.Budova    => "budova",
+        RecipeCategory.Lektvar   => "lektvar",
+        RecipeCategory.Artefakt  => "artefakt",
+        _                        => "ostatni"
+    };
+
+    private async Task HandleClick()
+    {
+        if (Clickable)
+            await OnClick.InvokeAsync(Recipe);
+    }
+}

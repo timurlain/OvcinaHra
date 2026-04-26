@@ -927,7 +927,15 @@ else
         <div class="oh-it-d-recipe" @key="@($"r-{r.RecipeId}")">
             <div class="oh-it-d-recipe-head">
                 <h5>@r.OutputItemName</h5>
-                <span class="oh-it-d-recipe-game">@r.Game.GameName · ED. @r.Game.Edition</span>
+                @* Issue #218 — Recipe.Game is nullable now (catalog templates have no game). *@
+                @if (r.Game is not null)
+                {
+                    <span class="oh-it-d-recipe-game">@r.Game.GameName · ED. @r.Game.Edition</span>
+                }
+                else
+                {
+                    <span class="oh-it-d-recipe-game oh-it-d-recipe-game--template">Šablona katalogu</span>
+                }
                 @if (!string.IsNullOrWhiteSpace(r.LocationName))
                 {
                     <span class="oh-it-d-recipe-loc"><i class="bi bi-geo-alt me-1"></i>@r.LocationName</span>

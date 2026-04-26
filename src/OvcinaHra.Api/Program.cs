@@ -213,6 +213,7 @@ try
     app.MapSkillEndpoints().RequireAuthorization();
     app.MapSpellEndpoints().RequireAuthorization();
     app.MapCraftingEndpoints().RequireAuthorization();
+    app.MapRecipeEndpoints().RequireAuthorization();
     app.MapBuildingRecipeEndpoints().RequireAuthorization();
     app.MapTreasureQuestEndpoints().RequireAuthorization();
     app.MapPersonalQuestEndpoints().RequireAuthorization();

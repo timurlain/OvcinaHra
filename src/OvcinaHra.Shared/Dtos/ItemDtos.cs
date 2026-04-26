@@ -162,7 +162,10 @@ public record ItemUsageGameRefDto(int GameId, string GameName, int Edition);
 
 public record ItemUsageRecipeDto(
     int RecipeId,
-    ItemUsageGameRefDto Game,
+    // Issue #218 — Recipe.GameId became nullable (catalog templates have no
+    // game). Game is null on rows where GameId is null. Item Tvorba tab
+    // groups by Game and renders a "Šablona katalogu" header for nulls.
+    ItemUsageGameRefDto? Game,
     int OutputItemId,
     string OutputItemName,
     int? LocationId,

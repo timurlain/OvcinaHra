@@ -1,0 +1,318 @@
+@page "/games/{GameId:int}/recipes"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Extensions
+
+@* Issue #218 — per-game recipe DxGrid. Source badges (Šablona #N / Od
+   nuly) + drift `≠` icon when fork fields diverge from template.
+   LayoutKey grid-layout-game-recipes-v2. *@
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h1 class="mb-0">Recepty hry @(game?.Name)</h1>
+        @if (game is not null)
+        {
+            <p class="text-muted small mb-0">edice @game.Edition · @recipes.Count receptů</p>
+        }
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary" type="button"
+                @onclick='() => Nav.NavigateTo("/recipes")'>
+            <i class="bi bi-journal-text"></i> Kniha receptů
+        </button>
+        <button class="btn btn-outline-primary" type="button" @onclick="() => isFromTemplateVisible = true">
+            <i class="bi bi-files"></i> Přidat ze šablony
+        </button>
+    </div>
+</div>
+
+@if (loading)
+{
+    <p class="text-muted">Načítám…</p>
+}
+else if (recipes.Count == 0)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-journal-text fs-1 d-block mb-2"></i>
+        <p>V této hře nejsou žádné recepty.</p>
+        <button class="btn btn-outline-primary" type="button" @onclick="() => isFromTemplateVisible = true">
+            <i class="bi bi-files"></i> Přidat ze šablony
+        </button>
+    </div>
+}
+else
+{
+    <OvcinaGrid Data="@recipes" KeyFieldName="Id" LayoutKey="grid-layout-game-recipes-v2"
+                RowClick="@(e => OpenEditPopup((RecipeListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+        <Columns>
+            <DxGridDataColumn Caption="Šablona" Width="140px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{ var r = (RecipeListDto)context.DataItem; }
+                    @if (r.TemplateRecipeId is int tplId)
+                    {
+                        <span class="oh-rec-src-badge oh-rec-src-badge--fork">
+                            <i class="bi bi-files"></i> Šablona #@tplId
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="oh-rec-src-badge oh-rec-src-badge--scratch">
+                            <i class="bi bi-stars"></i> Od nuly
+                        </span>
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            <DxGridDataColumn Caption="" Width="60px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{ var r = (RecipeListDto)context.DataItem; }
+                    <div class="oh-rec-mini-thumb @(string.IsNullOrEmpty(r.OutputItemThumbnailUrl) ? "oh-rec-mini-thumb--placeholder" : "")">
+                        @if (!string.IsNullOrEmpty(r.OutputItemThumbnailUrl))
+                        {
+                            <img src="@r.OutputItemThumbnailUrl" alt="@r.OutputItemName" />
+                        }
+                        else
+                        {
+                            <i class="bi bi-bag"></i>
+                        }
+                    </div>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            <DxGridDataColumn FieldName="Title" Caption="Název" MinWidth="200" />
+            <DxGridDataColumn FieldName="CategoryDisplay" Caption="Kategorie" Width="130px">
+                <CellDisplayTemplate>
+                    @{ var r = (RecipeListDto)context.DataItem; }
+                    <RecipeCategoryChip Category="@r.Category" />
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            <DxGridDataColumn Caption="Vstupy" MinWidth="180" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{ var r = (RecipeListDto)context.DataItem; }
+                    @if (r.Ingredients.Count == 0)
+                    {
+                        <span class="text-muted fst-italic">—</span>
+                    }
+                    else
+                    {
+                        <span class="oh-rec-grid-chips">
+                            @foreach (var i in r.Ingredients.Take(3))
+                            {
+                                <span class="oh-pill" title="@i.Name">@i.Name ×@i.Quantity</span>
+                            }
+                            @if (r.Ingredients.Count > 3)
+                            {
+                                <span class="oh-pill-mono">+@(r.Ingredients.Count - 3)</span>
+                            }
+                        </span>
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            <DxGridDataColumn FieldName="OutputItemName" Caption="Výstup" MinWidth="160" />
+
+            <DxGridDataColumn Caption="Stavby" Width="160" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{ var r = (RecipeListDto)context.DataItem; }
+                    @if (r.Buildings.Count == 0)
+                    {
+                        <span class="text-muted fst-italic">—</span>
+                    }
+                    else
+                    {
+                        <span class="oh-rec-grid-chips">
+                            @foreach (var b in r.Buildings)
+                            {
+                                <span class="oh-pill" title="@b.Name">@b.Name</span>
+                            }
+                        </span>
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            <DxGridDataColumn Caption="≠" Width="60px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{ var r = (RecipeListDto)context.DataItem; }
+                    @if (r.TemplateRecipeId is int tid && DriftFor(r, tid))
+                    {
+                        <span class="oh-rec-drift-ic" title="Pole se liší od šablony">
+                            <i class="bi bi-exclamation-diamond-fill"></i>
+                        </span>
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+        </Columns>
+    </OvcinaGrid>
+}
+
+<DxPopup AllowResize="true" @bind-Visible="@isFromTemplateVisible"
+         HeaderText="Přidat recept ze šablony" Width="640px">
+    <BodyContentTemplate Context="ctx">
+        @if (templateCatalog is null)
+        {
+            <p class="text-muted">Načítám katalog…</p>
+        }
+        else if (templateCatalog.Count == 0)
+        {
+            <p class="text-muted">V katalogu nejsou žádné šablony receptů.</p>
+        }
+        else
+        {
+            <DxFormLayout>
+                <DxFormLayoutItem Caption="Šablona" ColSpanMd="12">
+                    <DxComboBox Data="@templateCatalog" @bind-Value="@templateId"
+                                TextFieldName="Title" ValueFieldName="Id"
+                                NullText="(vyberte šablonu)"
+                                SearchMode="ListSearchMode.AutoSearch" />
+                </DxFormLayoutItem>
+            </DxFormLayout>
+        }
+        @if (copyError is not null)
+        {
+            <div class="alert alert-danger mt-2">@copyError</div>
+        }
+        <div class="d-flex gap-2 justify-content-end mt-3">
+            <button class="btn btn-secondary" type="button" @onclick="() => isFromTemplateVisible = false">Zavřít</button>
+            <button class="btn btn-primary" type="button"
+                    @onclick="CopyFromTemplateAsync"
+                    disabled="@(isCopying || templateId is null)">
+                @if (isCopying) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Vytvořit kopii
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+<RecipeEditPopup @bind-Visible="isEditVisible" RecipeId="@editingRecipeId" OnSaved="@LoadAsync" />
+
+@code {
+    [Parameter] public int GameId { get; set; }
+
+    private GameDetailDto? game;
+    private List<RecipeListDto> recipes = [];
+    private List<RecipeListDto>? templateCatalog;
+    private bool loading = true;
+
+    // Cached template lookup for drift detection — avoids O(N) scan per row.
+    private Dictionary<int, RecipeListDto> templateById = new();
+
+    private bool isFromTemplateVisible;
+    private int? templateId;
+    private bool isCopying;
+    private string? copyError;
+
+    private bool isEditVisible;
+    private int? editingRecipeId;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (game is not null && game.Id != GameId) await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        try
+        {
+            var gameTask = Api.GetAsync<GameDetailDto>($"/api/games/{GameId}");
+            var recipesTask = Api.GetListAsync<RecipeListDto>($"/api/games/{GameId}/recipes");
+            await Task.WhenAll(gameTask, recipesTask);
+            game = await gameTask;
+            recipes = await recipesTask;
+
+            // Load templates referenced by any per-game fork — only those
+            // we need for drift detection. Cached as a dict so the per-row
+            // drift compare is O(1).
+            var refIds = recipes.Where(r => r.TemplateRecipeId.HasValue)
+                .Select(r => r.TemplateRecipeId!.Value)
+                .Distinct().ToList();
+            if (refIds.Count > 0)
+            {
+                var catalog = await Api.GetListAsync<RecipeListDto>("/api/recipes");
+                templateById = catalog.Where(t => refIds.Contains(t.Id)).ToDictionary(t => t.Id);
+            }
+            else
+            {
+                templateById = new();
+            }
+        }
+        finally { loading = false; }
+    }
+
+    private bool DriftFor(RecipeListDto fork, int templateId)
+    {
+        if (!templateById.TryGetValue(templateId, out var tpl)) return false;
+        // Compare scalar fields + child collections by content.
+        if (fork.Title != tpl.Title) return true;
+        if (fork.Category != tpl.Category) return true;
+        if (fork.OutputItemId != tpl.OutputItemId) return true;
+        if ((fork.IngredientNotes ?? "") != (tpl.IngredientNotes ?? "")) return true;
+        if (!IngredientsMatch(fork.Ingredients, tpl.Ingredients)) return true;
+        if (!BuildingsMatch(fork.Buildings, tpl.Buildings)) return true;
+        // Skills not compared — template has none (catalog can't reference
+        // GameSkills); fork has them legitimately, so a non-empty skills
+        // list is NOT drift.
+        return false;
+    }
+
+    private static bool IngredientsMatch(IReadOnlyList<RecipeIngredientChipDto> a, IReadOnlyList<RecipeIngredientChipDto> b)
+    {
+        if (a.Count != b.Count) return false;
+        var aMap = a.ToDictionary(x => x.ItemId, x => x.Quantity);
+        return b.All(x => aMap.TryGetValue(x.ItemId, out var q) && q == x.Quantity);
+    }
+
+    private static bool BuildingsMatch(IReadOnlyList<RecipeBuildingChipDto> a, IReadOnlyList<RecipeBuildingChipDto> b)
+    {
+        if (a.Count != b.Count) return false;
+        var aSet = a.Select(x => x.BuildingId).ToHashSet();
+        return b.All(x => aSet.Contains(x.BuildingId));
+    }
+
+    private void OpenEditPopup(RecipeListDto r)
+    {
+        editingRecipeId = r.Id;
+        isEditVisible = true;
+    }
+
+    private async Task CopyFromTemplateAsync()
+    {
+        if (templateId is null) return;
+        copyError = null;
+        isCopying = true;
+        try
+        {
+            var (ok, created, problem) = await Api.PostWithProblemAsync<object, RecipeDetailDto>(
+                $"/api/games/{GameId}/recipes/from-template/{templateId.Value}", new { });
+            if (!ok)
+            {
+                copyError = problem ?? "Vytvoření kopie se nezdařilo.";
+                return;
+            }
+            isFromTemplateVisible = false;
+            templateId = null;
+            await LoadAsync();
+            if (created is not null)
+            {
+                editingRecipeId = created.Id;
+                isEditVisible = true;
+            }
+        }
+        catch (Exception ex) { copyError = ex.Message; }
+        finally { isCopying = false; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try { templateCatalog = await Api.GetListAsync<RecipeListDto>("/api/recipes"); }
+            catch (Exception ex) { copyError = ex.Message; templateCatalog = []; }
+        }
+    }
+}

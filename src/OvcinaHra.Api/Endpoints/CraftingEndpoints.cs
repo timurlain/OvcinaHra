@@ -65,8 +65,13 @@ public static class CraftingEndpoints
         CreateCraftingRecipeDto dto, WorldDbContext db, CancellationToken ct)
     {
         var skillIds = dto.RequiredSkillIds?.Distinct().ToList() ?? [];
-        var problem = await ValidateRequiredSkillsAsync(db, dto.GameId, skillIds, ct);
-        if (problem is not null) return TypedResults.BadRequest(problem);
+        // Issue #218 — catalog templates (GameId is null) skip the per-game
+        // GameSkill validation; the fork endpoint re-validates per target.
+        if (dto.GameId is int createGid)
+        {
+            var problem = await ValidateRequiredSkillsAsync(db, createGid, skillIds, ct);
+            if (problem is not null) return TypedResults.BadRequest(problem);
+        }
 
         var ingredientNotes = dto.IngredientNotes?.Trim();
         if (!string.IsNullOrEmpty(ingredientNotes) && ingredientNotes.Length > IngredientNotesMaxLength)
@@ -138,8 +143,15 @@ public static class CraftingEndpoints
         }
 
         var skillIds = dto.RequiredSkillIds?.Distinct().ToList() ?? [];
-        var problem = await ValidateRequiredSkillsAsync(db, recipe.GameId, skillIds, ct);
-        if (problem is not null) return TypedResults.BadRequest(problem);
+        // Issue #218 — catalog templates (GameId is null) can carry GameSkill
+        // IDs only when forked into a game. Skip the per-game validation for
+        // catalog rows; the from-template fork endpoint re-validates against
+        // the target game's GameSkill set when it deep-copies.
+        if (recipe.GameId is int gid)
+        {
+            var problem = await ValidateRequiredSkillsAsync(db, gid, skillIds, ct);
+            if (problem is not null) return TypedResults.BadRequest(problem);
+        }
 
         var ingredientNotes = dto.IngredientNotes?.Trim();
         if (!string.IsNullOrEmpty(ingredientNotes) && ingredientNotes.Length > IngredientNotesMaxLength)
