@@ -6,7 +6,7 @@ namespace OvcinaHra.Shared.Domain.Enums;
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum GameEventKind
 {
-    [Display(Name = "Úkol")]
+    [Display(Name = "Quest")]
     Quest,
 
     [Display(Name = "Setkání")]

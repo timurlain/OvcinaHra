@@ -52,7 +52,8 @@
                 }
 
                 <div class="oh-home-bottom-row">
-                    <RecentActivityFeed Rows="_activity" />
+                    @* RecentActivityFeed removed pending real audit log — see issue #247.
+                       Stub feed (per-entity UpdatedAtUtc) was too noisy to keep on the dashboard. *@
                     <QuickLaunchTiles />
                 </div>
             </div>
@@ -72,7 +73,6 @@
 
     private DashboardStatsDto? _stats;
     private DashboardIssuesDto? _issues;
-    private List<DashboardActivityDto>? _activity;
     private List<TimelineRowDto>? _timeline;
 
     protected override async Task OnInitializedAsync()
@@ -89,7 +89,7 @@
         var gameId = GameContext.SelectedGameId;
         if (gameId is null)
         {
-            _stats = null; _issues = null; _activity = null; _timeline = null;
+            _stats = null; _issues = null; _timeline = null;
             await InvokeAsync(StateHasChanged);
             return;
         }
@@ -104,12 +104,10 @@
                 $"/api/dashboard/stats?gameId={gameId.Value}");
             var issuesTask = Api.GetAsync<DashboardIssuesDto>(
                 $"/api/dashboard/issues?gameId={gameId.Value}");
-            var activityTask = Api.GetListAsync<DashboardActivityDto>(
-                $"/api/dashboard/activity?gameId={gameId.Value}&limit=10");
             var timelineTask = Api.GetListAsync<TimelineRowDto>(
                 $"/api/dashboard/timeline?gameId={gameId.Value}&take=6");
 
-            await Task.WhenAll(gameTask, statsTask, issuesTask, activityTask, timelineTask);
+            await Task.WhenAll(gameTask, statsTask, issuesTask, timelineTask);
 
             var game = gameTask.Result;
             if (game is not null)
@@ -121,7 +119,6 @@
             }
             _stats = statsTask.Result;
             _issues = issuesTask.Result;
-            _activity = activityTask.Result;
             _timeline = timelineTask.Result;
             // Drive Hra běží mode from the explicit server bool, not the
             // localised label — Copilot caught the brittle string match.

@@ -59,19 +59,12 @@ public static class DashboardEndpoints
         var itemsNoPrice = await db.GameItems
             .Where(gi => gi.GameId == gameId && gi.IsSold && gi.Price == null)
             .CountAsync();
-        var questsNoEnc = await db.Quests
-            .Where(q => q.GameId == gameId && !q.QuestEncounters.Any())
-            .CountAsync();
         var treasuresUnplaced = await db.TreasureQuests
             .Where(t => t.GameId == gameId && t.LocationId == null && t.SecretStashId == null)
             .CountAsync();
         var emptyStashes = await db.GameSecretStashes
             .Where(gss => gss.GameId == gameId
                 && !db.TreasureQuests.Any(t => t.GameId == gameId && t.SecretStashId == gss.SecretStashId))
-            .CountAsync();
-        var monstersNoLoot = await db.GameMonsters
-            .Where(gm => gm.GameId == gameId
-                && !db.MonsterLoots.Any(ml => ml.GameId == gameId && ml.MonsterId == gm.MonsterId))
             .CountAsync();
         // Game-scoped — Copilot caught these counting catalog-wide and
         // misreporting issues from other games. The skill/spell text lives
@@ -89,14 +82,10 @@ public static class DashboardEndpoints
                 locationsNoGps, Severity(locationsNoGps), "/locations"),
             new("items-no-price", "Předměty bez ceny",
                 itemsNoPrice, Severity(itemsNoPrice), "/items"),
-            new("quests-no-encounters", "Úkoly bez setkání",
-                questsNoEnc, Severity(questsNoEnc), "/quests"),
             new("treasures-unplaced", "Poklady neumístěné",
                 treasuresUnplaced, Severity(treasuresUnplaced), "/treasures"),
             new("empty-stashes", "Skrýše bez pokladu",
                 emptyStashes, Severity(emptyStashes), "/secret-stashes"),
-            new("monsters-no-loot", "Příšery bez kořisti",
-                monstersNoLoot, Severity(monstersNoLoot), "/monsters"),
             new("skills-no-effect", "Dovednosti bez Efektu",
                 skillsNoEffect, Severity(skillsNoEffect), "/skills"),
             new("spells-no-effect", "Kouzla bez Efektu",
