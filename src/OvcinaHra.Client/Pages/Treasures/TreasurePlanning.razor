@@ -89,26 +89,48 @@ else
                                 @onclick="() => ToggleStage(s.Key)">@s.Label</button>
                     }
                 </div>
-                @* Issue #160 sub-task B: surface an explicit hint when the
-                   game has assigned locations but none have GPS coordinates
-                   yet — without this the map looks empty and the user can't
-                   tell whether it's a bug or a data state. *@
-                @if (locations.Count > 0 && locations.All(l => !l.Latitude.HasValue || !l.Longitude.HasValue))
-                {
-                    <div class="alert alert-info small mb-2 d-flex align-items-center gap-2">
-                        <i class="bi bi-geo-alt"></i>
-                        <span>
-                            Žádná z @locations.Count přiřazených lokací nemá nastavené GPS souřadnice.
-                            Otevři detail lokace a nastav je, aby se zobrazila na mapě.
-                        </span>
-                    </div>
+                @* Issue #160 sub-task B + #211: surface an explicit hint when
+                   locations are missing GPS coordinates. Three states:
+                   • 0 locations → warn (assign in Lokace section)
+                   • all locations missing GPS → info banner with "switch to Karty"
+                   • partial GPS coverage → info banner with M / N count + Karty link.
+                   Without this the map looks empty and the user can't tell
+                   whether it's a bug or a data state (#211 reproduction). *@
+                @{
+                    var withGps = locations.Count(l => l.Latitude.HasValue && l.Longitude.HasValue);
+                    var missingGps = locations.Count - withGps;
                 }
-                else if (locations.Count == 0)
+                @if (locations.Count == 0)
                 {
                     <div class="alert alert-warning small mb-2 d-flex align-items-center gap-2">
                         <i class="bi bi-exclamation-triangle"></i>
                         <span>
                             Tato hra nemá přiřazené žádné lokace. Přidej je v sekci „Lokace" a vrať se sem.
+                        </span>
+                    </div>
+                }
+                else if (withGps == 0)
+                {
+                    <div class="alert alert-info small mb-2 d-flex align-items-center gap-2">
+                        <i class="bi bi-geo-alt"></i>
+                        <span>
+                            Žádná z @locations.Count přiřazených lokací nemá nastavené GPS souřadnice.
+                            Otevři detail lokace a nastav je, aby se zobrazila na mapě —
+                            nebo přepni na <button type="button" class="btn btn-link btn-sm p-0 align-baseline"
+                                @onclick='() => SetTreasuresViewAsync("cards")'>karty</button>.
+                        </span>
+                    </div>
+                }
+                else if (missingGps > 0 && treasuresView == "map")
+                {
+                    <div class="alert alert-info small mb-2 d-flex align-items-center gap-2">
+                        <i class="bi bi-geo-alt"></i>
+                        <span>
+                            Mapa zobrazuje @withGps z @locations.Count lokací.
+                            @missingGps @(missingGps == 1 ? "lokace nemá" : missingGps < 5 ? "lokace nemají" : "lokací nemá") nastavené GPS —
+                            otevři jejich detail a nastav souřadnice, nebo přepni na
+                            <button type="button" class="btn btn-link btn-sm p-0 align-baseline"
+                                @onclick='() => SetTreasuresViewAsync("cards")'>karty</button>.
                         </span>
                     </div>
                 }
