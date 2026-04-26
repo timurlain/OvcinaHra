@@ -40,6 +40,14 @@ public static class QuestEndpoints
         group.MapPost("/{id:int}/rewards", AddReward);
         group.MapDelete("/{id:int}/rewards/{itemId:int}", RemoveReward);
 
+        // Issue #214 — Waypoints (ordered location stops powering the
+        // Map page's animated quest path).
+        group.MapGet("/{id:int}/waypoints", GetWaypoints);
+        group.MapPost("/{id:int}/waypoints", AddWaypoint);
+        group.MapPut("/{id:int}/waypoints/reorder", ReorderWaypoints);
+        group.MapPut("/{id:int}/waypoints/{wpId:int}", UpdateWaypoint);
+        group.MapDelete("/{id:int}/waypoints/{wpId:int}", RemoveWaypoint);
+
         return group;
     }
 
@@ -356,6 +364,142 @@ public static class QuestEndpoints
         if (link is null) return TypedResults.NotFound();
         db.QuestRewards.Remove(link);
         await db.SaveChangesAsync();
+        return TypedResults.NoContent();
+    }
+
+    // ===== Issue #214 — Waypoint handlers =====
+
+    private static async Task<Results<Ok<List<QuestWaypointDto>>, NotFound>> GetWaypoints(
+        int id, WorldDbContext db)
+    {
+        if (!await db.Quests.AnyAsync(q => q.Id == id)) return TypedResults.NotFound();
+        var rows = await db.QuestWaypoints
+            .Where(w => w.QuestId == id)
+            .OrderBy(w => w.Order)
+            .Select(w => new QuestWaypointDto(
+                w.Id, w.QuestId, w.LocationId, w.Location.Name, w.Order, w.Label))
+            .ToListAsync();
+        return TypedResults.Ok(rows);
+    }
+
+    private static async Task<Results<Created<QuestWaypointDto>, NotFound, ProblemHttpResult>> AddWaypoint(
+        int id, AddQuestWaypointDto dto, WorldDbContext db)
+    {
+        if (!await db.Quests.AnyAsync(q => q.Id == id)) return TypedResults.NotFound();
+        if (!await db.Locations.AnyAsync(l => l.Id == dto.LocationId))
+            return TypedResults.Problem(
+                title: "Lokace nenalezena.",
+                detail: $"Lokace s ID {dto.LocationId} neexistuje.",
+                statusCode: StatusCodes.Status400BadRequest);
+
+        // Append at end — next free Order. Reorder/insert lives on the
+        // bulk reorder endpoint so the editor's drag-drop has a single
+        // path that's atomic.
+        var nextOrder = (await db.QuestWaypoints
+            .Where(w => w.QuestId == id)
+            .Select(w => (int?)w.Order)
+            .MaxAsync()) ?? 0;
+
+        var wp = new QuestWaypoint
+        {
+            QuestId = id,
+            LocationId = dto.LocationId,
+            Order = nextOrder + 1,
+            Label = string.IsNullOrWhiteSpace(dto.Label) ? null : dto.Label.Trim(),
+        };
+        db.QuestWaypoints.Add(wp);
+        await db.SaveChangesAsync();
+
+        var locationName = await db.Locations
+            .Where(l => l.Id == dto.LocationId)
+            .Select(l => l.Name)
+            .FirstAsync();
+
+        return TypedResults.Created(
+            $"/api/quests/{id}/waypoints/{wp.Id}",
+            new QuestWaypointDto(wp.Id, wp.QuestId, wp.LocationId, locationName, wp.Order, wp.Label));
+    }
+
+    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> UpdateWaypoint(
+        int id, int wpId, UpdateQuestWaypointDto dto, WorldDbContext db)
+    {
+        var wp = await db.QuestWaypoints.FirstOrDefaultAsync(w => w.Id == wpId && w.QuestId == id);
+        if (wp is null) return TypedResults.NotFound();
+        if (!await db.Locations.AnyAsync(l => l.Id == dto.LocationId))
+            return TypedResults.Problem(
+                title: "Lokace nenalezena.",
+                detail: $"Lokace s ID {dto.LocationId} neexistuje.",
+                statusCode: StatusCodes.Status400BadRequest);
+        wp.LocationId = dto.LocationId;
+        wp.Label = string.IsNullOrWhiteSpace(dto.Label) ? null : dto.Label.Trim();
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
+    }
+
+    private static async Task<Results<NoContent, NotFound>> RemoveWaypoint(
+        int id, int wpId, WorldDbContext db)
+    {
+        var wp = await db.QuestWaypoints.FirstOrDefaultAsync(w => w.Id == wpId && w.QuestId == id);
+        if (wp is null) return TypedResults.NotFound();
+
+        // Compact remaining waypoints so Order stays gap-free. Drop the
+        // target first, then bump every higher Order down by one inside a
+        // single transaction so the (QuestId, Order) unique index never
+        // sees a duplicate.
+        await using var tx = await db.Database.BeginTransactionAsync();
+        var deletedOrder = wp.Order;
+        db.QuestWaypoints.Remove(wp);
+        await db.SaveChangesAsync();
+
+        await db.QuestWaypoints
+            .Where(w => w.QuestId == id && w.Order > deletedOrder)
+            .ExecuteUpdateAsync(s => s.SetProperty(w => w.Order, w => w.Order - 1));
+
+        await tx.CommitAsync();
+        return TypedResults.NoContent();
+    }
+
+    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> ReorderWaypoints(
+        int id, ReorderQuestWaypointsDto dto, WorldDbContext db)
+    {
+        var existing = await db.QuestWaypoints
+            .Where(w => w.QuestId == id)
+            .ToListAsync();
+        if (existing.Count == 0) return TypedResults.NotFound();
+
+        var existingIds = existing.Select(w => w.Id).ToHashSet();
+        var requested = dto.WaypointIdsInOrder ?? [];
+        if (requested.Count != existing.Count
+            || !requested.All(existingIds.Contains)
+            || requested.Distinct().Count() != requested.Count)
+        {
+            return TypedResults.Problem(
+                title: "Neplatné pořadí.",
+                detail: "Seznam ID musí přesně odpovídat existujícím waypointům této úkolu.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        // Two-pass update so the (QuestId, Order) unique index isn't
+        // tripped while the new order propagates: stage 1 flips every row
+        // to a negative Order (Order = -OldOrder); stage 2 writes the
+        // final 1-based positive Order from the requested sequence.
+        await using var tx = await db.Database.BeginTransactionAsync();
+        await db.QuestWaypoints
+            .Where(w => w.QuestId == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(w => w.Order, w => -w.Order));
+
+        var byId = existing.ToDictionary(w => w.Id);
+        for (var i = 0; i < requested.Count; i++)
+        {
+            var target = byId[requested[i]];
+            // Reload tracked entity, set the final order. ExecuteUpdate
+            // on a single row by Id keeps each step independent.
+            await db.QuestWaypoints
+                .Where(w => w.Id == target.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(w => w.Order, _ => i + 1));
+        }
+
+        await tx.CommitAsync();
         return TypedResults.NoContent();
     }
 }

@@ -3818,3 +3818,23 @@
     border:1px solid rgba(178,98,35,.3);font:500 .825rem/1.3 var(--oh-font-body,inherit)}
 .oh-bld-delete-blocked i{color:#B26223}
 .oh-bld-delete-blocked strong{color:#3a2e1a}
+
+/* ======================================================================
+   Issue #214 — QuestWaypointEditor (Trasa tab in QuestDetail). Ordered
+   list of map waypoints with up/down + remove buttons + add row.
+   ====================================================================== */
+.oh-qwp{display:flex;flex-direction:column;gap:8px}
+.oh-qwp-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.oh-qwp-row{display:flex;align-items:center;gap:8px;padding:8px 10px;
+    background:var(--oh-surface,#FAF6EC);border:1px solid var(--oh-border,#d8d2be);border-radius:5px}
+.oh-qwp-num{display:inline-flex;align-items:center;justify-content:center;
+    width:26px;height:26px;border-radius:50%;background:#2D5016;color:#fff;
+    font:700 .85rem var(--oh-font-body);font-variant-numeric:tabular-nums;flex-shrink:0}
+.oh-qwp-name{flex:1;min-width:0;color:var(--oh-text,#2a2a2a)}
+.oh-qwp-mv,.oh-qwp-rm{flex-shrink:0}
+.oh-qwp-add{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px;
+    padding:10px;background:var(--oh-surface-alt,#F2EBD8);
+    border:1px dashed var(--oh-border,#d8d2be);border-radius:5px}
+@media (max-width:600px){
+    .oh-qwp-add{grid-template-columns:1fr}
+}

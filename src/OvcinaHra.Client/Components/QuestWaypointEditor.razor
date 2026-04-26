@@ -1,0 +1,181 @@
+@* Issue #214 — ordered location waypoints for a quest. Embedded as
+   the "Trasa" tab in QuestDetail.razor. Reorder via ↑/↓ buttons that
+   POST a fresh sequence to /api/quests/{id}/waypoints/reorder; SortableJS
+   drag-drop is a follow-up (no SortableJS infra in the repo today,
+   `feedback_blazor_sortablejs_dragdrop` only applies once it's added). *@
+
+@inject ApiClient Api
+
+<div class="oh-qwp">
+    @if (_waypoints is null)
+    {
+        <p class="text-muted small mb-0">Načítám…</p>
+    }
+    else if (_waypoints.Count == 0)
+    {
+        <p class="text-muted small fst-italic mb-2">
+            Tento úkol zatím nemá žádné body trasy.
+            Přidej první lokaci níže — Mapa pak nakreslí cestu mezi nimi.
+        </p>
+    }
+    else
+    {
+        <ol class="oh-qwp-list" aria-label="Trasa úkolu">
+            @for (var i = 0; i < _waypoints.Count; i++)
+            {
+                var idx = i;
+                var wp = _waypoints[idx];
+                <li class="oh-qwp-row">
+                    <span class="oh-qwp-num">@wp.Order</span>
+                    <span class="oh-qwp-name">
+                        @if (string.IsNullOrWhiteSpace(wp.Label))
+                        {
+                            <span>@wp.LocationName</span>
+                        }
+                        else
+                        {
+                            <strong>@wp.Label</strong>
+                            <span class="text-muted small ms-1">· @wp.LocationName</span>
+                        }
+                    </span>
+                    <button class="btn btn-sm btn-outline-secondary oh-qwp-mv"
+                            @onclick="() => MoveAsync(idx, idx - 1)"
+                            disabled="@(idx == 0 || _busy)"
+                            title="Posunout nahoru" aria-label="Posunout nahoru">
+                        <i class="bi bi-arrow-up"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary oh-qwp-mv"
+                            @onclick="() => MoveAsync(idx, idx + 1)"
+                            disabled="@(idx == _waypoints.Count - 1 || _busy)"
+                            title="Posunout dolů" aria-label="Posunout dolů">
+                        <i class="bi bi-arrow-down"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger oh-qwp-rm"
+                            @onclick="() => RemoveAsync(wp.Id)"
+                            disabled="@_busy"
+                            title="Odebrat" aria-label="Odebrat">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </li>
+            }
+        </ol>
+    }
+
+    @* Add row — location combobox + optional Czech label + Add button *@
+    <div class="oh-qwp-add">
+        <select class="form-select form-select-sm" @bind="_addLocationId" disabled="@_busy">
+            <option value="0">— vyberte lokaci —</option>
+            @foreach (var loc in _locations ?? [])
+            {
+                <option value="@loc.Id">@loc.Name</option>
+            }
+        </select>
+        <input class="form-control form-control-sm" placeholder="Popisek (volitelný, např. Brod)"
+               @bind="_addLabel" maxlength="120" disabled="@_busy" />
+        <button class="btn btn-sm btn-primary"
+                @onclick="AddAsync"
+                disabled="@(_busy || _addLocationId <= 0)">
+            <i class="bi bi-plus-lg me-1"></i>Přidat
+        </button>
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="alert alert-danger mt-2 mb-0 d-flex align-items-center gap-2">
+            <i class="bi bi-exclamation-triangle"></i>
+            <span>@_error</span>
+            <button type="button" class="btn-close ms-auto" aria-label="Zavřít"
+                    @onclick="() => _error = null"></button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int QuestId { get; set; }
+
+    private List<QuestWaypointDto>? _waypoints;
+    private List<LocationListDto>? _locations;
+    private int _addLocationId;
+    private string _addLabel = "";
+    private bool _busy;
+    private string? _error;
+    private int _lastQuestId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Re-load when the parent passes a different QuestId — the editor
+        // is a single instance reused across tab switches in QuestDetail.
+        if (_lastQuestId == QuestId) return;
+        _lastQuestId = QuestId;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+        try
+        {
+            _waypoints = await Api.GetListAsync<QuestWaypointDto>(
+                $"/api/quests/{QuestId}/waypoints");
+            _locations ??= await Api.GetListAsync<LocationListDto>("/api/locations");
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task AddAsync()
+    {
+        if (_addLocationId <= 0) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            var label = string.IsNullOrWhiteSpace(_addLabel) ? null : _addLabel.Trim();
+            var (ok, _, problem) = await Api.PostWithProblemAsync<AddQuestWaypointDto, QuestWaypointDto>(
+                $"/api/quests/{QuestId}/waypoints",
+                new AddQuestWaypointDto(_addLocationId, label));
+            if (!ok) { _error = problem ?? "Přidání selhalo."; return; }
+            _addLocationId = 0;
+            _addLabel = "";
+            await LoadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task RemoveAsync(int waypointId)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var ok = await Api.DeleteAsync($"/api/quests/{QuestId}/waypoints/{waypointId}");
+            if (!ok) { _error = "Odebrání selhalo."; return; }
+            await LoadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task MoveAsync(int fromIdx, int toIdx)
+    {
+        if (_waypoints is null || toIdx < 0 || toIdx >= _waypoints.Count) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            // Optimistic local swap; build the new id sequence; POST it.
+            // Server's two-pass update guarantees the (QuestId, Order)
+            // unique constraint isn't violated mid-flight.
+            var ids = _waypoints.Select(w => w.Id).ToList();
+            (ids[fromIdx], ids[toIdx]) = (ids[toIdx], ids[fromIdx]);
+
+            var (ok, problem) = await Api.PutWithProblemAsync(
+                $"/api/quests/{QuestId}/waypoints/reorder",
+                new ReorderQuestWaypointsDto(ids));
+            if (!ok) { _error = problem ?? "Přeřazení selhalo."; return; }
+            await LoadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}

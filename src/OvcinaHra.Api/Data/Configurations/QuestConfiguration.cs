@@ -64,3 +64,30 @@ public class QuestRewardConfiguration : IEntityTypeConfiguration<QuestReward>
         builder.HasOne(e => e.Item).WithMany(i => i.QuestRewards).HasForeignKey(e => e.ItemId);
     }
 }
+
+/// <summary>
+/// Issue #214 — ordered location waypoints inside a quest. Surrogate
+/// PK so reordering doesn't cascade-delete waypoint rows the way a
+/// (QuestId, Order) composite PK would. Filtered unique guard on
+/// (QuestId, Order) keeps two waypoints from claiming the same step.
+/// </summary>
+public class QuestWaypointConfiguration : IEntityTypeConfiguration<QuestWaypoint>
+{
+    public void Configure(EntityTypeBuilder<QuestWaypoint> builder)
+    {
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.Label).HasMaxLength(120);
+        builder.HasOne(e => e.Quest)
+            .WithMany(q => q.QuestWaypoints)
+            .HasForeignKey(e => e.QuestId)
+            .OnDelete(DeleteBehavior.Cascade);
+        // Restrict on Location — deleting a location while a quest still
+        // references it as a waypoint should fail loudly, not silently
+        // sever the path. The location editor should refuse the delete.
+        builder.HasOne(e => e.Location)
+            .WithMany()
+            .HasForeignKey(e => e.LocationId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(e => new { e.QuestId, e.Order }).IsUnique();
+    }
+}

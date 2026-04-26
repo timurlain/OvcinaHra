@@ -83,6 +83,18 @@ public record AddQuestLocationDto(int LocationId);
 public record AddQuestEncounterDto(int MonsterId, int Quantity = 1);
 public record AddQuestRewardDto(int ItemId, int Quantity = 1);
 
+// Issue #214 — ordered location waypoints inside a quest. Drives the
+// Map page's animated quest path (deferred from #207 pending this).
+public record QuestWaypointDto(
+    int Id, int QuestId, int LocationId, string LocationName,
+    int Order, string? Label);
+public record AddQuestWaypointDto(int LocationId, string? Label = null);
+public record UpdateQuestWaypointDto(int LocationId, string? Label);
+/// <summary>Bulk reorder by sending the waypoint ids in target order;
+/// server sets <c>Order = arrayIndex + 1</c> in a deferred-style two-pass
+/// update so the (QuestId, Order) unique index isn't violated transiently.</summary>
+public record ReorderQuestWaypointsDto(IReadOnlyList<int> WaypointIdsInOrder);
+
 public record QuestCatalogDto(
     int Id, string Name, QuestType QuestType,
     int? GameId, string? GameName, int? GameEdition,

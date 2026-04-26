@@ -25,6 +25,9 @@ public class Quest
     public ICollection<QuestTagLink> QuestTags { get; set; } = [];
     public ICollection<QuestLocationLink> QuestLocations { get; set; } = [];
     public ICollection<QuestEncounter> QuestEncounters { get; set; } = [];
+    /// <summary>Issue #214 — ordered location waypoints powering the Map
+    /// page's animated quest path. See <see cref="QuestWaypoint"/>.</summary>
+    public ICollection<QuestWaypoint> QuestWaypoints { get; set; } = [];
     public ICollection<QuestReward> QuestRewards { get; set; } = [];
     public ICollection<GameEventQuest> EventQuests { get; set; } = [];
 }
