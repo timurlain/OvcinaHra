@@ -1,23 +1,11 @@
-@* Issue #158 — Home cockpit hero. 16:9 game cover (reuses Game.ImagePath
-   per memory rule "secondary-image entity-type alias"), title + edition
-   date strip, prep-or-stage chip, and a Změnit hru control that flips a
-   GameSelector inline picker. *@
+@* Issue #158 — Home cockpit hero. Title + edition date strip, prep-or-stage
+   chip, and a Změnit hru control that flips a GameSelector inline picker.
+   Issue #210: the 16:9 game cover image was removed (`Game.ImagePath` was
+   never populated and the user wanted a cleaner hero); body now stands on
+   its own, the .oh-home-hero-art / -scrim CSS rules are orphaned but
+   harmless and will be reaped in a follow-up cleanup. *@
 
 <div class="oh-home-hero">
-    <div class="oh-home-hero-art">
-        @if (!string.IsNullOrEmpty(GameImageUrl) && !_imgFailed)
-        {
-            <img src="@GameImageUrl" alt="@GameName"
-                 @onerror="() => _imgFailed = true" />
-        }
-        else
-        {
-            <div class="oh-home-hero-art-fallback">
-                <i class="bi bi-shield-fill"></i>
-            </div>
-        }
-        <div class="oh-home-hero-scrim"></div>
-    </div>
     <div class="oh-home-hero-body">
         <div class="oh-home-hero-meta">
             @if (IsGameRunning)
@@ -53,24 +41,9 @@
     [Parameter] public int Edition { get; set; }
     [Parameter] public DateOnly? StartDate { get; set; }
     [Parameter] public DateOnly? EndDate { get; set; }
-    [Parameter] public string? GameImageUrl { get; set; }
     [Parameter] public bool IsGameRunning { get; set; }
     [Parameter] public string? StageLabel { get; set; }
     [Parameter] public EventCallback OnChangeGame { get; set; }
-
-    private bool _imgFailed;
-    private string? _lastImageUrl;
-
-    protected override void OnParametersSet()
-    {
-        // State-flag onerror reset on URL change per
-        // feedback_blazor_img_onerror_state_and_key.
-        if (_lastImageUrl != GameImageUrl)
-        {
-            _lastImageUrl = GameImageUrl;
-            _imgFailed = false;
-        }
-    }
 
     private async Task OnChangeGameClick() => await OnChangeGame.InvokeAsync();
 }

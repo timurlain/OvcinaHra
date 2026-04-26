@@ -34,7 +34,6 @@
                           Edition="_edition"
                           StartDate="_startDate"
                           EndDate="_endDate"
-                          GameImageUrl="@_gameImageUrl"
                           IsGameRunning="_isGameRunning"
                           OnChangeGame="OnChangeGameClick" />
 
@@ -69,7 +68,6 @@
     private int _edition;
     private DateOnly? _startDate;
     private DateOnly? _endDate;
-    private string? _gameImageUrl;
     private bool _isGameRunning;
 
     private DashboardStatsDto? _stats;
@@ -120,10 +118,6 @@
                 _edition = game.Edition;
                 _startDate = game.StartDate;
                 _endDate = game.EndDate;
-                // Hero image follow-up: ImageEndpoints' ValidEntityTypes
-                // doesn't include "games" yet, so the hero falls back to
-                // its parchment + shield art. Flagged in PR.
-                _gameImageUrl = null;
             }
             _stats = statsTask.Result;
             _issues = issuesTask.Result;
