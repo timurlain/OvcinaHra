@@ -1,0 +1,359 @@
+@using OvcinaHra.Shared.Dtos
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Extensions
+@inject ApiClient Api
+
+@* Issue #218 — shared edit popup for /recipes catalog, /games/{gid}/recipes
+   per-game grid, and (eventually) the Item Tvorba tab. Three sections:
+   Identita (Name + Output item + Category) · Suroviny (ingredient picker
+   + sacred banner over the notes memo) · Vyžaduje (building + skill
+   pickers). Reuses the existing leaf pickers from #142 (RecipeIngredient
+   Picker / RecipeBuildingPicker / RecipeSkillPicker / RecipeNotesEditor)
+   so this PR doesn't reinvent that surface. *@
+
+<DxPopup AllowResize="true" @bind-Visible="@Visible"
+         HeaderText="@(detail is null ? "Recept" : (detail.Title ?? "Recept"))"
+         Width="780px">
+    <BodyContentTemplate Context="ctx">
+        @if (loading || detail is null)
+        {
+            <p class="text-muted">Načítám…</p>
+        }
+        else
+        {
+            <DxFormLayout>
+                <DxFormLayoutGroup Caption="Identita" ColSpanMd="12">
+                    <DxFormLayoutItem Caption="Název" ColSpanMd="8">
+                        <DxTextBox @bind-Text="@editName" NullText="(volitelné — výchozí podle výstupu)" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Kategorie" ColSpanMd="4">
+                        <DxComboBox Data="@categoryValues" @bind-Value="@editCategory"
+                                    TextFieldName="Display" ValueFieldName="Value" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Výstupní předmět" ColSpanMd="8">
+                        <DxComboBox Data="@allItems" @bind-Value="@editOutputItemId"
+                                    TextFieldName="Name" ValueFieldName="Id"
+                                    NullText="(vyberte předmět)"
+                                    SearchMode="ListSearchMode.AutoSearch" />
+                    </DxFormLayoutItem>
+                    <DxFormLayoutItem Caption="Lokace" ColSpanMd="4">
+                        <DxComboBox Data="@allLocations" @bind-Value="@editLocationId"
+                                    TextFieldName="Name" ValueFieldName="Id"
+                                    NullText="Bez lokace"
+                                    SearchMode="ListSearchMode.AutoSearch"
+                                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                    </DxFormLayoutItem>
+                </DxFormLayoutGroup>
+            </DxFormLayout>
+
+            <div class="oh-rec-popup-section mt-3">
+                <h6><i class="bi bi-basket"></i> Suroviny</h6>
+                <div class="oh-sacred-banner">
+                    <i class="bi bi-shield-fill-exclamation"></i>
+                    <span>Názvy a počty surovin jsou <strong>posvátné</strong> — pište přesně, jak je hráč uvidí na herní kartě. Nezkracujte, neparafrázujte.</span>
+                </div>
+                <RecipeIngredientPicker
+                    Ingredients="@_ingredientRows"
+                    AvailableItems="@allItems"
+                    OnAdd="@AddIngredientAsync"
+                    OnRemove="@RemoveIngredientAsync" />
+                <RecipeNotesEditor
+                    PersistedValue="@detail.IngredientNotes"
+                    OnSave="@SaveNotesAsync" />
+            </div>
+
+            <div class="oh-rec-popup-section mt-3">
+                <h6><i class="bi bi-tools"></i> Vyžaduje</h6>
+                <RecipeBuildingPicker
+                    Caption="Stavby"
+                    AddPlaceholder="(přidat stavbu)"
+                    Buildings="@_buildingRows"
+                    AvailableBuildings="@AvailableBuildings"
+                    OnAdd="@AddBuildingAsync"
+                    OnRemove="@RemoveBuildingAsync" />
+                @if (detail.GameId is not null)
+                {
+                    <RecipeSkillPicker
+                        SelectedSkillIds="@_skillIds"
+                        AllGameSkills="@gameSkills"
+                        AvailableSkills="@AvailableGameSkills"
+                        OnAdd="@AddSkillAsync"
+                        OnRemove="@RemoveSkillAsync" />
+                }
+                else
+                {
+                    <p class="text-muted small mt-2">
+                        <i class="bi bi-info-circle"></i>
+                        Dovednosti se přiřadí až po vytvoření kopie pro hru — šablona v katalogu je nezná.
+                    </p>
+                }
+            </div>
+
+            @if (error is not null)
+            {
+                <div class="alert alert-danger mt-2">@error</div>
+            }
+        }
+
+        <div class="d-flex gap-2 justify-content-end mt-3">
+            <button type="button" class="btn btn-secondary" @onclick="Cancel" disabled="@isSaving">Zrušit</button>
+            <button type="button" class="btn btn-primary" @onclick="SaveAsync"
+                    disabled="@(isSaving || detail is null || editOutputItemId is null)">
+                @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Uložit
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public int? RecipeId { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private RecipeDetailDto? detail;
+    private bool loading = true;
+    private bool isSaving;
+    private string? error;
+
+    private string? editName;
+    private RecipeCategory editCategory = RecipeCategory.Ostatni;
+    private int? editOutputItemId;
+    private int? editLocationId;
+
+    private List<ItemListDto> allItems = [];
+    private List<LocationListDto> allLocations = [];
+    private List<BuildingListDto> allBuildings = [];
+    private List<GameSkillDto> gameSkills = [];
+
+    private IReadOnlyList<RecipeIngredientPicker.IngredientRow> _ingredientRows = [];
+    private IReadOnlyList<RecipeBuildingPicker.BuildingRow> _buildingRows = [];
+    private List<int> _skillIds = [];
+
+    private static readonly List<EnumItem<RecipeCategory>> categoryValues = Enum.GetValues<RecipeCategory>()
+        .Select(v => new EnumItem<RecipeCategory>(v, v.GetDisplayName())).ToList();
+
+    private record EnumItem<T>(T Value, string Display);
+
+    public override async Task SetParametersAsync(ParameterView parameters)
+    {
+        var prevVisible = Visible;
+        var prevId = RecipeId;
+        await base.SetParametersAsync(parameters);
+        if (Visible && (!prevVisible || prevId != RecipeId))
+        {
+            await LoadAsync();
+        }
+    }
+
+    private List<BuildingListDto> AvailableBuildings =>
+        detail is null ? [] :
+        allBuildings.Where(b => !_buildingRows.Any(br => br.BuildingId == b.Id)).ToList();
+
+    private List<GameSkillDto> AvailableGameSkills =>
+        gameSkills.Where(gs => !_skillIds.Contains(gs.Id)).ToList();
+
+    private async Task LoadAsync()
+    {
+        if (RecipeId is null) return;
+        loading = true;
+        error = null;
+        try
+        {
+            detail = await Api.GetAsync<RecipeDetailDto>($"/api/recipes/{RecipeId.Value}");
+            if (detail is null)
+            {
+                error = "Recept nenalezen.";
+                return;
+            }
+            editName = detail.Name;
+            editCategory = detail.Category;
+            editOutputItemId = detail.OutputItemId;
+            editLocationId = detail.LocationId;
+            _ingredientRows = detail.Ingredients
+                .Select(i => new RecipeIngredientPicker.IngredientRow(i.ItemId, i.Name, i.Quantity))
+                .ToList();
+            _buildingRows = detail.Buildings
+                .Select(b => new RecipeBuildingPicker.BuildingRow(b.BuildingId, b.Name))
+                .ToList();
+            _skillIds = detail.Skills.Select(s => s.SkillId).ToList();
+
+            // Picker source data — fetch in parallel to avoid serial waterfall.
+            var itemsTask = Api.GetListAsync<ItemListDto>("/api/items");
+            var locationsTask = Api.GetListAsync<LocationListDto>("/api/locations");
+            var buildingsTask = Api.GetListAsync<BuildingListDto>("/api/buildings");
+            await Task.WhenAll(itemsTask, locationsTask, buildingsTask);
+            allItems = await itemsTask;
+            allLocations = await locationsTask;
+            allBuildings = await buildingsTask;
+
+            if (detail.GameId is int gid)
+            {
+                gameSkills = await Api.GetListAsync<GameSkillDto>($"/api/games/{gid}/skills");
+            }
+            else
+            {
+                gameSkills = [];
+            }
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { loading = false; }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (detail is null || editOutputItemId is null) return;
+        error = null;
+        isSaving = true;
+        try
+        {
+            var dto = new UpdateRecipeDto(
+                Name: string.IsNullOrWhiteSpace(editName) ? null : editName.Trim(),
+                OutputItemId: editOutputItemId.Value,
+                Category: editCategory,
+                LocationId: editLocationId,
+                RequiredSkillIds: _skillIds,
+                IngredientNotes: detail.IngredientNotes);
+            var (ok, problem) = await Api.PutWithProblemAsync($"/api/recipes/{detail.Id}", dto);
+            if (!ok)
+            {
+                error = problem ?? "Uložení se nezdařilo.";
+                return;
+            }
+            await OnSaved.InvokeAsync();
+            await VisibleChanged.InvokeAsync(false);
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
+    }
+
+    private async Task Cancel() => await VisibleChanged.InvokeAsync(false);
+
+    // ── Ingredient row CRUD ──────────────────────────────────────────────
+    private async Task AddIngredientAsync((int ItemId, int Quantity) ev)
+    {
+        if (detail is null) return;
+        try
+        {
+            var (ok, _, problem) = await Api.PostWithProblemAsync<AddCraftingIngredientDto, object>(
+                $"/api/crafting/{detail.Id}/ingredients",
+                new AddCraftingIngredientDto(ev.ItemId, ev.Quantity));
+            if (!ok) { error = problem ?? "Přidání suroviny selhalo."; return; }
+            await ReloadDetailAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task RemoveIngredientAsync(int itemId)
+    {
+        if (detail is null) return;
+        try
+        {
+            var ok = await Api.DeleteAsync($"/api/crafting/{detail.Id}/ingredients/{itemId}");
+            if (!ok) { error = "Odebrání suroviny selhalo."; return; }
+            await ReloadDetailAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    // ── Building requirement CRUD ────────────────────────────────────────
+    private async Task AddBuildingAsync(int buildingId)
+    {
+        if (detail is null) return;
+        try
+        {
+            var (ok, _, problem) = await Api.PostWithProblemAsync<AddCraftingBuildingReqDto, object>(
+                $"/api/crafting/{detail.Id}/buildings",
+                new AddCraftingBuildingReqDto(buildingId));
+            if (!ok) { error = problem ?? "Přidání stavby selhalo."; return; }
+            await ReloadDetailAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task RemoveBuildingAsync(int buildingId)
+    {
+        if (detail is null) return;
+        try
+        {
+            var ok = await Api.DeleteAsync($"/api/crafting/{detail.Id}/buildings/{buildingId}");
+            if (!ok) { error = "Odebrání stavby selhalo."; return; }
+            await ReloadDetailAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    // ── Skill set CRUD (PUT replaces the set) ────────────────────────────
+    private async Task AddSkillAsync(int skillId)
+    {
+        if (detail is null || _skillIds.Contains(skillId)) return;
+        var next = _skillIds.ToList();
+        next.Add(skillId);
+        await PersistSkillsAsync(next);
+    }
+
+    private async Task RemoveSkillAsync(int skillId)
+    {
+        if (detail is null) return;
+        var next = _skillIds.Where(s => s != skillId).ToList();
+        await PersistSkillsAsync(next);
+    }
+
+    private async Task PersistSkillsAsync(List<int> nextIds)
+    {
+        if (detail is null || editOutputItemId is null) return;
+        try
+        {
+            var dto = new UpdateRecipeDto(
+                Name: editName,
+                OutputItemId: editOutputItemId.Value,
+                Category: editCategory,
+                LocationId: editLocationId,
+                RequiredSkillIds: nextIds,
+                IngredientNotes: detail.IngredientNotes);
+            var (ok, problem) = await Api.PutWithProblemAsync($"/api/recipes/{detail.Id}", dto);
+            if (!ok) { error = problem ?? "Aktualizace dovedností selhala."; return; }
+            _skillIds = nextIds;
+            await ReloadDetailAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task SaveNotesAsync(string? newValue)
+    {
+        if (detail is null || editOutputItemId is null) return;
+        try
+        {
+            var normalized = string.IsNullOrWhiteSpace(newValue) ? null : newValue.Trim();
+            var dto = new UpdateRecipeDto(
+                Name: editName,
+                OutputItemId: editOutputItemId.Value,
+                Category: editCategory,
+                LocationId: editLocationId,
+                RequiredSkillIds: _skillIds,
+                IngredientNotes: normalized);
+            var (ok, problem) = await Api.PutWithProblemAsync($"/api/recipes/{detail.Id}", dto);
+            if (!ok) { error = problem ?? "Uložení poznámky selhalo."; return; }
+            await ReloadDetailAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task ReloadDetailAsync()
+    {
+        if (RecipeId is null) return;
+        detail = await Api.GetAsync<RecipeDetailDto>($"/api/recipes/{RecipeId.Value}");
+        if (detail is not null)
+        {
+            _ingredientRows = detail.Ingredients
+                .Select(i => new RecipeIngredientPicker.IngredientRow(i.ItemId, i.Name, i.Quantity))
+                .ToList();
+            _buildingRows = detail.Buildings
+                .Select(b => new RecipeBuildingPicker.BuildingRow(b.BuildingId, b.Name))
+                .ToList();
+            _skillIds = detail.Skills.Select(s => s.SkillId).ToList();
+        }
+        StateHasChanged();
+    }
+}

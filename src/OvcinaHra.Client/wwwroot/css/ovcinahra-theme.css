@@ -3888,3 +3888,150 @@
     .oh-map-tb{flex-wrap:wrap;gap:8px}
     .oh-map-tb-counts{margin-left:0;flex-basis:100%}
 }
+/* ===========================================================================
+ * Recipe category palette — 4 tokens for the cookbook category chips
+ * (issue #218). Hex values match the mockup. Reuse anywhere a recipe-like
+ * category needs a colour cue.
+ * =========================================================================== */
+:root{
+    --oh-rec-cat-budova:    #6E5A3A;
+    --oh-rec-cat-lektvar:   #5A8B3A;
+    --oh-rec-cat-artefakt:  #8C2423;
+    --oh-rec-cat-ostatni:   #6E6E6E;
+}
+
+/* ===========================================================================
+ * Recipes — /recipes cookbook · /recipes/{id} Karta · /games/{gid}/recipes
+ * per-game grid · RecipeEditPopup · RecipeCategoryChip (issue #218).
+ * Class prefix .oh-rec-* — reserved per design canon.
+ * =========================================================================== */
+
+/* Filters above the cookbook */
+.oh-rec-filters{display:flex;gap:14px;align-items:center;flex-wrap:wrap;
+    padding:10px 12px;background:#FFF8F0;border:1px solid #ead9b8;border-radius:8px}
+.oh-rec-filter-search{min-width:240px;flex:1 1 240px}
+
+/* Category chip (also doubles as filter pill on /recipes toolbar) */
+.oh-rec-cat{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;
+    border-radius:999px;border:1px solid currentColor;background:transparent;
+    font:600 .75rem/1.3 var(--oh-font-body,inherit);cursor:pointer;
+    color:var(--oh-rec-cat-color,#3a2e1a);transition:.15s ease}
+.oh-rec-cat:hover{background:rgba(0,0,0,.04)}
+.oh-rec-cat--on{background:var(--oh-rec-cat-color,#3a2e1a);color:#FFF8F0}
+.oh-rec-cat-budova{--oh-rec-cat-color:var(--oh-rec-cat-budova)}
+.oh-rec-cat-lektvar{--oh-rec-cat-color:var(--oh-rec-cat-lektvar)}
+.oh-rec-cat-artefakt{--oh-rec-cat-color:var(--oh-rec-cat-artefakt)}
+.oh-rec-cat-ostatni{--oh-rec-cat-color:var(--oh-rec-cat-ostatni)}
+.oh-rec-cat-pillrow{display:inline-flex;gap:6px;flex-wrap:wrap}
+
+/* Source + drift badges */
+.oh-rec-src-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;
+    border-radius:4px;font:600 .7rem/1.4 var(--oh-font-mono,ui-monospace,monospace)}
+.oh-rec-src-badge--template{background:rgba(45,80,22,.1);color:#2D5016;border:1px solid rgba(45,80,22,.4)}
+.oh-rec-src-badge--fork{background:rgba(178,98,35,.1);color:#6c4720;border:1px solid rgba(178,98,35,.4)}
+.oh-rec-src-badge--scratch{background:rgba(60,60,60,.1);color:#3a2e1a;border:1px solid rgba(60,60,60,.3)}
+.oh-rec-drift-ic{color:#8C2423;font-size:1.1rem;display:inline-flex;align-items:center}
+
+/* Cookbook list — vertical stack of formula cards */
+.oh-rec-formula-list{display:flex;flex-direction:column;gap:14px}
+
+/* Formula card — base styling shared across variants */
+.oh-rec-fc{position:relative;background:#FFF8F0;border:1px solid #ead9b8;
+    border-left:4px solid var(--oh-rec-cat-color,#6E6E6E);
+    border-radius:8px;padding:12px 16px;display:flex;flex-direction:column;gap:10px;
+    transition:.15s ease;text-align:left}
+.oh-rec-fc.oh-rec-cat-budova{--oh-rec-cat-color:var(--oh-rec-cat-budova)}
+.oh-rec-fc.oh-rec-cat-lektvar{--oh-rec-cat-color:var(--oh-rec-cat-lektvar)}
+.oh-rec-fc.oh-rec-cat-artefakt{--oh-rec-cat-color:var(--oh-rec-cat-artefakt)}
+.oh-rec-fc.oh-rec-cat-ostatni{--oh-rec-cat-color:var(--oh-rec-cat-ostatni)}
+.oh-rec-fc--clickable{cursor:pointer}
+.oh-rec-fc--clickable:hover{box-shadow:0 4px 12px rgba(45,80,22,.16);border-color:#2D5016}
+.oh-rec-fc--clickable:focus-visible{outline:3px solid #2D5016;outline-offset:2px}
+
+.oh-rec-fc-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.oh-rec-fc-num{font:600 .75rem/1 var(--oh-font-mono,ui-monospace,monospace);
+    color:#7a6f50;background:#f5f0e1;padding:2px 8px;border-radius:4px;border:1px solid #d8d2be}
+.oh-rec-fc-name{font:700 1.05rem/1.25 var(--oh-font-headline,Merriweather,Georgia,serif);
+    color:#2a2218;margin:0;flex:1;min-width:0}
+
+.oh-rec-fc-body{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:14px}
+.oh-rec-fc-inputs{display:flex;flex-wrap:wrap;gap:6px}
+.oh-rec-fc-empty{font:italic 400 .85rem/1.4 Georgia,serif;color:#a89e7a}
+.oh-rec-fc-ing-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;
+    background:#fff;border:1px solid #ead9b8;border-radius:6px;
+    font:500 .8rem/1.3 var(--oh-font-body,inherit);color:#3a2e1a}
+.oh-rec-fc-ing-thumb{width:20px;height:20px;border-radius:3px;overflow:hidden;
+    background:#f5f0e1;display:inline-flex;align-items:center;justify-content:center;
+    color:#7a6f50;font-size:.85rem}
+.oh-rec-fc-ing-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.oh-rec-fc-ing-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
+.oh-rec-qty{font:600 .75rem/1.2 var(--oh-font-mono,ui-monospace,monospace);
+    color:#6c4720;background:rgba(178,98,35,.1);padding:1px 6px;border-radius:3px}
+.oh-rec-qty--out{background:rgba(45,80,22,.1);color:#2D5016}
+
+.oh-rec-fc-arrow{color:var(--oh-rec-cat-color,#6E6E6E);font-size:1.4rem;display:flex;align-items:center}
+
+.oh-rec-fc-output{display:flex;align-items:center;justify-content:flex-end}
+.oh-rec-fc-out-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;
+    background:#fff;border:1px solid var(--oh-rec-cat-color,#6E6E6E);border-radius:6px;
+    font:600 .9rem/1.3 var(--oh-font-headline,Merriweather,Georgia,serif);color:#2a2218}
+.oh-rec-fc-out-thumb{width:36px;height:36px;border-radius:4px;overflow:hidden;
+    background:#f5f0e1;display:inline-flex;align-items:center;justify-content:center;
+    color:#7a6f50;font-size:1.1rem}
+.oh-rec-fc-out-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+
+.oh-rec-fc-req{display:flex;flex-wrap:wrap;gap:6px;padding-top:8px;border-top:1px dashed #ead9b8}
+.oh-rec-fc-req-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;
+    border-radius:999px;font:500 .75rem/1.4 var(--oh-font-body,inherit)}
+.oh-rec-fc-req-chip--building{background:rgba(110,90,58,.1);color:#5a4520;border:1px solid rgba(110,90,58,.4)}
+.oh-rec-fc-req-chip--skill{background:rgba(45,80,22,.1);color:#2D5016;border:1px solid rgba(45,80,22,.4)}
+.oh-rec-fc-req-chip--location{background:rgba(60,60,60,.08);color:#3a2e1a;border:1px solid rgba(60,60,60,.3)}
+
+.oh-rec-fc-notes{display:flex;align-items:flex-start;gap:6px;padding:8px 10px;
+    background:rgba(178,98,35,.06);border-left:3px solid #B26223;border-radius:3px;
+    font:italic 400 .8rem/1.4 Georgia,serif;color:#5a3a18}
+
+.oh-rec-fc-actions{display:flex;gap:6px;justify-content:flex-end}
+
+/* Hero variant for the detail page */
+.oh-rec-fc--hero{padding:20px 24px}
+.oh-rec-fc--hero .oh-rec-fc-name{font-size:1.4rem}
+.oh-rec-fc--hero .oh-rec-fc-body{gap:20px}
+.oh-rec-fc--hero .oh-rec-fc-out-chip{padding:8px 14px;font-size:1.05rem}
+.oh-rec-fc--hero .oh-rec-fc-out-thumb{width:54px;height:54px;font-size:1.4rem}
+
+/* Compact variant — for the Tvorba tab refresh */
+.oh-rec-fc--compact{padding:8px 12px}
+.oh-rec-fc--compact .oh-rec-fc-name{font-size:.95rem}
+.oh-rec-fc--compact .oh-rec-fc-num{font-size:.7rem}
+.oh-rec-fc--compact .oh-rec-fc-body{gap:8px}
+.oh-rec-fc--compact .oh-rec-fc-out-thumb{width:28px;height:28px}
+.oh-rec-fc--compact .oh-rec-fc-out-chip{padding:2px 8px;font-size:.85rem}
+.oh-rec-fc--compact .oh-rec-fc-req{padding-top:4px}
+
+/* Detail Karta related sections */
+.oh-rec-rel-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.oh-rec-rel-section{background:#FFF8F0;border:1px solid #ead9b8;border-radius:8px;padding:14px}
+.oh-rec-rel-section h6{font:700 .85rem/1 var(--oh-font-headline,Merriweather,Georgia,serif);
+    text-transform:uppercase;letter-spacing:.04em;color:#5a3a18;margin:0 0 10px;display:flex;align-items:center;gap:6px}
+.oh-rec-rel-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px}
+.oh-rec-rel-list li{display:flex;align-items:center;gap:6px;font-size:.9rem;color:#2a2218}
+.oh-rec-rel-link{display:inline-flex;align-items:center;gap:4px;background:none;border:0;padding:0;
+    color:#2D5016;font:inherit;cursor:pointer;text-decoration:underline}
+.oh-rec-rel-link:hover{color:#1a3008}
+
+.oh-rec-notes{background:rgba(178,98,35,.06);border-left:3px solid #B26223;border-radius:3px;padding:10px 14px}
+.oh-rec-notes h6{font:700 .85rem/1 var(--oh-font-headline,Merriweather,Georgia,serif);
+    text-transform:uppercase;letter-spacing:.04em;color:#5a3a18;margin:0 0 6px;display:flex;align-items:center;gap:6px}
+.oh-rec-notes p{font:italic 400 .9rem/1.5 Georgia,serif;color:#3a2e1a;margin:0;white-space:pre-wrap}
+
+/* Mini-thumb in per-game DxGrid */
+.oh-rec-mini-thumb{width:40px;height:40px;border-radius:4px;background:#f5f0e1;
+    border:1px solid #d8d2be;overflow:hidden;display:flex;align-items:center;justify-content:center;color:#7a6f50}
+.oh-rec-mini-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.oh-rec-grid-chips{display:inline-flex;gap:4px;flex-wrap:wrap}
+
+/* Edit popup section header */
+.oh-rec-popup-section{padding:14px;background:#FFF8F0;border:1px solid #ead9b8;border-radius:8px}
+.oh-rec-popup-section h6{font:700 .9rem/1 var(--oh-font-headline,Merriweather,Georgia,serif);
+    color:#5a3a18;margin:0 0 10px;display:flex;align-items:center;gap:6px}

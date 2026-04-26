@@ -1,0 +1,32 @@
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Extensions
+
+@* Small coloured chip for the 4-value RecipeCategory enum. Colours come
+   from the --oh-rec-cat-* CSS custom properties on :root (declared in
+   the .oh-rec-* theme block). Each chip applies a `.oh-rec-cat-{name}`
+   modifier so the CSS picks the right token. *@
+
+<span class="oh-rec-cat oh-rec-cat-@CssKey" title="@Category.GetDisplayName()">
+    <i class="bi @Icon"></i>
+    <span>@Category.GetDisplayName()</span>
+</span>
+
+@code {
+    [Parameter, EditorRequired] public RecipeCategory Category { get; set; }
+
+    private string CssKey => Category switch
+    {
+        RecipeCategory.Budova    => "budova",
+        RecipeCategory.Lektvar   => "lektvar",
+        RecipeCategory.Artefakt  => "artefakt",
+        _                        => "ostatni"
+    };
+
+    private string Icon => Category switch
+    {
+        RecipeCategory.Budova    => "bi-house-fill",
+        RecipeCategory.Lektvar   => "bi-droplet-half",
+        RecipeCategory.Artefakt  => "bi-gem",
+        _                        => "bi-three-dots"
+    };
+}

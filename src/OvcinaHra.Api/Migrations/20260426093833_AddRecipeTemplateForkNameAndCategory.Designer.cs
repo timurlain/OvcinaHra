@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using NpgsqlTypes;
@@ -12,9 +13,11 @@ using OvcinaHra.Api.Data;
 namespace OvcinaHra.Api.Migrations
 {
     [DbContext(typeof(WorldDbContext))]
-    partial class WorldDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260426093833_AddRecipeTemplateForkNameAndCategory")]
+    partial class AddRecipeTemplateForkNameAndCategory
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1537,37 +1540,6 @@ namespace OvcinaHra.Api.Migrations
                     b.ToTable("QuestTagLinks");
                 });
 
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.QuestWaypoint", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Label")
-                        .HasMaxLength(120)
-                        .HasColumnType("character varying(120)");
-
-                    b.Property<int>("LocationId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("Order")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("QuestId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("LocationId");
-
-                    b.HasIndex("QuestId", "Order")
-                        .IsUnique();
-
-                    b.ToTable("QuestWaypoints");
-                });
-
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.SecretStash", b =>
                 {
                     b.Property<int>("Id")
@@ -2663,25 +2635,6 @@ namespace OvcinaHra.Api.Migrations
                     b.Navigation("Tag");
                 });
 
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.QuestWaypoint", b =>
-                {
-                    b.HasOne("OvcinaHra.Shared.Domain.Entities.Location", "Location")
-                        .WithMany()
-                        .HasForeignKey("LocationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("OvcinaHra.Shared.Domain.Entities.Quest", "Quest")
-                        .WithMany("QuestWaypoints")
-                        .HasForeignKey("QuestId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Location");
-
-                    b.Navigation("Quest");
-                });
-
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.SkillBuildingRequirement", b =>
                 {
                     b.HasOne("OvcinaHra.Shared.Domain.Entities.Building", "Building")
@@ -2938,8 +2891,6 @@ namespace OvcinaHra.Api.Migrations
                     b.Navigation("QuestRewards");
 
                     b.Navigation("QuestTags");
-
-                    b.Navigation("QuestWaypoints");
                 });
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.SecretStash", b =>

@@ -460,7 +460,10 @@ public static class ItemEndpoints
             .Where(r => r.OutputItemId == id)
             .Select(r => new ItemUsageRecipeDto(
                 r.Id,
-                new ItemUsageGameRefDto(r.GameId, r.Game.Name, r.Game.Edition),
+                // Issue #218 — Recipe.GameId is nullable; catalog templates
+                // emit a null Game ref. Tvorba tab groups them under
+                // a "Šablona katalogu" header.
+                r.Game == null ? null : new ItemUsageGameRefDto(r.Game.Id, r.Game.Name, r.Game.Edition),
                 r.OutputItemId, r.OutputItem.Name,
                 r.LocationId, r.Location != null ? r.Location.Name : null,
                 r.Ingredients.Select(i => new CraftingIngredientDto(i.ItemId, i.Item.Name, i.Quantity)).ToList(),
@@ -472,7 +475,10 @@ public static class ItemEndpoints
             .Where(r => r.Ingredients.Any(i => i.ItemId == id))
             .Select(r => new ItemUsageRecipeDto(
                 r.Id,
-                new ItemUsageGameRefDto(r.GameId, r.Game.Name, r.Game.Edition),
+                // Issue #218 — Recipe.GameId is nullable; catalog templates
+                // emit a null Game ref. Tvorba tab groups them under
+                // a "Šablona katalogu" header.
+                r.Game == null ? null : new ItemUsageGameRefDto(r.Game.Id, r.Game.Name, r.Game.Edition),
                 r.OutputItemId, r.OutputItem.Name,
                 r.LocationId, r.Location != null ? r.Location.Name : null,
                 r.Ingredients.Select(i => new CraftingIngredientDto(i.ItemId, i.Item.Name, i.Quantity)).ToList(),
