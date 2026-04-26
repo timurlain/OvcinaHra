@@ -122,11 +122,13 @@ try
 
     static bool IsLocalhostOrigin(string origin)
     {
-        if (string.IsNullOrEmpty(origin)) return false;
-        return origin.StartsWith("https://localhost:", StringComparison.OrdinalIgnoreCase)
-            || origin.StartsWith("http://localhost:", StringComparison.OrdinalIgnoreCase)
-            || origin.StartsWith("https://127.0.0.1:", StringComparison.OrdinalIgnoreCase)
-            || origin.StartsWith("http://127.0.0.1:", StringComparison.OrdinalIgnoreCase);
+        // Use Uri.IsLoopback rather than StartsWith — covers IPv6 ([::1]),
+        // missing-port forms, and any future loopback aliases without
+        // brittle string prefix checks.
+        if (string.IsNullOrWhiteSpace(origin)) return false;
+        if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri)) return false;
+        return (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+            && uri.IsLoopback;
     }
 
     var app = builder.Build();
