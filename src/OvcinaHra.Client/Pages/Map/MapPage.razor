@@ -72,13 +72,17 @@
     // a newer one if the user clicks pins faster than the network responds.
     private int _peekRequestId;
 
-    // Issue #215 — URL state. _urlHydratedFromQuery tells the first-load
-    // path to skip localStorage (URL > localStorage > defaults). _urlPushReady
-    // gates PushUrl() until first-load completes so we don't write a fresh
-    // URL on every hydrate-driven state change during boot.
-    private bool _urlHydratedFromQuery;
+    // Issue #215 — URL state. Per-field hydration flags (Copilot caught
+    // the broad _urlHydratedFromQuery suppressing layer localStorage when
+    // only ?mode=... was present). _urlPushReady gates PushUrl() until
+    // first-load completes so we don't write a fresh URL on every
+    // hydrate-driven state change during boot. _selectedLocationId tracks
+    // the active peek separately from _peek so PushUrl() emits a stable
+    // value even while a slow peek fetch is still in flight.
+    private bool _urlLayersHydratedFromQuery;
     private bool _urlPushReady;
     private int? _urlPendingSelectedLocationId;
+    private int? _selectedLocationId;
 
     private MapDataDto? _data;
     private bool _peekVisible;
@@ -118,15 +122,19 @@
             return;
         }
         _firstStyleLoadDone = true;
-        // Issue #215 — URL > localStorage > defaults. Only hydrate from
-        // localStorage when the URL didn't already set layer state.
-        if (!_urlHydratedFromQuery)
+        // Issue #215 — URL > localStorage > defaults, applied per-field.
+        // Only the layer-visibility hydration consults localStorage, so
+        // we only skip it when the URL actually provided ?layers=...
+        // (Copilot caught the broad flag suppressing layer prefs when
+        // unrelated params like ?mode=... were present).
+        if (!_urlLayersHydratedFromQuery)
         {
             await HydrateLayerStateAsync();
         }
         // Apply URL-derived style now that the basemap is ready (default
         // is "tourist", so we only need to switch when URL asked for
-        // something else). The pin paint happens inside SetStyleAsync.
+        // something else). Calling switchStyle directly here — going
+        // through SetStyleAsync would push a fresh URL during hydrate.
         if (_activeStyle != "tourist")
         {
             await JS.InvokeVoidAsync("ovcinaMap.switchStyle", _activeStyle);
@@ -249,8 +257,12 @@
     {
         // Token guard against fast successive pin clicks — the older
         // request must not be allowed to overwrite the newer peek state
-        // when its response lands late (Copilot C7).
+        // when its response lands late.
         var requestId = ++_peekRequestId;
+        // Issue #215 — track the selected id separately from _peek so an
+        // unrelated PushUrl() (style/layers/mode change) during the peek
+        // fetch still emits ?selected=loc:N (Copilot caught this drop).
+        _selectedLocationId = locationId;
         _peekVisible = true;
         _peekLoading = true;
         _peek = null;
@@ -271,14 +283,16 @@
         _peek = loaded;
         _peekLoading = false;
         await InvokeAsync(StateHasChanged);
-        PushUrl(selectedLocationId: locationId);
+        // _selectedLocationId already set at the top of this method.
+        PushUrl();
     }
 
     private void ClosePeek()
     {
         _peekVisible = false;
         _peek = null;
-        PushUrl(selectedLocationId: null);
+        _selectedLocationId = null;
+        PushUrl();
     }
 
     /// <summary>
@@ -293,38 +307,33 @@
         var uri = new Uri(Nav.Uri);
         if (string.IsNullOrEmpty(uri.Query)) return;
         var qs = HttpUtility.ParseQueryString(uri.Query);
-        var any = false;
 
         var layers = qs["layers"];
         if (layers is not null)
         {
-            any = true;
             // Empty string is meaningful — both layers off.
             var set = layers.Split(',', StringSplitOptions.RemoveEmptyEntries)
                 .Select(s => s.Trim().ToLowerInvariant())
                 .ToHashSet();
             _locationsVisible = set.Contains("loc");
             _stashesVisible = set.Contains("stash");
+            _urlLayersHydratedFromQuery = true;
         }
 
         var mode = qs["mode"];
-        if (mode is "pro-hru" or "katalog") { _mode = mode; any = true; }
+        if (mode is "pro-hru" or "katalog") _mode = mode;
 
         var style = qs["style"];
         if (style is "tourist" or "aerial" or "basic" or "osm")
-        {
-            _activeStyle = style; any = true;
-        }
+            _activeStyle = style;
 
         var selected = qs["selected"];
-        if (!string.IsNullOrEmpty(selected) && selected.StartsWith("loc:")
+        if (!string.IsNullOrEmpty(selected)
+            && selected.StartsWith("loc:", StringComparison.Ordinal)
             && int.TryParse(selected[4..], out var id))
         {
             _urlPendingSelectedLocationId = id;
-            any = true;
         }
-
-        _urlHydratedFromQuery = any;
     }
 
     /// <summary>
@@ -332,13 +341,11 @@
     /// NavigationManager.NavigateTo with replace:true so back/forward
     /// don't accumulate one history entry per click. Default values are
     /// omitted from the query string so a fresh load reads cleanly.
+    /// Selection is sourced from <c>_selectedLocationId</c> (set
+    /// immediately on pin click) rather than the loaded peek payload
+    /// so a slow peek fetch can't drop ?selected= mid-load.
     /// </summary>
-    /// <param name="selectedLocationId">
-    /// <c>null</c> means "no peek open" (drops the param). When the
-    /// caller is itself the open/close peek path, pass the new value
-    /// explicitly so we don't read stale fields here.
-    /// </param>
-    private void PushUrl(int? selectedLocationId = -1)
+    private void PushUrl()
     {
         if (!_urlPushReady) return;
 
@@ -357,12 +364,7 @@
         if (_mode != "pro-hru") pairs.Add($"mode={Uri.EscapeDataString(_mode)}");
         if (_activeStyle != "tourist") pairs.Add($"style={Uri.EscapeDataString(_activeStyle)}");
 
-        // Sentinel -1 means "use current peek state"; null means "drop";
-        // any other int means that's the new selection.
-        int? selectionToEmit = selectedLocationId == -1
-            ? (_peekVisible ? _peek?.Id : null)
-            : selectedLocationId;
-        if (selectionToEmit is int sel)
+        if (_selectedLocationId is int sel)
             pairs.Add($"selected={Uri.EscapeDataString($"loc:{sel}")}");
 
         var query = pairs.Count == 0 ? "" : "?" + string.Join('&', pairs);
