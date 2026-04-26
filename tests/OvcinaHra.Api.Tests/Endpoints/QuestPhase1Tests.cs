@@ -174,11 +174,13 @@ public class QuestPhase1Tests(PostgresFixture postgres) : IntegrationTestBase(po
     }
 
     [Fact]
-    public async Task CopyToGame_CopiesImagePathAndDefaultsToInactiveState()
+    public async Task CopyToGame_DeepCopiesEncountersAndForcesInactiveState()
     {
-        // Source = catalog quest (GameId null) with an arbitrary blob key in
-        // ImagePath. CopyToGame must propagate the blob key and force State
-        // to Inactive on the per-game fork regardless of source state.
+        // CopyToGame must (1) deep-copy the source's child collections into
+        // the per-game fork and (2) force State=Inactive on the fork. Image
+        // upload is exercised by the dedicated ImageEndpointTests — this test
+        // focuses on the State + collection-copy contract that the Phase 1
+        // per-game grid relies on.
         var monsterResponse = await Client.PostAsJsonAsync("/api/monsters",
             new CreateMonsterDto("Skřet", MonsterCategory.Tier1, MonsterType.Goblin, 2, 1, 4));
         var monster = await monsterResponse.Content.ReadFromJsonAsync<MonsterDetailDto>();

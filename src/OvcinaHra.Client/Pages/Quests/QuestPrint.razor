@@ -166,11 +166,11 @@ else
             quest = await Api.GetAsync<QuestDetailDto>($"/api/quests/{Id}");
             if (quest?.GameId is int gid)
             {
-                // Best-effort game label for the print header.
+                // Best-effort game label for the print header — fetch only the
+                // one game we need rather than the whole list (Copilot #206).
                 try
                 {
-                    var games = await Api.GetListAsync<GameListDto>("/api/games");
-                    var g = games.FirstOrDefault(x => x.Id == gid);
+                    var g = await Api.GetAsync<GameDetailDto>($"/api/games/{gid}");
                     gameName = g is null ? null : $"{g.Name} · edice {g.Edition}";
                 }
                 catch { gameName = null; }

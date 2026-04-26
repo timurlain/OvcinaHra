@@ -190,7 +190,7 @@ else
 @code {
     [Parameter] public int GameId { get; set; }
 
-    private GameListDto? game;
+    private GameDetailDto? game;
     private List<QuestListDto> quests = [];
     private List<QuestCatalogDto>? catalog;
     private bool loading = true;
@@ -245,10 +245,12 @@ else
         loading = true;
         try
         {
-            var gamesTask = Api.GetListAsync<GameListDto>("/api/games");
+            // Fetch only the current game by id rather than the entire game
+            // list — half the bytes, half the latency (Copilot #206).
+            var gameTask = Api.GetAsync<GameDetailDto>($"/api/games/{GameId}");
             var questsTask = Api.GetListAsync<QuestListDto>($"/api/quests/by-game/{GameId}");
-            await Task.WhenAll(gamesTask, questsTask);
-            game = (await gamesTask).FirstOrDefault(g => g.Id == GameId);
+            await Task.WhenAll(gameTask, questsTask);
+            game = await gameTask;
             quests = await questsTask;
         }
         finally { loading = false; }

@@ -43,21 +43,20 @@
     </div>
 </div>
 
-@if (view == "galerie")
-{
-    <div class="oh-qst-filters mb-3">
-        <DxTextBox Text="@searchText" TextChanged="@((string v) => searchText = v)"
-                   NullText="Hledat (název, popis)…" CssClass="oh-qst-filter-search" />
-        <label class="oh-qst-filter-toggle">
-            <input type="checkbox" @bind="onlyWithImage" />
-            <span>jen s obrázkem</span>
-        </label>
-        <label class="oh-qst-filter-toggle">
-            <input type="checkbox" @bind="onlyWithRewards" />
-            <span>jen s odměnami</span>
-        </label>
-    </div>
-}
+@* Filters apply to both Galerie and Seznam — render once, outside the view
+   branch, so they're reachable in either mode (Copilot #206). *@
+<div class="oh-qst-filters mb-3">
+    <DxTextBox Text="@searchText" TextChanged="@((string v) => searchText = v)"
+               NullText="Hledat (název, popis)…" CssClass="oh-qst-filter-search" />
+    <label class="oh-qst-filter-toggle">
+        <input type="checkbox" @bind="onlyWithImage" />
+        <span>jen s obrázkem</span>
+    </label>
+    <label class="oh-qst-filter-toggle">
+        <input type="checkbox" @bind="onlyWithRewards" />
+        <span>jen s odměnami</span>
+    </label>
+</div>
 
 @if (loading)
 {
@@ -243,7 +242,10 @@ else
                 || (q.Description?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false)
                 || (q.FullText?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false))
             && (!onlyWithImage || !string.IsNullOrEmpty(q.ImageUrl))
-            && (!onlyWithRewards || q.RewardsCount > 0))
+            // "jen s odměnami" must accept scalar-only rewards (XP/groše/notes)
+            // even when there are no item rewards — RewardSummary is non-null
+            // whenever any of those four reward kinds is set.
+            && (!onlyWithRewards || q.RewardsCount > 0 || !string.IsNullOrWhiteSpace(q.RewardSummary)))
             .ToList();
 
     protected override async Task OnInitializedAsync()

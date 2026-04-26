@@ -5,7 +5,8 @@
    Render only on per-game rows; never on catalog templates. *@
 
 <span class="oh-qst-state-chip @StateClass" title="@State.GetDisplayName()">
-    <i class="bi @StateIcon"></i>@State.GetDisplayName()
+    <i class="bi @StateIcon"></i>
+    <span>@State.GetDisplayName()</span>
 </span>
 
 @code {
