@@ -1,0 +1,46 @@
+@* Issue #158 — "Pozor!" panel surfaces inconsistencies in Příprava
+   state. Hidden during Hra běží (LiveAlertsPanel takes over). When
+   every issue count is zero, render a Drozd "vše ok" alt state so the
+   organizer knows the panel is alive and just has nothing to say. *@
+
+<section class="oh-home-pozor" aria-labelledby="oh-home-pozor-title">
+    <header class="oh-home-pozor-head">
+        <h2 id="oh-home-pozor-title">Pozor!</h2>
+        <span class="text-muted small">Co je potřeba doladit před hrou</span>
+    </header>
+
+    @if (Issues is null)
+    {
+        <div class="oh-home-pz-row oh-home-pz-skel">
+            <span class="oh-home-skel-line-lg"></span>
+        </div>
+    }
+    else if (HasAnyIssues)
+    {
+        @foreach (var issue in Issues.Where(i => i.Count > 0).OrderByDescending(i => i.Count))
+        {
+            <a class="oh-home-pz-row" href="@issue.TargetRoute">
+                <span class="oh-home-pz-sev oh-home-sev-@issue.Severity"></span>
+                <span class="oh-home-pz-lbl">@issue.LabelCs</span>
+                <span class="oh-home-pz-num">@issue.Count</span>
+                <i class="bi bi-arrow-right-short"></i>
+            </a>
+        }
+    }
+    else
+    {
+        <div class="oh-home-pz-ok">
+            <i class="bi bi-cup-hot-fill"></i>
+            <div>
+                <strong>Vše je v pořádku.</strong>
+                <span class="text-muted">Můžeš začít vařit kávu.</span>
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public IReadOnlyList<DashboardIssueDto>? Issues { get; set; }
+
+    private bool HasAnyIssues => Issues is not null && Issues.Any(i => i.Count > 0);
+}

@@ -3215,3 +3215,148 @@
 .oh-tp-card-count{background:#2D5016;color:#fff;border-radius:999px;padding:.05rem .4rem;font-size:.7rem}
 .oh-tp-card-name{font-weight:600;color:var(--oh-text,#2a2a2a);font-size:.95rem}
 .oh-tp-card-stash{font-size:.75rem;color:var(--oh-text-secondary,#666);display:flex;align-items:center;gap:.3rem}
+
+/* ======================================================================
+   Issue #158 — Home cockpit (Příprava + Hra běží + Drozd welcome)
+   New palette tokens scoped to home so the kingdom / stage / spell-school
+   / skill-category palettes stay separate. Tile bg + alert severity only.
+   ====================================================================== */
+:root{
+    --oh-home-tile-bg:    #F2EBD8;
+    --oh-home-tile-hover: #E5DBC0;
+    --oh-home-tile-icon:  #2D5016;
+    --oh-home-alert-low:  #C19A3A;
+    --oh-home-alert-mid:  #B26223;
+    --oh-home-alert-high: #8C2423;
+}
+
+.oh-home-cockpit{display:flex;flex-direction:column;gap:18px;max-width:1240px;margin:0 auto}
+
+/* Hero (16:9 game cover) */
+.oh-home-hero{position:relative;display:grid;grid-template-rows:auto auto;border-radius:8px;overflow:hidden;
+    background:var(--oh-surface-alt,#F2EBD8);border:1px solid var(--oh-border,#d8d2be)}
+.oh-home-hero-art{position:relative;width:100%;aspect-ratio:16/9;background:linear-gradient(135deg,#2D5016 0%,#5C7A3E 60%,#A4733E 100%);
+    overflow:hidden}
+.oh-home-hero-art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.oh-home-hero-art-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:rgba(242,235,216,.55);font-size:6rem}
+.oh-home-hero-scrim{position:absolute;inset:auto 0 0 0;height:60%;background:linear-gradient(180deg,transparent 0,rgba(0,0,0,.55) 100%);pointer-events:none}
+.oh-home-hero-body{padding:14px 22px 18px;background:var(--oh-surface,#FAF6EC)}
+.oh-home-hero-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.oh-home-stage-chip{display:inline-flex;align-items:center;padding:3px 9px;border-radius:99px;background:#2D5016;color:#fff;font:600 .75rem var(--oh-font-body)}
+.oh-home-prep-chip{display:inline-flex;align-items:center;padding:3px 9px;border-radius:99px;background:rgba(0,0,0,.08);color:rgba(0,0,0,.6);font:500 .72rem var(--oh-font-body)}
+.oh-home-game-chip{display:inline-flex;align-items:center;padding:3px 10px;border-radius:99px;background:var(--oh-surface-alt,#F2EBD8);
+    border:1px solid var(--oh-border,#d8d2be);color:var(--oh-text,#2a2a2a);
+    font:600 .8rem var(--oh-font-body);cursor:pointer;margin-left:auto}
+.oh-home-game-chip:hover{background:var(--oh-home-tile-hover)}
+.oh-home-hero-title{margin:0;font:700 1.65rem var(--oh-font-heading)}
+.oh-home-hero-dates{margin:2px 0 0;color:var(--oh-text-muted,#6b6453);font:400 .85rem var(--oh-font-body)}
+
+/* StavSvetaStrip — 7 cells */
+.oh-home-stats{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.oh-home-cell{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+    padding:14px 10px;border-radius:6px;background:var(--oh-surface,#FAF6EC);
+    border:1px solid var(--oh-border,#d8d2be);text-decoration:none;color:var(--oh-text,#2a2a2a);transition:.12s ease}
+.oh-home-cell:hover{background:var(--oh-home-tile-hover);border-color:#2D5016}
+.oh-home-cell-lbl{font:500 .72rem var(--oh-font-body);color:var(--oh-text-muted,#6b6453);text-transform:uppercase;letter-spacing:.04em}
+.oh-home-cell-num{font:700 1.5rem var(--oh-font-heading);color:#2D5016;font-variant-numeric:tabular-nums}
+
+/* Pozor panel */
+.oh-home-pozor{padding:14px 18px;background:var(--oh-surface,#FAF6EC);border:1px solid var(--oh-border,#d8d2be);border-radius:8px}
+.oh-home-pozor-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px}
+.oh-home-pozor-head h2{margin:0;font:700 1.05rem var(--oh-font-heading)}
+.oh-home-pz-row{display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:5px;
+    text-decoration:none;color:var(--oh-text,#2a2a2a)}
+.oh-home-pz-row:hover{background:var(--oh-surface-alt,#F2EBD8)}
+.oh-home-pz-sev{width:10px;height:10px;border-radius:50%;flex-shrink:0;background:var(--oh-home-alert-low)}
+.oh-home-sev-low{background:var(--oh-home-alert-low)}
+.oh-home-sev-mid{background:var(--oh-home-alert-mid)}
+.oh-home-sev-high{background:var(--oh-home-alert-high)}
+.oh-home-pz-lbl{flex:1}
+.oh-home-pz-num{font-variant-numeric:tabular-nums;color:var(--oh-text-muted,#6b6453);font-weight:600}
+.oh-home-pz-ok{display:flex;align-items:center;gap:12px;padding:10px 6px;color:var(--oh-text,#2a2a2a)}
+.oh-home-pz-ok i{font-size:1.4rem;color:#2D5016}
+.oh-home-pz-skel{padding:10px 6px}
+
+/* Timeline + Live alerts row (Hra běží) */
+.oh-home-running-row{display:grid;grid-template-columns:2fr 1fr;gap:14px}
+.oh-home-tl,.oh-home-al{padding:14px 18px;background:var(--oh-surface,#FAF6EC);
+    border:1px solid var(--oh-border,#d8d2be);border-radius:8px}
+.oh-home-tl-head,.oh-home-al-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px}
+.oh-home-tl-head h2,.oh-home-al-head h2{margin:0;font:700 1.05rem var(--oh-font-heading)}
+.oh-home-tl-row{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;
+    padding:8px 6px;border-radius:5px}
+.oh-home-tl-row+.oh-home-tl-row{border-top:1px solid var(--oh-border,#d8d2be)}
+.oh-home-tl-cur{background:rgba(45,80,22,.06)}
+.oh-home-tl-when{display:flex;flex-direction:column;align-items:flex-end;min-width:64px}
+.oh-home-tl-when strong{font-variant-numeric:tabular-nums;font-size:1rem}
+.oh-home-tl-title{font-weight:600}
+.oh-home-tl-status{font:600 .72rem var(--oh-font-body);text-transform:uppercase;letter-spacing:.04em;color:#2D5016}
+.oh-home-tl-skel{padding:10px 6px}
+.oh-home-al-empty{display:flex;align-items:center;gap:10px;padding:10px 6px;color:var(--oh-text-muted,#6b6453)}
+.oh-home-al-empty i{font-size:1.3rem;color:#2D5016}
+
+/* Bottom row: recent activity + quick-launch */
+.oh-home-bottom-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.oh-home-act,.oh-home-qlaunch{padding:14px 18px;background:var(--oh-surface,#FAF6EC);
+    border:1px solid var(--oh-border,#d8d2be);border-radius:8px}
+.oh-home-act-head h2,.oh-home-qlaunch-head h2{margin:0 0 8px;font:700 1.05rem var(--oh-font-heading)}
+.oh-home-act-row{display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:5px;
+    text-decoration:none;color:var(--oh-text,#2a2a2a)}
+.oh-home-act-row+.oh-home-act-row{border-top:1px solid var(--oh-border,#d8d2be)}
+.oh-home-act-row:hover{background:var(--oh-surface-alt,#F2EBD8)}
+.oh-home-act-thumb{display:flex;align-items:center;justify-content:center;width:40px;height:40px;
+    border-radius:5px;background:var(--oh-surface-alt,#F2EBD8);overflow:hidden;flex-shrink:0}
+.oh-home-act-thumb img{width:100%;height:100%;object-fit:cover}
+.oh-home-act-thumb i{font-size:1.1rem;color:var(--oh-home-tile-icon)}
+.oh-home-act-body{display:flex;flex-direction:column;min-width:0;flex:1}
+.oh-home-act-name{font-weight:600;text-overflow:ellipsis;overflow:hidden;white-space:nowrap}
+.oh-home-act-skel{align-items:center}
+
+/* Quick launch tiles */
+.oh-home-qlaunch-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.oh-home-tile{aspect-ratio:1/1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+    border-radius:8px;background:var(--oh-home-tile-bg);
+    border:1px solid var(--oh-border,#d8d2be);text-decoration:none;color:var(--oh-text,#2a2a2a);transition:.12s ease}
+.oh-home-tile:hover{background:var(--oh-home-tile-hover);border-color:var(--oh-home-tile-icon)}
+.oh-home-tile i{font-size:1.6rem;color:var(--oh-home-tile-icon)}
+.oh-home-tile-lbl{font:600 .8rem var(--oh-font-body)}
+
+/* Drozd welcome takeover */
+.oh-home-takeover{position:fixed;inset:0;background:rgba(20,16,8,.78);display:flex;align-items:center;justify-content:center;
+    z-index:1080;animation:oh-home-takeover-in .35s ease-out}
+@keyframes oh-home-takeover-in{from{opacity:0}to{opacity:1}}
+.oh-home-drozd-card{display:flex;flex-direction:column;align-items:center;gap:14px;padding:28px 36px;
+    background:var(--oh-surface,#FAF6EC);border:1px solid var(--oh-border,#d8d2be);border-radius:12px;
+    max-width:420px;text-align:center;cursor:default}
+.oh-home-drozd-art{width:160px;height:160px}
+.oh-home-drozd-art svg{width:100%;height:100%}
+.oh-home-drozd-greet h2{margin:0;font:700 1.4rem var(--oh-font-heading)}
+.oh-home-drozd-greet p{margin:6px 0 12px;color:var(--oh-text-muted,#6b6453)}
+
+/* Skeleton shimmer */
+.oh-home-skel-line-lg,.oh-home-skel-line-sm,.oh-home-skel-line-xs{
+    display:block;background:linear-gradient(90deg,#E5DBC0 0,#F2EBD8 50%,#E5DBC0 100%);
+    background-size:200% 100%;animation:oh-home-skel 1.4s linear infinite;border-radius:3px}
+.oh-home-skel-line-lg{height:14px;width:80%}
+.oh-home-skel-line-sm{height:10px;width:55%}
+.oh-home-skel-line-xs{height:8px;width:35%}
+@keyframes oh-home-skel{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+/* No-game empty state */
+.oh-home-no-game{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+    padding:60px 20px;text-align:center;color:var(--oh-text,#2a2a2a)}
+.oh-home-no-game-art i{font-size:4rem;color:rgba(45,80,22,.35)}
+.oh-home-no-game h2{font:700 1.4rem var(--oh-font-heading);margin:0}
+
+/* Responsive */
+@media (max-width:1024px){
+    .oh-home-stats{grid-template-columns:repeat(4,minmax(0,1fr))}
+    .oh-home-running-row{grid-template-columns:1fr}
+    .oh-home-bottom-row{grid-template-columns:1fr}
+    .oh-home-qlaunch-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:600px){
+    .oh-home-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .oh-home-qlaunch-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}

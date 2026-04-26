@@ -1,0 +1,47 @@
+@* Issue #158 — Hra běží only. Top row expanded if currently active.
+   Status string ("Probíhá / Brzy / Zítra / Později") is computed
+   server-side against DateTime.Now. *@
+
+<section class="oh-home-tl" aria-labelledby="oh-home-tl-title">
+    <header class="oh-home-tl-head">
+        <h2 id="oh-home-tl-title">Časový plán</h2>
+        <a class="text-muted small" href="/timeline">Otevřít celý plán →</a>
+    </header>
+    @if (Rows is null)
+    {
+        <div class="oh-home-tl-row oh-home-tl-skel">
+            <span class="oh-home-skel-line-lg"></span>
+        </div>
+    }
+    else if (Rows.Count == 0)
+    {
+        <p class="text-muted small fst-italic mb-0">Žádné nadcházející úseky.</p>
+    }
+    else
+    {
+        @foreach (var row in Rows)
+        {
+            var isCurrent = row.Status == "Probíhá";
+            <div class="oh-home-tl-row @(isCurrent ? "oh-home-tl-cur" : "")">
+                <div class="oh-home-tl-when">
+                    <strong>@row.StartTime.ToString("HH:mm")</strong>
+                    <span class="text-muted small">@row.StartTime.ToString("d. M.")</span>
+                </div>
+                <div class="oh-home-tl-body">
+                    <div class="oh-home-tl-title">@(string.IsNullOrWhiteSpace(row.Title) ? "Volný úsek" : row.Title)</div>
+                    @if (!string.IsNullOrWhiteSpace(row.LocationName))
+                    {
+                        <div class="text-muted small">
+                            <i class="bi bi-geo-alt"></i> @row.LocationName
+                        </div>
+                    }
+                </div>
+                <span class="oh-home-tl-status">@row.Status</span>
+            </div>
+        }
+    }
+</section>
+
+@code {
+    [Parameter] public IReadOnlyList<TimelineRowDto>? Rows { get; set; }
+}
