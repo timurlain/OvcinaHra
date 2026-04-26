@@ -227,20 +227,27 @@ public static class ItemEndpoints
 
     private static string? BuildRecipeSummary(CraftingRecipe r)
     {
+        // Each section is labelled (Suroviny / Pozn. / Budovy / Dovednosti)
+        // so the Recept grid column reads cleanly even when fields are
+        // missing or vary across rows.
         var parts = new List<string>();
         if (r.Ingredients.Count > 0)
         {
-            parts.Add(string.Join(", ",
+            parts.Add("Suroviny: " + string.Join(", ",
                 r.Ingredients.OrderBy(i => i.Item.Name).Select(i => $"{i.Quantity}× {i.Item.Name}")));
+        }
+        if (!string.IsNullOrWhiteSpace(r.IngredientNotes))
+        {
+            parts.Add("Pozn.: " + r.IngredientNotes.Trim());
         }
         if (r.BuildingRequirements.Count > 0)
         {
-            parts.Add(string.Join(", ",
+            parts.Add("Budovy: " + string.Join(", ",
                 r.BuildingRequirements.OrderBy(b => b.Building.Name).Select(b => b.Building.Name)));
         }
         if (r.SkillRequirements.Count > 0)
         {
-            parts.Add(string.Join(", ",
+            parts.Add("Dovednosti: " + string.Join(", ",
                 r.SkillRequirements.OrderBy(s => s.GameSkill.Name).Select(s => s.GameSkill.Name)));
         }
         return parts.Count > 0 ? string.Join(" │ ", parts) : null;
