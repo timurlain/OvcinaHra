@@ -43,7 +43,8 @@ public record TreasurePlanningLocationDto(
     int LocationId, string LocationName, LocationKind LocationKind,
     int StartCount, int EarlyCount, int MidgameCount, int LategameCount,
     int TotalItems, int StashCount, int MaxStashes,
-    List<StashSummaryDto> Stashes);
+    List<StashSummaryDto> Stashes,
+    string? Region = null);
 
 public record StashSummaryDto(int Id, string Name, int ItemCount);
 

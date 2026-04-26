@@ -190,7 +190,8 @@ public static class TreasurePlanningEndpoints
                 CountByDifficulty(GameTimePhase.Lategame),
                 allQuests.SelectMany(q => q.TreasureItems).Sum(ti => ti.Count),
                 loc.GameSecretStashes.Count, 3,
-                stashSummaries);
+                stashSummaries,
+                Region: loc.Region);
         }).ToList();
 
         return TypedResults.Ok(result);
