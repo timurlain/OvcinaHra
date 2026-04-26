@@ -60,7 +60,8 @@
                                  Height="calc(100vh - 200px)"
                                  OnStyleLoaded="OnMapReadyAsync"
                                  OnMapPagePinClick="OnPinClickedAsync"
-                                 OnMapPagePinDrag="OnPinDraggedAsync" />
+                                 OnMapPagePinDrag="OnPinDraggedAsync"
+                                 OnMapClick="OnMapClickAsync" />
                     </div>
 
                     <MapPinPeek Visible="@_peekVisible"
@@ -99,6 +100,74 @@
                     </div>
                 </BodyContentTemplate>
             </DxPopup>
+
+            @* Ctrl+Click placement picker — Ctrl+Clicking on the map
+               opens this popup; the user picks an ungeocoded parent
+               location from the active game and the clicked coords
+               become its new GPS. Coarse-pointer users (touch / tablet)
+               can't easily Ctrl+Click; that's by design — placing is a
+               PC-only workflow same as drag-relocate. *@
+            <DxPopup @bind-Visible="@_placeVisible"
+                     HeaderText="Vyber lokaci k umístění"
+                     Width="540px"
+                     CloseOnEscape="true">
+                <BodyContentTemplate>
+                    <p class="text-muted small mb-2">
+                        Souřadnice: <code>@_placeLat.ToString("F6"), @_placeLng.ToString("F6")</code>
+                    </p>
+                    <DxTextBox @bind-Text="@_placeSearch"
+                               NullText="Hledat podle názvu nebo oblasti…"
+                               CssClass="mb-2" />
+                    @if (_ungeocoded is null)
+                    {
+                        <p class="text-muted small">Načítám…</p>
+                    }
+                    else
+                    {
+                        var filtered = _ungeocoded
+                            .Where(l => string.IsNullOrWhiteSpace(_placeSearch)
+                                || l.Name.Contains(_placeSearch, StringComparison.OrdinalIgnoreCase)
+                                || (l.Region is not null && l.Region.Contains(_placeSearch, StringComparison.OrdinalIgnoreCase)))
+                            .ToList();
+                        if (filtered.Count == 0 && _ungeocoded.Count == 0)
+                        {
+                            <p class="text-muted small text-center py-3">Všechny lokace v této hře už mají GPS.</p>
+                        }
+                        else if (filtered.Count == 0)
+                        {
+                            <p class="text-muted small text-center py-3">Nic nenalezeno.</p>
+                        }
+                        else
+                        {
+                            <div class="list-group" style="max-height:420px;overflow-y:auto;">
+                                @foreach (var loc in filtered)
+                                {
+                                    <button type="button"
+                                            class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+                                            disabled="@_placeSaving"
+                                            @onclick="@(() => ConfirmPlaceAsync(loc))">
+                                        <div>
+                                            <div><strong>@loc.Name</strong></div>
+                                            @if (!string.IsNullOrWhiteSpace(loc.Region))
+                                            {
+                                                <small class="text-muted">@loc.Region</small>
+                                            }
+                                        </div>
+                                        <span class="badge rounded-pill text-bg-secondary">@loc.LocationKindDisplay</span>
+                                    </button>
+                                }
+                            </div>
+                        }
+                    }
+                    @if (_placeError is not null)
+                    {
+                        <div class="alert alert-danger py-2 mt-2 mb-0">@_placeError</div>
+                    }
+                    <div class="d-flex justify-content-end mt-3">
+                        <button class="btn btn-secondary" @onclick="() => _placeVisible = false" disabled="@_placeSaving">Zavřít</button>
+                    </div>
+                </BodyContentTemplate>
+            </DxPopup>
         }
     </Authorized>
     <NotAuthorized>
@@ -134,6 +203,16 @@
     private double _pendingDragLng;
     private bool _pendingDragSaving;
     private string? _pendingDragError;
+
+    // Ctrl+Click placement state — picks an ungeocoded parent location
+    // from the active game and PUTs the clicked coords as its GPS.
+    private bool _placeVisible;
+    private double _placeLat;
+    private double _placeLng;
+    private List<LocationListDto>? _ungeocoded;
+    private string _placeSearch = "";
+    private bool _placeSaving;
+    private string? _placeError;
     // Issue #216 — phone-only layer rail toggle. CSS gates the visible
     // surface so on tablet/desktop this flag has no effect.
     private bool _railOpen;
@@ -392,6 +471,64 @@
         _pendingDragVisible = false;
         _pendingDragId = null;
         await PaintPinsAsync();
+    }
+
+    /// <summary>
+    /// Map click handler. Plain click does nothing (peek only opens via
+    /// pin clicks). Ctrl+Click opens the "place ungeocoded location"
+    /// picker — user picks one from the grid and the clicked coords
+    /// become its new GPS.
+    /// </summary>
+    private async Task OnMapClickAsync(OvcinaMapClickEventArgs e)
+    {
+        if (!e.CtrlKey) return;
+        if (GameContext.SelectedGameId is not int gid) return;
+        _placeLat = e.Latitude;
+        _placeLng = e.Longitude;
+        _placeError = null;
+        _placeSearch = "";
+        _placeSaving = false;
+        // Fetch the per-game location list and filter to ungeocoded
+        // parent rows (no GPS, no parent). Re-fetched on every open so
+        // the list reflects the current state without stale caching.
+        var all = await Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gid}");
+        _ungeocoded = all
+            .Where(l => l.ParentLocationId is null
+                && (l.Latitude is null || l.Longitude is null))
+            .OrderBy(l => l.Name)
+            .ToList();
+        _placeVisible = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ConfirmPlaceAsync(LocationListDto loc)
+    {
+        _placeError = null;
+        _placeSaving = true;
+        try
+        {
+            // Round-trip GET → PUT so we don't wipe Description / Details /
+            // NpcInfo. Mirrors the OnPinDragged flow.
+            var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{loc.Id}");
+            if (detail is null) { _placeError = "Lokace nenalezena."; return; }
+            await Api.PutAsync($"/api/locations/{loc.Id}",
+                new UpdateLocationDto(
+                    detail.Name, detail.LocationKind,
+                    Latitude: (decimal)_placeLat, Longitude: (decimal)_placeLng,
+                    Description: detail.Description,
+                    Details: detail.Details,
+                    GamePotential: detail.GamePotential,
+                    Prompt: detail.Prompt,
+                    Region: detail.Region,
+                    NpcInfo: detail.NpcInfo,
+                    SetupNotes: detail.SetupNotes,
+                    ParentLocationId: detail.ParentLocationId));
+            _placeVisible = false;
+            _ungeocoded = null;
+            await ReloadDataAndRenderAsync();
+        }
+        catch (Exception ex) { _placeError = ex.Message; }
+        finally { _placeSaving = false; }
     }
 
     private async Task OnKindToggle(LocationKind kind)

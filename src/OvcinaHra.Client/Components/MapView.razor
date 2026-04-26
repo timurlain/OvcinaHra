@@ -425,8 +425,8 @@
         => await JS.InvokeVoidAsync("ovcinaMap.setStageFilter", (object?)(stages?.ToArray()));
 
     [JSInvokable]
-    public async Task OnMapClicked(double lat, double lng)
-        => await OnMapClick.InvokeAsync(new OvcinaMapClickEventArgs(lat, lng));
+    public async Task OnMapClicked(double lat, double lng, bool ctrlKey = false)
+        => await OnMapClick.InvokeAsync(new OvcinaMapClickEventArgs(lat, lng, ctrlKey));
 
     [JSInvokable]
     public async Task OnPieMarkerClicked(int id)
