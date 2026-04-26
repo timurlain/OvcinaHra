@@ -58,6 +58,7 @@
                         </div>
                         <MapView @ref="_mapView"
                                  Height="calc(100vh - 200px)"
+                                 GameId="@GameContext.SelectedGameId"
                                  OnStyleLoaded="OnMapReadyAsync"
                                  OnMapPagePinClick="OnPinClickedAsync"
                                  OnMapPagePinDrag="OnPinDraggedAsync"
