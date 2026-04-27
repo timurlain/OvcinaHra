@@ -150,6 +150,14 @@
     border-left: 4px solid var(--oh-primary);
 }
 
+.oh-bot-message--drozd.oh-bot--loremaster .oh-bot-message-body {
+    border-left-color: var(--oh-color-forest-deep, var(--oh-color-aradhryand, var(--oh-primary)));
+}
+
+.oh-bot-message--drozd.oh-bot--rulemaster .oh-bot-message-body {
+    border-left-color: var(--oh-color-azanulinbar, var(--oh-stage-endgame));
+}
+
 .oh-bot-thinking {
     color: var(--oh-text-secondary);
     font-style: italic;
@@ -220,4 +228,38 @@
     background: rgba(44, 24, 16, 0.08);
     border-radius: var(--oh-radius-sm);
     padding: 0.1rem 0.25rem;
+}
+
+.oh-bot--loremaster.oh-bot-fab,
+.oh-bot--loremaster.oh-bot-drawer .oh-bot-header {
+    background: var(--oh-color-forest-deep, var(--oh-color-aradhryand, var(--oh-primary)));
+}
+
+.oh-bot--rulemaster.oh-bot-fab,
+.oh-bot--rulemaster.oh-bot-drawer .oh-bot-header {
+    background: var(--oh-color-azanulinbar, var(--oh-stage-endgame));
+}
+
+@media (max-width: 767.98px) {
+    .oh-bot-drawer {
+        inset: 0;
+        width: 100vw;
+        height: 100dvh;
+        max-height: none;
+        border-radius: 0;
+        border: 0;
+    }
+
+    .oh-bot-fab {
+        right: 1rem;
+        bottom: 1rem;
+    }
+
+    .oh-bot-input {
+        grid-template-columns: 1fr;
+    }
+
+    .oh-bot-send {
+        justify-content: center;
+    }
 }
