@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Mvc;
 using OvcinaHra.E2E.Fixtures;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
@@ -200,17 +201,22 @@ public class SkillsManagementTests
         Assert.NotNull(stillThere);
         Assert.Contains(stillThere, gs => gs.Id == gameSkill.Id);
 
-        // Template DELETE is independently permitted now — it nulls out TemplateSkillId
-        // on any copy (cascade SetNull). The per-game copy survives the template being
-        // removed, which is the copy-on-assign guarantee.
+        // Because the recipe keeps the per-game copy alive, template DELETE is blocked
+        // by the catalog's usage guard and surfaces Czech ProblemDetails.
         var templateDeleteResp = await client.DeleteAsync($"/api/skills/{template.Id}");
-        Assert.Equal(System.Net.HttpStatusCode.NoContent, templateDeleteResp.StatusCode);
+        Assert.Equal(System.Net.HttpStatusCode.Conflict, templateDeleteResp.StatusCode);
 
-        var afterTemplateGone = await client.GetFromJsonAsync<List<GameSkillDto>>(
+        var problem = await templateDeleteResp.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Dovednost nelze smazat", problem.Title);
+        Assert.Equal((int)System.Net.HttpStatusCode.Conflict, problem.Status);
+        Assert.Contains("Šablona má kopie v 1 hrách.", problem.Detail);
+
+        var afterTemplateDeleteBlocked = await client.GetFromJsonAsync<List<GameSkillDto>>(
             $"/api/games/{game.Id}/skills");
-        Assert.NotNull(afterTemplateGone);
-        var orphan = Assert.Single(afterTemplateGone, gs => gs.Id == gameSkill.Id);
-        Assert.Null(orphan.TemplateSkillId);
-        Assert.Equal("Tichý krok", orphan.Name); // name preserved in the copy
+        Assert.NotNull(afterTemplateDeleteBlocked);
+        var copy = Assert.Single(afterTemplateDeleteBlocked, gs => gs.Id == gameSkill.Id);
+        Assert.Equal(template.Id, copy.TemplateSkillId);
+        Assert.Equal("Tichý krok", copy.Name); // name preserved in the copy
     }
 }
