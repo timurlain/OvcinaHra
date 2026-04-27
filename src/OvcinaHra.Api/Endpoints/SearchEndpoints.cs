@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Shared.Dtos;
@@ -14,12 +15,24 @@ public static class SearchEndpoints
         return group;
     }
 
-    private static async Task<Ok<SearchResponseDto>> Search(string q, WorldDbContext db, int? gameId = null, int limit = 20)
+    private static async Task<Results<Ok<SearchResponseDto>, BadRequest<ProblemDetails>>> Search(
+        string? q,
+        WorldDbContext db,
+        int? gameId = null,
+        int limit = 20)
     {
-        if (string.IsNullOrWhiteSpace(q))
-            return TypedResults.Ok(new SearchResponseDto(q ?? "", 0, []));
+        var searchQuery = q?.Trim() ?? "";
+        if (searchQuery.Length == 0)
+        {
+            return TypedResults.BadRequest(new ProblemDetails
+            {
+                Title = "Neplatný vyhledávací dotaz",
+                Detail = "Vyhledávací dotaz nesmí být prázdný.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
 
-        var terms = q.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var terms = searchQuery.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var tsQuery = string.Join(" & ", terms.Select(t => t.Replace("'", "''") + ":*"));
 
         var results = new List<SearchResultDto>();
@@ -96,6 +109,6 @@ public static class SearchEndpoints
             .Select(s => new SearchResultDto("Spell", s.Id, s.Name, s.Effect))
             .ToListAsync());
 
-        return TypedResults.Ok(new SearchResponseDto(q, results.Count, results));
+        return TypedResults.Ok(new SearchResponseDto(searchQuery, results.Count, results));
     }
 }

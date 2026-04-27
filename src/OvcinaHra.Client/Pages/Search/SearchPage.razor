@@ -53,11 +53,13 @@
 
     private async Task SearchAsync()
     {
-        if (string.IsNullOrWhiteSpace(query)) return;
+        var searchQuery = query.Trim();
+        if (searchQuery.Length == 0) return;
+
         searching = true;
         try
         {
-            result = await Api.GetAsync<SearchResponseDto>($"/api/search?q={Uri.EscapeDataString(query)}");
+            result = await Api.GetAsync<SearchResponseDto>($"/api/search?q={Uri.EscapeDataString(searchQuery)}");
         }
         finally { searching = false; }
     }
