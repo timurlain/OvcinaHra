@@ -26,9 +26,10 @@ public class NavSearchRobustnessTests
         Assert.Contains("{Query}", navSearch);
         Assert.Contains("{StatusCode}", navSearch);
         Assert.Contains("{Exception}", navSearch);
+        Assert.Contains("exception.GetType().Name", navSearch);
 
         Assert.Contains("GetAsync<T>(string url, CancellationToken cancellationToken = default)", apiClient);
-        Assert.Contains("_http.GetAsync(url, cancellationToken)", apiClient);
+        Assert.Contains("using var response = await _http.GetAsync(url, cancellationToken)", apiClient);
         Assert.Contains("ReadFromJsonAsync<T>(JsonOptions, cancellationToken)", apiClient);
     }
 

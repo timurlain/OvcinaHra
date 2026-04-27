@@ -27,7 +27,7 @@ public class ApiClient
 
     public async Task<T?> GetAsync<T>(string url, CancellationToken cancellationToken = default)
     {
-        var response = await _http.GetAsync(url, cancellationToken);
+        using var response = await _http.GetAsync(url, cancellationToken);
         if (response.StatusCode == HttpStatusCode.NotFound)
             return default;
         response.EnsureSuccessStatusCode();
