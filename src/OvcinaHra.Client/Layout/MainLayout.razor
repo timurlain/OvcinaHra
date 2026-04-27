@@ -28,12 +28,24 @@
 
 @code {
     [Inject] private JwtAuthStateProvider AuthProvider { get; set; } = default!;
+    [Inject] private NavigationManager Nav { get; set; } = default!;
 
     private bool sidebarCollapsed;
     private void ToggleSidebar() => sidebarCollapsed = !sidebarCollapsed;
 
+    // Issue #261 — clearing the token alone left the user on whatever
+    // protected page they were on; AuthorizeView would re-render empty,
+    // [Authorize] would redirect to /login, and /login's auto-redirect
+    // back into OIDC would silently re-authenticate via the still-valid
+    // IdP cookie. We now navigate to /login?logout=1 with forceLoad:true
+    // so the WASM app reboots clean (no stale refresh timer, no race),
+    // and Login.razor reads the query param to suppress its auto-redirect
+    // — the user sees a deliberate "logged out" card and clicks to sign
+    // back in. The IdP cookie is still alive, but that's a UX choice:
+    // any explicit re-login goes through SSO, no fresh password needed.
     private async Task Logout()
     {
         await AuthProvider.ClearTokenAsync();
+        Nav.NavigateTo("/login?logout=1", forceLoad: true);
     }
 }

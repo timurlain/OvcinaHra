@@ -23,10 +23,23 @@
                 </div>
             }
 
+            @* Issue #261 — explicit logout banner. MainLayout.Logout navigates
+               here with ?logout=1 + forceLoad so the WASM app reboots clean.
+               Without this banner the user would see the auto-redirect spinner
+               and assume nothing happened; the manual sign-in button below
+               replaces auto-redirect for this branch. *@
+            @if (LoggedOut)
+            {
+                <div class="alert alert-success">
+                    <i class="bi bi-check-circle me-1"></i>
+                    Byl jsi odhlášen. Pro pokračování klikni níže.
+                </div>
+            }
+
             @* Production: OIDC login via registrace *@
             @if (!string.IsNullOrEmpty(oidcAuthority))
             {
-                @if (Error is null && autoRedirectError is null)
+                @if (Error is null && autoRedirectError is null && !LoggedOut)
                 {
                     @* Auto-redirect path — spinner with a fallback link so the user
                        isn't stuck on an infinite spinner if JS interop or a slow
@@ -104,6 +117,12 @@
 @code {
     [Inject] private IConfiguration Config { get; set; } = null!;
     [SupplyParameterFromQuery] private string? Error { get; set; }
+    // Issue #261 — set by MainLayout.Logout's redirect (/login?logout=1).
+    // Suppresses the auto-redirect into OIDC so the user actually lands on
+    // the login page after pressing Odhlásit, instead of being silently
+    // re-authenticated via the still-valid IdP cookie.
+    [SupplyParameterFromQuery(Name = "logout")] private string? Logout { get; set; }
+    private bool LoggedOut => Logout == "1";
 
     private string? oidcAuthority => Config["OidcAuthority"];
     private string? oidcClientId => Config["OidcClientId"];
@@ -120,6 +139,7 @@
         if (!firstRender) return;
         if (autoFired) return;
         if (Error is not null) return;                    // let the user see the message first
+        if (LoggedOut) return;                            // #261 — explicit logout, manual sign-in
         if (string.IsNullOrEmpty(oidcAuthority)) return;  // dev mode — keep manual form
         autoFired = true;
         try
