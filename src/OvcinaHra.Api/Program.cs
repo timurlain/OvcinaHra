@@ -136,10 +136,13 @@ try
         var configuredOrigins =
             builder.Configuration.GetSection("Cors:Origins").Get<string[]>()
             ?? [];
+        // Built once at startup as a case-insensitive HashSet — the
+        // SetIsOriginAllowed delegate below runs on every request that
+        // carries an Origin header, so O(1) lookup matters.
         var effectiveOrigins = OvcinaCorsPolicy.BuildEffectiveOrigins(configuredOrigins);
         options.AddPolicy("BlazorClient", policy => policy
             .SetIsOriginAllowed(origin =>
-                effectiveOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase)
+                effectiveOrigins.Contains(origin)
                 || IsLocalhostOrigin(origin))
             .AllowAnyHeader()
             .AllowAnyMethod());

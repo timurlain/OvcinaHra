@@ -62,6 +62,16 @@ public class OvcinaCorsPolicyTests
     }
 
     [Fact]
+    public void OriginLookup_IsCaseInsensitive()
+    {
+        var effective = OvcinaCorsPolicy.BuildEffectiveOrigins(null);
+
+        // The set is backed by StringComparer.OrdinalIgnoreCase — Contains()
+        // matches regardless of how the browser cased the Origin header.
+        Assert.Contains("HTTPS://Hra.Ovcina.cz", effective);
+    }
+
+    [Fact]
     public void NullAndWhitespaceEntries_AreIgnored()
     {
         var configured = new[] { "https://preview.ovcina.cz", "", "   ", null! };
@@ -74,10 +84,25 @@ public class OvcinaCorsPolicyTests
     }
 
     [Fact]
+    public void ConfiguredOrigins_AreTrimmed_BeforeInsertion()
+    {
+        // Env vars are a notorious source of stray whitespace (e.g. someone
+        // pastes "Cors__Origins__0=  https://preview.ovcina.cz" with a leading
+        // space). The trimmed value must be what the lookup matches against,
+        // because the browser Origin header never carries whitespace.
+        var configured = new[] { "  https://preview.ovcina.cz  " };
+
+        var effective = OvcinaCorsPolicy.BuildEffectiveOrigins(configured);
+
+        Assert.Contains("https://preview.ovcina.cz", effective);
+        Assert.DoesNotContain("  https://preview.ovcina.cz  ", effective);
+    }
+
+    [Fact]
     public void EcosystemOrigins_CannotBeRemoved_EvenIfConfigOmitsThem()
     {
         // Even if config lists nothing, ecosystem origins must remain.
-        var effective = OvcinaCorsPolicy.BuildEffectiveOrigins(new string[0]);
+        var effective = OvcinaCorsPolicy.BuildEffectiveOrigins([]);
 
         foreach (var ecosystem in OvcinaCorsPolicy.EcosystemOrigins)
         {

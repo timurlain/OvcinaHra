@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+
 namespace OvcinaHra.Api.Configuration;
 
 /// <summary>
@@ -25,7 +27,12 @@ public static class OvcinaCorsPolicy
     /// Production hostnames for the Ovčina ecosystem that must always be
     /// CORS-allowed, regardless of <c>Cors:Origins</c> configuration.
     /// </summary>
-    public static readonly string[] EcosystemOrigins =
+    /// <remarks>
+    /// Exposed as <see cref="ImmutableArray{T}"/> so callers cannot mutate
+    /// the underlying storage at runtime and accidentally remove an
+    /// ecosystem origin from the allowlist.
+    /// </remarks>
+    public static readonly ImmutableArray<string> EcosystemOrigins =
     [
         "https://hra.ovcina.cz",
         "https://glejt.ovcina.cz",
@@ -35,21 +42,28 @@ public static class OvcinaCorsPolicy
     /// Returns the union of <see cref="EcosystemOrigins"/> and
     /// <paramref name="configuredOrigins"/> (case-insensitive de-dupe).
     /// Configured origins can ADD to the allowlist but never remove an
-    /// ecosystem entry.
+    /// ecosystem entry. Each configured origin is trimmed before insertion
+    /// so a stray space in an env var (e.g. <c>Cors__Origins__0=" https://x"</c>)
+    /// won't silently desync from the browser <c>Origin</c> header.
     /// </summary>
-    public static string[] BuildEffectiveOrigins(IEnumerable<string>? configuredOrigins)
+    /// <returns>
+    /// An <see cref="IReadOnlySet{T}"/> backed by a case-insensitive
+    /// <see cref="HashSet{T}"/> for O(1) per-request membership checks.
+    /// </returns>
+    public static IReadOnlySet<string> BuildEffectiveOrigins(IEnumerable<string>? configuredOrigins)
     {
         var set = new HashSet<string>(EcosystemOrigins, StringComparer.OrdinalIgnoreCase);
         if (configuredOrigins is not null)
         {
             foreach (var origin in configuredOrigins)
             {
-                if (!string.IsNullOrWhiteSpace(origin))
+                var trimmed = origin?.Trim();
+                if (!string.IsNullOrEmpty(trimmed))
                 {
-                    set.Add(origin);
+                    set.Add(trimmed);
                 }
             }
         }
-        return [.. set];
+        return set;
     }
 }
