@@ -145,10 +145,9 @@
 
     private string CategoryKey => Recipe.Category switch
     {
-        RecipeCategory.Budova    => "budova",
-        RecipeCategory.Lektvar   => "lektvar",
-        RecipeCategory.Artefakt  => "artefakt",
-        _                        => "ostatni"
+        ItemType.Potion => "lektvar",
+        ItemType.Artifact or ItemType.MinorArtifact or ItemType.Jewelry or ItemType.Scroll => "artefakt",
+        _ => "ostatni"
     };
 
     private async Task HandleClick()

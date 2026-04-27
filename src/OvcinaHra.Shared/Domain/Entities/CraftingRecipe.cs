@@ -1,5 +1,3 @@
-using OvcinaHra.Shared.Domain.Enums;
-
 namespace OvcinaHra.Shared.Domain.Entities;
 
 public class CraftingRecipe
@@ -21,11 +19,6 @@ public class CraftingRecipe
     // null). Null on catalog templates and on od-nuly per-game records.
     public int? TemplateRecipeId { get; set; }
     public CraftingRecipe? TemplateRecipe { get; set; }
-
-    // Issue #218 — 4-value taxonomy (Budova / Lektvar / Artefakt / Ostatní).
-    // Stored as string in PostgreSQL so EnumIsDefined validation works at
-    // the API layer and DB rows stay grep-friendly during data audits.
-    public RecipeCategory Category { get; set; } = RecipeCategory.Ostatni;
 
     public int OutputItemId { get; set; }
     public int? LocationId { get; set; }

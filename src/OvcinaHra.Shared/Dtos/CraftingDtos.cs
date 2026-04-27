@@ -61,7 +61,7 @@ public record RecipeListDto(
     // Title = Name when set, else OutputItem.Name. Convenience field for
     // formula-card headings that always need something to print.
     string Title,
-    RecipeCategory Category,
+    ItemType Category,
     int? GameId,
     int? TemplateRecipeId,
     int OutputItemId,
@@ -86,7 +86,7 @@ public record RecipeDetailDto(
     int Id,
     string? Name,
     string Title,
-    RecipeCategory Category,
+    ItemType Category,
     int? GameId,
     int? TemplateRecipeId,
     int OutputItemId,
@@ -107,7 +107,6 @@ public record RecipeDetailDto(
 public record CreateRecipeDto(
     string? Name,
     int OutputItemId,
-    RecipeCategory Category = RecipeCategory.Ostatni,
     int? GameId = null,
     int? LocationId = null,
     int? TemplateRecipeId = null,
@@ -116,7 +115,6 @@ public record CreateRecipeDto(
 public record UpdateRecipeDto(
     string? Name,
     int OutputItemId,
-    RecipeCategory Category,
     int? LocationId = null,
     // Skills are replaced as a set on update — pass current state to keep
     // unchanged. Null is treated as empty.
