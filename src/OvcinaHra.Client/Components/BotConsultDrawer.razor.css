@@ -58,11 +58,37 @@
 }
 
 .oh-bot-header h2 {
-    margin: 0 0 0.75rem;
+    margin: 0;
     font-family: var(--oh-font-heading);
     font-size: 1.05rem;
     font-weight: 700;
     letter-spacing: 0;
+}
+
+.oh-bot-title {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.75rem;
+}
+
+.oh-bot-title-drozd {
+    width: 2.25rem;
+    height: 2.25rem;
+    flex: 0 0 auto;
+    filter: drop-shadow(0 2px 3px rgba(44, 24, 16, 0.3));
+    animation: oh-bot-drozd-bop 4.5s ease-in-out infinite;
+}
+
+@keyframes oh-bot-drozd-bop {
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-2px);
+    }
 }
 
 .oh-bot-icon-button {

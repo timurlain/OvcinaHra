@@ -1,5 +1,7 @@
 @inject ApiClient Api
 @inject IJSRuntime Js
+@inject ILogger<BotConsultDrawer> Logger
+@implements IAsyncDisposable
 
 @if (_enabled)
 {
@@ -17,7 +19,17 @@
         <section class="oh-bot-drawer @PersonaClass" aria-label="Zeptat se Drozda">
             <header class="oh-bot-header">
                 <div>
-                    <h2>Zeptat se Drozda</h2>
+                    <div class="oh-bot-title">
+                        @if (!_drozdIconFailed)
+                        {
+                            <img class="oh-bot-title-drozd"
+                                 src="img/drozd/drozd-idle.svg"
+                                 alt=""
+                                 aria-hidden="true"
+                                 @onerror="HideDrozdIcon" />
+                        }
+                        <h2>Zeptat se Drozda</h2>
+                    </div>
                     <div class="oh-bot-personas" role="tablist" aria-label="Drozdova odbornost">
                         <button type="button"
                                 class="@PersonaButtonClass("rulemaster")"
@@ -77,6 +89,7 @@
             <footer class="oh-bot-input">
                 <textarea @bind="_draft"
                           @bind:event="oninput"
+                          @ref="_draftInput"
                           disabled="@_sending"
                           rows="3"
                           maxlength="4000"
@@ -103,20 +116,29 @@
     private bool _enabled;
     private bool _open;
     private bool _sending;
+    private bool _drozdIconFailed;
+    private bool _draftShortcutAttached;
+    private bool _draftShortcutUnavailable;
     private string _persona = Loremaster;
     private string _draft = string.Empty;
+    private ElementReference _draftInput;
+    private IJSObjectReference? _keyboardModule;
+    private DotNetObjectReference<BotConsultDrawer>? _selfReference;
 
     private bool CanSend => !_sending && !string.IsNullOrWhiteSpace(_draft);
     private string PersonaClass => PersonaClassFor(_persona);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender)
-            return;
+        if (firstRender)
+        {
+            await LoadAvailabilityAsync();
+            await LoadPersonaAsync();
+            StateHasChanged();
+        }
 
-        await LoadAvailabilityAsync();
-        await LoadPersonaAsync();
-        StateHasChanged();
+        if (_open && !_draftShortcutAttached && !_draftShortcutUnavailable)
+            await AttachDraftShortcutAsync();
     }
 
     private async Task LoadAvailabilityAsync()
@@ -154,9 +176,19 @@
         }
     }
 
-    private void Open() => _open = true;
+    private void Open()
+    {
+        _open = true;
+        _draftShortcutAttached = false;
+    }
 
-    private void Close() => _open = false;
+    private void Close()
+    {
+        _open = false;
+        _draftShortcutAttached = false;
+    }
+
+    private void HideDrozdIcon() => _drozdIconFailed = true;
 
     private async Task SetPersonaAsync(string persona)
     {
@@ -211,6 +243,55 @@
         {
             _sending = false;
         }
+    }
+
+    [JSInvokable]
+    public async Task SendDraftFromKeyboardAsync()
+    {
+        await SendAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task AttachDraftShortcutAsync()
+    {
+        try
+        {
+            _keyboardModule ??= await Js.InvokeAsync<IJSObjectReference>(
+                "import",
+                "./Components/BotConsultDrawer.razor.js");
+            _selfReference ??= DotNetObjectReference.Create(this);
+            await _keyboardModule.InvokeVoidAsync("attachEnterToSend", _draftInput, _selfReference);
+            _draftShortcutAttached = true;
+        }
+        catch (JSException ex)
+        {
+            DisableDraftShortcut(ex);
+        }
+        catch (InvalidOperationException ex)
+        {
+            DisableDraftShortcut(ex);
+        }
+    }
+
+    private void DisableDraftShortcut(Exception exception)
+    {
+        _draftShortcutUnavailable = true;
+        Logger.LogWarning(exception, "Bot consult drawer Enter-to-send shortcut failed to attach.");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_keyboardModule is not null)
+                await _keyboardModule.DisposeAsync();
+        }
+        catch (JSException ex)
+        {
+            Logger.LogDebug(ex, "Bot consult drawer keyboard module disposal failed.");
+        }
+
+        _selfReference?.Dispose();
     }
 
     private static string PersonaClassFor(string persona)

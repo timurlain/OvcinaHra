@@ -24,14 +24,28 @@ public class BotConsultDrawerSmokeTests
             "OvcinaHra.Client",
             "Components",
             "BotConsultDrawer.razor.css"));
+        var keyboardJs = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OvcinaHra.Client",
+            "Components",
+            "BotConsultDrawer.razor.js"));
 
         Assert.Contains("<AuthorizeView>", layout);
         Assert.Contains("<BotConsultDrawer />", layout);
         Assert.Contains("/api/consult/available", drawer);
+        Assert.Contains("@inject ILogger<BotConsultDrawer> Logger", drawer);
         Assert.Contains("oh-bot-last-persona", drawer);
         Assert.Contains("rulemaster", drawer);
         Assert.Contains("loremaster", drawer);
         Assert.Contains("Zeptat se Drozda", drawer);
+        Assert.Contains("img/drozd/drozd-idle.svg", drawer);
+        Assert.Contains("@onerror=\"HideDrozdIcon\"", drawer);
+        Assert.Contains("@ref=\"_draftInput\"", drawer);
+        Assert.Contains("SendDraftFromKeyboardAsync", drawer);
+        Assert.Contains("./Components/BotConsultDrawer.razor.js", drawer);
+        Assert.Contains("_draftShortcutUnavailable", drawer);
+        Assert.Contains("Logger.LogWarning", drawer);
         Assert.Contains("Drozd přemýšlí…", drawer);
         Assert.Contains("Zeptej se Drozda…", drawer);
         Assert.Contains("Pravidla", drawer);
@@ -40,8 +54,17 @@ public class BotConsultDrawerSmokeTests
         Assert.Contains("Zavřít", drawer);
         Assert.Contains("--oh-color-forest-deep", css);
         Assert.Contains("--oh-color-azanulinbar", css);
+        Assert.Contains(".oh-bot-title-drozd", css);
         Assert.Contains("@media (max-width: 767.98px)", css);
         Assert.Contains("height: 100dvh;", css);
+
+        Assert.Contains("event.key !== 'Enter'", keyboardJs);
+        Assert.Contains("event.shiftKey", keyboardJs);
+        Assert.Contains("event.preventDefault();", keyboardJs);
+        Assert.Contains("event.repeat", keyboardJs);
+        Assert.Contains("await dotNetRef.invokeMethodAsync('SendDraftFromKeyboardAsync')", keyboardJs);
+        Assert.Contains("textarea.value.trim().length === 0", keyboardJs);
+        Assert.Contains("SendDraftFromKeyboardAsync", keyboardJs);
     }
 
     [Fact]
