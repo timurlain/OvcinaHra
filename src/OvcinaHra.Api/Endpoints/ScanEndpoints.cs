@@ -19,6 +19,8 @@ public static class ScanEndpoints
         group.MapPost("/{personId:int}/events", PostEvent);
         group.MapDelete("/{personId:int}/events/last-levelup", DeleteLastLevelUp);
         group.MapGet("/{personId:int}/events", GetRecentEvents);
+        group.MapGet("/{personId:int}/treasure-quests/pending", GetPendingTreasureQuests);
+        group.MapPost("/{personId:int}/treasure-quests/{questId:int}/verify", VerifyTreasureQuest);
 
         return group;
     }
@@ -196,8 +198,128 @@ public static class ScanEndpoints
         return TypedResults.Ok(events);
     }
 
+    private static async Task<Results<Ok<List<PendingTreasureQuestDto>>, NotFound>> GetPendingTreasureQuests(
+        int personId, WorldDbContext db)
+    {
+        var assignment = await db.CharacterAssignments
+            .FirstOrDefaultAsync(a => a.ExternalPersonId == personId && a.IsActive);
+
+        if (assignment is null) return TypedResults.NotFound();
+
+        var quests = await db.TreasureQuests
+            .Where(t => t.GameId == assignment.GameId && t.SecretStashId != null)
+            .Where(t => !db.TreasureQuestVerifications.Any(v =>
+                v.TreasureQuestId == t.Id && v.CharacterAssignmentId == assignment.Id))
+            .OrderBy(t => t.Title)
+            .Select(t => new PendingTreasureQuestDto(
+                t.Id,
+                t.Title,
+                t.SecretStashId!.Value,
+                t.SecretStash!.Name,
+                db.GameSecretStashes
+                    .Where(gs => gs.GameId == assignment.GameId && gs.SecretStashId == t.SecretStashId)
+                    .Select(gs => (int?)gs.LocationId)
+                    .FirstOrDefault(),
+                db.GameSecretStashes
+                    .Where(gs => gs.GameId == assignment.GameId && gs.SecretStashId == t.SecretStashId)
+                    .Select(gs => gs.Location.Name)
+                    .FirstOrDefault(),
+                null,
+                null))
+            .ToListAsync();
+
+        return TypedResults.Ok(quests);
+    }
+
+    private static async Task<IResult> VerifyTreasureQuest(
+        int personId, int questId, VerifyTreasureQuestDto dto, WorldDbContext db, HttpContext httpContext)
+    {
+        var assignment = await db.CharacterAssignments
+            .FirstOrDefaultAsync(a => a.ExternalPersonId == personId && a.IsActive);
+
+        if (assignment is null) return TypedResults.NotFound();
+
+        var quest = await db.TreasureQuests
+            .Include(t => t.SecretStash)
+            .Include(t => t.TreasureItems)
+            .ThenInclude(ti => ti.Item)
+            .FirstOrDefaultAsync(t => t.Id == questId
+                && t.GameId == assignment.GameId
+                && t.SecretStashId != null);
+
+        if (quest is null) return TypedResults.NotFound();
+
+        var alreadyVerified = await db.TreasureQuestVerifications.AnyAsync(v =>
+            v.TreasureQuestId == quest.Id && v.CharacterAssignmentId == assignment.Id);
+        if (alreadyVerified) return TypedResults.NotFound();
+
+        var reason = string.IsNullOrWhiteSpace(dto.Reason) ? null : dto.Reason.Trim();
+        if (dto.Override && reason is null)
+        {
+            return SaveFailed("Při ručním přepsání musíš uvést důvod.");
+        }
+
+        if (dto.StashId != quest.SecretStashId!.Value && !dto.Override)
+        {
+            return SaveFailed("Razítko neodpovídá očekávané skrýši.");
+        }
+
+        var organizer = GetOrganizer(httpContext);
+        var rewards = quest.TreasureItems
+            .OrderBy(ti => ti.Item.Name)
+            .Select(ti => new { itemId = ti.ItemId, itemName = ti.Item.Name, count = ti.Count })
+            .ToList();
+        var now = DateTime.UtcNow;
+        var ev = new CharacterEvent
+        {
+            CharacterAssignmentId = assignment.Id,
+            Timestamp = now,
+            OrganizerUserId = organizer.UserId,
+            OrganizerName = organizer.Name,
+            EventType = CharacterEventType.TreasureQuestStampVerified,
+            Data = JsonSerializer.Serialize(new
+            {
+                questId = quest.Id,
+                questName = quest.Title,
+                expectedStashId = quest.SecretStashId.Value,
+                expectedStashName = quest.SecretStash!.Name,
+                stashId = dto.StashId,
+                matchConfidence = dto.MatchConfidence,
+                @override = dto.Override,
+                reason,
+                rewards
+            }),
+            Location = quest.SecretStash.Name
+        };
+
+        db.CharacterEvents.Add(ev);
+        db.TreasureQuestVerifications.Add(new TreasureQuestVerification
+        {
+            TreasureQuestId = quest.Id,
+            CharacterAssignmentId = assignment.Id,
+            CharacterEventId = ev.Id,
+            Event = ev,
+            VerifiedStashId = dto.StashId,
+            MatchConfidence = dto.MatchConfidence,
+            Override = dto.Override,
+            Reason = reason,
+            VerifiedAtUtc = now,
+            OrganizerUserId = organizer.UserId,
+            OrganizerName = organizer.Name
+        });
+        await db.SaveChangesAsync();
+
+        return TypedResults.Created($"/api/scan/{personId}/events/{ev.Id}", ToDto(ev));
+    }
+
     private static CharacterEventDto ToDto(CharacterEvent ev) =>
         new(ev.Id, ev.EventType, ev.Data, ev.Location, ev.OrganizerName, ev.Timestamp);
+
+    private static IResult SaveFailed(string detail) =>
+        TypedResults.Problem(
+            title: "Uložení selhalo",
+            detail: detail,
+            statusCode: StatusCodes.Status400BadRequest);
 
     private static int? ExtractLevel(string data)
     {

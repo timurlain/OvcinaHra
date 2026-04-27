@@ -22,5 +22,8 @@ public enum CharacterEventType
     Note,
 
     [Display(Name = "Volba povolání")]
-    ClassChosen
+    ClassChosen,
+
+    [Display(Name = "Ověření pokladového razítka")]
+    TreasureQuestStampVerified
 }

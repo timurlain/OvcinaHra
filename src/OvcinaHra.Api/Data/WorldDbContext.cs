@@ -44,6 +44,7 @@ public class WorldDbContext(DbContextOptions<WorldDbContext> options) : DbContex
     public DbSet<GameSecretStash> GameSecretStashes => Set<GameSecretStash>();
     public DbSet<TreasureQuest> TreasureQuests => Set<TreasureQuest>();
     public DbSet<TreasureItem> TreasureItems => Set<TreasureItem>();
+    public DbSet<TreasureQuestVerification> TreasureQuestVerifications => Set<TreasureQuestVerification>();
     public DbSet<GameTimeSlot> GameTimeSlots => Set<GameTimeSlot>();
     public DbSet<BattlefieldBonus> BattlefieldBonuses => Set<BattlefieldBonus>();
     public DbSet<LocalUser> LocalUsers => Set<LocalUser>();
