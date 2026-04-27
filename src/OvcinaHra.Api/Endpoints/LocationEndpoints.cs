@@ -244,8 +244,6 @@ public static class LocationEndpoints
         loc.NpcInfo = dto.NpcInfo;
         loc.SetupNotes = dto.SetupNotes;
         loc.ParentLocationId = dto.ParentLocationId;
-        if (dto.StampImagePath is not null)
-            loc.StampImagePath = string.IsNullOrWhiteSpace(dto.StampImagePath) ? null : dto.StampImagePath;
 
         await db.SaveChangesAsync();
         return TypedResults.NoContent();

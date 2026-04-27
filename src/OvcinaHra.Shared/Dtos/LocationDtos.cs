@@ -123,8 +123,7 @@ public record UpdateLocationDto(
     string? Region = null,
     string? NpcInfo = null,
     string? SetupNotes = null,
-    int? ParentLocationId = null,
-    string? StampImagePath = null);
+    int? ParentLocationId = null);
 
 public record GameLocationDto(int GameId, int LocationId);
 

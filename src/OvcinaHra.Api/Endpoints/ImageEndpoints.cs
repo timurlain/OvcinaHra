@@ -113,19 +113,19 @@ public static class ImageEndpoints
         return TypedResults.File(result.Bytes, result.ContentType);
     }
 
-    private static async Task<Results<Ok<ImageUploadResult>, NotFound, BadRequest<string>, BadRequest<ProblemDetails>>> Upload(
+    private static async Task<Results<Ok<ImageUploadResult>, NotFound, BadRequest<ProblemDetails>>> Upload(
         string entityType, int entityId, IFormFile file, IBlobStorageService blobService,
         IThumbnailService thumbnailService, ILogger<ThumbnailService> thumbLogger,
         WorldDbContext db, CancellationToken ct, string? field = null)
     {
         if (!ValidEntityTypes.Contains(entityType))
-            return TypedResults.BadRequest($"Invalid entity type '{entityType}'.");
+            return TypedResults.BadRequest(ImageValidationProblem($"Neplatný typ entity '{entityType}'."));
 
         if (file.Length > MaxFileSize)
-            return TypedResults.BadRequest($"File too large. Maximum size is {MaxFileSize / (1024 * 1024)} MB.");
+            return TypedResults.BadRequest(ImageValidationProblem($"Soubor je příliš velký. Maximální velikost je {MaxFileSize / (1024 * 1024)} MB."));
 
         if (!AllowedContentTypes.Contains(file.ContentType))
-            return TypedResults.BadRequest($"Invalid content type '{file.ContentType}'. Allowed: {string.Join(", ", AllowedContentTypes)}.");
+            return TypedResults.BadRequest(ImageValidationProblem($"Neplatný typ souboru '{file.ContentType}'. Povolené typy: {string.Join(", ", AllowedContentTypes)}."));
 
         if (!await EntityExists(db, entityType, entityId))
             return TypedResults.NotFound();
