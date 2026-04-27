@@ -56,4 +56,16 @@ public class SearchEndpointTests(PostgresFixture postgres) : IntegrationTestBase
         Assert.NotNull(result);
         Assert.Contains(result.Results, r => r.Name == "Kamenný portál");
     }
+
+    [Fact]
+    public async Task Search_SingleCharacterManualQuery_Works()
+    {
+        await Client.PostAsJsonAsync("/api/items",
+            new CreateItemDto("Meč", ItemType.Weapon, "Ostrá čepel"));
+
+        var result = await Client.GetFromJsonAsync<SearchResponseDto>("/api/search?q=M");
+
+        Assert.NotNull(result);
+        Assert.Contains(result.Results, r => r.EntityType == "Item" && r.Name == "Meč");
+    }
 }
