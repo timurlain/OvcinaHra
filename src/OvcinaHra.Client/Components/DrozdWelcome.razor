@@ -11,16 +11,21 @@
     <div class="oh-home-takeover" @onclick="Dismiss" role="dialog" aria-label="Vítej v OvčinaHře">
         <div class="oh-home-drozd-card" @onclick:stopPropagation>
             <div class="oh-home-drozd-art">
-                @* Inline SVG placeholder until designer ships drozd-welcome.png.
-                   Single warm-tone silhouette — keeps the takeover from looking
-                   broken before the real asset lands. *@
-                <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <circle cx="100" cy="100" r="92" fill="#F2EBD8" stroke="#8B5A2B" stroke-width="3" />
-                    <ellipse cx="100" cy="118" rx="42" ry="50" fill="#8B5A2B" />
-                    <circle cx="100" cy="76" r="32" fill="#A4733E" />
-                    <polygon points="128,80 152,72 128,90" fill="#C19A3A" />
-                    <circle cx="92" cy="74" r="3.5" fill="#2A2A2A" />
-                </svg>
+                @* Issue #233 — was an inline placeholder silhouette ("until
+                   designer ships drozd-welcome.png"). The canonical Drozd
+                   assets live at /img/drozd/drozd-{idle,confused,knocking}.svg
+                   (already shipped, used by the empty-state on /map and /items).
+                   Idle pose is the welcome variant. State-flag fallback keeps
+                   the takeover usable if the asset 404s. *@
+                @if (!_artFailed)
+                {
+                    <img src="/img/drozd/drozd-idle.svg" alt="Drozd"
+                         @onerror="() => { _artFailed = true; StateHasChanged(); }" />
+                }
+                else
+                {
+                    <i class="bi bi-feather oh-home-drozd-art-fallback" aria-hidden="true"></i>
+                }
             </div>
             <div class="oh-home-drozd-greet">
                 <h2>Dobrý den, @(UserName ?? "organizátore")!</h2>
@@ -34,6 +39,7 @@
 @code {
     private const string SessionFlag = "oh-drozd-welcome-dismissed";
     private bool _visible;
+    private bool _artFailed;
     private CancellationTokenSource? _autoDismissCts;
 
     [Parameter] public string? UserName { get; set; }
