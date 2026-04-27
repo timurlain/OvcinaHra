@@ -126,6 +126,19 @@ public class ApiClient
         return (false, await ReadProblemDetailAsync(response));
     }
 
+    // Issue #252 — PATCH variant of *WithProblemAsync. Used by the map's
+    // drag-drop relocate (LocationCoordinatesPatchDto) so the server's
+    // Czech ProblemDetails on out-of-range lat/lng round-trips into the
+    // confirm popup banner. Same read-body-once shape as the others.
+    public async Task<(bool Ok, string? ProblemDetail)> PatchWithProblemAsync<TRequest>(string url, TRequest data)
+    {
+        using var content = JsonContent.Create(data, options: JsonOptions);
+        using var request = new HttpRequestMessage(HttpMethod.Patch, url) { Content = content };
+        var response = await _http.SendAsync(request);
+        if (response.IsSuccessStatusCode) return (true, null);
+        return (false, await ReadProblemDetailAsync(response));
+    }
+
     private static async Task<string?> ReadProblemDetailAsync(HttpResponseMessage response)
     {
         var raw = await response.Content.ReadAsStringAsync();

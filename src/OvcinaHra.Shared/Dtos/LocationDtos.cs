@@ -128,3 +128,10 @@ public record NearbyLocationDto(
     decimal Latitude,
     decimal Longitude,
     double DistanceKm);
+
+// Issue #252 — drag-drop relocate now PATCHes coordinates only (instead of
+// GET→PUT round-tripping the whole UpdateLocationDto). A concurrent edit on
+// Description / Details / NpcInfo / etc. by another organizer can't be
+// clobbered because the request body never carries those fields. Decimal
+// matches the GpsCoordinates value-object types persisted in the DB.
+public record LocationCoordinatesPatchDto(decimal Latitude, decimal Longitude);

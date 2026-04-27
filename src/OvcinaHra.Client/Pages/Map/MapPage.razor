@@ -455,23 +455,23 @@
         _pendingDragSaving = true;
         try
         {
-            // Round-trip GET → PUT so we don't accidentally wipe Description /
-            // Details / NpcInfo when only GPS is changing. UpdateLocationDto's
-            // string fields all default to null and would clear the row otherwise.
-            var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{id}");
-            if (detail is null) { _pendingDragError = "Lokace nenalezena."; return; }
-            await Api.PutAsync($"/api/locations/{id}",
-                new UpdateLocationDto(
-                    detail.Name, detail.LocationKind,
-                    Latitude: (decimal)_pendingDragLat, Longitude: (decimal)_pendingDragLng,
-                    Description: detail.Description,
-                    Details: detail.Details,
-                    GamePotential: detail.GamePotential,
-                    Prompt: detail.Prompt,
-                    Region: detail.Region,
-                    NpcInfo: detail.NpcInfo,
-                    SetupNotes: detail.SetupNotes,
-                    ParentLocationId: detail.ParentLocationId));
+            // Issue #252 — PATCH /api/locations/{id}/coordinates writes only
+            // Latitude + Longitude, so a concurrent organizer edit on
+            // Description / Details / NpcInfo / etc. can't be clobbered.
+            // Replaces the prior GET LocationDetailDto → PUT UpdateLocationDto
+            // round-trip whose nullable string fields would overwrite anything
+            // saved between GET and PUT. ProblemDetails surfaces server-side
+            // lat/lng range errors into the confirm popup banner.
+            var (ok, problem) = await Api.PatchWithProblemAsync(
+                $"/api/locations/{id}/coordinates",
+                new LocationCoordinatesPatchDto(
+                    (decimal)_pendingDragLat,
+                    (decimal)_pendingDragLng));
+            if (!ok)
+            {
+                _pendingDragError = problem ?? "Uložení souřadnic selhalo.";
+                return;
+            }
             _pendingDragVisible = false;
             _pendingDragId = null;
             // Reload so the peek + pin position pick up the saved GPS.
