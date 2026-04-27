@@ -47,7 +47,11 @@ public class TagEndpointTests(PostgresFixture postgres) : IntegrationTestBase(po
     [Fact]
     public async Task Create_DuplicateNameWithinKind_Returns400WithCzechProblemDetails()
     {
-        await Client.PostAsJsonAsync("/api/tags", new CreateTagDto("Plus+Tag", TagKind.Monster));
+        var initialResponse = await Client.PostAsJsonAsync("/api/tags", new CreateTagDto("Plus+Tag", TagKind.Monster));
+        // Assert the Arrange step succeeded — without this, a regression in
+        // baseline Create would still pass the test for the wrong reason
+        // (both calls return 400). Per Copilot review on PR #282.
+        Assert.Equal(HttpStatusCode.Created, initialResponse.StatusCode);
 
         var response = await Client.PostAsJsonAsync("/api/tags", new CreateTagDto("Plus+Tag", TagKind.Monster));
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -80,6 +84,8 @@ public class TagEndpointTests(PostgresFixture postgres) : IntegrationTestBase(po
     public async Task Update_NameWithPlus_Persists()
     {
         var createResponse = await Client.PostAsJsonAsync("/api/tags", new CreateTagDto("Old", TagKind.Monster));
+        // Assert the Arrange step (Create) succeeded — per Copilot review on PR #282.
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
         var created = await createResponse.Content.ReadFromJsonAsync<TagDto>();
 
         var response = await Client.PutAsJsonAsync($"/api/tags/{created!.Id}", new UpdateTagDto("Foo+Bar"));

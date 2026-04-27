@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
@@ -88,7 +89,22 @@ public static class TagEndpoints
 
         var tag = new Tag { Name = name, Kind = dto.Kind };
         db.Tags.Add(tag);
-        await db.SaveChangesAsync();
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            // Concurrency race: AnyAsync above passed but a parallel request
+            // beat us to the (Kind, Name) UNIQUE index. Surface the same Czech
+            // ProblemDetails as the explicit dup-check so the client never
+            // sees a 500 for what is conceptually a duplicate-name conflict.
+            // Per Copilot review on PR #282 — same pattern as GameEndpoints.
+            return TypedResults.Problem(
+                title: "Uložení selhalo",
+                detail: $"Tag s názvem „{name}“ už v této kategorii existuje.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
 
         return TypedResults.Created($"/api/tags/{tag.Id}", new TagDto(tag.Id, tag.Name, tag.Kind));
     }
@@ -123,9 +139,28 @@ public static class TagEndpoints
                 statusCode: StatusCodes.Status400BadRequest);
 
         tag.Name = name;
-        await db.SaveChangesAsync();
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            // Same race as Create — a concurrent rename can still violate the
+            // (Kind, Name) UNIQUE index between AnyAsync and SaveChangesAsync.
+            // Per Copilot review on PR #282.
+            return TypedResults.Problem(
+                title: "Uložení selhalo",
+                detail: $"Tag s názvem „{name}“ už v této kategorii existuje.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
         return TypedResults.NoContent();
     }
+
+    // Npgsql surfaces unique-index violations as PostgresException with
+    // SqlState 23505. Mirrors the helper in GameEndpoints (PR #282 / Copilot).
+    private static bool IsUniqueViolation(DbUpdateException ex) =>
+        ex.InnerException is PostgresException pg
+        && pg.SqlState == PostgresErrorCodes.UniqueViolation;
 
     private static async Task<Results<NoContent, NotFound>> Delete(int id, WorldDbContext db)
     {

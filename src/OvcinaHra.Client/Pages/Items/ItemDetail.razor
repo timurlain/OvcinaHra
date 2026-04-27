@@ -748,16 +748,15 @@ else
         _lastId = Id;
         try
         {
-            // Buildings catalog feeds the Obchod quick-append picker (#270).
-            // Lazy-load the first time we need it; the list rarely changes
-            // during a session and is small enough to cache for the lifetime
-            // of the page instance. Best-effort — failure shouldn't block
-            // the item itself from rendering.
-            if (allBuildings.Count == 0)
-            {
-                try { allBuildings = await Api.GetListAsync<BuildingListDto>("/api/buildings"); }
-                catch { allBuildings = []; }
-            }
+            // Issue #270 — kick off the buildings catalog fetch in parallel
+            // with the item fetch instead of awaiting it first; a slow or
+            // hung /api/buildings must not block item render. Per Copilot
+            // review on PR #282. Best-effort: failure → empty list, item
+            // still loads. Skipped after the first successful load (catalog
+            // rarely changes during a session).
+            var buildingsTask = allBuildings.Count == 0
+                ? Api.GetListAsync<BuildingListDto>("/api/buildings")
+                : Task.FromResult(allBuildings);
 
             item = await Api.GetAsync<ItemDetailDto>($"/api/items/{Id}");
             if (item is not null)
@@ -782,10 +781,35 @@ else
                     usage = new ItemUsageDto(item.Id, item.Name, [], [], [], [], [], []);
                 }
                 ResetActiveShopFromUsage();
+                NormalizeActiveTabAgainstUsage();
             }
+
+            // Drain the parallel buildings fetch (#270 / Copilot PR #282).
+            // Item already rendered if it succeeded; this just populates the
+            // picker for the Obchod sale-condition quick-append. Best-effort.
+            try { allBuildings = await buildingsTask; }
+            catch { allBuildings = []; }
         }
         catch (Exception ex) { error = ex.Message; item = null; }
         finally { loading = false; }
+    }
+
+    // Issue #271 + Copilot review on PR #282 — when the data tabs are gated
+    // by usage counts, `activeTab` can survive a navigation from an item
+    // where (say) ObchodCount > 0 to one where it's 0. Without normalising
+    // here, no tab button would appear active but the body would still
+    // render the hidden tab's empty "Načítám…" / empty-state, leaving the
+    // user with no way to switch tabs except a full reload.
+    private void NormalizeActiveTabAgainstUsage()
+    {
+        switch (activeTab)
+        {
+            case "tvorba" when TvorbaCount == 0:
+            case "vyskyt" when VyskytCount == 0:
+            case "obchod" when ObchodCount == 0:
+                activeTab = "karta";
+                break;
+        }
     }
 
     private void ResetEditFromItem()
