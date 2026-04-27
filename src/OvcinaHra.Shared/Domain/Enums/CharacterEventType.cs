@@ -9,6 +9,9 @@ public enum CharacterEventType
     [Display(Name = "Zvýšení úrovně")]
     LevelUp,
 
+    [Display(Name = "Vrácení úrovně")]
+    LevelUpReverted,
+
     [Display(Name = "Získání dovednosti")]
     SkillGained,
 

@@ -17,6 +17,7 @@ public static class ScanEndpoints
 
         group.MapGet("/{personId:int}", GetCharacterProfile);
         group.MapPost("/{personId:int}/events", PostEvent);
+        group.MapDelete("/{personId:int}/events/last-levelup", DeleteLastLevelUp);
         group.MapGet("/{personId:int}/events", GetRecentEvents);
 
         return group;
@@ -87,9 +88,7 @@ public static class ScanEndpoints
 
         if (assignment is null) return TypedResults.NotFound();
 
-        var user = httpContext.User;
-        var organizerUserId = user.FindFirstValue("sub") ?? user.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
-        var organizerName = user.FindFirstValue("name") ?? user.FindFirstValue(ClaimTypes.Name) ?? "Unknown";
+        var organizer = GetOrganizer(httpContext);
 
         string eventData = dto.Data;
 
@@ -125,8 +124,8 @@ public static class ScanEndpoints
         {
             CharacterAssignmentId = assignment.Id,
             Timestamp = DateTime.UtcNow,
-            OrganizerUserId = organizerUserId,
-            OrganizerName = organizerName,
+            OrganizerUserId = organizer.UserId,
+            OrganizerName = organizer.Name,
             EventType = dto.EventType,
             Data = eventData,
             Location = dto.Location
@@ -137,6 +136,46 @@ public static class ScanEndpoints
 
         var result = new CharacterEventDto(ev.Id, ev.EventType, ev.Data, ev.Location, ev.OrganizerName, ev.Timestamp);
         return TypedResults.Created($"/api/scan/{personId}/events/{ev.Id}", result);
+    }
+
+    private static async Task<Results<Ok<CharacterEventDto>, NotFound>> DeleteLastLevelUp(
+        int personId, WorldDbContext db, HttpContext httpContext)
+    {
+        var assignment = await db.CharacterAssignments
+            .Include(a => a.Events)
+            .FirstOrDefaultAsync(a => a.ExternalPersonId == personId && a.IsActive);
+
+        if (assignment is null) return TypedResults.NotFound();
+
+        var levelUp = assignment.Events
+            .Where(e => e.EventType == CharacterEventType.LevelUp)
+            .OrderByDescending(e => e.Timestamp)
+            .ThenByDescending(e => e.Id)
+            .FirstOrDefault();
+
+        if (levelUp is null) return TypedResults.NotFound();
+
+        var organizer = GetOrganizer(httpContext);
+        var audit = new CharacterEvent
+        {
+            CharacterAssignmentId = assignment.Id,
+            Timestamp = DateTime.UtcNow,
+            OrganizerUserId = organizer.UserId,
+            OrganizerName = organizer.Name,
+            EventType = CharacterEventType.LevelUpReverted,
+            Data = JsonSerializer.Serialize(new
+            {
+                revertedEventId = levelUp.Id,
+                revertedLevel = ExtractLevel(levelUp.Data)
+            }),
+            Location = levelUp.Location
+        };
+
+        db.CharacterEvents.Remove(levelUp);
+        db.CharacterEvents.Add(audit);
+        await db.SaveChangesAsync();
+
+        return TypedResults.Ok(ToDto(audit));
     }
 
     private static async Task<Results<Ok<List<CharacterEventDto>>, NotFound>> GetRecentEvents(
@@ -155,5 +194,31 @@ public static class ScanEndpoints
             .ToListAsync();
 
         return TypedResults.Ok(events);
+    }
+
+    private static CharacterEventDto ToDto(CharacterEvent ev) =>
+        new(ev.Id, ev.EventType, ev.Data, ev.Location, ev.OrganizerName, ev.Timestamp);
+
+    private static int? ExtractLevel(string data)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(data);
+            return doc.RootElement.TryGetProperty("level", out var level) && level.TryGetInt32(out var value)
+                ? value
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static (string UserId, string Name) GetOrganizer(HttpContext httpContext)
+    {
+        var user = httpContext.User;
+        return (
+            user.FindFirstValue("sub") ?? user.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown",
+            user.FindFirstValue("name") ?? user.FindFirstValue(ClaimTypes.Name) ?? "Unknown");
     }
 }

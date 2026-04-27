@@ -124,4 +124,44 @@ public class ScanEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
         Assert.Equal(CharacterEventType.Note, events[0].EventType);
         Assert.Equal(CharacterEventType.LevelUp, events[1].EventType);
     }
+
+    [Fact]
+    public async Task DeleteLastLevelUp_RemovesMostRecentLevelUp_AndWritesAudit()
+    {
+        await SeedCharacterWithAssignment(externalPersonId: 105);
+
+        await Client.PostAsJsonAsync("/api/scan/105/events",
+            new CreateCharacterEventDto(CharacterEventType.LevelUp, "{}"));
+        await Client.PostAsJsonAsync("/api/scan/105/events",
+            new CreateCharacterEventDto(CharacterEventType.LevelUp, "{}"));
+
+        var response = await Client.DeleteAsync("/api/scan/105/events/last-levelup");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var audit = await response.Content.ReadFromJsonAsync<CharacterEventDto>();
+        Assert.NotNull(audit);
+        Assert.Equal(CharacterEventType.LevelUpReverted, audit.EventType);
+        Assert.Equal("Test Organizátor", audit.OrganizerName);
+        Assert.Contains("\"revertedLevel\":2", audit.Data);
+
+        var profile = await Client.GetFromJsonAsync<ScanCharacterDto>("/api/scan/105");
+        Assert.NotNull(profile);
+        Assert.Equal(1, profile.CurrentLevel);
+        Assert.Equal(1, profile.TotalXp);
+
+        var events = await Client.GetFromJsonAsync<List<CharacterEventDto>>("/api/scan/105/events");
+        Assert.NotNull(events);
+        Assert.Equal(1, events.Count(e => e.EventType == CharacterEventType.LevelUp));
+        Assert.Contains(events, e => e.EventType == CharacterEventType.LevelUpReverted);
+    }
+
+    [Fact]
+    public async Task DeleteLastLevelUp_WhenNoLevelUp_ReturnsNotFound()
+    {
+        await SeedCharacterWithAssignment(externalPersonId: 106);
+
+        var response = await Client.DeleteAsync("/api/scan/106/events/last-levelup");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
 }
