@@ -102,16 +102,22 @@ try
     builder.Services.AddSingleton(logBuffer);
     builder.Logging.AddProvider(new RingBufferLoggerProvider(logBuffer));
 
-    // CORS for Blazor WASM client. Configured origins (prod hostname) plus
-    // any localhost / 127.0.0.1 origin so a developer can run the Client
-    // locally with appsettings.LocalAgainstProd.json pointing here. Browsers
-    // can't fake the Origin header across machines, so the localhost branch
-    // is safe — it can only be exercised from the user's own machine.
+    // CORS for Blazor WASM and Glejt companion clients. Configured origins
+    // (prod hostnames) plus any localhost / 127.0.0.1 origin so a developer can
+    // run either client locally with appsettings.LocalAgainstProd.json pointing
+    // here. Browsers can't fake the Origin header across machines, so the
+    // localhost branch is safe — it can only be exercised from the user's own
+    // machine.
     builder.Services.AddCors(options =>
     {
         var configuredOrigins =
             builder.Configuration.GetSection("Cors:Origins").Get<string[]>()
-            ?? ["https://localhost:5290", "http://localhost:5290"];
+            ?? [
+                "https://localhost:5290",
+                "http://localhost:5290",
+                "https://glejt.ovcina.cz",
+                "https://localhost:5193"
+            ];
         options.AddPolicy("BlazorClient", policy => policy
             .SetIsOriginAllowed(origin =>
                 configuredOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase)
