@@ -12,7 +12,7 @@ public static class LocationEndpoints
 {
     private const int LocationInheritanceMaxDepth = 3;
 
-    private sealed record LocationCoordinateState(
+    internal sealed record LocationCoordinateState(
         int Id,
         decimal? Latitude,
         decimal? Longitude,
@@ -351,7 +351,7 @@ public static class LocationEndpoints
         return TypedResults.Ok(dtos);
     }
 
-    private static async Task<Dictionary<int, LocationCoordinateState>> BuildLocationStateLookupAsync(
+    internal static async Task<Dictionary<int, LocationCoordinateState>> BuildLocationStateLookupAsync(
         WorldDbContext db,
         IEnumerable<LocationCoordinateState> seed)
     {
@@ -389,7 +389,7 @@ public static class LocationEndpoints
             .Select(id => id!.Value)
             .ToHashSet();
 
-    private static bool IsLocated(
+    internal static bool IsLocated(
         IReadOnlyDictionary<int, LocationCoordinateState> lookup,
         int? locationId,
         int depth = 0)
