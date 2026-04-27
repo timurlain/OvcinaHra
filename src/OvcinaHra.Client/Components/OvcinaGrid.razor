@@ -1,3 +1,4 @@
+@using System.Diagnostics
 @using System.Security.Claims
 @using System.Security.Cryptography
 @using System.Text
@@ -59,11 +60,21 @@
 @if (!string.IsNullOrEmpty(LayoutKey))
 {
     <div class="ovcina-grid-tools" aria-label="Nástroje zobrazení">
-        <button type="button" class="btn btn-sm btn-link ovcina-grid-reset" @onclick="ResetLayoutAsync" title="Resetovat zobrazení">
+        <button type="button" class="btn btn-sm btn-link ovcina-grid-reset" @onclick="ShowResetConfirmation" title="Resetovat zobrazení">
             <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
             <span>Resetovat zobrazení</span>
         </button>
     </div>
+
+    <DxPopup @bind-Visible="@isResetConfirmVisible" HeaderText="Resetovat zobrazení?" Width="400px">
+        <BodyContentTemplate Context="popupContext">
+            <p>Opravdu chcete resetovat uložené rozložení, filtry a řazení této tabulky?</p>
+            <div class="d-flex gap-2 justify-content-end">
+                <button type="button" class="btn btn-secondary" @onclick="HideResetConfirmation">Zrušit</button>
+                <button type="button" class="btn btn-danger" @onclick="ConfirmResetLayoutAsync">Resetovat</button>
+            </div>
+        </BodyContentTemplate>
+    </DxPopup>
 }
 
 @code {
@@ -112,7 +123,8 @@
     private string? cachedLayoutKey;
     private string? cachedStorageKey;
     private string? cachedUserScope;
-    private bool suppressLayoutSave;
+    private bool skipNextLayoutSave;
+    private bool isResetConfirmVisible;
 
     private void OnCustomizeElement(GridCustomizeElementEventArgs e)
     {
@@ -124,25 +136,52 @@
 
     private async Task OnLayoutLoading(GridPersistentLayoutEventArgs e)
     {
-        var storageKey = await GetStorageKeyAsync();
-        if (storageKey is null) return;
+        try
+        {
+            var storageKey = await GetStorageKeyAsync();
+            if (storageKey is null) return;
 
-        await JS.InvokeVoidAsync("localStorage.removeItem", LayoutKey);
-        var json = await JS.InvokeAsync<string?>("localStorage.getItem", storageKey);
-        if (!string.IsNullOrEmpty(json))
-            e.Layout = JsonSerializer.Deserialize<GridPersistentLayout>(json);
+            await TryRemoveLocalStorageItemAsync(LayoutKey, "remove legacy layout key during load");
+            var json = await JS.InvokeAsync<string?>("localStorage.getItem", storageKey);
+            if (!string.IsNullOrEmpty(json))
+                e.Layout = JsonSerializer.Deserialize<GridPersistentLayout>(json);
+        }
+        catch (Exception ex)
+        {
+            LogLayoutFailure("load grid layout", ex);
+        }
     }
 
     private async Task OnLayoutSaving(GridPersistentLayoutEventArgs e)
     {
-        if (suppressLayoutSave) return;
+        if (skipNextLayoutSave)
+        {
+            skipNextLayoutSave = false;
+            return;
+        }
 
         var storageKey = await GetStorageKeyAsync();
         if (storageKey is null) return;
 
-        await JS.InvokeVoidAsync("localStorage.removeItem", LayoutKey);
+        await TryRemoveLocalStorageItemAsync(LayoutKey, "remove legacy layout key during save");
         var json = JsonSerializer.Serialize(e.Layout);
         _ = SaveLayoutDebouncedAsync(storageKey, json);
+    }
+
+    private void ShowResetConfirmation()
+    {
+        isResetConfirmVisible = true;
+    }
+
+    private void HideResetConfirmation()
+    {
+        isResetConfirmVisible = false;
+    }
+
+    private async Task ConfirmResetLayoutAsync()
+    {
+        isResetConfirmVisible = false;
+        await ResetLayoutAsync();
     }
 
     private async Task ResetLayoutAsync()
@@ -151,24 +190,14 @@
         if (storageKey is null) return;
 
         saveDebounceCts?.Cancel();
-        await JS.InvokeVoidAsync("localStorage.removeItem", storageKey);
-        await JS.InvokeVoidAsync("localStorage.removeItem", LayoutKey);
+        await TryRemoveLocalStorageItemAsync(storageKey, "reset user layout key");
+        await TryRemoveLocalStorageItemAsync(LayoutKey, "reset legacy layout key");
 
-        suppressLayoutSave = true;
-        try
+        if (Grid is not null)
         {
-            Grid?.LoadLayout(new GridPersistentLayout());
+            skipNextLayoutSave = true;
+            Grid.LoadLayout(new GridPersistentLayout());
         }
-        finally
-        {
-            _ = ResumeLayoutSavingAsync();
-        }
-    }
-
-    private async Task ResumeLayoutSavingAsync()
-    {
-        await Task.Delay(100);
-        suppressLayoutSave = false;
     }
 
     private async Task SaveLayoutDebouncedAsync(string storageKey, string json)
@@ -186,6 +215,10 @@
         catch (OperationCanceledException)
         {
             // Superseded by a newer layout change.
+        }
+        catch (Exception ex)
+        {
+            LogLayoutFailure("save grid layout", ex);
         }
     }
 
@@ -205,9 +238,18 @@
         if (cachedUserScope is not null)
             return cachedUserScope;
 
-        var authState = AuthenticationStateTask is not null
-            ? await AuthenticationStateTask
-            : null;
+        AuthenticationState? authState = null;
+        try
+        {
+            authState = AuthenticationStateTask is not null
+                ? await AuthenticationStateTask
+                : null;
+        }
+        catch (Exception ex)
+        {
+            LogLayoutFailure("resolve grid layout user scope", ex);
+        }
+
         var user = authState?.User;
         var rawUserId =
             user?.FindFirst(ClaimTypes.NameIdentifier)?.Value
@@ -224,6 +266,23 @@
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(value));
         return Convert.ToHexString(bytes, 0, 12).ToLowerInvariant();
+    }
+
+    private async Task TryRemoveLocalStorageItemAsync(string key, string operation)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.removeItem", key);
+        }
+        catch (Exception ex)
+        {
+            LogLayoutFailure(operation, ex);
+        }
+    }
+
+    private static void LogLayoutFailure(string operation, Exception ex)
+    {
+        Debug.WriteLine($"OvcinaGrid layout persistence skipped during {operation}: {ex.GetType().Name}: {ex.Message}");
     }
 
     public void Dispose()
