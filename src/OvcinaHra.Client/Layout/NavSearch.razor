@@ -68,7 +68,8 @@
         query = args.Value?.ToString() ?? "";
         searched = false;
 
-        if (query.Length < MinimumAutoTypeaheadLength)
+        var trimmedQuery = query.Trim();
+        if (trimmedQuery.Length < MinimumAutoTypeaheadLength)
         {
             CancelDebounce();
             results.Clear();

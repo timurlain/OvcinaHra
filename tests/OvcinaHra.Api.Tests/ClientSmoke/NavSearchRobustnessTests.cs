@@ -35,7 +35,8 @@ public class NavSearchRobustnessTests
         var navSearch = ReadNavSearch(root);
 
         Assert.Contains("private const int MinimumAutoTypeaheadLength = 6;", navSearch);
-        Assert.Contains("if (query.Length < MinimumAutoTypeaheadLength)", navSearch);
+        Assert.Contains("var trimmedQuery = query.Trim();", navSearch);
+        Assert.Contains("if (trimmedQuery.Length < MinimumAutoTypeaheadLength)", navSearch);
         Assert.Contains("dropdownVisible = false;", navSearch);
         Assert.Contains("await SearchAsync(force: true, CancellationToken.None);", navSearch);
         Assert.Contains("|| (!force && searchQuery.Length < MinimumAutoTypeaheadLength)", navSearch);
