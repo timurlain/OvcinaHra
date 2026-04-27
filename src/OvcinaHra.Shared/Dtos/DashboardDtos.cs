@@ -1,3 +1,5 @@
+using OvcinaHra.Shared.Domain.Enums;
+
 namespace OvcinaHra.Shared.Dtos;
 
 // Issue #158 — DTOs powering the Home cockpit (`/api/dashboard/...`).
@@ -49,6 +51,17 @@ public record DashboardActivityDto(
     string Verb,        /* vytvořil | upravil | smazal — currently always "upravil" */
     string ActorName,
     DateTime OccurredUtc);
+
+public record DashboardRecentEventDto(
+    int EventId,
+    int CharacterAssignmentId,
+    int CharacterId,
+    string CharacterName,
+    CharacterEventType EventType,
+    string Data,
+    string? Location,
+    string OrganizerName,
+    DateTime Timestamp);
 
 /// <summary>
 /// One row in the TimelinePreview. <see cref="IsRunning"/> is computed

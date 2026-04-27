@@ -33,6 +33,7 @@ builder.Services.AddScoped<JwtAuthStateProvider>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<JwtAuthStateProvider>());
 builder.Services.AddScoped<TokenRefreshService>();
 builder.Services.AddScoped<GameContextService>();
+builder.Services.AddScoped<IDashboardEventStream, PollingDashboardEventStream>();
 builder.Services.AddScoped<SkillService>();
 builder.Services.AddScoped<PersonalQuestService>();
 builder.Services.AddScoped<VersionDriftService>();

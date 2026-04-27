@@ -207,4 +207,121 @@ public class DashboardEndpointsTests(PostgresFixture postgres)
         var row = Assert.Single(rows);
         Assert.True(row.IsRunning);
     }
+
+    [Fact]
+    public async Task RecentEvents_ReturnsCharacterEventsScopedByGameAndSince()
+    {
+        var game = await CreateGameAsync();
+        var otherGame = await CreateGameAsync();
+        var cutoff = DateTime.UtcNow.AddMinutes(-10);
+
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var character = new Character { Name = "Mireček", IsPlayedCharacter = true };
+            var otherCharacter = new Character { Name = "Cizí", IsPlayedCharacter = true };
+            db.Characters.AddRange(character, otherCharacter);
+            await db.SaveChangesAsync();
+
+            var assignment = new CharacterAssignment
+            {
+                CharacterId = character.Id,
+                GameId = game.Id,
+                ExternalPersonId = 3001
+            };
+            var otherAssignment = new CharacterAssignment
+            {
+                CharacterId = otherCharacter.Id,
+                GameId = otherGame.Id,
+                ExternalPersonId = 3002
+            };
+            db.CharacterAssignments.AddRange(assignment, otherAssignment);
+            await db.SaveChangesAsync();
+
+            db.CharacterEvents.AddRange(
+                new CharacterEvent
+                {
+                    CharacterAssignmentId = assignment.Id,
+                    Timestamp = cutoff.AddMinutes(-1),
+                    OrganizerUserId = "old",
+                    OrganizerName = "Old",
+                    EventType = CharacterEventType.Note,
+                    Data = "{}"
+                },
+                new CharacterEvent
+                {
+                    CharacterAssignmentId = assignment.Id,
+                    Timestamp = cutoff.AddMinutes(1),
+                    OrganizerUserId = "tom",
+                    OrganizerName = "Tomáš",
+                    EventType = CharacterEventType.LevelUp,
+                    Data = """{"level":2}"""
+                },
+                new CharacterEvent
+                {
+                    CharacterAssignmentId = otherAssignment.Id,
+                    Timestamp = cutoff.AddMinutes(2),
+                    OrganizerUserId = "other",
+                    OrganizerName = "Other",
+                    EventType = CharacterEventType.LevelUp,
+                    Data = """{"level":9}"""
+                });
+            await db.SaveChangesAsync();
+        }
+
+        var rows = await Client.GetFromJsonAsync<List<DashboardRecentEventDto>>(
+            $"/api/dashboard/events/recent?gameId={game.Id}&since={Uri.EscapeDataString(cutoff.ToString("O"))}");
+
+        Assert.NotNull(rows);
+        var row = Assert.Single(rows);
+        Assert.Equal("Mireček", row.CharacterName);
+        Assert.Equal(CharacterEventType.LevelUp, row.EventType);
+        Assert.Equal("Tomáš", row.OrganizerName);
+    }
+
+    [Fact]
+    public async Task RecentEvents_CapsAt50NewestRows()
+    {
+        var game = await CreateGameAsync();
+
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var character = new Character { Name = "Blesk", IsPlayedCharacter = true };
+            db.Characters.Add(character);
+            await db.SaveChangesAsync();
+
+            var assignment = new CharacterAssignment
+            {
+                CharacterId = character.Id,
+                GameId = game.Id,
+                ExternalPersonId = 3003
+            };
+            db.CharacterAssignments.Add(assignment);
+            await db.SaveChangesAsync();
+
+            var start = DateTime.UtcNow.AddHours(-1);
+            for (var i = 0; i < 55; i++)
+            {
+                db.CharacterEvents.Add(new CharacterEvent
+                {
+                    CharacterAssignmentId = assignment.Id,
+                    Timestamp = start.AddMinutes(i),
+                    OrganizerUserId = "tom",
+                    OrganizerName = "Tomáš",
+                    EventType = CharacterEventType.Note,
+                    Data = $$"""{"index":{{i}}}"""
+                });
+            }
+            await db.SaveChangesAsync();
+        }
+
+        var rows = await Client.GetFromJsonAsync<List<DashboardRecentEventDto>>(
+            $"/api/dashboard/events/recent?gameId={game.Id}");
+
+        Assert.NotNull(rows);
+        Assert.Equal(50, rows.Count);
+        Assert.Contains("\"index\":54", rows[0].Data);
+        Assert.DoesNotContain(rows, r => r.Data.Contains("\"index\":0", StringComparison.Ordinal));
+    }
 }
