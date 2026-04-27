@@ -4,6 +4,7 @@
 @inject GameContextService GameContext
 @inject NavigationManager Nav
 @inject SkillService SkillSvc
+@using OvcinaHra.Shared.Utils
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="mb-0">@(Catalog ? "Katalog předmětů" : "Předměty")</h1>
@@ -701,7 +702,7 @@ else
                         <DxFormLayoutItem Caption="Cena" ColSpanMd="4">
                             <DxSpinEdit Value="@giPrice"
                                         ValueExpression="@(() => giPrice)"
-                                        ValueChanged="@((int? v) => { giPrice = v; giIsSold = v is > 0; })"
+                                        ValueChanged="@((int? v) => { giPrice = v; giIsSold = PriceRules.DeriveIsSold(v); })"
                                         MinValue="0" NullText="(žádná)" />
                         </DxFormLayoutItem>
                         <DxFormLayoutItem Caption="Počet na skladě" ColSpanMd="4">
@@ -1046,7 +1047,7 @@ else
         var normalizedEffect = string.IsNullOrWhiteSpace(buf.Effect) ? null : buf.Effect.Trim();
         var normalizedSale = string.IsNullOrWhiteSpace(buf.SaleCondition) ? null : buf.SaleCondition.Trim();
         var normalizedNote = string.IsNullOrWhiteSpace(buf.Note) ? null : buf.Note.Trim();
-        var derivedIsSold = buf.Price is > 0;
+        var derivedIsSold = PriceRules.DeriveIsSold(buf.Price);
 
         var perGameChanged = buf.Price != src.Price
             || buf.StockCount != src.StockCount
@@ -1456,7 +1457,7 @@ else
         isSaving = true;
         try
         {
-            giIsSold = giPrice is > 0;
+            giIsSold = PriceRules.DeriveIsSold(giPrice);
             await Api.PutAsync($"/api/items/game-item/{GameContext.SelectedGameId}/{editingId}",
                 new UpdateGameItemDto(giPrice, giStockCount, giIsSold, giSaleCondition, giIsFindable));
         }
@@ -1546,7 +1547,7 @@ else
                 error = "Cena nesmí být záporná.";
                 return;
             }
-            giIsSold = giPrice is > 0;
+            giIsSold = PriceRules.DeriveIsSold(giPrice);
         }
 
         isSaving = true;
@@ -1566,7 +1567,7 @@ else
                 // (e.g. the #99 GameItem-in-use block).
                 if (gameItemExists && GameContext.SelectedGameId is int gid)
                 {
-                    giIsSold = giPrice is > 0;
+                    giIsSold = PriceRules.DeriveIsSold(giPrice);
                     var (ok, problem) = await Api.PutWithProblemAsync(
                         $"/api/items/game-item/{gid}/{editingId}",
                         new UpdateGameItemDto(giPrice, giStockCount, giIsSold, giSaleCondition, giIsFindable));
