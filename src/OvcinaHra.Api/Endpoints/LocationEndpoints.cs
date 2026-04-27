@@ -10,6 +10,14 @@ namespace OvcinaHra.Api.Endpoints;
 
 public static class LocationEndpoints
 {
+    private const int LocationInheritanceMaxDepth = 3;
+
+    private sealed record LocationCoordinateState(
+        int Id,
+        decimal? Latitude,
+        decimal? Longitude,
+        int? ParentLocationId);
+
     public static RouteGroupBuilder MapLocationEndpoints(this IEndpointRouteBuilder routes)
     {
         var group = routes.MapGroup("/api/locations").WithTags("Locations");
@@ -17,6 +25,7 @@ public static class LocationEndpoints
         group.MapGet("/", GetAll);
         group.MapGet("/nearby", GetNearby);
         group.MapGet("/{id:int}", GetById);
+        group.MapGet("/{id:int}/quests", GetQuests);
         group.MapPost("/", Create);
         group.MapPut("/{id:int}", Update);
         group.MapDelete("/{id:int}", Delete);
@@ -57,6 +66,10 @@ public static class LocationEndpoints
             })
             .ToListAsync();
 
+        var lookup = await BuildLocationStateLookupAsync(
+            db,
+            rows.Select(r => new LocationCoordinateState(r.Id, r.Latitude, r.Longitude, r.ParentLocationId)));
+
         var locations = rows.Select(r => new LocationListDto(
             r.Id, r.Name, r.LocationKind,
             r.Region,
@@ -70,7 +83,8 @@ public static class LocationEndpoints
             ImagePath: r.ImagePath,
             ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locations", r.Id, "small"),
             StampImagePath: r.StampImagePath,
-            StampImageUrl: string.IsNullOrWhiteSpace(r.StampImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locationstamps", r.Id, "small"))).ToList();
+            StampImageUrl: string.IsNullOrWhiteSpace(r.StampImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locationstamps", r.Id, "small"),
+            IsLocated: IsLocated(lookup, r.Id))).ToList();
 
         return TypedResults.Ok(locations);
     }
@@ -112,7 +126,9 @@ public static class LocationEndpoints
                 && (excludeId == null || l.Id != excludeId.Value))
             .Select(l => new
             {
-                l.Id, l.Name, l.LocationKind,
+                l.Id,
+                l.Name,
+                l.LocationKind,
                 Latitude = l.Coordinates!.Latitude,
                 Longitude = l.Coordinates!.Longitude
             })
@@ -150,11 +166,34 @@ public static class LocationEndpoints
             return TypedResults.NotFound();
 
         var variants = loc.Variants.Select(v => new LocationVariantDto(v.Id, v.Name, v.LocationKind)).ToList();
+        decimal? latitude = loc.ParentLocationId.HasValue ? null : loc.Coordinates?.Latitude;
+        decimal? longitude = loc.ParentLocationId.HasValue ? null : loc.Coordinates?.Longitude;
+
         return TypedResults.Ok(new LocationDetailDto(
             loc.Id, loc.Name, loc.Description, loc.Details, loc.GamePotential, loc.Prompt, loc.Region, loc.LocationKind,
-            loc.Coordinates?.Latitude, loc.Coordinates?.Longitude,
+            latitude, longitude,
             loc.ImagePath, loc.PlacementPhotoPath, loc.StampImagePath, loc.NpcInfo, loc.SetupNotes,
             loc.ParentLocationId, variants));
+    }
+
+    private static async Task<Results<Ok<List<LocationQuestSummaryDto>>, NotFound>> GetQuests(
+        int id, WorldDbContext db, int? gameId = null)
+    {
+        var locationExists = await db.Locations.AnyAsync(l => l.Id == id);
+        if (!locationExists)
+            return TypedResults.NotFound();
+
+        var quests = await db.QuestLocationLinks
+            .Where(ql => ql.LocationId == id
+                && (gameId == null || ql.Quest.GameId == null || ql.Quest.GameId == gameId))
+            .OrderBy(ql => ql.Quest.Name)
+            .Select(ql => new LocationQuestSummaryDto(
+                ql.QuestId,
+                ql.Quest.Name,
+                ql.Quest.QuestType))
+            .ToListAsync();
+
+        return TypedResults.Ok(quests);
     }
 
     private static async Task<Created<LocationDetailDto>> Create(CreateLocationDto dto, WorldDbContext db)
@@ -163,7 +202,7 @@ public static class LocationEndpoints
         {
             Name = dto.Name,
             LocationKind = dto.LocationKind,
-            Coordinates = dto.Latitude.HasValue && dto.Longitude.HasValue
+            Coordinates = !dto.ParentLocationId.HasValue && dto.Latitude.HasValue && dto.Longitude.HasValue
                 ? new GpsCoordinates(dto.Latitude.Value, dto.Longitude.Value) : null,
             Description = dto.Description,
             Details = dto.Details,
@@ -195,7 +234,7 @@ public static class LocationEndpoints
 
         loc.Name = dto.Name;
         loc.LocationKind = dto.LocationKind;
-        loc.Coordinates = dto.Latitude.HasValue && dto.Longitude.HasValue
+        loc.Coordinates = !dto.ParentLocationId.HasValue && dto.Latitude.HasValue && dto.Longitude.HasValue
             ? new GpsCoordinates(dto.Latitude.Value, dto.Longitude.Value) : null;
         loc.Description = dto.Description;
         loc.Details = dto.Details;
@@ -284,6 +323,10 @@ public static class LocationEndpoints
             })
             .ToListAsync();
 
+        var lookup = await BuildLocationStateLookupAsync(
+            db,
+            rows.Select(r => new LocationCoordinateState(r.Id, r.Latitude, r.Longitude, r.ParentLocationId)));
+
         var dtos = rows.Select(r => new LocationListDto(
             r.Id, r.Name, r.LocationKind,
             r.Region,
@@ -302,9 +345,66 @@ public static class LocationEndpoints
             ImagePath: r.ImagePath,
             ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locations", r.Id, "small"),
             StampImagePath: r.StampImagePath,
-            StampImageUrl: string.IsNullOrWhiteSpace(r.StampImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locationstamps", r.Id, "small"))).ToList();
+            StampImageUrl: string.IsNullOrWhiteSpace(r.StampImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locationstamps", r.Id, "small"),
+            IsLocated: IsLocated(lookup, r.Id))).ToList();
 
         return TypedResults.Ok(dtos);
+    }
+
+    private static async Task<Dictionary<int, LocationCoordinateState>> BuildLocationStateLookupAsync(
+        WorldDbContext db,
+        IEnumerable<LocationCoordinateState> seed)
+    {
+        var lookup = seed.ToDictionary(s => s.Id);
+        var missingParentIds = MissingParentIds(lookup.Values, lookup);
+
+        for (var depth = 0; depth < LocationInheritanceMaxDepth && missingParentIds.Count > 0; depth++)
+        {
+            var parents = await db.Locations
+                .Where(l => missingParentIds.Contains(l.Id))
+                .Select(l => new LocationCoordinateState(
+                    l.Id,
+                    l.Coordinates != null ? l.Coordinates.Latitude : (decimal?)null,
+                    l.Coordinates != null ? l.Coordinates.Longitude : (decimal?)null,
+                    l.ParentLocationId))
+                .ToListAsync();
+
+            foreach (var parent in parents)
+            {
+                lookup[parent.Id] = parent;
+            }
+
+            missingParentIds = MissingParentIds(parents, lookup);
+        }
+
+        return lookup;
+    }
+
+    private static HashSet<int> MissingParentIds(
+        IEnumerable<LocationCoordinateState> locations,
+        IReadOnlyDictionary<int, LocationCoordinateState> lookup) =>
+        locations
+            .Select(l => l.ParentLocationId)
+            .Where(id => id.HasValue && !lookup.ContainsKey(id.Value))
+            .Select(id => id!.Value)
+            .ToHashSet();
+
+    private static bool IsLocated(
+        IReadOnlyDictionary<int, LocationCoordinateState> lookup,
+        int? locationId,
+        int depth = 0)
+    {
+        if (locationId is null
+            || depth > LocationInheritanceMaxDepth
+            || !lookup.TryGetValue(locationId.Value, out var row))
+        {
+            return false;
+        }
+
+        if (!row.ParentLocationId.HasValue && row.Latitude.HasValue && row.Longitude.HasValue)
+            return true;
+
+        return IsLocated(lookup, row.ParentLocationId, depth + 1);
     }
 
     private static async Task<Results<Created, Conflict>> AssignToGame(GameLocationDto dto, WorldDbContext db)

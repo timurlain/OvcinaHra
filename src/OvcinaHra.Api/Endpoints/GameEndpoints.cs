@@ -40,6 +40,7 @@ public static class GameEndpoints
         group.MapPut("/{gameId:int}/skills/{gameSkillId:int}", UpdateGameSkill);
         group.MapDelete("/{gameId:int}/skills/{gameSkillId:int}", DeleteGameSkill);
         group.MapPost("/{gameId:int}/quests/bulk", BulkAddQuests);
+        group.MapDelete("/{gameId:int}/locations/{locationId:int}", RemoveLocationFromGame);
 
         return group;
     }
@@ -570,6 +571,17 @@ public static class GameEndpoints
         }
 
         db.GameSkills.Remove(gameSkill);
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
+    }
+
+    private static async Task<Results<NoContent, NotFound>> RemoveLocationFromGame(
+        int gameId, int locationId, WorldDbContext db)
+    {
+        var link = await db.GameLocations.FindAsync(gameId, locationId);
+        if (link is null) return TypedResults.NotFound();
+
+        db.GameLocations.Remove(link);
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
     }
