@@ -5,3 +5,23 @@
 ::deep .ovcina-grid {
     height: 100%;
 }
+
+.ovcina-grid-tools {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 0.35rem;
+}
+
+.ovcina-grid-reset {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--oh-muted);
+    text-decoration: none;
+}
+
+.ovcina-grid-reset:hover,
+.ovcina-grid-reset:focus {
+    color: var(--oh-accent);
+    text-decoration: none;
+}
