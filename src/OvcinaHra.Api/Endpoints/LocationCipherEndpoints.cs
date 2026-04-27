@@ -70,6 +70,9 @@ public static class LocationCipherEndpoints
             return TypedResults.NotFound();
 
         var rawMessage = dto.MessageRaw?.Trim() ?? "";
+        if (rawMessage.Length > 500)
+            return TypedResults.BadRequest(ValidationProblem("Zpráva má příliš mnoho znaků. Maximum je 500 včetně mezer a interpunkce."));
+
         var normalized = CipherTextNormalizer.NormalizeMessage(rawMessage);
         var validationProblem = ValidateMessage(normalized, skillKey);
         if (validationProblem is not null)

@@ -84,6 +84,18 @@ public class LocationCipherEndpointTests(PostgresFixture postgres) : Integration
     }
 
     [Fact]
+    public async Task Put_RawMessageOverColumnLimit_ReturnsBadRequest()
+    {
+        var (game, location) = await CreateAssignedLocationAsync();
+
+        var response = await Client.PutAsJsonAsync(
+            $"/api/location-ciphers/{game.Id}/{location.Id}/hledani-magie",
+            new UpsertLocationCipherDto(new string('.', 501) + "A"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Put_QuestNotLinkedToLocation_ReturnsBadRequest()
     {
         var (game, location) = await CreateAssignedLocationAsync();
