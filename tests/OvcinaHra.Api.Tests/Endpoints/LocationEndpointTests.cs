@@ -288,6 +288,24 @@ public class LocationEndpointTests(PostgresFixture postgres) : IntegrationTestBa
     }
 
     [Fact]
+    public async Task Update_StampImagePath_Persists()
+    {
+        var createResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Razítkový brod", LocationKind.PointOfInterest));
+        var created = await createResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+
+        var updateDto = new UpdateLocationDto(
+            "Razítkový brod",
+            LocationKind.PointOfInterest,
+            StampImagePath: $"locationstamps/{created!.Id}/image.png");
+        var response = await Client.PutAsJsonAsync($"/api/locations/{created.Id}", updateDto);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var updated = await Client.GetFromJsonAsync<LocationDetailDto>($"/api/locations/{created.Id}");
+        Assert.Equal($"locationstamps/{created.Id}/image.png", updated!.StampImagePath);
+    }
+
+    [Fact]
     public async Task GetAll_IncludesRegion()
     {
         await Client.PostAsJsonAsync("/api/locations",

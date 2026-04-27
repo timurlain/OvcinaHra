@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OvcinaHra.Api.Data;
@@ -9,6 +10,8 @@ using OvcinaHra.Api.Tests.Fixtures;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace OvcinaHra.Api.Tests.Endpoints;
 
@@ -46,6 +49,53 @@ public class ImageEndpointTests(PostgresFixture postgres) : IntegrationTestBase(
         var result = await response.Content.ReadFromJsonAsync<ImageUploadResult>();
         Assert.NotNull(result);
         Assert.Contains("locations/", result.BlobKey);
+    }
+
+    [Fact]
+    public async Task Upload_LocationStamp_PersistsStampPathAndFullSasUrl()
+    {
+        var locResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Razítková lokace", LocationKind.Village, 49.5m, 17.1m));
+        var loc = await locResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+
+        using var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(CreatePng(width: 240, height: 240));
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        content.Add(fileContent, "file", "stamp.png");
+
+        var response = await Client.PostAsync($"/api/images/locationstamps/{loc!.Id}", content);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<ImageUploadResult>();
+        Assert.NotNull(result);
+        Assert.StartsWith($"locationstamps/{loc.Id}/", result.BlobKey);
+
+        var refreshed = await Client.GetFromJsonAsync<LocationDetailDto>($"/api/locations/{loc.Id}");
+        Assert.Equal(result.BlobKey, refreshed!.StampImagePath);
+
+        var urls = await Client.GetFromJsonAsync<ImageUrlsDto>($"/api/images/locations/{loc.Id}");
+        Assert.Equal($"https://fake/{result.BlobKey}", urls!.StampUrl);
+    }
+
+    [Fact]
+    public async Task Upload_LocationStamp_TooSmall_ReturnsProblemDetails()
+    {
+        var locResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Malé razítko", LocationKind.Village, 49.5m, 17.1m));
+        var loc = await locResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+
+        using var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(ValidPng);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        content.Add(fileContent, "file", "tiny-stamp.png");
+
+        var response = await Client.PostAsync($"/api/images/locationstamps/{loc!.Id}", content);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Uložení selhalo", problem!.Title);
+        Assert.Equal("Razítko musí být alespoň 200×200 px.", problem.Detail);
     }
 
     [Fact]
@@ -208,4 +258,12 @@ public class ImageEndpointTests(PostgresFixture postgres) : IntegrationTestBase(
     }
 
     private sealed record ProcessedResponse(int Processed);
+
+    private static byte[] CreatePng(int width, int height)
+    {
+        using var image = new Image<Rgba32>(width, height);
+        using var ms = new MemoryStream();
+        image.SaveAsPng(ms);
+        return ms.ToArray();
+    }
 }
