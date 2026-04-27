@@ -726,10 +726,10 @@ else
         error = null;
         try
         {
-            var deleted = await Api.DeleteAsync($"/api/locations/{Id}");
-            if (!deleted)
+            var (ok, problem) = await Api.DeleteWithProblemAsync($"/api/locations/{Id}");
+            if (!ok)
             {
-                error = "Smazání lokace se nezdařilo.";
+                error = problem ?? "Smazání lokace se nezdařilo.";
                 return;
             }
 
