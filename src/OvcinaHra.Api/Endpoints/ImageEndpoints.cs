@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Dtos;
+using SixLabors.ImageSharp;
 
 namespace OvcinaHra.Api.Endpoints;
 
@@ -17,6 +19,8 @@ public static class ImageEndpoints
     private static readonly HashSet<string> ValidEntityTypes = ["locations", "locationstamps", "items", "monsters", "secretstashes", "npcs", "buildings", "characters", "kingdoms", "spells", "quests"];
     private static readonly HashSet<string> AllowedContentTypes = ["image/jpeg", "image/png", "image/webp"];
     private const long MaxFileSize = 5 * 1024 * 1024; // 5 MB
+    private const int LocationStampMinimumPixels = 200;
+    private const double LocationStampAspectTolerance = 0.10;
 
     public static RouteGroupBuilder MapImageEndpoints(this IEndpointRouteBuilder routes)
     {
@@ -62,7 +66,7 @@ public static class ImageEndpoints
         if (!await EntityExists(db, entityType, entityId))
             return TypedResults.NotFound();
 
-        var (imagePath, _) = await GetEntityImagePaths(db, entityType, entityId);
+        var (imagePath, _, _) = await GetEntityImagePaths(db, entityType, entityId);
         if (string.IsNullOrWhiteSpace(imagePath))
             return TypedResults.NotFound();
 
@@ -109,19 +113,19 @@ public static class ImageEndpoints
         return TypedResults.File(result.Bytes, result.ContentType);
     }
 
-    private static async Task<Results<Ok<ImageUploadResult>, NotFound, BadRequest<string>>> Upload(
+    private static async Task<Results<Ok<ImageUploadResult>, NotFound, BadRequest<ProblemDetails>>> Upload(
         string entityType, int entityId, IFormFile file, IBlobStorageService blobService,
         IThumbnailService thumbnailService, ILogger<ThumbnailService> thumbLogger,
-        WorldDbContext db, string? field = null)
+        WorldDbContext db, CancellationToken ct, string? field = null)
     {
         if (!ValidEntityTypes.Contains(entityType))
-            return TypedResults.BadRequest($"Invalid entity type '{entityType}'.");
+            return TypedResults.BadRequest(ImageValidationProblem($"Neplatný typ entity '{entityType}'."));
 
         if (file.Length > MaxFileSize)
-            return TypedResults.BadRequest($"File too large. Maximum size is {MaxFileSize / (1024 * 1024)} MB.");
+            return TypedResults.BadRequest(ImageValidationProblem($"Soubor je příliš velký. Maximální velikost je {MaxFileSize / (1024 * 1024)} MB."));
 
         if (!AllowedContentTypes.Contains(file.ContentType))
-            return TypedResults.BadRequest($"Invalid content type '{file.ContentType}'. Allowed: {string.Join(", ", AllowedContentTypes)}.");
+            return TypedResults.BadRequest(ImageValidationProblem($"Neplatný typ souboru '{file.ContentType}'. Povolené typy: {string.Join(", ", AllowedContentTypes)}."));
 
         if (!await EntityExists(db, entityType, entityId))
             return TypedResults.NotFound();
@@ -138,7 +142,16 @@ public static class ImageEndpoints
         var blobKey = $"{entityType}/{entityId}/{suffix}.{ext}";
 
         await using var stream = file.OpenReadStream();
-        await blobService.UploadAsync(blobKey, stream, file.ContentType);
+        if (entityType == "locationstamps")
+        {
+            var validationProblem = await ValidateLocationStampImageAsync(stream, ct);
+            if (validationProblem is not null)
+                return TypedResults.BadRequest(validationProblem);
+        }
+        if (stream.CanSeek)
+            stream.Position = 0;
+
+        await blobService.UploadAsync(blobKey, stream, file.ContentType, ct);
 
         // Invalidate any cached thumbnails for this entity — they were resized
         // from the previous source image and are stale now. Only apply to the
@@ -384,12 +397,13 @@ public static class ImageEndpoints
         if (!await EntityExists(db, entityType, entityId))
             return TypedResults.NotFound();
 
-        var (imagePath, placementPath) = await GetEntityImagePaths(db, entityType, entityId);
+        var (imagePath, placementPath, stampPath) = await GetEntityImagePaths(db, entityType, entityId);
 
         string? imageUrl = imagePath is not null ? await blobService.GetSasUrlAsync(imagePath) : null;
         string? placementUrl = placementPath is not null ? await blobService.GetSasUrlAsync(placementPath) : null;
+        string? stampUrl = stampPath is not null ? await blobService.GetSasUrlAsync(stampPath) : null;
 
-        return TypedResults.Ok(new ImageUrlsDto(imageUrl, placementUrl));
+        return TypedResults.Ok(new ImageUrlsDto(imageUrl, placementUrl, stampUrl));
     }
 
     private static async Task<Results<NoContent, NotFound, BadRequest<string>>> Delete(
@@ -403,7 +417,7 @@ public static class ImageEndpoints
             return TypedResults.NotFound();
 
         var isPlacement = string.Equals(field, "placement", StringComparison.OrdinalIgnoreCase);
-        var (imagePath, placementPath) = await GetEntityImagePaths(db, entityType, entityId);
+        var (imagePath, placementPath, _) = await GetEntityImagePaths(db, entityType, entityId);
         var pathToDelete = isPlacement ? placementPath : imagePath;
 
         if (pathToDelete is not null)
@@ -477,47 +491,81 @@ public static class ImageEndpoints
         await db.SaveChangesAsync();
     }
 
-    private static async Task<(string? ImagePath, string? PlacementPath)> GetEntityImagePaths(
+    private static async Task<(string? ImagePath, string? PlacementPath, string? StampPath)> GetEntityImagePaths(
         WorldDbContext db, string entityType, int entityId)
     {
         return entityType switch
         {
             "locations" => await db.Locations.Where(l => l.Id == entityId)
-                .Select(l => new ValueTuple<string?, string?>(l.ImagePath, l.PlacementPhotoPath))
+                .Select(l => new ValueTuple<string?, string?, string?>(l.ImagePath, l.PlacementPhotoPath, l.StampImagePath))
                 .FirstOrDefaultAsync(),
             "locationstamps" => await db.Locations.Where(l => l.Id == entityId)
-                .Select(l => new ValueTuple<string?, string?>(l.StampImagePath, null))
+                .Select(l => new ValueTuple<string?, string?, string?>(l.StampImagePath, null, l.StampImagePath))
                 .FirstOrDefaultAsync(),
             "items" => await db.Items.Where(i => i.Id == entityId)
-                .Select(i => new ValueTuple<string?, string?>(i.ImagePath, null))
+                .Select(i => new ValueTuple<string?, string?, string?>(i.ImagePath, null, null))
                 .FirstOrDefaultAsync(),
             "monsters" => await db.Monsters.Where(m => m.Id == entityId)
-                .Select(m => new ValueTuple<string?, string?>(m.ImagePath, null))
+                .Select(m => new ValueTuple<string?, string?, string?>(m.ImagePath, null, null))
                 .FirstOrDefaultAsync(),
             "secretstashes" => await db.SecretStashes.Where(s => s.Id == entityId)
-                .Select(s => new ValueTuple<string?, string?>(s.ImagePath, null))
+                .Select(s => new ValueTuple<string?, string?, string?>(s.ImagePath, null, null))
                 .FirstOrDefaultAsync(),
             "npcs" => await db.Npcs.Where(n => n.Id == entityId)
-                .Select(n => new ValueTuple<string?, string?>(n.ImagePath, null))
+                .Select(n => new ValueTuple<string?, string?, string?>(n.ImagePath, null, null))
                 .FirstOrDefaultAsync(),
             "buildings" => await db.Buildings.Where(b => b.Id == entityId)
-                .Select(b => new ValueTuple<string?, string?>(b.ImagePath, null))
+                .Select(b => new ValueTuple<string?, string?, string?>(b.ImagePath, null, null))
                 .FirstOrDefaultAsync(),
             "characters" => await db.Characters.Where(c => c.Id == entityId)
-                .Select(c => new ValueTuple<string?, string?>(c.ImagePath, null))
+                .Select(c => new ValueTuple<string?, string?, string?>(c.ImagePath, null, null))
                 .FirstOrDefaultAsync(),
             "kingdoms" => await db.Kingdoms.Where(k => k.Id == entityId)
-                .Select(k => new ValueTuple<string?, string?>(k.BadgeImageUrl, null))
+                .Select(k => new ValueTuple<string?, string?, string?>(k.BadgeImageUrl, null, null))
                 .FirstOrDefaultAsync(),
             "spells" => await db.Spells.Where(s => s.Id == entityId)
-                .Select(s => new ValueTuple<string?, string?>(s.ImagePath, null))
+                .Select(s => new ValueTuple<string?, string?, string?>(s.ImagePath, null, null))
                 .FirstOrDefaultAsync(),
             "quests" => await db.Quests.Where(q => q.Id == entityId)
-                .Select(q => new ValueTuple<string?, string?>(q.ImagePath, null))
+                .Select(q => new ValueTuple<string?, string?, string?>(q.ImagePath, null, null))
                 .FirstOrDefaultAsync(),
-            _ => (null, null)
+            _ => (null, null, null)
         };
     }
+
+    private static async Task<ProblemDetails?> ValidateLocationStampImageAsync(Stream stream, CancellationToken ct)
+    {
+        try
+        {
+            var info = await Image.IdentifyAsync(stream, ct);
+            if (info is null)
+                return ImageValidationProblem("Soubor se nepodařilo přečíst jako obrázek.");
+
+            if (info.Width < LocationStampMinimumPixels || info.Height < LocationStampMinimumPixels)
+                return ImageValidationProblem("Razítko musí být alespoň 200×200 px.");
+
+            var ratio = (double)info.Width / info.Height;
+            if (Math.Abs(ratio - 1d) > LocationStampAspectTolerance)
+                return ImageValidationProblem("Razítko musí být přibližně čtvercové.");
+
+            return null;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return ImageValidationProblem("Soubor se nepodařilo přečíst jako obrázek.");
+        }
+    }
+
+    private static ProblemDetails ImageValidationProblem(string detail) => new()
+    {
+        Title = "Uložení selhalo",
+        Detail = detail,
+        Status = StatusCodes.Status400BadRequest
+    };
 
     private static async Task<bool> EntityExists(WorldDbContext db, string entityType, int entityId)
     {

@@ -49,6 +49,7 @@ public class BlobStorageService : IBlobStorageService
 {
     private readonly BlobContainerClient _container;
     private readonly ILogger<BlobStorageService> _logger;
+    private readonly int _sasExpiryHours;
 
     public BlobStorageService(IConfiguration config, ILogger<BlobStorageService> logger)
     {
@@ -56,6 +57,7 @@ public class BlobStorageService : IBlobStorageService
         var containerName = config["BlobStorage:ContainerName"] ?? "ovcinahra-images";
         _container = new BlobContainerClient(connectionString, containerName);
         _logger = logger;
+        _sasExpiryHours = Math.Max(24, config.GetValue<int?>("BlobStorage:SasExpiryHours") ?? 24);
     }
 
     public async Task<string> UploadAsync(string blobKey, Stream content, string contentType, CancellationToken ct)
@@ -106,7 +108,7 @@ public class BlobStorageService : IBlobStorageService
             BlobContainerName = _container.Name,
             BlobName = blob.Name,
             Resource = "b",
-            ExpiresOn = DateTimeOffset.UtcNow.AddHours(1)
+            ExpiresOn = DateTimeOffset.UtcNow.AddHours(_sasExpiryHours)
         };
         sasBuilder.SetPermissions(BlobSasPermissions.Read);
         return blob.GenerateSasUri(sasBuilder).ToString();

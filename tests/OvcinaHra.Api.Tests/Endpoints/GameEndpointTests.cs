@@ -1,7 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
+using OvcinaHra.Api.Data;
+using OvcinaHra.Api.Services;
 using OvcinaHra.Api.Tests.Fixtures;
+using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
 
@@ -267,6 +271,76 @@ public class GameEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
 
         var getResponse = await Client.GetAsync("/api/games/999999/overlay");
         Assert.Equal(HttpStatusCode.NotFound, getResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetStamps_GameNotFound_Returns404()
+    {
+        var response = await Client.GetAsync("/api/games/999999/stamps");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetStamps_ReturnsStampedLocationsWithGameStashes()
+    {
+        var game = await CreateGameAsync("Stamp aggregate");
+        var otherGame = await CreateGameAsync("Other stamp game");
+        int stampedLocationId;
+        int unstampedLocationId;
+        string stampedPath;
+
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+
+            var stamped = new Location
+            {
+                Name = "Razítkový most",
+                LocationKind = LocationKind.PointOfInterest
+            };
+            var unstamped = new Location
+            {
+                Name = "Bez razítka",
+                LocationKind = LocationKind.PointOfInterest
+            };
+            db.Locations.AddRange(stamped, unstamped);
+            await db.SaveChangesAsync();
+
+            stamped.StampImagePath = $"locationstamps/{stamped.Id}/image.png";
+            var firstStash = new SecretStash { Name = "Skrýš pod mostem" };
+            var secondStash = new SecretStash { Name = "Skrýš v kamení" };
+            var unstampedStash = new SecretStash { Name = "Skrýš bez razítka" };
+            var otherGameStash = new SecretStash { Name = "Cizí skrýš" };
+            db.SecretStashes.AddRange(firstStash, secondStash, unstampedStash, otherGameStash);
+            await db.SaveChangesAsync();
+
+            db.GameSecretStashes.AddRange(
+                new GameSecretStash { GameId = game.Id, SecretStashId = firstStash.Id, LocationId = stamped.Id },
+                new GameSecretStash { GameId = game.Id, SecretStashId = secondStash.Id, LocationId = stamped.Id },
+                new GameSecretStash { GameId = game.Id, SecretStashId = unstampedStash.Id, LocationId = unstamped.Id },
+                new GameSecretStash { GameId = otherGame.Id, SecretStashId = otherGameStash.Id, LocationId = stamped.Id });
+            await db.SaveChangesAsync();
+
+            stampedLocationId = stamped.Id;
+            unstampedLocationId = unstamped.Id;
+            stampedPath = stamped.StampImagePath;
+        }
+
+        var blob = Factory.Services.GetRequiredService<IBlobStorageService>();
+        await blob.UploadAsync(stampedPath, new MemoryStream([1, 2, 3]), "image/png");
+
+        var response = await Client.GetAsync($"/api/games/{game.Id}/stamps");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var stamps = await response.Content.ReadFromJsonAsync<List<GameStampDto>>();
+        Assert.NotNull(stamps);
+        var stamp = Assert.Single(stamps);
+        Assert.Equal(stampedLocationId, stamp.LocationId);
+        Assert.Equal("Razítkový most", stamp.LocationName);
+        Assert.Equal($"https://fake/{stampedPath}", stamp.StampImageUrl);
+        Assert.DoesNotContain(stamps, s => s.LocationId == unstampedLocationId);
+        Assert.Equal(["Skrýš pod mostem", "Skrýš v kamení"], stamp.Stashes.Select(s => s.Name).ToList());
     }
 
     private async Task<GameDetailDto> CreateGameAsync(string name)
