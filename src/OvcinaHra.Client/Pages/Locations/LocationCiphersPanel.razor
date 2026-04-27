@@ -1,0 +1,246 @@
+@inject ApiClient Api
+@using OvcinaHra.Shared.Ciphers
+@using OvcinaHra.Shared.Dtos
+
+<section class="oh-cipher-panel">
+    <div class="oh-cipher-panel-head">
+        <div>
+            <h2>Šifry</h2>
+            <p>@DefinedCount / 5 připraveno</p>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <p class="text-muted">Načítám šifry…</p>
+    }
+    else if (loadError is not null)
+    {
+        <div class="oh-drozd-val mb-3">
+            <i class="bi bi-exclamation-circle oh-drozd-val-icon"></i>
+            <div>
+                <div class="oh-drozd-val-title">Šifry se nepodařilo načíst</div>
+                <div class="oh-drozd-val-msg">@loadError</div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="oh-cipher-list">
+            @foreach (var state in states)
+            {
+                <article class="oh-cipher-slot @(state.HasCipher ? "has-cipher" : "")" @key="state.Slot.SkillSlug">
+                    <div class="oh-cipher-slot-head">
+                        <div>
+                            <h3>@state.Slot.SkillName</h3>
+                            @if (state.Slot.Cipher?.QuestName is { Length: > 0 } questName)
+                            {
+                                <p>@questName</p>
+                            }
+                        </div>
+                        <span class="oh-cipher-counter @(IsOverLimit(state) ? "over" : "")">
+                            @NormalizedLength(state) / @state.Slot.MaxMessageLetters
+                        </span>
+                    </div>
+
+                    <DxMemo @bind-Text="@state.MessageRaw" Rows="2" NullText="Zpráva bez diakritiky…" />
+
+                    <div class="oh-cipher-preview">
+                        <span>Náhled</span>
+                        <code>@EncodedPreview(state)</code>
+                    </div>
+
+                    @if (state.Error is not null)
+                    {
+                        <div class="oh-cipher-error">@state.Error</div>
+                    }
+
+                    <div class="oh-cipher-actions">
+                        <button class="btn btn-primary btn-sm" type="button"
+                                disabled="@(!CanSave(state))"
+                                @onclick="() => SaveAsync(state)">
+                            @if (state.IsSaving)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            Uložit
+                        </button>
+                        @if (state.HasCipher)
+                        {
+                            <button class="btn btn-outline-danger btn-sm" type="button"
+                                    disabled="@state.IsSaving"
+                                    @onclick="() => OpenDeleteConfirm(state)">
+                                <i class="bi bi-trash me-1"></i> Smazat
+                            </button>
+                        }
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</section>
+
+<DxPopup @bind-Visible="@isDeleteVisible" HeaderText="Smazat šifru?" Width="420px">
+    <BodyContentTemplate>
+        <p>Smazat zprávu pro dovednost <strong>@deleteTarget?.Slot.SkillName</strong>?</p>
+        @if (deleteError is not null)
+        {
+            <div class="oh-drozd-val mb-3">
+                <i class="bi bi-exclamation-circle oh-drozd-val-icon"></i>
+                <div>
+                    <div class="oh-drozd-val-title">Smazání se nezdařilo</div>
+                    <div class="oh-drozd-val-msg">@deleteError</div>
+                </div>
+            </div>
+        }
+        <div class="d-flex justify-content-end gap-2">
+            <button class="btn btn-secondary" type="button" @onclick="CloseDeleteConfirm">Zrušit</button>
+            <button class="btn btn-danger" type="button" @onclick="ConfirmDeleteAsync" disabled="@(deleteTarget?.IsSaving == true)">
+                Smazat
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    [Parameter] public int GameId { get; set; }
+    [Parameter] public int LocationId { get; set; }
+
+    private readonly List<CipherEditState> states = [];
+    private bool loading = true;
+    private string? loadError;
+    private int? loadedGameId;
+    private int? loadedLocationId;
+    private bool isDeleteVisible;
+    private string? deleteError;
+    private CipherEditState? deleteTarget;
+
+    private int DefinedCount => states.Count(s => s.HasCipher);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedGameId == GameId && loadedLocationId == LocationId)
+            return;
+
+        loadedGameId = GameId;
+        loadedLocationId = LocationId;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        loadError = null;
+        states.Clear();
+
+        try
+        {
+            var slots = await Api.GetListAsync<LocationCipherSlotDto>(
+                $"/api/location-ciphers/{GameId}/{LocationId}");
+            states.AddRange(slots.Select(slot => new CipherEditState(slot)));
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task SaveAsync(CipherEditState state)
+    {
+        if (!CanSave(state)) return;
+
+        state.IsSaving = true;
+        state.Error = null;
+        try
+        {
+            var dto = new UpsertLocationCipherDto(state.MessageRaw, state.QuestId);
+            var (ok, problem) = await Api.PutWithProblemAsync(
+                $"/api/location-ciphers/{GameId}/{LocationId}/{state.Slot.SkillSlug}", dto);
+            if (!ok)
+            {
+                state.Error = problem ?? "Šifru se nepodařilo uložit.";
+                return;
+            }
+
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            state.Error = ex.Message;
+        }
+        finally
+        {
+            state.IsSaving = false;
+        }
+    }
+
+    private void OpenDeleteConfirm(CipherEditState state)
+    {
+        deleteTarget = state;
+        deleteError = null;
+        isDeleteVisible = true;
+    }
+
+    private void CloseDeleteConfirm()
+    {
+        isDeleteVisible = false;
+        deleteTarget = null;
+        deleteError = null;
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (deleteTarget is null) return;
+
+        deleteTarget.IsSaving = true;
+        deleteError = null;
+        try
+        {
+            var (ok, problem) = await Api.DeleteWithProblemAsync(
+                $"/api/location-ciphers/{GameId}/{LocationId}/{deleteTarget.Slot.SkillSlug}");
+            if (!ok)
+            {
+                deleteError = problem ?? "Šifru se nepodařilo smazat.";
+                return;
+            }
+
+            CloseDeleteConfirm();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            deleteError = ex.Message;
+        }
+        finally
+        {
+            if (deleteTarget is not null)
+                deleteTarget.IsSaving = false;
+        }
+    }
+
+    private static bool CanSave(CipherEditState state) =>
+        !state.IsSaving && NormalizedLength(state) > 0 && !IsOverLimit(state);
+
+    private static bool IsOverLimit(CipherEditState state) =>
+        NormalizedLength(state) > state.Slot.MaxMessageLetters;
+
+    private static int NormalizedLength(CipherEditState state) =>
+        CipherTextNormalizer.NormalizeMessage(state.MessageRaw).Length;
+
+    private static string EncodedPreview(CipherEditState state) =>
+        CipherTextNormalizer.BuildEncodedPreview(state.MessageRaw);
+
+    private sealed class CipherEditState(LocationCipherSlotDto slot)
+    {
+        public LocationCipherSlotDto Slot { get; } = slot;
+        public string MessageRaw { get; set; } = slot.Cipher?.MessageRaw ?? "";
+        public int? QuestId { get; set; } = slot.Cipher?.QuestId;
+        public bool IsSaving { get; set; }
+        public string? Error { get; set; }
+        public bool HasCipher => Slot.Cipher is not null;
+    }
+}

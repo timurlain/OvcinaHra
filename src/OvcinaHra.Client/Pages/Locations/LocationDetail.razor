@@ -100,6 +100,12 @@ else
                     <span class="oh-lc-count">@locationQuests.Count</span>
                 </button>
             }
+            @if (IsGameScoped)
+            {
+                <button class="oh-lc-tab @(activeTab == "sifry" ? "active" : "")" @onclick='() => SwitchTab("sifry")'>
+                    <i class="bi bi-grid-3x3-gap"></i> Šifry
+                </button>
+            }
         </div>
 
         @if (error is not null)
@@ -408,6 +414,11 @@ else
                 }
             </div>
         }
+
+        @if (activeTab == "sifry" && GameContext.SelectedGameId is int cipherGameId)
+        {
+            <LocationCiphersPanel GameId="@cipherGameId" LocationId="@Id" />
+        }
     </div>
 }
 
@@ -617,6 +628,7 @@ else
     {
         if (tab == "skryse" && !HasStashes) return;
         if (tab == "questy" && !HasQuests) return;
+        if (tab == "sifry" && !IsGameScoped) return;
         activeTab = tab;
     }
 
@@ -624,6 +636,7 @@ else
     {
         if (activeTab == "skryse" && !HasStashes) activeTab = "karta";
         if (activeTab == "questy" && !HasQuests) activeTab = "karta";
+        if (activeTab == "sifry" && !IsGameScoped) activeTab = "karta";
     }
 
     private void OnParentLocationChanged(int? value)

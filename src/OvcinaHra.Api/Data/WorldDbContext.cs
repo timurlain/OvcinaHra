@@ -40,6 +40,7 @@ public class WorldDbContext(DbContextOptions<WorldDbContext> options) : DbContex
     public DbSet<QuestEncounter> QuestEncounters => Set<QuestEncounter>();
     public DbSet<QuestReward> QuestRewards => Set<QuestReward>();
     public DbSet<QuestWaypoint> QuestWaypoints => Set<QuestWaypoint>();
+    public DbSet<LocationCipher> LocationCiphers => Set<LocationCipher>();
     public DbSet<SecretStash> SecretStashes => Set<SecretStash>();
     public DbSet<GameSecretStash> GameSecretStashes => Set<GameSecretStash>();
     public DbSet<TreasureQuest> TreasureQuests => Set<TreasureQuest>();
