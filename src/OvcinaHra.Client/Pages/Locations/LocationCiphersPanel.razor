@@ -1,4 +1,6 @@
 @inject ApiClient Api
+@inject IJSRuntime JS
+@using Microsoft.JSInterop
 @using OvcinaHra.Shared.Ciphers
 @using OvcinaHra.Shared.Dtos
 
@@ -8,7 +10,34 @@
             <h2>Šifry</h2>
             <p>@DefinedCount / 5 připraveno</p>
         </div>
+        @if (!loading && DefinedCount > 0)
+        {
+            <button class="btn btn-outline-primary btn-sm" type="button"
+                    disabled="@isLocationDownloading"
+                    @onclick="DownloadLocationPdfAsync">
+                @if (isLocationDownloading)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                else
+                {
+                    <i class="bi bi-filetype-pdf me-1"></i>
+                }
+                PDF lokace
+            </button>
+        }
     </div>
+
+    @if (downloadError is not null)
+    {
+        <div class="oh-drozd-val mb-3">
+            <i class="bi bi-exclamation-circle oh-drozd-val-icon"></i>
+            <div>
+                <div class="oh-drozd-val-title">Stažení se nezdařilo</div>
+                <div class="oh-drozd-val-msg">@downloadError</div>
+            </div>
+        </div>
+    }
 
     @if (loading)
     {
@@ -67,6 +96,19 @@
                         </button>
                         @if (state.HasCipher)
                         {
+                            <button class="btn btn-outline-primary btn-sm" type="button"
+                                    disabled="@(state.IsSaving || state.IsDownloading)"
+                                    @onclick="() => DownloadSinglePdfAsync(state)">
+                                @if (state.IsDownloading)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-filetype-pdf me-1"></i>
+                                }
+                                PDF
+                            </button>
                             <button class="btn btn-outline-danger btn-sm" type="button"
                                     disabled="@state.IsSaving"
                                     @onclick="() => OpenDeleteConfirm(state)">
@@ -114,6 +156,8 @@
     private bool isDeleteVisible;
     private string? deleteError;
     private CipherEditState? deleteTarget;
+    private bool isLocationDownloading;
+    private string? downloadError;
 
     private int DefinedCount => states.Count(s => s.HasCipher);
 
@@ -175,6 +219,55 @@
         finally
         {
             state.IsSaving = false;
+        }
+    }
+
+    private async Task DownloadLocationPdfAsync()
+    {
+        isLocationDownloading = true;
+        downloadError = null;
+        try
+        {
+            await DownloadPdfAsync($"/api/location-ciphers/{GameId}/{LocationId}/pdf");
+        }
+        finally
+        {
+            isLocationDownloading = false;
+        }
+    }
+
+    private async Task DownloadSinglePdfAsync(CipherEditState state)
+    {
+        state.IsDownloading = true;
+        downloadError = null;
+        try
+        {
+            await DownloadPdfAsync($"/api/location-ciphers/{GameId}/{LocationId}/{state.Slot.SkillSlug}/pdf");
+        }
+        finally
+        {
+            state.IsDownloading = false;
+        }
+    }
+
+    private async Task DownloadPdfAsync(string url)
+    {
+        try
+        {
+            var (ok, file, problem) = await Api.DownloadWithProblemAsync(url);
+            if (!ok || file is null)
+            {
+                downloadError = problem ?? "PDF se nepodařilo připravit.";
+                return;
+            }
+
+            await using var stream = new MemoryStream(file.Bytes);
+            using var streamReference = new DotNetStreamReference(stream);
+            await JS.InvokeVoidAsync("ovcinaDownloadFile", file.FileName, file.ContentType, streamReference);
+        }
+        catch (Exception ex)
+        {
+            downloadError = ex.Message;
         }
     }
 
@@ -240,6 +333,7 @@
         public string MessageRaw { get; set; } = slot.Cipher?.MessageRaw ?? "";
         public int? QuestId { get; set; } = slot.Cipher?.QuestId;
         public bool IsSaving { get; set; }
+        public bool IsDownloading { get; set; }
         public string? Error { get; set; }
         public bool HasCipher => Slot.Cipher is not null;
     }

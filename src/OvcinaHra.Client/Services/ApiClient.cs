@@ -20,6 +20,8 @@ public class ApiClient
         _http = http;
     }
 
+    public sealed record FileDownload(byte[] Bytes, string ContentType, string FileName);
+
     public async Task<List<T>> GetListAsync<T>(string url)
     {
         return await _http.GetFromJsonAsync<List<T>>(url, JsonOptions) ?? [];
@@ -83,6 +85,21 @@ public class ApiClient
     {
         var response = await _http.DeleteAsync(url);
         return response.IsSuccessStatusCode;
+    }
+
+    public async Task<(bool Ok, FileDownload? File, string? ProblemDetail)> DownloadWithProblemAsync(string url)
+    {
+        using var response = await _http.GetAsync(url);
+        if (!response.IsSuccessStatusCode)
+            return (false, null, await ReadProblemDetailAsync(response));
+
+        var bytes = await response.Content.ReadAsByteArrayAsync();
+        var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+        var fileName = response.Content.Headers.ContentDisposition?.FileNameStar
+            ?? response.Content.Headers.ContentDisposition?.FileName
+            ?? "download";
+
+        return (true, new FileDownload(bytes, contentType, fileName.Trim('"')), null);
     }
 
     // Variant of DeleteAsync that reads the server's ProblemDetails on

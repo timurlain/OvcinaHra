@@ -105,6 +105,7 @@ try
     builder.Services.AddHttpClient();
     builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
     builder.Services.AddSingleton<IThumbnailService, ThumbnailService>();
+    builder.Services.AddSingleton<ICipherPdfRenderer, CipherPdfRenderer>();
     // Walks every image-bearing entity on startup and pre-generates all
     // thumbnail presets so list pages never pay the cold-resize cost at
     // runtime. Runs in the background — does not block startup.

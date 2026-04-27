@@ -50,6 +50,53 @@ public class LocationCipherEndpointTests(PostgresFixture postgres) : Integration
     }
 
     [Fact]
+    public async Task DownloadSinglePdf_ReturnsPrintablePdf()
+    {
+        var (game, location) = await CreateAssignedLocationAsync();
+        await Client.PutAsJsonAsync(
+            $"/api/location-ciphers/{game.Id}/{location.Id}/hledani-magie",
+            new UpsertLocationCipherDto("Tady zije vlci smecka"));
+
+        var response = await Client.GetAsync(
+            $"/api/location-ciphers/{game.Id}/{location.Id}/hledani-magie/pdf");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/pdf", response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal($"ovcina-sifra-{location.Id}-hledani-magie.pdf", response.Content.Headers.ContentDisposition?.FileName?.Trim('"'));
+        await AssertPdfAsync(response);
+    }
+
+    [Fact]
+    public async Task DownloadLocationPdf_ReturnsPdfWithDefinedCiphers()
+    {
+        var (game, location) = await CreateAssignedLocationAsync();
+        await Client.PutAsJsonAsync(
+            $"/api/location-ciphers/{game.Id}/{location.Id}/hledani-magie",
+            new UpsertLocationCipherDto("Tady zije vlci smecka"));
+        await Client.PutAsJsonAsync(
+            $"/api/location-ciphers/{game.Id}/{location.Id}/lezeni",
+            new UpsertLocationCipherDto("Vylez po skale"));
+
+        var response = await Client.GetAsync(
+            $"/api/location-ciphers/{game.Id}/{location.Id}/pdf");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/pdf", response.Content.Headers.ContentType?.MediaType);
+        await AssertPdfAsync(response);
+    }
+
+    [Fact]
+    public async Task DownloadLocationPdf_WithoutDefinedCiphers_ReturnsBadRequest()
+    {
+        var (game, location) = await CreateAssignedLocationAsync();
+
+        var response = await Client.GetAsync(
+            $"/api/location-ciphers/{game.Id}/{location.Id}/pdf");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Put_UpdatesExistingCipherInsteadOfDuplicating()
     {
         var (game, location) = await CreateAssignedLocationAsync();
@@ -174,5 +221,15 @@ public class LocationCipherEndpointTests(PostgresFixture postgres) : Integration
         db.Quests.Add(quest);
         await db.SaveChangesAsync();
         return quest.Id;
+    }
+
+    private static async Task AssertPdfAsync(HttpResponseMessage response)
+    {
+        var bytes = await response.Content.ReadAsByteArrayAsync();
+        Assert.True(bytes.Length > 1_000);
+        Assert.Equal((byte)'%', bytes[0]);
+        Assert.Equal((byte)'P', bytes[1]);
+        Assert.Equal((byte)'D', bytes[2]);
+        Assert.Equal((byte)'F', bytes[3]);
     }
 }

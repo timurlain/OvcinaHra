@@ -4174,6 +4174,7 @@ body.oh-map-print-labeled .oh-map-pin .oh-map-pin-label{display:block}
 /* Location cipher authoring */
 .oh-cipher-panel{display:flex;flex-direction:column;gap:14px}
 .oh-cipher-panel-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+.oh-cipher-panel-head .btn{flex-shrink:0}
 .oh-cipher-panel-head h2{font:700 1.35rem/1.15 var(--oh-font-headline,Merriweather,Georgia,serif);
     color:#2a2218;margin:0}
 .oh-cipher-panel-head p{margin:4px 0 0;color:#6f6248;font-size:.9rem}
@@ -4192,5 +4193,5 @@ body.oh-map-print-labeled .oh-map-pin .oh-map-pin-label{display:block}
 .oh-cipher-preview code{display:block;min-height:34px;padding:7px 8px;border-radius:6px;background:#2a2218;color:#f8f0dc;
     white-space:normal;word-break:break-word;font-size:.83rem}
 .oh-cipher-error{border-left:3px solid #842029;background:#f8d7da;color:#842029;border-radius:3px;padding:8px 10px;font-size:.88rem}
-.oh-cipher-actions{display:flex;justify-content:flex-end;gap:8px}
-@media (max-width:720px){.oh-cipher-actions{justify-content:flex-start;flex-wrap:wrap}}
+.oh-cipher-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+@media (max-width:720px){.oh-cipher-panel-head{align-items:flex-start;flex-direction:column}.oh-cipher-actions{justify-content:flex-start}}
