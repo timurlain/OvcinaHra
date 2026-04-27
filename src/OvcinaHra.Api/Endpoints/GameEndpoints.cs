@@ -39,8 +39,61 @@ public static class GameEndpoints
         group.MapPost("/{gameId:int}/skills", CreateGameSkill);
         group.MapPut("/{gameId:int}/skills/{gameSkillId:int}", UpdateGameSkill);
         group.MapDelete("/{gameId:int}/skills/{gameSkillId:int}", DeleteGameSkill);
+        group.MapPost("/{gameId:int}/quests/bulk", BulkAddQuests);
 
         return group;
+    }
+
+    private static async Task<Results<Ok<BulkAddQuestsResponse>, NotFound>> BulkAddQuests(
+        int gameId, BulkAddQuestsRequest request, WorldDbContext db, HttpContext http)
+    {
+        if (!await db.Games.AnyAsync(g => g.Id == gameId))
+            return TypedResults.NotFound();
+
+        var requestedIds = request.QuestCatalogueIds
+            .Where(id => id > 0)
+            .Distinct()
+            .ToList();
+
+        if (requestedIds.Count == 0)
+            return TypedResults.Ok(new BulkAddQuestsResponse([], []));
+
+        var catalogueNames = await db.Quests
+            .AsNoTracking()
+            .Where(q => q.GameId == null && requestedIds.Contains(q.Id))
+            .Select(q => new { q.Id, q.Name })
+            .ToDictionaryAsync(q => q.Id, q => q.Name);
+
+        var existingNames = (await db.Quests
+            .AsNoTracking()
+            .Where(q => q.GameId == gameId)
+            .Select(q => q.Name)
+            .ToListAsync())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var added = new List<int>();
+        var skipped = new List<int>();
+
+        foreach (var catalogueId in requestedIds)
+        {
+            if (!catalogueNames.TryGetValue(catalogueId, out var name) || existingNames.Contains(name))
+            {
+                skipped.Add(catalogueId);
+                continue;
+            }
+
+            var result = await QuestEndpoints.CopyQuestToGameAsync(catalogueId, gameId, db, http);
+            if (result is null)
+            {
+                skipped.Add(catalogueId);
+                continue;
+            }
+
+            added.Add(catalogueId);
+            existingNames.Add(name);
+        }
+
+        return TypedResults.Ok(new BulkAddQuestsResponse(added, skipped));
     }
 
     private static async Task<Ok<List<GameListDto>>> GetAll(WorldDbContext db)

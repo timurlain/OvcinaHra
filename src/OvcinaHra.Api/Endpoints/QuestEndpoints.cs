@@ -111,13 +111,21 @@ public static class QuestEndpoints
 
     private static async Task<Results<Created<QuestCopyResultDto>, NotFound>> CopyToGame(int id, int gameId, WorldDbContext db, HttpContext http)
     {
+        var result = await CopyQuestToGameAsync(id, gameId, db, http);
+        return result is null
+            ? TypedResults.NotFound()
+            : TypedResults.Created($"/api/quests/{result.Quest.Id}", result);
+    }
+
+    internal static async Task<QuestCopyResultDto?> CopyQuestToGameAsync(int id, int gameId, WorldDbContext db, HttpContext http)
+    {
         var source = await db.Quests
             .Include(q => q.QuestTags).ThenInclude(qt => qt.Tag)
             .Include(q => q.QuestLocations)
             .Include(q => q.QuestEncounters)
             .Include(q => q.QuestRewards).ThenInclude(qr => qr.Item)
             .FirstOrDefaultAsync(q => q.Id == id);
-        if (source is null) return TypedResults.NotFound();
+        if (source is null) return null;
 
         var warnings = new List<string>();
 
@@ -159,15 +167,14 @@ public static class QuestEndpoints
         await db.SaveChangesAsync();
 
         var thumb = string.IsNullOrWhiteSpace(copy.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "quests", copy.Id, "small");
-        return TypedResults.Created($"/api/quests/{copy.Id}",
-            new QuestCopyResultDto(
-                new QuestListDto(copy.Id, copy.Name, copy.QuestType, copy.ChainOrder, copy.ParentQuestId, copy.GameId,
-                    copy.State, copy.ImagePath, thumb,
-                    EncountersCount: source.QuestEncounters.Count,
-                    RewardsCount: source.QuestRewards.Count(r => targetItemIds.Contains(r.ItemId)),
-                    LocationsCount: source.QuestLocations.Count(l => targetLocationIds.Contains(l.LocationId)),
-                    TagsCount: source.QuestTags.Count),
-                warnings));
+        return new QuestCopyResultDto(
+            new QuestListDto(copy.Id, copy.Name, copy.QuestType, copy.ChainOrder, copy.ParentQuestId, copy.GameId,
+                copy.State, copy.ImagePath, thumb,
+                EncountersCount: source.QuestEncounters.Count,
+                RewardsCount: source.QuestRewards.Count(r => targetItemIds.Contains(r.ItemId)),
+                LocationsCount: source.QuestLocations.Count(l => targetLocationIds.Contains(l.LocationId)),
+                TagsCount: source.QuestTags.Count),
+            warnings);
     }
 
     private static async Task<Ok<List<QuestListDto>>> GetByGame(int gameId, WorldDbContext db, HttpContext http)
