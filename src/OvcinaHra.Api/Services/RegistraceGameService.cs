@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Net.Http.Json;
 using System.Text.Json;
 using OvcinaHra.Shared.Dtos;
 
@@ -29,17 +28,36 @@ public class RegistraceGameService(
     public async Task<IReadOnlyList<RegistraceGameDto>> GetAvailableAsync(CancellationToken ct = default)
     {
         const string endpoint = "/api/v1/games";
+        var url = $"{_baseUrl.TrimEnd('/')}{endpoint}";
+        var host = new Uri(url).Host;
         var request = new HttpRequestMessage(HttpMethod.Get,
-            $"{_baseUrl.TrimEnd('/')}{endpoint}");
+            url);
 
         if (!string.IsNullOrWhiteSpace(_apiKey))
             request.Headers.Add("X-Api-Key", _apiKey);
 
+        logger.LogInformation(
+            "[registrace] upstream request prepared endpoint={Endpoint} host={Host} hasApiKey={HasApiKey}",
+            endpoint,
+            host,
+            !string.IsNullOrWhiteSpace(_apiKey));
+
         using var response = await SendAsync(request, endpoint, ct);
         response.EnsureSuccessStatusCode();
 
-        var games = await response.Content.ReadFromJsonAsync<List<RegistraceGameDto>>(JsonOptions, ct);
-        return games ?? [];
+        var body = await response.Content.ReadAsStringAsync(ct);
+        logger.LogInformation(
+            "[registrace] upstream response body read endpoint={Endpoint} statusCode={StatusCode} bodyLen={BodyLength}",
+            endpoint,
+            (int)response.StatusCode,
+            body.Length);
+
+        var games = JsonSerializer.Deserialize<List<RegistraceGameDto>>(body, JsonOptions) ?? [];
+        logger.LogInformation(
+            "[registrace] upstream parsed {Count} games endpoint={Endpoint}",
+            games.Count,
+            endpoint);
+        return games;
     }
 
     private async Task<HttpResponseMessage> SendAsync(
@@ -56,13 +74,13 @@ public class RegistraceGameService(
             if (response.IsSuccessStatusCode)
             {
                 logger.LogInformation(
-                    "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}. StatusCode: {StatusCode}",
+                    "[registrace] upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}. StatusCode: {StatusCode}",
                     endpoint, sw.ElapsedMilliseconds, "success", response.StatusCode);
             }
             else
             {
                 logger.LogWarning(
-                    "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}. StatusCode: {StatusCode}",
+                    "[registrace] upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}. StatusCode: {StatusCode}",
                     endpoint, sw.ElapsedMilliseconds, "error", response.StatusCode);
             }
             return response;
@@ -71,7 +89,7 @@ public class RegistraceGameService(
         {
             logger.LogWarning(
                 ex,
-                "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}",
+                "[registrace] upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}",
                 endpoint, sw.ElapsedMilliseconds, "timeout");
             throw;
         }
@@ -79,15 +97,15 @@ public class RegistraceGameService(
         {
             logger.LogInformation(
                 ex,
-                "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}",
-                endpoint, sw.ElapsedMilliseconds, "error");
+                "[registrace] upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}",
+                endpoint, sw.ElapsedMilliseconds, "cancelled");
             throw;
         }
         catch (Exception ex)
         {
             logger.LogError(
                 ex,
-                "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}",
+                "[registrace] upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}",
                 endpoint, sw.ElapsedMilliseconds, "error");
             throw;
         }

@@ -94,6 +94,7 @@
         await base.SetParametersAsync(parameters);
         if (Visible && !_wasVisible)
         {
+            Console.WriteLine($"[registrace] popup opened gameId={GameId}");
             _selectedId = null;
             linkError = null;
             await LoadAsync();
@@ -103,21 +104,33 @@
 
     private async Task LoadAsync()
     {
+        var url = $"/api/games/registrace-available?localGameId={GameId}";
+        Console.WriteLine($"[registrace] fetching games for game {GameId}");
         loading = true;
         loadError = null;
         try
         {
-            var fetched = await Api.GetListAsync<RegistraceGameDto>("/api/games/registrace-available");
+            Console.WriteLine($"[registrace] calling Api.GetListAsync<RegistraceGameDto>('{url}')");
+            var fetched = await Api.GetListAsync<RegistraceGameDto>(url);
+            Console.WriteLine($"[registrace] response received, count={fetched.Count}");
+            Console.WriteLine($"[registrace] parsed {fetched.Count} games");
+
             _games = fetched
                 .OrderBy(g => g.StartsAtUtc)
                 .ToList();
+            Console.WriteLine($"[registrace] state updated, rendering grid count={_games.Count}");
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"[registrace] caught {ex.GetType().Name}: {ex.Message}");
             _games = new();
             loadError = $"Nepodařilo se načíst hry z registrace: {ex.Message}";
         }
-        finally { loading = false; }
+        finally
+        {
+            loading = false;
+            Console.WriteLine($"[registrace] state cleanup, loading={loading}");
+        }
     }
 
     private async Task LinkAsync()

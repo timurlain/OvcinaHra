@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -247,15 +249,40 @@ public static class GameEndpoints
     /// "registrace unreachable/unauthorized", and an internal 500.
     /// </summary>
     private static async Task<Results<Ok<List<RegistraceGameDto>>, ProblemHttpResult>> GetRegistraceAvailable(
-        RegistraceGameService registrace, WorldDbContext db, CancellationToken ct)
+        RegistraceGameService registrace,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct,
+        int? localGameId = null)
     {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.GameEndpoints");
+        var userId = http.User.FindFirstValue("sub")
+            ?? http.User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? "(unknown)";
+        logger.LogInformation(
+            "[registrace] proxy entry from userId={UserId} localGameId={LocalGameId}",
+            userId,
+            localGameId);
+
+        var sw = Stopwatch.StartNew();
         IReadOnlyList<RegistraceGameDto> upstream;
         try
         {
+            logger.LogInformation("[registrace] proxy calling RegistraceGameService.GetAvailableAsync");
             upstream = await registrace.GetAvailableAsync(ct);
+            logger.LogInformation(
+                "[registrace] proxy upstream returned {Count} games in {ElapsedMs}ms",
+                upstream.Count,
+                sw.ElapsedMilliseconds);
         }
-        catch (TaskCanceledException) when (!ct.IsCancellationRequested)
+        catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
         {
+            logger.LogWarning(
+                ex,
+                "[registrace] proxy upstream timeout after {ElapsedMs}ms localGameId={LocalGameId}",
+                sw.ElapsedMilliseconds,
+                localGameId);
             return TypedResults.Problem(
                 detail: RegistraceImportProblems.TimeoutDetail,
                 title: RegistraceImportProblems.TimeoutTitle,
@@ -263,10 +290,24 @@ public static class GameEndpoints
         }
         catch (HttpRequestException ex)
         {
+            logger.LogWarning(
+                ex,
+                "[registrace] proxy upstream HTTP exception after {ElapsedMs}ms localGameId={LocalGameId}",
+                sw.ElapsedMilliseconds,
+                localGameId);
             return TypedResults.Problem(
                 detail: ex.Message,
                 title: "Registrace nedostupná.",
                 statusCode: StatusCodes.Status502BadGateway);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "[registrace] proxy unexpected exception after {ElapsedMs}ms localGameId={LocalGameId}",
+                sw.ElapsedMilliseconds,
+                localGameId);
+            throw;
         }
 
         var alreadyLinked = await db.Games
@@ -275,6 +316,11 @@ public static class GameEndpoints
             .ToListAsync(ct);
         var linkedSet = alreadyLinked.ToHashSet();
         var filtered = upstream.Where(g => !linkedSet.Contains(g.Id)).ToList();
+        logger.LogInformation(
+            "[registrace] proxy filtered linkedCount={LinkedCount} returnedCount={ReturnedCount} localGameId={LocalGameId}",
+            linkedSet.Count,
+            filtered.Count,
+            localGameId);
         return TypedResults.Ok(filtered);
     }
 
