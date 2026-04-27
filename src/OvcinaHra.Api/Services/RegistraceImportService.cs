@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
@@ -47,9 +48,17 @@ public static class RegistraceImportProblems
     public const string NotFoundTitle = "Hra nenalezena.";
     public static string NotFoundDetail(int localGameId) =>
         $"Hra s ID {localGameId} v této instanci OvčinaHra neexistuje.";
+
+    public const string TimeoutTitle = "Registrační služba neodpovídá.";
+    public const string TimeoutDetail =
+        "Registrační služba neodpovídá v čase, zkuste to prosím za chvíli.";
 }
 
-public class RegistraceImportService(HttpClient httpClient, IConfiguration configuration, WorldDbContext db)
+public class RegistraceImportService(
+    HttpClient httpClient,
+    IConfiguration configuration,
+    WorldDbContext db,
+    ILogger<RegistraceImportService> logger)
 {
     private readonly string _baseUrl = configuration["IntegrationApi:BaseUrl"] ?? "https://registrace.ovcina.cz";
     private readonly string? _apiKey = configuration["IntegrationApi:ApiKey"];
@@ -65,7 +74,8 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
     /// The two exception types let endpoints return 400 vs 404 distinctly
     /// — pre-fixup the missing-game case was masquerading as not-linked.
     /// </summary>
-    private async Task<int> ResolveExternalGameIdAsync(int localGameId)
+    private async Task<int> ResolveExternalGameIdAsync(
+        int localGameId, CancellationToken ct = default)
     {
         // Fetch a wrapper struct so a null ExternalGameId on an existing
         // game doesn't collapse to the same "no row" sentinel. Without
@@ -74,7 +84,7 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
         var row = await db.Games
             .Where(g => g.Id == localGameId)
             .Select(g => new { g.ExternalGameId })
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync(ct);
         if (row is null)
             throw new GameNotFoundException(localGameId);
         if (row.ExternalGameId is null)
@@ -89,23 +99,22 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
     /// to (and should not) hand over a registrace id directly.
     /// Network/parse failures are folded into <c>ImportResultDto.Errors</c>
     /// — the original behavior the standalone "Importovat" button relies on.
-    /// Catches <see cref="HttpRequestException"/>, <see cref="TaskCanceledException"/>
-    /// (timeouts), and <see cref="System.Text.Json.JsonException"/> (malformed
-    /// upstream payload) so the button surfaces a Czech error rather than a 500.
+    /// Catches <see cref="HttpRequestException"/> and
+    /// <see cref="System.Text.Json.JsonException"/> (malformed upstream payload)
+    /// so the button surfaces a Czech error rather than a 500.
+    /// <see cref="TaskCanceledException"/> is intentionally left for endpoints
+    /// to translate into 504 Gateway Timeout.
     /// </summary>
-    public async Task<ImportResultDto> ImportAsync(int localGameId)
+    public async Task<ImportResultDto> ImportAsync(
+        int localGameId, CancellationToken ct = default)
     {
         try
         {
-            return await ImportOrThrowAsync(localGameId);
+            return await ImportOrThrowAsync(localGameId, ct);
         }
         catch (HttpRequestException ex)
         {
             return new ImportResultDto(0, 0, 0, [$"Failed to fetch from registrace: {ex.Message}"]);
-        }
-        catch (TaskCanceledException ex)
-        {
-            return new ImportResultDto(0, 0, 0, [$"Timed out while fetching from registrace: {ex.Message}"]);
         }
         catch (JsonException ex)
         {
@@ -121,20 +130,21 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
     /// without it we'd commit an empty database after silently swallowing
     /// the fetch failure.
     /// </summary>
-    public async Task<ImportResultDto> ImportOrThrowAsync(int localGameId)
+    public async Task<ImportResultDto> ImportOrThrowAsync(
+        int localGameId, CancellationToken ct = default)
     {
-        var externalGameId = await ResolveExternalGameIdAsync(localGameId);
+        var externalGameId = await ResolveExternalGameIdAsync(localGameId, ct);
         var created = 0;
         var updated = 0;
         var skipped = 0;
         var errors = new List<string>();
 
-        var records = await FetchCharactersAsync(externalGameId);
+        var records = await FetchCharactersAsync(externalGameId, ct);
 
         // Kingdom-name → id lookup, loaded once per import. Names from registrace
         // are matched case-insensitively against the Kingdom lookup table.
         var kingdomByName = await db.Kingdoms
-            .ToDictionaryAsync(k => k.Name, k => k.Id, StringComparer.OrdinalIgnoreCase);
+            .ToDictionaryAsync(k => k.Name, k => k.Id, StringComparer.OrdinalIgnoreCase, ct);
 
         foreach (var record in records)
         {
@@ -143,7 +153,7 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
                 // Look up Character by ExternalPersonId (including deleted)
                 var character = await db.Characters
                     .IgnoreQueryFilters()
-                    .FirstOrDefaultAsync(c => c.ExternalPersonId == record.PersonId);
+                    .FirstOrDefaultAsync(c => c.ExternalPersonId == record.PersonId, ct);
 
                 if (character is null)
                 {
@@ -188,7 +198,7 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
                 // local id and registrace id ever diverge. Now resolved
                 // separately at the top of ImportAsync.
                 var assignment = await db.CharacterAssignments
-                    .FirstOrDefaultAsync(a => a.GameId == localGameId && a.ExternalPersonId == record.PersonId);
+                    .FirstOrDefaultAsync(a => a.GameId == localGameId && a.ExternalPersonId == record.PersonId, ct);
 
                 PlayerClass? playerClass = null;
                 if (!string.IsNullOrWhiteSpace(record.ClassOrType))
@@ -226,7 +236,7 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
                     updated++;
                 }
 
-                await db.SaveChangesAsync();
+                await db.SaveChangesAsync(ct);
             }
             catch (Exception ex)
             {
@@ -238,18 +248,20 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
         return new ImportResultDto(created, updated, skipped, errors);
     }
 
-    private async Task<List<RegistraceCharacterRecord>> FetchCharactersAsync(int externalGameId)
+    private async Task<List<RegistraceCharacterRecord>> FetchCharactersAsync(
+        int externalGameId, CancellationToken ct = default)
     {
+        var endpoint = $"/api/v1/games/{externalGameId}/characters";
         var request = new HttpRequestMessage(HttpMethod.Get,
-            $"{_baseUrl.TrimEnd('/')}/api/v1/games/{externalGameId}/characters");
+            $"{_baseUrl.TrimEnd('/')}{endpoint}");
 
         if (!string.IsNullOrWhiteSpace(_apiKey))
             request.Headers.Add("X-Api-Key", _apiKey);
 
-        var response = await httpClient.SendAsync(request);
+        using var response = await SendAsync(request, endpoint, ct);
         response.EnsureSuccessStatusCode();
 
-        var json = await response.Content.ReadAsStringAsync();
+        var json = await response.Content.ReadAsStringAsync(ct);
         return JsonSerializer.Deserialize<List<RegistraceCharacterRecord>>(json,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
     }
@@ -261,22 +273,75 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
     /// <c>Game.ExternalGameId</c> internally — see <see cref="ImportAsync"/>
     /// for the same #191 contract.
     /// </summary>
-    public async Task<List<RegistraceAdultDto>> FetchAdultsAsync(int localGameId)
+    public async Task<List<RegistraceAdultDto>> FetchAdultsAsync(
+        int localGameId, CancellationToken ct = default)
     {
-        var externalGameId = await ResolveExternalGameIdAsync(localGameId);
+        var externalGameId = await ResolveExternalGameIdAsync(localGameId, ct);
 
+        var endpoint = $"/api/v1/games/{externalGameId}/adults";
         var request = new HttpRequestMessage(HttpMethod.Get,
-            $"{_baseUrl.TrimEnd('/')}/api/v1/games/{externalGameId}/adults");
+            $"{_baseUrl.TrimEnd('/')}{endpoint}");
 
         if (!string.IsNullOrWhiteSpace(_apiKey))
             request.Headers.Add("X-Api-Key", _apiKey);
 
-        var response = await httpClient.SendAsync(request);
+        using var response = await SendAsync(request, endpoint, ct);
         response.EnsureSuccessStatusCode();
 
-        var json = await response.Content.ReadAsStringAsync();
+        var json = await response.Content.ReadAsStringAsync(ct);
         return JsonSerializer.Deserialize<List<RegistraceAdultDto>>(json,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+    }
+
+    private async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, string endpoint, CancellationToken ct)
+    {
+        using var scope = logger.BeginScope(new Dictionary<string, object?>
+        {
+            ["Endpoint"] = endpoint
+        });
+        var sw = Stopwatch.StartNew();
+        try
+        {
+            var response = await httpClient.SendAsync(request, ct);
+            if (response.IsSuccessStatusCode)
+            {
+                logger.LogInformation(
+                    "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}. StatusCode: {StatusCode}",
+                    endpoint, sw.ElapsedMilliseconds, "success", response.StatusCode);
+            }
+            else
+            {
+                logger.LogWarning(
+                    "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}. StatusCode: {StatusCode}",
+                    endpoint, sw.ElapsedMilliseconds, "error", response.StatusCode);
+            }
+            return response;
+        }
+        catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            logger.LogWarning(
+                ex,
+                "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}",
+                endpoint, sw.ElapsedMilliseconds, "timeout");
+            throw;
+        }
+        catch (TaskCanceledException ex) when (ct.IsCancellationRequested)
+        {
+            logger.LogInformation(
+                ex,
+                "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}",
+                endpoint, sw.ElapsedMilliseconds, "error");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}",
+                endpoint, sw.ElapsedMilliseconds, "error");
+            throw;
+        }
     }
 
     private sealed record RegistraceCharacterRecord(

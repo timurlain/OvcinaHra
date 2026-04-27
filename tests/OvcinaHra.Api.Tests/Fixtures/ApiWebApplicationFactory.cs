@@ -12,10 +12,14 @@ namespace OvcinaHra.Api.Tests.Fixtures;
 public class ApiWebApplicationFactory : WebApplicationFactory<Program>
 {
     private readonly string _connectionString;
+    private readonly Action<IServiceCollection>? _configureServices;
 
-    public ApiWebApplicationFactory(string connectionString)
+    public ApiWebApplicationFactory(
+        string connectionString,
+        Action<IServiceCollection>? configureServices = null)
     {
         _connectionString = connectionString;
+        _configureServices = configureServices;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -64,6 +68,8 @@ public class ApiWebApplicationFactory : WebApplicationFactory<Program>
                 d => d.ImplementationType == typeof(ThumbnailBackfillHostedService));
             if (hostedDescriptor != null)
                 services.Remove(hostedDescriptor);
+
+            _configureServices?.Invoke(services);
         });
     }
 }

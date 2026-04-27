@@ -241,9 +241,10 @@ public static class GameEndpoints
     /// <summary>
     /// Issue #3 — returns the registrace games available for linking.
     /// Filters out games already linked locally so the picker only shows
-    /// candidates the organizer can actually pick. Wraps upstream
-    /// failures in a 502 so callers can distinguish "registrace
-    /// unreachable/unauthorized" from an internal 500.
+    /// candidates the organizer can actually pick. Wraps upstream timeouts
+    /// in a 504 ProblemDetails and other upstream failures in a 502
+    /// ProblemDetails so callers can distinguish "registrace timed out",
+    /// "registrace unreachable/unauthorized", and an internal 500.
     /// </summary>
     private static async Task<Results<Ok<List<RegistraceGameDto>>, ProblemHttpResult>> GetRegistraceAvailable(
         RegistraceGameService registrace, WorldDbContext db, CancellationToken ct)
@@ -252,6 +253,13 @@ public static class GameEndpoints
         try
         {
             upstream = await registrace.GetAvailableAsync(ct);
+        }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return TypedResults.Problem(
+                detail: RegistraceImportProblems.TimeoutDetail,
+                title: RegistraceImportProblems.TimeoutTitle,
+                statusCode: StatusCodes.Status504GatewayTimeout);
         }
         catch (HttpRequestException ex)
         {
