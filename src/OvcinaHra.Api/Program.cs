@@ -122,19 +122,27 @@ try
     // here. Browsers can't fake the Origin header across machines, so the
     // localhost branch is safe — it can only be exercised from the user's own
     // machine.
+    //
+    // Hardening (2026-04-27, Issue #244 follow-up): the well-known Ovčina
+    // ecosystem origins are ALWAYS unioned on top of whatever Cors:Origins
+    // config provides. Previously the config's array (set by Container Apps
+    // env vars Cors__Origins__N) fully replaced the code-default fallback,
+    // so an env-var redeploy that forgot e.g. https://glejt.ovcina.cz silently
+    // broke that client even though the code default still listed it. Config
+    // can now ADD origins (preview hostnames, future SPAs) but can never
+    // accidentally SUBTRACT an ecosystem one.
     builder.Services.AddCors(options =>
     {
         var configuredOrigins =
             builder.Configuration.GetSection("Cors:Origins").Get<string[]>()
-            ?? [
-                "https://localhost:5290",
-                "http://localhost:5290",
-                "https://glejt.ovcina.cz",
-                "https://localhost:5193"
-            ];
+            ?? [];
+        // Built once at startup as a case-insensitive HashSet — the
+        // SetIsOriginAllowed delegate below runs on every request that
+        // carries an Origin header, so O(1) lookup matters.
+        var effectiveOrigins = OvcinaCorsPolicy.BuildEffectiveOrigins(configuredOrigins);
         options.AddPolicy("BlazorClient", policy => policy
             .SetIsOriginAllowed(origin =>
-                configuredOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase)
+                effectiveOrigins.Contains(origin)
                 || IsLocalhostOrigin(origin))
             .AllowAnyHeader()
             .AllowAnyMethod());
