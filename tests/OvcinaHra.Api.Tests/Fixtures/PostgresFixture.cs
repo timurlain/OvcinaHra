@@ -79,15 +79,46 @@ public class PostgresFixture : IAsyncLifetime
             WafGate.Release();
         }
 
+        await AuthenticateAsync(Client);
+    }
+
+    public async Task<(ApiWebApplicationFactory Factory, HttpClient Client)> CreateClientAsync(
+        Action<IServiceCollection> configureServices)
+    {
+        await WafGate.WaitAsync();
+        ApiWebApplicationFactory? factory = null;
+        HttpClient? client = null;
+        try
+        {
+            factory = new ApiWebApplicationFactory(ConnectionString, configureServices);
+            client = factory.CreateClient();
+            await AuthenticateAsync(client);
+            return (factory, client);
+        }
+        catch
+        {
+            client?.Dispose();
+            if (factory is not null)
+                await factory.DisposeAsync();
+            throw;
+        }
+        finally
+        {
+            WafGate.Release();
+        }
+    }
+
+    private static async Task AuthenticateAsync(HttpClient client)
+    {
         // Authenticate once per class — the dev-token is good for the
         // whole class lifetime, no need to re-auth per test.
-        var tokenResponse = await Client.PostAsJsonAsync("/api/auth/dev-token",
+        var tokenResponse = await client.PostAsJsonAsync("/api/auth/dev-token",
             new DevTokenRequest("test-user", "test@ovcina.cz", "Test Organizátor"));
         tokenResponse.EnsureSuccessStatusCode();
         var token = await tokenResponse.Content.ReadFromJsonAsync<TokenResponse>()
             ?? throw new InvalidOperationException(
                 "Dev-token endpoint returned an empty body — test fixture cannot authenticate.");
-        Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
     }
 
     public async Task DisposeAsync()

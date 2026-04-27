@@ -1,16 +1,18 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using OvcinaHra.Api.Services;
 using OvcinaHra.Api.Tests.Fixtures;
 using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Tests.Endpoints;
 
 // Issue #3 — POST/DELETE /api/games/{id}/link contract.
-// Codifies the round-trip + the new UNIQUE INDEX 409 path. The matching
-// /api/games/registrace-available endpoint is a thin proxy over the
-// registrace integration API; covering it here would require mocking
-// HttpClient — out of scope, that path is integration-tested by hand.
+// Codifies the round-trip, UNIQUE INDEX 409 path, and the timeout guard for
+// the matching /api/games/registrace-available proxy.
 public class GameLinkEndpointTests(PostgresFixture postgres)
     : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
@@ -20,6 +22,38 @@ public class GameLinkEndpointTests(PostgresFixture postgres)
             new CreateGameDto(name, 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<GameDetailDto>())!;
+    }
+
+    [Fact]
+    public async Task RegistraceAvailable_UpstreamTimeout_ReturnsGatewayTimeoutWithinConfiguredTimeout()
+    {
+        var (timeoutFactory, timeoutClient) = await Postgres.CreateClientAsync(services =>
+        {
+            services.RemoveAll<RegistraceGameService>();
+            services.AddHttpClient<RegistraceGameService>(client =>
+                client.Timeout = TimeSpan.FromSeconds(15))
+                .ConfigurePrimaryHttpMessageHandler(() =>
+                    new SlowHttpMessageHandler(TimeSpan.FromSeconds(30)));
+        });
+
+        await using (timeoutFactory)
+        using (timeoutClient)
+        {
+            var sw = Stopwatch.StartNew();
+            var response = await timeoutClient.GetAsync("/api/games/registrace-available");
+            sw.Stop();
+
+            Assert.Equal(HttpStatusCode.GatewayTimeout, response.StatusCode);
+            Assert.True(
+                sw.Elapsed < TimeSpan.FromSeconds(20),
+                $"Expected the 15s registrace timeout, got {sw.Elapsed.TotalSeconds:F1}s.");
+
+            var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+            Assert.NotNull(problem);
+            Assert.Equal((int)HttpStatusCode.GatewayTimeout, problem.Status);
+            Assert.Equal(RegistraceImportProblems.TimeoutTitle, problem.Title);
+            Assert.Equal(RegistraceImportProblems.TimeoutDetail, problem.Detail);
+        }
     }
 
     [Fact]
@@ -130,4 +164,5 @@ public class GameLinkEndpointTests(PostgresFixture postgres)
             new LinkGameDto(77));
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
+
 }
