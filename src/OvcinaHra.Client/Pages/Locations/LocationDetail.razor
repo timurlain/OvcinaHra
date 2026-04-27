@@ -60,9 +60,18 @@ else
                     <button class="btn btn-secondary" @onclick='() => SwitchTab("upravit")'>
                         <i class="bi bi-pencil me-1"></i> Upravit
                     </button>
-                    <button class="btn oh-btn-ghost-bordeaux" @onclick="() => isDeleteVisible = true">
-                        <i class="bi bi-trash me-1"></i> Smazat
-                    </button>
+                    @if (IsGameScoped)
+                    {
+                        <button class="btn oh-btn-ghost-bordeaux" @onclick="() => isRemoveFromGameVisible = true">
+                            <i class="bi bi-bookmark-dash me-1"></i> Odebrat z této hry
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="btn oh-btn-ghost-bordeaux" @onclick="() => isDeleteVisible = true">
+                            <i class="bi bi-trash me-1"></i> Smazat
+                        </button>
+                    }
                 }
             </div>
         </div>
@@ -77,13 +86,20 @@ else
             <button class="oh-lc-tab @(activeTab == "lore" ? "active" : "")" @onclick='() => SwitchTab("lore")'>
                 <i class="bi bi-book"></i> Lore
             </button>
-            <button class="oh-lc-tab @(activeTab == "skryse" ? "active" : "")" @onclick='() => SwitchTab("skryse")'>
-                <i class="bi bi-safe"></i> Skrýše
-                @if ((loc.Stashes?.Count ?? 0) > 0)
-                {
+            @if (HasStashes)
+            {
+                <button class="oh-lc-tab @(activeTab == "skryse" ? "active" : "")" @onclick='() => SwitchTab("skryse")'>
+                    <i class="bi bi-safe"></i> Skrýše
                     <span class="oh-lc-count">@loc.Stashes!.Count</span>
-                }
-            </button>
+                </button>
+            }
+            @if (HasQuests)
+            {
+                <button class="oh-lc-tab @(activeTab == "questy" ? "active" : "")" @onclick='() => SwitchTab("questy")'>
+                    <i class="bi bi-journal-text"></i> Questy
+                    <span class="oh-lc-count">@locationQuests.Count</span>
+                </button>
+            }
         </div>
 
         @if (error is not null)
@@ -112,6 +128,28 @@ else
                         <div class="oh-lc-empty-title">Tato lokace ještě čeká na popis</div>
                         <div class="oh-lc-empty-copy">Napiš první popis a nahraj obrázek na záložce <strong>Upravit</strong>.</div>
                     </div>
+                    @if (parent is not null || variants.Count > 0)
+                    {
+                        <div class="oh-lc-card-variants">
+                            @if (parent is not null)
+                            {
+                                <span class="oh-lc-vlbl">Rodičovská lokace:</span>
+                                <NavLink class="oh-lc-vchip" href="@($"/locations/{parent.Id}")">
+                                    <i class="bi bi-arrow-up-short"></i> @parent.Name
+                                </NavLink>
+                            }
+                            @if (variants.Count > 0)
+                            {
+                                <span class="oh-lc-vlbl">Podřízené lokace:</span>
+                            }
+                            @foreach (var v in variants)
+                            {
+                                <NavLink class="oh-lc-vchip" href="@($"/locations/{v.Id}")">
+                                    <i class="bi bi-arrow-right-short"></i> @v.Name
+                                </NavLink>
+                            }
+                        </div>
+                    }
                 </div>
             }
             else
@@ -154,15 +192,25 @@ else
                         </div>
                     }
 
-                    @if (variants.Count > 0)
+                    @if (parent is not null || variants.Count > 0)
                     {
                         <div class="oh-lc-card-variants">
-                            <span class="oh-lc-vlbl">Varianty (@variants.Count):</span>
+                            @if (parent is not null)
+                            {
+                                <span class="oh-lc-vlbl">Rodičovská lokace:</span>
+                                <NavLink class="oh-lc-vchip" href="@($"/locations/{parent.Id}")">
+                                    <i class="bi bi-arrow-up-short"></i> @parent.Name
+                                </NavLink>
+                            }
+                            @if (variants.Count > 0)
+                            {
+                                <span class="oh-lc-vlbl">Podřízené lokace:</span>
+                            }
                             @foreach (var v in variants)
                             {
-                                <a class="oh-lc-vchip" href="/locations/@v.Id">
+                                <NavLink class="oh-lc-vchip" href="@($"/locations/{v.Id}")">
                                     <i class="bi bi-arrow-right-short"></i> @v.Name
-                                </a>
+                                </NavLink>
                             }
                         </div>
                     }
@@ -189,7 +237,8 @@ else
                     </DxFormLayoutItem>
                     <DxFormLayoutItem Caption="Rodič" ColSpanMd="6">
                         <DxComboBox TData="LocationListDto" TValue="int?"
-                                    Data="@parentCandidates" @bind-Value="@parentLocationId"
+                                    Data="@parentCandidates" Value="@parentLocationId"
+                                    ValueChanged="@OnParentLocationChanged"
                                     TextFieldName="Name" ValueFieldName="Id"
                                     NullText="(žádný)" SearchMode="ListSearchMode.AutoSearch" />
                     </DxFormLayoutItem>
@@ -215,10 +264,14 @@ else
                 <div class="oh-lc-sect-label"><i class="bi bi-geo-alt"></i> Mapa a vizuál</div>
                 <div class="oh-lc-mv-gps">
                     <label>Lat</label>
-                    <DxTextBox @bind-Text="@latitudeStr" NullText="49,4543192" CssClass="oh-lc-mv-gps-input" />
+                    <DxTextBox @bind-Text="@latitudeStr" NullText="49,4543192" CssClass="oh-lc-mv-gps-input" ReadOnly="@parentLocationId.HasValue" />
                     <label>Lon</label>
-                    <DxTextBox @bind-Text="@longitudeStr" NullText="18,0203280" CssClass="oh-lc-mv-gps-input" />
+                    <DxTextBox @bind-Text="@longitudeStr" NullText="18,0203280" CssClass="oh-lc-mv-gps-input" ReadOnly="@parentLocationId.HasValue" />
                 </div>
+                @if (parentLocationId.HasValue)
+                {
+                    <div class="text-muted small mt-1">Zděděno z rodiče: @InheritedCoordinatesText</div>
+                }
                 <div class="oh-lc-mv-row">
                     <div class="oh-lc-mv-col oh-lc-mv-map-col">
                         @if (HasGps)
@@ -310,7 +363,7 @@ else
         }
 
         @* ── Tab: Skrýše (MTG tiles) ── *@
-        @if (activeTab == "skryse")
+        @if (activeTab == "skryse" && HasStashes)
         {
             <div class="oh-lc-stash-head">
                 <h3>
@@ -323,22 +376,37 @@ else
                 </a>
             </div>
 
-            @if ((loc.Stashes?.Count ?? 0) == 0)
-            {
-                <div class="oh-lc-card-empty">
-                    <div class="oh-lc-empty-title">Žádné skrýše zatím nejsou přiřazené</div>
-                    <div class="oh-lc-empty-copy">Přiřaď skrýš k této lokaci přes stránku <strong>Tajné skrýše</strong>.</div>
-                </div>
-            }
-            else
-            {
-                <div class="oh-lc-stash-grid">
-                    @foreach (var stash in loc.Stashes!)
-                    {
-                        <LocationStashTile @key="stash.Id" Stash="stash" />
-                    }
-                </div>
-            }
+            <div class="oh-lc-stash-grid">
+                @foreach (var stash in loc.Stashes!)
+                {
+                    <LocationStashTile @key="stash.Id" Stash="stash" />
+                }
+            </div>
+        }
+
+        @* ── Tab: Questy ── *@
+        @if (activeTab == "questy" && HasQuests)
+        {
+            <div class="oh-lc-stash-head">
+                <h3>
+                    <i class="bi bi-journal-text"></i>
+                    Questy v této lokaci
+                    <span class="oh-lc-stash-count">(@locationQuests.Count)</span>
+                </h3>
+                <a class="btn btn-outline-secondary" href="/quests">
+                    <i class="bi bi-plus-lg me-1"></i> Spravovat questy
+                </a>
+            </div>
+
+            <div class="oh-lc-card-variants">
+                @foreach (var quest in locationQuests)
+                {
+                    <NavLink class="oh-lc-vchip" href="@($"/quests/{quest.Id}")">
+                        <i class="bi bi-journal-text"></i> @quest.Name
+                        <span class="text-muted">(@quest.QuestTypeDisplay)</span>
+                    </NavLink>
+                }
+            </div>
         }
     </div>
 }
@@ -354,6 +422,22 @@ else
     </BodyContentTemplate>
 </DxPopup>
 
+<DxPopup @bind-Visible="@isRemoveFromGameVisible" HeaderText="Odebrat lokaci z této hry?" Width="420px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Opravdu chcete odebrat lokaci <strong>@loc?.Name</strong> z této hry? Lokace zůstane v katalogu.</p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isRemoveFromGameVisible = false" disabled="@isSaving">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmRemoveFromGameAsync" disabled="@isSaving">
+                @if (isSaving)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                Odebrat
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
 @code {
     [Parameter] public int Id { get; set; }
 
@@ -361,13 +445,15 @@ else
     private LocationListDto? parent;
     private List<LocationListDto> variants = [];
     private List<LocationListDto> parentCandidates = [];
+    private List<LocationQuestSummaryDto> locationQuests = [];
     // Cached so the mini-map can paint surrounding orientation pins (issue #74)
     // without re-fetching the catalog on every render.
     private List<LocationListDto> allLocations = [];
     private string? mainImageUrl;
 
     private string activeTab = "karta";
-    private bool loading = true, isSaving, isDeleteVisible;
+    private bool loading = true, isSaving, isDeleteVisible, isRemoveFromGameVisible;
+    private bool isInSelectedGame;
     private string? error;
 
     // Form state (duplicate of loc for edit mode)
@@ -401,6 +487,19 @@ else
     private string? lastMiniMapElementId;
 
     private bool HasGps => ParseGps(out _, out _);
+    private bool HasStashes => (loc?.Stashes?.Count ?? 0) > 0;
+    private bool HasQuests => locationQuests.Count > 0;
+    private bool IsGameScoped => GameContext.SelectedGameId.HasValue && isInSelectedGame;
+    private string InheritedCoordinatesText
+    {
+        get
+        {
+            var coords = GetEffectiveCoordinates(parentLocationId);
+            return coords is null
+                ? "rodič nemá GPS"
+                : $"{coords.Value.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}, {coords.Value.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+        }
+    }
 
     private bool ParseGps(out decimal lat, out decimal lon)
     {
@@ -422,6 +521,8 @@ else
     private async Task LoadAsync()
     {
         loading = true; error = null;
+        isInSelectedGame = false;
+        locationQuests = [];
         try
         {
             var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{Id}");
@@ -445,6 +546,7 @@ else
                     var inGame = gameList.FirstOrDefault(l => l.Id == Id);
                     if (inGame is not null)
                     {
+                        isInSelectedGame = true;
                         stashes = inGame.Stashes;
                         quests = inGame.Quests;
                         locationTreasureQuests = inGame.LocationTreasureQuests;
@@ -463,6 +565,15 @@ else
 
             PopulateFormFromDto(detail);
 
+            try
+            {
+                var query = GameContext.SelectedGameId.HasValue
+                    ? $"?gameId={GameContext.SelectedGameId.Value}"
+                    : "";
+                locationQuests = await Api.GetListAsync<LocationQuestSummaryDto>($"/api/locations/{Id}/quests{query}");
+            }
+            catch { locationQuests = []; }
+
             // Parent + variants (and cached for the mini-map orientation pins, issue #74).
             allLocations = await Api.GetListAsync<LocationListDto>("/api/locations");
             parentCandidates = allLocations.Where(l => l.Id != Id).ToList();
@@ -470,6 +581,8 @@ else
                 ? allLocations.FirstOrDefault(l => l.Id == detail.ParentLocationId.Value)
                 : null;
             variants = allLocations.Where(l => l.ParentLocationId == Id).ToList();
+            RefreshInheritedCoordinates();
+            NormalizeActiveTab();
 
             // Main image (ImagePicker has its own fetch, but we also render img on Karta)
             try
@@ -500,7 +613,57 @@ else
         loreText = d.Description;
     }
 
-    private void SwitchTab(string tab) => activeTab = tab;
+    private void SwitchTab(string tab)
+    {
+        if (tab == "skryse" && !HasStashes) return;
+        if (tab == "questy" && !HasQuests) return;
+        activeTab = tab;
+    }
+
+    private void NormalizeActiveTab()
+    {
+        if (activeTab == "skryse" && !HasStashes) activeTab = "karta";
+        if (activeTab == "questy" && !HasQuests) activeTab = "karta";
+    }
+
+    private void OnParentLocationChanged(int? value)
+    {
+        parentLocationId = value;
+        if (parentLocationId.HasValue)
+        {
+            RefreshInheritedCoordinates();
+            return;
+        }
+
+        latitudeStr = loc?.Latitude?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "";
+        longitudeStr = loc?.Longitude?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "";
+    }
+
+    private void RefreshInheritedCoordinates()
+    {
+        if (!parentLocationId.HasValue) return;
+        var coords = GetEffectiveCoordinates(parentLocationId);
+        if (coords is { } c)
+        {
+            latitudeStr = c.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            longitudeStr = c.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+        else
+        {
+            latitudeStr = "";
+            longitudeStr = "";
+        }
+    }
+
+    private (decimal Latitude, decimal Longitude)? GetEffectiveCoordinates(int? locationId, int depth = 0)
+    {
+        if (locationId is null || depth > 3) return null;
+        var location = allLocations.FirstOrDefault(l => l.Id == locationId.Value);
+        if (location is null) return null;
+        if (location.Latitude.HasValue && location.Longitude.HasValue)
+            return (location.Latitude.Value, location.Longitude.Value);
+        return GetEffectiveCoordinates(location.ParentLocationId, depth + 1);
+    }
 
     private async Task SaveAsync()
     {
@@ -533,12 +696,15 @@ else
     private UpdateLocationDto BuildUpdateDto()
     {
         decimal? lat = null, lon = null;
-        if (decimal.TryParse(latitudeStr?.Replace(',', '.'), System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out var la))
-            lat = la;
-        if (decimal.TryParse(longitudeStr?.Replace(',', '.'), System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out var lo))
-            lon = lo;
+        if (!parentLocationId.HasValue)
+        {
+            if (decimal.TryParse(latitudeStr?.Replace(',', '.'), System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var la))
+                lat = la;
+            if (decimal.TryParse(longitudeStr?.Replace(',', '.'), System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var lo))
+                lon = lo;
+        }
 
         return new UpdateLocationDto(
             Name: name,
@@ -571,6 +737,29 @@ else
             Nav.NavigateTo("/locations");
         }
         catch (Exception ex) { error = ex.Message; isDeleteVisible = false; }
+    }
+
+    private async Task ConfirmRemoveFromGameAsync()
+    {
+        if (!GameContext.SelectedGameId.HasValue || isSaving) return;
+
+        error = null;
+        isSaving = true;
+        try
+        {
+            var (ok, problem) = await Api.DeleteWithProblemAsync(
+                $"/api/games/{GameContext.SelectedGameId.Value}/locations/{Id}");
+            if (!ok)
+            {
+                error = problem ?? "Odebrání lokace z této hry se nezdařilo.";
+                return;
+            }
+
+            isRemoveFromGameVisible = false;
+            Nav.NavigateTo("/locations");
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
     }
 
     private void OpenFullMap() => Nav.NavigateTo($"/map?focus={Id}");
