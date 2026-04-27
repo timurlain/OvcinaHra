@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
+using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Ciphers;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
@@ -17,6 +18,8 @@ public static class LocationCipherEndpoints
         var group = routes.MapGroup("/api/location-ciphers").WithTags("LocationCiphers");
 
         group.MapGet("/{gameId:int}/{locationId:int}", GetByLocation);
+        group.MapGet("/{gameId:int}/{locationId:int}/pdf", DownloadLocationPdf);
+        group.MapGet("/{gameId:int}/{locationId:int}/{skillSlug}/pdf", DownloadSinglePdf);
         group.MapPut("/{gameId:int}/{locationId:int}/{skillSlug}", Upsert);
         group.MapDelete("/{gameId:int}/{locationId:int}/{skillSlug}", Delete);
 
@@ -58,6 +61,64 @@ public static class LocationCipherEndpoints
             .ToList();
 
         return TypedResults.Ok(slots);
+    }
+
+    private static async Task<Results<FileContentHttpResult, NotFound, BadRequest<ProblemDetails>>> DownloadSinglePdf(
+        int gameId, int locationId, string skillSlug, WorldDbContext db, ICipherPdfRenderer renderer)
+    {
+        if (!CipherSkillKeyExtensions.TryParseSlug(skillSlug, out var skillKey))
+            return TypedResults.BadRequest(ValidationProblem($"Neznámá šifrovací dovednost '{skillSlug}'."));
+
+        var cipher = await db.LocationCiphers
+            .Where(c => c.GameId == gameId && c.LocationId == locationId && c.SkillKey == skillKey)
+            .Select(c => new
+            {
+                c.MessageNormalized,
+                LocationName = c.Location.Name
+            })
+            .FirstOrDefaultAsync();
+        if (cipher is null)
+            return TypedResults.NotFound();
+
+        var pdf = renderer.RenderSingle(new CipherPdfCard(cipher.LocationName, skillKey, cipher.MessageNormalized));
+        return TypedResults.File(
+            pdf,
+            contentType: "application/pdf",
+            fileDownloadName: $"ovcina-sifra-{locationId}-{skillKey.GetSlug()}.pdf");
+    }
+
+    private static async Task<Results<FileContentHttpResult, NotFound, BadRequest<ProblemDetails>>> DownloadLocationPdf(
+        int gameId, int locationId, WorldDbContext db, ICipherPdfRenderer renderer)
+    {
+        var locationName = await db.GameLocations
+            .Where(gl => gl.GameId == gameId && gl.LocationId == locationId)
+            .Select(gl => gl.Location.Name)
+            .FirstOrDefaultAsync();
+        if (locationName is null)
+            return TypedResults.NotFound();
+
+        var ciphers = await db.LocationCiphers
+            .Where(c => c.GameId == gameId && c.LocationId == locationId)
+            .Select(c => new
+            {
+                c.SkillKey,
+                c.MessageNormalized
+            })
+            .ToListAsync();
+        if (ciphers.Count == 0)
+            return TypedResults.BadRequest(ValidationProblem("V této lokaci zatím není žádná šifra k exportu."));
+
+        var bySkill = ciphers.ToDictionary(c => c.SkillKey);
+        var cards = CipherSkillKeyExtensions.All
+            .Where(bySkill.ContainsKey)
+            .Select(skill => new CipherPdfCard(locationName, skill, bySkill[skill].MessageNormalized))
+            .ToList();
+        var pdf = renderer.RenderLocation(cards);
+
+        return TypedResults.File(
+            pdf,
+            contentType: "application/pdf",
+            fileDownloadName: $"ovcina-sifry-{locationId}.pdf");
     }
 
     private static async Task<Results<NoContent, NotFound, BadRequest<ProblemDetails>>> Upsert(

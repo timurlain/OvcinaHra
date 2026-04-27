@@ -27,4 +27,8 @@
     <ProjectReference Include="..\OvcinaHra.Shared\OvcinaHra.Shared.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="Ciphers\Overlays\*.svg" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
