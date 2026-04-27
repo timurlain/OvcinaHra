@@ -1,0 +1,228 @@
+@inject ApiClient Api
+@inject IJSRuntime Js
+
+@if (_enabled)
+{
+    <button type="button"
+            class="oh-bot-fab @PersonaClass"
+            title="Zeptat se Drozda"
+            aria-label="Zeptat se Drozda"
+            @onclick="Open">
+        <i class="bi bi-chat-dots-fill" aria-hidden="true"></i>
+    </button>
+
+    @if (_open)
+    {
+        <div class="oh-bot-backdrop" @onclick="Close"></div>
+        <section class="oh-bot-drawer @PersonaClass" aria-label="Zeptat se Drozda">
+            <header class="oh-bot-header">
+                <div>
+                    <h2>Zeptat se Drozda</h2>
+                    <div class="oh-bot-personas" role="tablist" aria-label="Drozdova odbornost">
+                        <button type="button"
+                                class="@PersonaButtonClass("rulemaster")"
+                                role="tab"
+                                aria-selected="@(_persona == "rulemaster")"
+                                @onclick='() => SetPersonaAsync("rulemaster")'>
+                            Pravidla
+                        </button>
+                        <button type="button"
+                                class="@PersonaButtonClass("loremaster")"
+                                role="tab"
+                                aria-selected="@(_persona == "loremaster")"
+                                @onclick='() => SetPersonaAsync("loremaster")'>
+                            Lore
+                        </button>
+                    </div>
+                </div>
+                <button type="button"
+                        class="oh-bot-icon-button"
+                        title="Zavřít"
+                        aria-label="Zavřít"
+                        @onclick="Close">
+                    <i class="bi bi-x-lg" aria-hidden="true"></i>
+                </button>
+            </header>
+
+            <div class="oh-bot-messages" aria-live="polite">
+                @if (_messages.Count == 0)
+                {
+                    <div class="oh-bot-empty">Zeptej se Drozda…</div>
+                }
+
+                @foreach (var message in _messages)
+                {
+                    <div class="oh-bot-message @(message.FromUser ? "oh-bot-message--user" : "oh-bot-message--drozd") @PersonaClassFor(message.Persona)">
+                        <div class="oh-bot-message-body">
+                            @if (message.FromUser)
+                            {
+                                @message.Text
+                            }
+                            else
+                            {
+                                <MarkdownRenderer Text="@message.Text" />
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (_sending)
+                {
+                    <div class="oh-bot-message oh-bot-message--drozd @PersonaClass">
+                        <div class="oh-bot-message-body oh-bot-thinking">Drozd přemýšlí…</div>
+                    </div>
+                }
+            </div>
+
+            <footer class="oh-bot-input">
+                <textarea @bind="_draft"
+                          @bind:event="oninput"
+                          disabled="@_sending"
+                          rows="3"
+                          maxlength="4000"
+                          placeholder="Zeptej se Drozda…"
+                          aria-label="Zeptej se Drozda…"></textarea>
+                <button type="button"
+                        class="oh-bot-send"
+                        disabled="@(!CanSend)"
+                        @onclick="SendAsync">
+                    <i class="bi bi-send-fill" aria-hidden="true"></i>
+                    <span>Odeslat</span>
+                </button>
+            </footer>
+        </section>
+    }
+}
+
+@code {
+    private const string PersonaStorageKey = "oh-bot-last-persona";
+    private const string Rulemaster = "rulemaster";
+    private const string Loremaster = "loremaster";
+
+    private readonly List<BotMessage> _messages = [];
+    private bool _enabled;
+    private bool _open;
+    private bool _sending;
+    private string _persona = Loremaster;
+    private string _draft = string.Empty;
+
+    private bool CanSend => !_sending && !string.IsNullOrWhiteSpace(_draft);
+    private string PersonaClass => PersonaClassFor(_persona);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        await LoadAvailabilityAsync();
+        await LoadPersonaAsync();
+        StateHasChanged();
+    }
+
+    private async Task LoadAvailabilityAsync()
+    {
+        try
+        {
+            var availability = await Api.GetAsync<ConsultAvailabilityDto>("/api/consult/available");
+            _enabled = availability?.Enabled == true;
+        }
+        catch (HttpRequestException)
+        {
+            _enabled = false;
+        }
+        catch (InvalidOperationException)
+        {
+            _enabled = false;
+        }
+    }
+
+    private async Task LoadPersonaAsync()
+    {
+        try
+        {
+            var stored = await Js.InvokeAsync<string?>("localStorage.getItem", PersonaStorageKey);
+            if (IsPersona(stored))
+                _persona = stored!;
+        }
+        catch (JSException)
+        {
+            _persona = Loremaster;
+        }
+        catch (InvalidOperationException)
+        {
+            _persona = Loremaster;
+        }
+    }
+
+    private void Open() => _open = true;
+
+    private void Close() => _open = false;
+
+    private async Task SetPersonaAsync(string persona)
+    {
+        if (!IsPersona(persona))
+            return;
+
+        _persona = persona;
+
+        try
+        {
+            await Js.InvokeVoidAsync("localStorage.setItem", PersonaStorageKey, persona);
+        }
+        catch (JSException)
+        {
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
+
+    private async Task SendAsync()
+    {
+        if (!CanSend)
+            return;
+
+        var persona = _persona;
+        var text = _draft.Trim();
+        _draft = string.Empty;
+        _messages.Add(new BotMessage(true, text, persona));
+        _sending = true;
+
+        try
+        {
+            var result = await Api.PostWithProblemAsync<ConsultRequestDto, ConsultAnswerDto>(
+                $"/api/consult/{persona}",
+                new ConsultRequestDto(text));
+
+            var answer = result.Ok && result.Value is not null
+                ? result.Value.Answer
+                : "Drozd se teď neozval. Zkus to prosím znovu.";
+            _messages.Add(new BotMessage(false, answer, persona));
+        }
+        catch (HttpRequestException)
+        {
+            _messages.Add(new BotMessage(false, "Drozd se teď neozval. Zkus to prosím znovu.", persona));
+        }
+        catch (InvalidOperationException)
+        {
+            _messages.Add(new BotMessage(false, "Drozd se teď neozval. Zkus to prosím znovu.", persona));
+        }
+        finally
+        {
+            _sending = false;
+        }
+    }
+
+    private static string PersonaClassFor(string persona)
+        => persona == Rulemaster ? "oh-bot--rulemaster" : "oh-bot--loremaster";
+
+    private string PersonaButtonClass(string persona)
+        => _persona == persona
+            ? $"oh-bot-persona is-active {PersonaClassFor(persona)}"
+            : $"oh-bot-persona {PersonaClassFor(persona)}";
+
+    private static bool IsPersona(string? persona)
+        => persona is Rulemaster or Loremaster;
+
+    private sealed record BotMessage(bool FromUser, string Text, string Persona);
+}

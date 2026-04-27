@@ -1,0 +1,265 @@
+.oh-bot-fab {
+    position: fixed;
+    right: 1.25rem;
+    bottom: 1.25rem;
+    z-index: 1050;
+    width: 3.5rem;
+    height: 3.5rem;
+    border: 0;
+    border-radius: 50%;
+    background: var(--oh-primary);
+    color: var(--oh-header-text);
+    box-shadow: 0 0.4rem 1rem rgba(44, 24, 16, 0.28);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.35rem;
+    transition: transform var(--oh-transition), box-shadow var(--oh-transition);
+}
+
+.oh-bot-fab:hover,
+.oh-bot-fab:focus-visible {
+    transform: translateY(-1px);
+    box-shadow: 0 0.55rem 1.35rem rgba(44, 24, 16, 0.34);
+}
+
+.oh-bot-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1051;
+    background: rgba(44, 24, 16, 0.28);
+}
+
+.oh-bot-drawer {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 1052;
+    width: min(420px, calc(100vw - 2rem));
+    height: min(720px, calc(100vh - 2rem));
+    border: 1px solid var(--oh-border);
+    border-radius: var(--oh-radius);
+    background: var(--oh-surface);
+    color: var(--oh-text);
+    box-shadow: 0 0.75rem 2rem rgba(44, 24, 16, 0.28);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.oh-bot-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: var(--oh-primary);
+    color: var(--oh-header-text);
+}
+
+.oh-bot-header h2 {
+    margin: 0 0 0.75rem;
+    font-family: var(--oh-font-heading);
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: 0;
+}
+
+.oh-bot-icon-button {
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid rgba(255, 248, 240, 0.34);
+    border-radius: 50%;
+    background: rgba(255, 248, 240, 0.12);
+    color: var(--oh-header-text);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.oh-bot-personas {
+    display: inline-flex;
+    padding: 0.2rem;
+    border: 1px solid rgba(255, 248, 240, 0.28);
+    border-radius: var(--oh-radius-sm);
+    background: rgba(255, 248, 240, 0.12);
+    gap: 0.15rem;
+}
+
+.oh-bot-persona {
+    border: 0;
+    border-radius: var(--oh-radius-sm);
+    background: transparent;
+    color: var(--oh-header-text);
+    padding: 0.35rem 0.65rem;
+    font-size: 0.875rem;
+}
+
+.oh-bot-persona.is-active {
+    background: var(--oh-surface);
+    color: var(--oh-text);
+    box-shadow: 0 1px 4px rgba(44, 24, 16, 0.18);
+}
+
+.oh-bot-messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    background: var(--oh-surface-alt);
+}
+
+.oh-bot-empty {
+    margin: auto;
+    color: var(--oh-text-secondary);
+    font-style: italic;
+}
+
+.oh-bot-message {
+    display: flex;
+}
+
+.oh-bot-message--user {
+    justify-content: flex-end;
+}
+
+.oh-bot-message--drozd {
+    justify-content: flex-start;
+}
+
+.oh-bot-message-body {
+    max-width: min(86%, 33rem);
+    border-radius: var(--oh-radius);
+    padding: 0.65rem 0.75rem;
+    background: var(--oh-surface);
+    border: 1px solid var(--oh-border);
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+
+.oh-bot-message--user .oh-bot-message-body {
+    background: var(--oh-primary);
+    border-color: var(--oh-primary);
+    color: var(--oh-header-text);
+}
+
+.oh-bot-message--drozd .oh-bot-message-body {
+    border-left: 4px solid var(--oh-primary);
+}
+
+.oh-bot-message--drozd.oh-bot--loremaster .oh-bot-message-body {
+    border-left-color: var(--oh-color-forest-deep, var(--oh-color-aradhryand, var(--oh-primary)));
+}
+
+.oh-bot-message--drozd.oh-bot--rulemaster .oh-bot-message-body {
+    border-left-color: var(--oh-color-azanulinbar, var(--oh-stage-endgame));
+}
+
+.oh-bot-thinking {
+    color: var(--oh-text-secondary);
+    font-style: italic;
+}
+
+.oh-bot-input {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.75rem;
+    padding: 0.9rem 1rem 1rem;
+    border-top: 1px solid var(--oh-border);
+    background: var(--oh-surface);
+}
+
+.oh-bot-input textarea {
+    width: 100%;
+    min-width: 0;
+    resize: none;
+    border: 1px solid var(--oh-border);
+    border-radius: var(--oh-radius-sm);
+    padding: 0.55rem 0.65rem;
+    color: var(--oh-text);
+    background: #fff;
+    font-family: var(--oh-font-body);
+}
+
+.oh-bot-input textarea:focus {
+    outline: none;
+    border-color: var(--oh-primary-light);
+    box-shadow: 0 0 0 0.15rem rgba(74, 124, 52, 0.18);
+}
+
+.oh-bot-send {
+    align-self: end;
+    min-height: 2.5rem;
+    border: 0;
+    border-radius: var(--oh-radius-sm);
+    padding: 0 0.9rem;
+    background: var(--oh-primary);
+    color: var(--oh-header-text);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-weight: 600;
+}
+
+.oh-bot-send:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.oh-bot-markdown :first-child {
+    margin-top: 0;
+}
+
+.oh-bot-markdown :last-child {
+    margin-bottom: 0;
+}
+
+.oh-bot-markdown p,
+.oh-bot-markdown ul,
+.oh-bot-markdown ol {
+    margin-bottom: 0.6rem;
+}
+
+.oh-bot-markdown code {
+    font-family: var(--oh-font-mono);
+    background: rgba(44, 24, 16, 0.08);
+    border-radius: var(--oh-radius-sm);
+    padding: 0.1rem 0.25rem;
+}
+
+.oh-bot--loremaster.oh-bot-fab,
+.oh-bot--loremaster.oh-bot-drawer .oh-bot-header {
+    background: var(--oh-color-forest-deep, var(--oh-color-aradhryand, var(--oh-primary)));
+}
+
+.oh-bot--rulemaster.oh-bot-fab,
+.oh-bot--rulemaster.oh-bot-drawer .oh-bot-header {
+    background: var(--oh-color-azanulinbar, var(--oh-stage-endgame));
+}
+
+@media (max-width: 767.98px) {
+    .oh-bot-drawer {
+        inset: 0;
+        width: 100vw;
+        height: 100dvh;
+        max-height: none;
+        border-radius: 0;
+        border: 0;
+    }
+
+    .oh-bot-fab {
+        right: 1rem;
+        bottom: 1rem;
+    }
+
+    .oh-bot-input {
+        grid-template-columns: 1fr;
+    }
+
+    .oh-bot-send {
+        justify-content: center;
+    }
+}

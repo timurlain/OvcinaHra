@@ -1,0 +1,16 @@
+@using Markdig
+
+<div class="oh-bot-markdown">
+    @((MarkupString)Html)
+</div>
+
+@code {
+    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
+        .UseAdvancedExtensions()
+        .DisableHtml()
+        .Build();
+
+    [Parameter] public string? Text { get; set; }
+
+    private string Html => Markdown.ToHtml(Text ?? string.Empty, Pipeline);
+}
