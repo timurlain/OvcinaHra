@@ -7,6 +7,7 @@ using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Domain.ValueObjects;
 using OvcinaHra.Shared.Dtos;
 using OvcinaHra.Shared.Extensions;
+using OvcinaHra.Shared.Utils;
 
 namespace OvcinaHra.Api.Endpoints;
 
@@ -268,7 +269,7 @@ public static class ItemEndpoints
             ItemId = dto.ItemId,
             Price = dto.Price,
             StockCount = dto.StockCount,
-            IsSold = dto.Price is > 0,
+            IsSold = PriceRules.DeriveIsSold(dto.Price),
             SaleCondition = dto.SaleCondition,
             IsFindable = dto.IsFindable
         };
@@ -312,7 +313,7 @@ public static class ItemEndpoints
 
         gi.Price = dto.Price;
         gi.StockCount = dto.StockCount;
-        gi.IsSold = dto.Price is > 0;
+        gi.IsSold = PriceRules.DeriveIsSold(dto.Price);
         gi.SaleCondition = string.IsNullOrWhiteSpace(saleCondition) ? null : saleCondition;
         gi.IsFindable = dto.IsFindable;
 
