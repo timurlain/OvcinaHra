@@ -28,6 +28,7 @@ public static class ConsultEndpoints
         ConsultRequestDto request,
         ClaimsPrincipal user,
         IBotConsultClient bot,
+        ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
         if (!bot.IsEnabled)
@@ -69,9 +70,10 @@ public static class ConsultEndpoints
         }
         catch (BotConsultUpstreamException ex)
         {
+            LogUpstreamFailure(loggerFactory, persona, ex);
             return Results.Problem(
                 title: "Drozd se teď neozval",
-                detail: ex.Detail,
+                detail: "Drozd právě nemůže odpovědět, zkuste to prosím za chvíli.",
                 statusCode: StatusCodes.Status502BadGateway);
         }
     }
@@ -80,6 +82,7 @@ public static class ConsultEndpoints
         string persona,
         ClaimsPrincipal user,
         IBotConsultClient bot,
+        ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
         if (!bot.IsEnabled)
@@ -107,11 +110,26 @@ public static class ConsultEndpoints
         }
         catch (BotConsultUpstreamException ex)
         {
+            LogUpstreamFailure(loggerFactory, persona, ex);
             return Results.Problem(
                 title: "Drozd se teď neozval",
-                detail: ex.Detail,
+                detail: "Reset historie selhal, zkuste to prosím za chvíli.",
                 statusCode: StatusCodes.Status502BadGateway);
         }
+    }
+
+    private static void LogUpstreamFailure(
+        ILoggerFactory loggerFactory,
+        string persona,
+        BotConsultUpstreamException exception)
+    {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.ConsultEndpoints");
+        logger.LogWarning(
+            exception,
+            "Bot consult upstream failure for {Persona}: {StatusCode}. UpstreamDetail={UpstreamDetail}",
+            persona,
+            exception.UpstreamStatusCode,
+            exception.Detail);
     }
 
     private static string? GetUserEmail(ClaimsPrincipal user)
