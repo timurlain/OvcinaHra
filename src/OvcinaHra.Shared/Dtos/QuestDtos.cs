@@ -106,4 +106,6 @@ public record QuestCatalogDto(
     public string QuestTypeDisplay => QuestType.GetDisplayName();
 }
 public record QuestCopyResultDto(QuestListDto Quest, List<string> Warnings);
+public record BulkAddQuestsRequest(IReadOnlyList<int> QuestCatalogueIds);
+public record BulkAddQuestsResponse(IReadOnlyList<int> Added, IReadOnlyList<int> Skipped);
 public record MoveQuestToGameDto(int GameId);

@@ -59,6 +59,13 @@ public class QuestCopyTests(PostgresFixture postgres) : IntegrationTestBase(post
         return (await response.Content.ReadFromJsonAsync<QuestDetailDto>())!;
     }
 
+    private async Task<QuestListDto> CreateCatalogQuestAsync(string name, QuestType type = QuestType.General)
+    {
+        var response = await Client.PostAsJsonAsync("/api/quests",
+            new CreateQuestDto(name, type, GameId: null));
+        return (await response.Content.ReadFromJsonAsync<QuestListDto>())!;
+    }
+
     [Fact]
     public async Task CopyQuest_CopiesBasicFields()
     {
@@ -238,5 +245,30 @@ public class QuestCopyTests(PostgresFixture postgres) : IntegrationTestBase(post
         Assert.NotNull(copy);
         Assert.Null(copy.ChainOrder);
         Assert.Null(copy.ParentQuestId);
+    }
+
+    [Fact]
+    public async Task BulkAddQuests_CopiesCatalogQuestsAndSkipsExistingNames()
+    {
+        var game = await CreateGameAsync("Bulk game");
+        var first = await CreateCatalogQuestAsync("Katalogový quest", QuestType.General);
+        var second = await CreateCatalogQuestAsync("Druhý katalogový quest", QuestType.Timed);
+
+        await Client.PostAsJsonAsync("/api/quests",
+            new CreateQuestDto("Katalogový quest", QuestType.General, game.Id));
+
+        var response = await Client.PostAsJsonAsync($"/api/games/{game.Id}/quests/bulk",
+            new BulkAddQuestsRequest([first.Id, second.Id]));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<BulkAddQuestsResponse>();
+        Assert.NotNull(result);
+        Assert.Contains(second.Id, result.Added);
+        Assert.Contains(first.Id, result.Skipped);
+
+        var gameQuests = await Client.GetFromJsonAsync<List<QuestListDto>>($"/api/quests/by-game/{game.Id}");
+        Assert.NotNull(gameQuests);
+        Assert.Contains(gameQuests, q => q.Name == "Druhý katalogový quest");
+        Assert.Single(gameQuests, q => q.Name == "Katalogový quest");
     }
 }

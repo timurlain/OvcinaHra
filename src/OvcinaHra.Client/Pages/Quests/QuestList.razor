@@ -16,7 +16,7 @@
            flag. *@
         <div class="oh-segmented" role="tablist" aria-label="Režim">
             <button type="button" class="oh-segmented-btn oh-segmented-btn--on"
-                    aria-selected="true">Šablony katalogu</button>
+                    aria-selected="true">Katalog</button>
             <button type="button" class="oh-segmented-btn"
                     @onclick="NavigateToGameGrid"
                     aria-selected="false">Pro tuto hru</button>
@@ -48,6 +48,12 @@
 <div class="oh-qst-filters mb-3">
     <DxTextBox Text="@searchText" TextChanged="@((string v) => searchText = v)"
                NullText="Hledat (název, popis)…" CssClass="oh-qst-filter-search" />
+    <DxTagBox Data="@questTypeValues" Values="@selectedQuestTypes"
+              ValuesChanged="@((IEnumerable<QuestType> values) => OnQuestTypesChanged(values))"
+              TextFieldName="Display" ValueFieldName="Value"
+              NullText="Všechny typy"
+              SearchMode="ListSearchMode.AutoSearch"
+              style="min-width:220px" />
     <label class="oh-qst-filter-toggle">
         <input type="checkbox" @bind="onlyWithImage" />
         <span>jen s obrázkem</span>
@@ -218,6 +224,7 @@ else
 
     private string view = "galerie"; // galerie | seznam — persisted in localStorage
     private string searchText = "";
+    private List<QuestType> selectedQuestTypes = [];
     private bool onlyWithImage;
     private bool onlyWithRewards;
 
@@ -241,6 +248,7 @@ else
                 || q.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase)
                 || (q.Description?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false)
                 || (q.FullText?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false))
+            && (selectedQuestTypes.Count == 0 || selectedQuestTypes.Contains(q.QuestType))
             && (!onlyWithImage || !string.IsNullOrEmpty(q.ImageUrl))
             // "jen s odměnami" must accept scalar-only rewards (XP/groše/notes)
             // even when there are no item rewards — RewardSummary is non-null
@@ -289,6 +297,9 @@ else
         Nav.NavigateTo($"/games/{gameId.Value}/quests");
     }
 
+    private void OnQuestTypesChanged(IEnumerable<QuestType> values) =>
+        selectedQuestTypes = values.ToList();
+
     private void OpenPeek(QuestCatalogDto q)
     {
         peekItem = q;
@@ -331,6 +342,7 @@ else
     private void ClearFilters()
     {
         searchText = "";
+        selectedQuestTypes = [];
         onlyWithImage = false;
         onlyWithRewards = false;
     }
