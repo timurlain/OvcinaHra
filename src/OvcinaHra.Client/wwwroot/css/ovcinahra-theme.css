@@ -3312,6 +3312,14 @@
 .oh-home-act-body{display:flex;flex-direction:column;min-width:0;flex:1}
 .oh-home-act-name{font-weight:600;text-overflow:ellipsis;overflow:hidden;white-space:nowrap}
 .oh-home-act-skel{align-items:center}
+.oh-home-bottom-row > .oh-home-qlaunch:only-child{grid-column:1/-1}
+.oh-home-recent-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.oh-home-live-chip{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;
+    background:rgba(45,80,22,.1);color:#2D5016;font:700 .7rem var(--oh-font-body);text-transform:uppercase}
+.oh-home-event-row{min-height:56px}
+.oh-home-event-icon{background:rgba(45,80,22,.08)}
+.oh-home-event-icon i{color:#2D5016}
+.oh-home-drozd-card--event{box-shadow:0 18px 42px rgba(20,16,8,.28)}
 
 /* Quick launch tiles */
 .oh-home-qlaunch-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}

@@ -11,13 +11,19 @@ namespace OvcinaHra.Api.Endpoints;
 
 public static class ScanEndpoints
 {
+    private const string IdempotencyHeader = "X-Idempotency-Key";
+    private const int MaxIdempotencyKeyLength = 200;
+
     public static RouteGroupBuilder MapScanEndpoints(this IEndpointRouteBuilder routes)
     {
         var group = routes.MapGroup("/api/scan").WithTags("Scan").RequireAuthorization();
 
         group.MapGet("/{personId:int}", GetCharacterProfile);
         group.MapPost("/{personId:int}/events", PostEvent);
+        group.MapDelete("/{personId:int}/events/last-levelup", DeleteLastLevelUp);
         group.MapGet("/{personId:int}/events", GetRecentEvents);
+        group.MapGet("/{personId:int}/treasure-quests/pending", GetPendingTreasureQuests);
+        group.MapPost("/{personId:int}/treasure-quests/{questId:int}/verify", VerifyTreasureQuest);
 
         return group;
     }
@@ -77,7 +83,7 @@ public static class ScanEndpoints
             currentLevel, totalXp, skills, recentEvents));
     }
 
-    private static async Task<Results<Created<CharacterEventDto>, NotFound, BadRequest<string>>> PostEvent(
+    private static async Task<IResult> PostEvent(
         int personId, CreateCharacterEventDto dto, WorldDbContext db, HttpContext httpContext)
     {
         var assignment = await db.CharacterAssignments
@@ -87,9 +93,13 @@ public static class ScanEndpoints
 
         if (assignment is null) return TypedResults.NotFound();
 
-        var user = httpContext.User;
-        var organizerUserId = user.FindFirstValue("sub") ?? user.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
-        var organizerName = user.FindFirstValue("name") ?? user.FindFirstValue(ClaimTypes.Name) ?? "Unknown";
+        var idempotencyKey = GetIdempotencyKey(httpContext);
+        if (await TryGetIdempotentEventAsync(db, assignment.Id, idempotencyKey) is { } replay)
+            return TypedResults.Ok(replay);
+        if (!IsValidIdempotencyKey(idempotencyKey))
+            return SaveFailed("Hlavička X-Idempotency-Key je příliš dlouhá.");
+
+        var organizer = GetOrganizer(httpContext);
 
         string eventData = dto.Data;
 
@@ -125,18 +135,65 @@ public static class ScanEndpoints
         {
             CharacterAssignmentId = assignment.Id,
             Timestamp = DateTime.UtcNow,
-            OrganizerUserId = organizerUserId,
-            OrganizerName = organizerName,
+            OrganizerUserId = organizer.UserId,
+            OrganizerName = organizer.Name,
             EventType = dto.EventType,
             Data = eventData,
             Location = dto.Location
         };
 
         db.CharacterEvents.Add(ev);
+        TrackIdempotency(db, assignment.Id, idempotencyKey, ev);
         await db.SaveChangesAsync();
 
-        var result = new CharacterEventDto(ev.Id, ev.EventType, ev.Data, ev.Location, ev.OrganizerName, ev.Timestamp);
-        return TypedResults.Created($"/api/scan/{personId}/events/{ev.Id}", result);
+        return TypedResults.Created($"/api/scan/{personId}/events/{ev.Id}", ToDto(ev));
+    }
+
+    private static async Task<IResult> DeleteLastLevelUp(
+        int personId, WorldDbContext db, HttpContext httpContext)
+    {
+        var assignment = await db.CharacterAssignments
+            .Include(a => a.Events)
+            .FirstOrDefaultAsync(a => a.ExternalPersonId == personId && a.IsActive);
+
+        if (assignment is null) return TypedResults.NotFound();
+
+        var idempotencyKey = GetIdempotencyKey(httpContext);
+        if (await TryGetIdempotentEventAsync(db, assignment.Id, idempotencyKey) is { } replay)
+            return TypedResults.Ok(replay);
+
+        var levelUp = assignment.Events
+            .Where(e => e.EventType == CharacterEventType.LevelUp)
+            .OrderByDescending(e => e.Timestamp)
+            .ThenByDescending(e => e.Id)
+            .FirstOrDefault();
+
+        if (levelUp is null) return TypedResults.NotFound();
+        if (!IsValidIdempotencyKey(idempotencyKey))
+            return SaveFailed("Hlavička X-Idempotency-Key je příliš dlouhá.");
+
+        var organizer = GetOrganizer(httpContext);
+        var audit = new CharacterEvent
+        {
+            CharacterAssignmentId = assignment.Id,
+            Timestamp = DateTime.UtcNow,
+            OrganizerUserId = organizer.UserId,
+            OrganizerName = organizer.Name,
+            EventType = CharacterEventType.LevelUpReverted,
+            Data = JsonSerializer.Serialize(new
+            {
+                revertedEventId = levelUp.Id,
+                revertedLevel = ExtractLevel(levelUp.Data)
+            }),
+            Location = levelUp.Location
+        };
+
+        db.CharacterEvents.Remove(levelUp);
+        db.CharacterEvents.Add(audit);
+        TrackIdempotency(db, assignment.Id, idempotencyKey, audit);
+        await db.SaveChangesAsync();
+
+        return TypedResults.Ok(ToDto(audit));
     }
 
     private static async Task<Results<Ok<List<CharacterEventDto>>, NotFound>> GetRecentEvents(
@@ -155,5 +212,207 @@ public static class ScanEndpoints
             .ToListAsync();
 
         return TypedResults.Ok(events);
+    }
+
+    private static async Task<Results<Ok<List<PendingTreasureQuestDto>>, NotFound>> GetPendingTreasureQuests(
+        int personId, WorldDbContext db)
+    {
+        var assignment = await db.CharacterAssignments
+            .FirstOrDefaultAsync(a => a.ExternalPersonId == personId && a.IsActive);
+
+        if (assignment is null) return TypedResults.NotFound();
+
+        var quests = await db.TreasureQuests
+            .Where(t => t.GameId == assignment.GameId && t.SecretStashId != null)
+            .Where(t => !db.TreasureQuestVerifications.Any(v =>
+                v.TreasureQuestId == t.Id && v.CharacterAssignmentId == assignment.Id))
+            .OrderBy(t => t.Title)
+            .Select(t => new PendingTreasureQuestDto(
+                t.Id,
+                t.Title,
+                t.SecretStashId!.Value,
+                t.SecretStash!.Name,
+                db.GameSecretStashes
+                    .Where(gs => gs.GameId == assignment.GameId && gs.SecretStashId == t.SecretStashId)
+                    .Select(gs => (int?)gs.LocationId)
+                    .FirstOrDefault(),
+                db.GameSecretStashes
+                    .Where(gs => gs.GameId == assignment.GameId && gs.SecretStashId == t.SecretStashId)
+                    .Select(gs => gs.Location.Name)
+                    .FirstOrDefault(),
+                null,
+                null))
+            .ToListAsync();
+
+        return TypedResults.Ok(quests);
+    }
+
+    private static async Task<IResult> VerifyTreasureQuest(
+        int personId, int questId, VerifyTreasureQuestDto dto, WorldDbContext db, HttpContext httpContext)
+    {
+        var assignment = await db.CharacterAssignments
+            .FirstOrDefaultAsync(a => a.ExternalPersonId == personId && a.IsActive);
+
+        if (assignment is null) return TypedResults.NotFound();
+
+        var idempotencyKey = GetIdempotencyKey(httpContext);
+        if (await TryGetIdempotentEventAsync(db, assignment.Id, idempotencyKey) is { } replay)
+            return TypedResults.Ok(replay);
+
+        var quest = await db.TreasureQuests
+            .Include(t => t.SecretStash)
+            .Include(t => t.TreasureItems)
+            .ThenInclude(ti => ti.Item)
+            .FirstOrDefaultAsync(t => t.Id == questId
+                && t.GameId == assignment.GameId
+                && t.SecretStashId != null);
+
+        if (quest is null) return TypedResults.NotFound();
+
+        var alreadyVerified = await db.TreasureQuestVerifications.AnyAsync(v =>
+            v.TreasureQuestId == quest.Id && v.CharacterAssignmentId == assignment.Id);
+        if (alreadyVerified) return TypedResults.NotFound();
+        if (!IsValidIdempotencyKey(idempotencyKey))
+            return SaveFailed("Hlavička X-Idempotency-Key je příliš dlouhá.");
+
+        var reason = string.IsNullOrWhiteSpace(dto.Reason) ? null : dto.Reason.Trim();
+        if (dto.Override && reason is null)
+        {
+            return SaveFailed("Při ručním přepsání musíš uvést důvod.");
+        }
+
+        if (dto.StashId != quest.SecretStashId!.Value && !dto.Override)
+        {
+            return SaveFailed("Razítko neodpovídá očekávané skrýši.");
+        }
+
+        var organizer = GetOrganizer(httpContext);
+        var rewards = quest.TreasureItems
+            .OrderBy(ti => ti.Item.Name)
+            .Select(ti => new { itemId = ti.ItemId, itemName = ti.Item.Name, count = ti.Count })
+            .ToList();
+        var now = DateTime.UtcNow;
+        var ev = new CharacterEvent
+        {
+            CharacterAssignmentId = assignment.Id,
+            Timestamp = now,
+            OrganizerUserId = organizer.UserId,
+            OrganizerName = organizer.Name,
+            EventType = CharacterEventType.TreasureQuestStampVerified,
+            Data = JsonSerializer.Serialize(new
+            {
+                questId = quest.Id,
+                questName = quest.Title,
+                expectedStashId = quest.SecretStashId.Value,
+                expectedStashName = quest.SecretStash!.Name,
+                stashId = dto.StashId,
+                matchConfidence = dto.MatchConfidence,
+                @override = dto.Override,
+                reason,
+                rewards
+            }),
+            Location = quest.SecretStash.Name
+        };
+
+        db.CharacterEvents.Add(ev);
+        db.TreasureQuestVerifications.Add(new TreasureQuestVerification
+        {
+            TreasureQuestId = quest.Id,
+            CharacterAssignmentId = assignment.Id,
+            CharacterEventId = ev.Id,
+            Event = ev,
+            VerifiedStashId = dto.StashId,
+            MatchConfidence = dto.MatchConfidence,
+            Override = dto.Override,
+            Reason = reason,
+            VerifiedAtUtc = now,
+            OrganizerUserId = organizer.UserId,
+            OrganizerName = organizer.Name
+        });
+        TrackIdempotency(db, assignment.Id, idempotencyKey, ev);
+        await db.SaveChangesAsync();
+
+        return TypedResults.Created($"/api/scan/{personId}/events/{ev.Id}", ToDto(ev));
+    }
+
+    private static CharacterEventDto ToDto(CharacterEvent ev) =>
+        new(ev.Id, ev.EventType, ev.Data, ev.Location, ev.OrganizerName, ev.Timestamp);
+
+    private static string? GetIdempotencyKey(HttpContext httpContext)
+    {
+        if (!httpContext.Request.Headers.TryGetValue(IdempotencyHeader, out var values))
+            return null;
+
+        var key = values.FirstOrDefault();
+        return string.IsNullOrWhiteSpace(key) ? null : key.Trim();
+    }
+
+    private static bool IsValidIdempotencyKey(string? key) =>
+        key is null || key.Length <= MaxIdempotencyKeyLength;
+
+    private static async Task<CharacterEventDto?> TryGetIdempotentEventAsync(
+        WorldDbContext db,
+        int assignmentId,
+        string? key)
+    {
+        if (key is null) return null;
+
+        return await db.EventIdempotencies
+            .Where(e => e.CharacterAssignmentId == assignmentId && e.IdempotencyKey == key)
+            .Select(e => new CharacterEventDto(
+                e.Event.Id,
+                e.Event.EventType,
+                e.Event.Data,
+                e.Event.Location,
+                e.Event.OrganizerName,
+                e.Event.Timestamp))
+            .FirstOrDefaultAsync();
+    }
+
+    private static void TrackIdempotency(
+        WorldDbContext db,
+        int assignmentId,
+        string? key,
+        CharacterEvent ev)
+    {
+        if (key is null) return;
+
+        db.EventIdempotencies.Add(new EventIdempotency
+        {
+            CharacterAssignmentId = assignmentId,
+            IdempotencyKey = key,
+            EventId = ev.Id,
+            Event = ev,
+            CreatedAtUtc = DateTime.UtcNow
+        });
+    }
+
+    private static IResult SaveFailed(string detail) =>
+        TypedResults.Problem(
+            title: "Uložení selhalo",
+            detail: detail,
+            statusCode: StatusCodes.Status400BadRequest);
+
+    private static int? ExtractLevel(string data)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(data);
+            return doc.RootElement.TryGetProperty("level", out var level) && level.TryGetInt32(out var value)
+                ? value
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static (string UserId, string Name) GetOrganizer(HttpContext httpContext)
+    {
+        var user = httpContext.User;
+        return (
+            user.FindFirstValue("sub") ?? user.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown",
+            user.FindFirstValue("name") ?? user.FindFirstValue(ClaimTypes.Name) ?? "Unknown");
     }
 }

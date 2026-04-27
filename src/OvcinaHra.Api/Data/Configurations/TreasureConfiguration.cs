@@ -55,3 +55,31 @@ public class TreasureItemConfiguration : IEntityTypeConfiguration<TreasureItem>
         builder.HasIndex(e => new { e.GameId, e.TreasureQuestId });
     }
 }
+
+public class TreasureQuestVerificationConfiguration : IEntityTypeConfiguration<TreasureQuestVerification>
+{
+    public void Configure(EntityTypeBuilder<TreasureQuestVerification> builder)
+    {
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.OrganizerUserId).IsRequired().HasMaxLength(200);
+        builder.Property(e => e.OrganizerName).IsRequired().HasMaxLength(200);
+        builder.Property(e => e.Reason).HasMaxLength(500);
+
+        builder.HasOne(e => e.TreasureQuest)
+            .WithMany()
+            .HasForeignKey(e => e.TreasureQuestId);
+        builder.HasOne(e => e.Assignment)
+            .WithMany()
+            .HasForeignKey(e => e.CharacterAssignmentId);
+        builder.HasOne(e => e.Event)
+            .WithMany()
+            .HasForeignKey(e => e.CharacterEventId);
+        builder.HasOne(e => e.VerifiedStash)
+            .WithMany()
+            .HasForeignKey(e => e.VerifiedStashId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(e => new { e.TreasureQuestId, e.CharacterAssignmentId }).IsUnique();
+        builder.HasIndex(e => e.CharacterAssignmentId);
+    }
+}

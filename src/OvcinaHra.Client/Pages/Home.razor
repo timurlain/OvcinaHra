@@ -52,8 +52,10 @@
                 }
 
                 <div class="oh-home-bottom-row">
-                    @* RecentActivityFeed removed pending real audit log — see issue #247.
-                       Stub feed (per-entity UpdatedAtUtc) was too noisy to keep on the dashboard. *@
+                    @if (_isGameRunning)
+                    {
+                        <RecentActivityPanel GameId="GameContext.SelectedGameId" IsRunning="_isGameRunning" />
+                    }
                     <QuickLaunchTiles />
                 </div>
             </div>

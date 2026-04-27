@@ -44,3 +44,22 @@ public class CharacterEventConfiguration : IEntityTypeConfiguration<CharacterEve
         builder.HasIndex(e => e.CharacterAssignmentId);
     }
 }
+
+public class EventIdempotencyConfiguration : IEntityTypeConfiguration<EventIdempotency>
+{
+    public void Configure(EntityTypeBuilder<EventIdempotency> builder)
+    {
+        builder.HasKey(e => new { e.CharacterAssignmentId, e.IdempotencyKey });
+        builder.Property(e => e.IdempotencyKey).HasMaxLength(200);
+
+        builder.HasOne(e => e.Assignment)
+            .WithMany()
+            .HasForeignKey(e => e.CharacterAssignmentId);
+        builder.HasOne(e => e.Event)
+            .WithMany()
+            .HasForeignKey(e => e.EventId);
+
+        builder.HasIndex(e => e.EventId);
+        builder.HasIndex(e => e.CreatedAtUtc);
+    }
+}

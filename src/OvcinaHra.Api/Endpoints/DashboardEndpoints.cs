@@ -20,6 +20,7 @@ public static class DashboardEndpoints
         group.MapGet("/issues", GetIssues);
         group.MapGet("/activity", GetActivity);
         group.MapGet("/timeline", GetTimeline);
+        group.MapGet("/events/recent", GetRecentEvents);
 
         return group;
     }
@@ -195,5 +196,38 @@ public static class DashboardEndpoints
             .ToList();
 
         return TypedResults.Ok(timeline);
+    }
+
+    private static async Task<Ok<List<DashboardRecentEventDto>>> GetRecentEvents(
+        int gameId, WorldDbContext db, DateTime? since = null)
+    {
+        var query = db.CharacterEvents
+            .Where(e => e.Assignment.GameId == gameId);
+
+        if (since is not null)
+        {
+            var sinceUtc = since.Value.Kind == DateTimeKind.Unspecified
+                ? DateTime.SpecifyKind(since.Value, DateTimeKind.Utc)
+                : since.Value.ToUniversalTime();
+            query = query.Where(e => e.Timestamp > sinceUtc);
+        }
+
+        var rows = await query
+            .OrderByDescending(e => e.Timestamp)
+            .ThenByDescending(e => e.Id)
+            .Take(50)
+            .Select(e => new DashboardRecentEventDto(
+                e.Id,
+                e.CharacterAssignmentId,
+                e.Assignment.CharacterId,
+                e.Assignment.Character.Name,
+                e.EventType,
+                e.Data,
+                e.Location,
+                e.OrganizerName,
+                e.Timestamp))
+            .ToListAsync();
+
+        return TypedResults.Ok(rows);
     }
 }

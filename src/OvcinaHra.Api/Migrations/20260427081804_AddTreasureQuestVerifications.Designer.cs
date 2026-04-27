@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using NpgsqlTypes;
@@ -12,9 +13,11 @@ using OvcinaHra.Api.Data;
 namespace OvcinaHra.Api.Migrations
 {
     [DbContext(typeof(WorldDbContext))]
-    partial class WorldDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260427081804_AddTreasureQuestVerifications")]
+    partial class AddTreasureQuestVerifications
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -446,30 +449,6 @@ namespace OvcinaHra.Api.Migrations
                     b.HasIndex("GameSkillId");
 
                     b.ToTable("CraftingSkillRequirements");
-                });
-
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.EventIdempotency", b =>
-                {
-                    b.Property<int>("CharacterAssignmentId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("IdempotencyKey")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("EventId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("CharacterAssignmentId", "IdempotencyKey");
-
-                    b.HasIndex("CreatedAtUtc");
-
-                    b.HasIndex("EventId");
-
-                    b.ToTable("EventIdempotencies");
                 });
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.Game", b =>
@@ -2146,25 +2125,6 @@ namespace OvcinaHra.Api.Migrations
                     b.Navigation("CraftingRecipe");
 
                     b.Navigation("GameSkill");
-                });
-
-            modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.EventIdempotency", b =>
-                {
-                    b.HasOne("OvcinaHra.Shared.Domain.Entities.CharacterAssignment", "Assignment")
-                        .WithMany()
-                        .HasForeignKey("CharacterAssignmentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("OvcinaHra.Shared.Domain.Entities.CharacterEvent", "Event")
-                        .WithMany()
-                        .HasForeignKey("EventId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Assignment");
-
-                    b.Navigation("Event");
                 });
 
             modelBuilder.Entity("OvcinaHra.Shared.Domain.Entities.GameBuilding", b =>

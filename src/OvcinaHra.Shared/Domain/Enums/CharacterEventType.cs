@@ -9,6 +9,9 @@ public enum CharacterEventType
     [Display(Name = "Zvýšení úrovně")]
     LevelUp,
 
+    [Display(Name = "Vrácení úrovně")]
+    LevelUpReverted,
+
     [Display(Name = "Získání dovednosti")]
     SkillGained,
 
@@ -19,5 +22,8 @@ public enum CharacterEventType
     Note,
 
     [Display(Name = "Volba povolání")]
-    ClassChosen
+    ClassChosen,
+
+    [Display(Name = "Ověření pokladového razítka")]
+    TreasureQuestStampVerified
 }

@@ -1,0 +1,279 @@
+@using System.Text.Json
+@inject IDashboardEventStream EventStream
+@implements IAsyncDisposable
+
+@if (_takeover is not null)
+{
+    <div class="oh-home-takeover oh-home-event-takeover" @onclick="DismissTakeover" role="dialog" aria-label="Drozdova událost">
+        <div class="oh-home-drozd-card oh-home-drozd-card--event" @onclick:stopPropagation>
+            <div class="oh-home-drozd-art">
+                <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <circle cx="100" cy="100" r="92" fill="#F2EBD8" stroke="#8B5A2B" stroke-width="3" />
+                    <ellipse cx="100" cy="118" rx="42" ry="50" fill="#8B5A2B" />
+                    <circle cx="100" cy="76" r="32" fill="#A4733E" />
+                    <polygon points="128,80 152,72 128,90" fill="#C19A3A" />
+                    <circle cx="92" cy="74" r="3.5" fill="#2A2A2A" />
+                </svg>
+            </div>
+            <div class="oh-home-drozd-greet">
+                <h2>@TakeoverTitle(_takeover)</h2>
+                <p>@EventMessage(_takeover)</p>
+                <button class="btn btn-primary" type="button" @onclick="DismissTakeover">Beru na vědomí</button>
+            </div>
+        </div>
+    </div>
+}
+
+<section class="oh-home-act oh-home-recent" aria-labelledby="oh-home-recent-title">
+    <header class="oh-home-act-head oh-home-recent-head">
+        <h2 id="oh-home-recent-title">Živé události</h2>
+        <span class="oh-home-live-chip">Živě</span>
+    </header>
+
+    @if (_rows is null)
+    {
+        @for (var i = 0; i < 3; i++)
+        {
+            <div class="oh-home-act-row oh-home-act-skel">
+                <span class="oh-home-act-thumb"></span>
+                <span class="oh-home-skel-line-lg"></span>
+            </div>
+        }
+    }
+    else if (_rows.Count == 0)
+    {
+        <p class="text-muted small fst-italic mb-0">Zatím žádné události.</p>
+    }
+    else
+    {
+        @foreach (var row in _rows.Take(8))
+        {
+            <div class="oh-home-act-row oh-home-event-row">
+                <span class="oh-home-act-thumb oh-home-event-icon">
+                    <i class="bi @IconFor(row.EventType)"></i>
+                </span>
+                <span class="oh-home-act-body">
+                    <span class="oh-home-act-name">@EventMessage(row)</span>
+                    <span class="oh-home-act-meta text-muted small">
+                        @Age(row.Timestamp) · @row.OrganizerName
+                    </span>
+                </span>
+            </div>
+        }
+    }
+</section>
+
+@code {
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
+    private readonly HashSet<int> _seenTakeovers = [];
+    private CancellationTokenSource? _pollCts;
+    private CancellationTokenSource? _takeoverCts;
+    private int? _activeGameId;
+    private DateTime? _latestTimestamp;
+    private List<DashboardRecentEventDto>? _rows;
+    private DashboardRecentEventDto? _takeover;
+
+    [Parameter] public int? GameId { get; set; }
+    [Parameter] public bool IsRunning { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!IsRunning || GameId is null)
+        {
+            StopPolling();
+            _rows = null;
+            return;
+        }
+
+        if (_activeGameId == GameId && _pollCts is not null) return;
+
+        StopPolling();
+        _activeGameId = GameId.Value;
+        _rows = null;
+        _latestTimestamp = null;
+        _pollCts = new CancellationTokenSource();
+        await LoadAsync(GameId.Value, sinceUtc: null, showTakeover: false, _pollCts.Token);
+        _ = PollAsync(GameId.Value, _pollCts.Token);
+    }
+
+    private async Task PollAsync(int gameId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(PollInterval, cancellationToken);
+                await LoadAsync(gameId, _latestTimestamp, showTakeover: true, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task LoadAsync(
+        int gameId,
+        DateTime? sinceUtc,
+        bool showTakeover,
+        CancellationToken cancellationToken)
+    {
+        var incoming = await EventStream.GetRecentEventsAsync(gameId, sinceUtc, cancellationToken);
+        if (cancellationToken.IsCancellationRequested) return;
+
+        if (_rows is null || sinceUtc is null)
+        {
+            _rows = incoming.OrderByDescending(r => r.Timestamp).ThenByDescending(r => r.EventId).ToList();
+        }
+        else if (incoming.Count > 0)
+        {
+            _rows = incoming
+                .Concat(_rows)
+                .GroupBy(r => r.EventId)
+                .Select(g => g.First())
+                .OrderByDescending(r => r.Timestamp)
+                .ThenByDescending(r => r.EventId)
+                .Take(50)
+                .ToList();
+        }
+
+        _latestTimestamp = _rows.FirstOrDefault()?.Timestamp ?? _latestTimestamp;
+        if (showTakeover)
+        {
+            var takeover = incoming
+                .Where(IsTakeoverEvent)
+                .OrderByDescending(r => r.Timestamp)
+                .ThenByDescending(r => r.EventId)
+                .FirstOrDefault(r => _seenTakeovers.Add(r.EventId));
+            if (takeover is not null) ShowTakeover(takeover);
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void ShowTakeover(DashboardRecentEventDto row)
+    {
+        _takeover = row;
+        _takeoverCts?.Cancel();
+        _takeoverCts?.Dispose();
+        _takeoverCts = new CancellationTokenSource();
+        var token = _takeoverCts.Token;
+        _ = AutoDismissTakeoverAsync(token);
+    }
+
+    private async Task AutoDismissTakeoverAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+            if (!cancellationToken.IsCancellationRequested)
+                await InvokeAsync(DismissTakeover);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private void DismissTakeover()
+    {
+        _takeover = null;
+        _takeoverCts?.Cancel();
+        StateHasChanged();
+    }
+
+    private void StopPolling()
+    {
+        _pollCts?.Cancel();
+        _pollCts?.Dispose();
+        _pollCts = null;
+        _activeGameId = null;
+        _latestTimestamp = null;
+    }
+
+    private static bool IsTakeoverEvent(DashboardRecentEventDto row) => row.EventType is
+        CharacterEventType.LevelUp or
+        CharacterEventType.ClassChosen or
+        CharacterEventType.TreasureQuestStampVerified;
+
+    private static string IconFor(CharacterEventType eventType) => eventType switch
+    {
+        CharacterEventType.LevelUp => "bi-stars",
+        CharacterEventType.ClassChosen => "bi-person-badge",
+        CharacterEventType.TreasureQuestStampVerified => "bi-patch-check",
+        CharacterEventType.LevelUpReverted => "bi-arrow-counterclockwise",
+        CharacterEventType.SkillGained => "bi-lightning-charge",
+        _ => "bi-dot"
+    };
+
+    private static string TakeoverTitle(DashboardRecentEventDto row) => row.EventType switch
+    {
+        CharacterEventType.LevelUp => "Drozd hlásí postup",
+        CharacterEventType.ClassChosen => "Drozd zapsal povolání",
+        CharacterEventType.TreasureQuestStampVerified => "Drozd ověřil razítko",
+        _ => "Drozd hlásí událost"
+    };
+
+    private static string EventMessage(DashboardRecentEventDto row) => row.EventType switch
+    {
+        CharacterEventType.LevelUp => $"{row.CharacterName} dosáhl {ReadInt(row.Data, "level")?.ToString() ?? "nové"}. úrovně",
+        CharacterEventType.LevelUpReverted => $"{row.CharacterName} má vrácenou úroveň",
+        CharacterEventType.ClassChosen => $"{row.CharacterName} zvolil povolání {ClassName(row.Data)}",
+        CharacterEventType.TreasureQuestStampVerified => $"{row.CharacterName} ověřil pokladové razítko",
+        CharacterEventType.SkillGained => $"{row.CharacterName} získal dovednost {ReadString(row.Data, "skill") ?? ""}".Trim(),
+        CharacterEventType.Note => $"{row.CharacterName} má novou poznámku",
+        _ => $"{row.CharacterName} · {row.EventType.GetDisplayName()}"
+    };
+
+    private static string ClassName(string data)
+    {
+        var raw = ReadString(data, "class");
+        if (raw is not null && Enum.TryParse<PlayerClass>(raw, ignoreCase: true, out var playerClass))
+            return playerClass.GetDisplayName();
+
+        return raw ?? "neznámé";
+    }
+
+    private static int? ReadInt(string data, string property)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(data);
+            return doc.RootElement.TryGetProperty(property, out var value) && value.TryGetInt32(out var result)
+                ? result
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string? ReadString(string data, string property)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(data);
+            return doc.RootElement.TryGetProperty(property, out var value) ? value.GetString() : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string Age(DateTime timestamp)
+    {
+        var delta = DateTime.UtcNow - timestamp.ToUniversalTime();
+        if (delta.TotalMinutes < 1) return "teď";
+        if (delta.TotalMinutes < 60) return $"{(int)delta.TotalMinutes} m";
+        if (delta.TotalHours < 24) return $"{(int)delta.TotalHours} h";
+        return timestamp.ToLocalTime().ToString("d. M.");
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        StopPolling();
+        _takeoverCts?.Cancel();
+        _takeoverCts?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

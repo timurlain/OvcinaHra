@@ -28,6 +28,22 @@ public record UpdateTreasureQuestDto(
 public record TreasureItemDto(int Id, int ItemId, string ItemName, int Count, int? TreasureQuestId);
 public record AddTreasureItemDto(int ItemId, int Count = 1);
 
+public record PendingTreasureQuestDto(
+    int QuestId,
+    string QuestName,
+    int ExpectedStashId,
+    string ExpectedStashName,
+    int? ExpectedLocationId,
+    string? ExpectedLocationName,
+    DateTime? IssuedAt,
+    string? IssuedBy);
+
+public record VerifyTreasureQuestDto(
+    int StashId,
+    double? MatchConfidence = null,
+    bool Override = false,
+    string? Reason = null);
+
 // --- Treasure Pool DTOs ---
 
 public record TreasurePoolItemDto(int Id, int ItemId, string ItemName, ItemType ItemType, int Count, int GameId)
