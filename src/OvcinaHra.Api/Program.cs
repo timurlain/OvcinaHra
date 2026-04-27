@@ -253,6 +253,7 @@ try
     app.MapCraftingEndpoints().RequireAuthorization();
     app.MapRecipeEndpoints().RequireAuthorization();
     app.MapBuildingRecipeEndpoints().RequireAuthorization();
+    app.MapLocationCipherEndpoints().RequireAuthorization();
     app.MapTreasureQuestEndpoints().RequireAuthorization();
     app.MapPersonalQuestEndpoints().RequireAuthorization();
     app.MapTreasurePlanningEndpoints().RequireAuthorization();

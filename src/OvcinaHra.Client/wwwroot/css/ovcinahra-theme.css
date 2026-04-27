@@ -4170,3 +4170,27 @@ body.oh-map-print-labeled .oh-map-pin .oh-map-pin-label{display:block}
 .oh-rec-popup-section{padding:14px;background:#FFF8F0;border:1px solid #ead9b8;border-radius:8px}
 .oh-rec-popup-section h6{font:700 .9rem/1 var(--oh-font-headline,Merriweather,Georgia,serif);
     color:#5a3a18;margin:0 0 10px;display:flex;align-items:center;gap:6px}
+
+/* Location cipher authoring */
+.oh-cipher-panel{display:flex;flex-direction:column;gap:14px}
+.oh-cipher-panel-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+.oh-cipher-panel-head h2{font:700 1.35rem/1.15 var(--oh-font-headline,Merriweather,Georgia,serif);
+    color:#2a2218;margin:0}
+.oh-cipher-panel-head p{margin:4px 0 0;color:#6f6248;font-size:.9rem}
+.oh-cipher-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.oh-cipher-slot{border:1px solid #d8c9a8;border-radius:8px;background:#fffaf0;padding:14px;
+    display:flex;flex-direction:column;gap:10px}
+.oh-cipher-slot.has-cipher{border-color:#b26223;box-shadow:inset 3px 0 0 #b26223}
+.oh-cipher-slot-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.oh-cipher-slot-head h3{margin:0;color:#2a2218;font:700 1rem/1.2 var(--oh-font-headline,Merriweather,Georgia,serif)}
+.oh-cipher-slot-head p{margin:3px 0 0;color:#6f6248;font-size:.85rem}
+.oh-cipher-counter{white-space:nowrap;border-radius:999px;padding:3px 8px;background:#ece3cf;color:#4c422f;
+    font-weight:700;font-size:.8rem}
+.oh-cipher-counter.over{background:#f8d7da;color:#842029}
+.oh-cipher-preview{display:flex;flex-direction:column;gap:4px}
+.oh-cipher-preview span{color:#6f6248;font-size:.78rem;text-transform:uppercase;font-weight:700}
+.oh-cipher-preview code{display:block;min-height:34px;padding:7px 8px;border-radius:6px;background:#2a2218;color:#f8f0dc;
+    white-space:normal;word-break:break-word;font-size:.83rem}
+.oh-cipher-error{border-left:3px solid #842029;background:#f8d7da;color:#842029;border-radius:3px;padding:8px 10px;font-size:.88rem}
+.oh-cipher-actions{display:flex;justify-content:flex-end;gap:8px}
+@media (max-width:720px){.oh-cipher-actions{justify-content:flex-start;flex-wrap:wrap}}
