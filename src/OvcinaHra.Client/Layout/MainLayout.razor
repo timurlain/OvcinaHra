@@ -26,6 +26,12 @@
     </main>
 </div>
 
+<AuthorizeView>
+    <Authorized>
+        <BotConsultDrawer />
+    </Authorized>
+</AuthorizeView>
+
 @code {
     [Inject] private JwtAuthStateProvider AuthProvider { get; set; } = default!;
     [Inject] private NavigationManager Nav { get; set; } = default!;
