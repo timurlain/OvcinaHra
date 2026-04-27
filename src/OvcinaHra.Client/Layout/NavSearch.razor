@@ -2,7 +2,10 @@
 @inject NavigationManager Nav
 @implements IDisposable
 
-<div class="oh-nav-search" @onclick:stopPropagation="true" @onfocusout="HandleFocusOutAsync">
+<div class="oh-nav-search"
+     @onclick:stopPropagation="true"
+     @onfocusin="HandleFocusIn"
+     @onfocusout="HandleFocusOutAsync">
     <div class="oh-nav-search-box">
         <i class="bi bi-search"></i>
         <input value="@query"
@@ -56,6 +59,7 @@
     private bool searching;
     private bool dropdownVisible;
     private bool searched;
+    private int focusVersion;
     private bool showNoResults => searched && !searching && results.Count == 0;
 
     private async Task HandleInputAsync(ChangeEventArgs args)
@@ -67,6 +71,7 @@
         {
             CancelDebounce();
             results.Clear();
+            searching = false;
             dropdownVisible = false;
             return;
         }
@@ -98,6 +103,7 @@
             CancelDebounce();
             query = "";
             results.Clear();
+            searching = false;
             searched = false;
             dropdownVisible = false;
         }
@@ -128,9 +134,10 @@
         }
         finally
         {
+            searching = false;
+
             if (!cancellationToken.IsCancellationRequested)
             {
-                searching = false;
                 searched = true;
                 dropdownVisible = true;
             }
@@ -143,9 +150,18 @@
             dropdownVisible = true;
     }
 
+    private void HandleFocusIn()
+    {
+        focusVersion++;
+    }
+
     private async Task HandleFocusOutAsync()
     {
+        var version = ++focusVersion;
         await Task.Delay(120);
+        if (version != focusVersion)
+            return;
+
         dropdownVisible = false;
         await InvokeAsync(StateHasChanged);
     }
@@ -157,6 +173,7 @@
 
         query = "";
         results.Clear();
+        searching = false;
         dropdownVisible = false;
         searched = false;
         Nav.NavigateTo(route);
