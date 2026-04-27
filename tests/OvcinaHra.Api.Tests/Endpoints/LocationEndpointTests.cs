@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Tests.Fixtures;
@@ -76,6 +77,52 @@ public class LocationEndpointTests(PostgresFixture postgres) : IntegrationTestBa
     }
 
     [Fact]
+    public async Task RemoveFromGame_NewGameRoute_PreservesCatalogLocation()
+    {
+        var gameResponse = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Remove Location Test", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
+
+        var locResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Catalog location", LocationKind.Village, 49.5m, 17.1m));
+        var loc = await locResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+
+        await Client.PostAsJsonAsync("/api/locations/by-game", new GameLocationDto(game!.Id, loc!.Id));
+
+        var response = await Client.DeleteAsync($"/api/games/{game.Id}/locations/{loc.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var gameLocations = await Client.GetFromJsonAsync<List<LocationListDto>>(
+            $"/api/locations/by-game/{game.Id}");
+        Assert.Empty(gameLocations!);
+
+        var catalogLocation = await Client.GetFromJsonAsync<LocationDetailDto>($"/api/locations/{loc.Id}");
+        Assert.NotNull(catalogLocation);
+        Assert.Equal("Catalog location", catalogLocation!.Name);
+    }
+
+    [Fact]
+    public async Task Delete_CatalogLocation_RemovesGameAssociation()
+    {
+        var gameResponse = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Delete Cascade Test", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
+
+        var locResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Cascade location", LocationKind.Village, 49.5m, 17.1m));
+        var loc = await locResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+
+        await Client.PostAsJsonAsync("/api/locations/by-game", new GameLocationDto(game!.Id, loc!.Id));
+
+        var response = await Client.DeleteAsync($"/api/locations/{loc.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        Assert.False(await db.GameLocations.AnyAsync(gl => gl.GameId == game.Id && gl.LocationId == loc.Id));
+    }
+
+    [Fact]
     public async Task AssignToGame_Duplicate_ReturnsConflict()
     {
         var gameResponse = await Client.PostAsJsonAsync("/api/games",
@@ -106,6 +153,54 @@ public class LocationEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         var updated = await Client.GetFromJsonAsync<LocationDetailDto>($"/api/locations/{created.Id}");
         Assert.Equal(50.0m, updated!.Latitude);
         Assert.Equal(18.0m, updated.Longitude);
+    }
+
+    [Fact]
+    public async Task Create_WithParent_IgnoresClientCoordinates_AndInheritsIsLocated()
+    {
+        var parentResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Parent", LocationKind.PointOfInterest, 49.0m, 17.0m));
+        var parent = await parentResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+
+        var childResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Child", LocationKind.PointOfInterest, 50.0m, 18.0m,
+                ParentLocationId: parent!.Id));
+
+        Assert.Equal(HttpStatusCode.Created, childResponse.StatusCode);
+        var child = await childResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+        Assert.Null(child!.Latitude);
+        Assert.Null(child.Longitude);
+        Assert.Equal(parent.Id, child.ParentLocationId);
+
+        var locations = (await Client.GetFromJsonAsync<List<LocationListDto>>("/api/locations"))!;
+        Assert.True(locations.Single(l => l.Id == parent.Id).IsLocated);
+        Assert.True(locations.Single(l => l.Id == child.Id).IsLocated);
+    }
+
+    [Fact]
+    public async Task Update_WithParent_ClearsClientCoordinates()
+    {
+        var parentResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Update Parent", LocationKind.PointOfInterest, 49.0m, 17.0m));
+        var parent = await parentResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+
+        var childResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Update Child", LocationKind.PointOfInterest, 50.0m, 18.0m));
+        var child = await childResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+
+        var updateDto = new UpdateLocationDto(
+            "Update Child",
+            LocationKind.PointOfInterest,
+            51.0m,
+            19.0m,
+            ParentLocationId: parent!.Id);
+        var response = await Client.PutAsJsonAsync($"/api/locations/{child!.Id}", updateDto);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var updated = await Client.GetFromJsonAsync<LocationDetailDto>($"/api/locations/{child.Id}");
+        Assert.Null(updated!.Latitude);
+        Assert.Null(updated.Longitude);
+        Assert.Equal(parent.Id, updated.ParentLocationId);
     }
 
     [Fact]
@@ -298,6 +393,44 @@ public class LocationEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         Assert.Single(dto.LocationTreasureQuests);
         Assert.Equal(locationTreasureId, dto.LocationTreasureQuests[0].Id);
         Assert.Equal("Poklad v dole", dto.LocationTreasureQuests[0].Title);
+    }
+
+    [Fact]
+    public async Task GetQuests_ReturnsLinkedQuestSummaries()
+    {
+        var locResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Quest place", LocationKind.PointOfInterest));
+        var loc = await locResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+
+        int questId;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var quest = new Quest
+            {
+                Name = "Najít stopu",
+                QuestType = QuestType.Location
+            };
+            db.Quests.Add(quest);
+            await db.SaveChangesAsync();
+
+            db.QuestLocationLinks.Add(new QuestLocationLink
+            {
+                QuestId = quest.Id,
+                LocationId = loc!.Id
+            });
+            await db.SaveChangesAsync();
+            questId = quest.Id;
+        }
+
+        var quests = await Client.GetFromJsonAsync<List<LocationQuestSummaryDto>>(
+            $"/api/locations/{loc!.Id}/quests");
+
+        Assert.NotNull(quests);
+        var questDto = Assert.Single(quests);
+        Assert.Equal(questId, questDto.Id);
+        Assert.Equal("Najít stopu", questDto.Name);
+        Assert.Equal(QuestType.Location, questDto.QuestType);
     }
 
     [Fact]

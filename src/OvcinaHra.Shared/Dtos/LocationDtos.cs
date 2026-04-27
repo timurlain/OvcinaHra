@@ -23,7 +23,8 @@ public record LocationListDto(
     string? ImagePath = null,
     string? ImageUrl = null,
     string? StampImagePath = null,
-    string? StampImageUrl = null)
+    string? StampImageUrl = null,
+    bool IsLocated = false)
 {
     [JsonIgnore]
     public string LocationKindDisplay => LocationKind.GetDisplayName();
@@ -55,6 +56,15 @@ public record LocationQuestRewardItemDto(
     int ItemId,
     string ItemName,
     int Quantity);
+
+public record LocationQuestSummaryDto(
+    int Id,
+    string Name,
+    QuestType QuestType)
+{
+    [JsonIgnore]
+    public string QuestTypeDisplay => QuestType.GetDisplayName();
+}
 
 public record LocationTreasureQuestDto(
     int Id,

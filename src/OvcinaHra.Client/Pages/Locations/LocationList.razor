@@ -94,7 +94,7 @@ else
 {
     <OvcinaGrid Data="@visibleRows"
                 KeyFieldName="Id"
-                LayoutKey="grid-layout-locations-v5"
+                LayoutKey="grid-layout-locations-v6"
                 RowClick="@OnGridRowClick">
         <Columns>
             @* Actions — moved to first column per issue #94. Destructive
@@ -126,12 +126,12 @@ else
                                 var isAssigned = assignedLocationIds.Contains(loc.Id);
                                 @if (isAssigned)
                                 {
-                                    <button type="button"
-                                            title="Odebrat z aktuální hry"
-                                            @onclick="() => UnassignLocationAsync(loc.Id)"
-                                            @onclick:stopPropagation="true">
-                                        <i class="bi bi-bookmark-dash"></i>
-                                    </button>
+                                     <button type="button"
+                                             title="Odebrat z aktuální hry"
+                                             @onclick="() => PromptUnassign(loc)"
+                                             @onclick:stopPropagation="true">
+                                         <i class="bi bi-bookmark-dash"></i>
+                                     </button>
                                 }
                                 else
                                 {
@@ -207,13 +207,13 @@ else
                             @if (variantCount > 0)
                             {
                                 <span class="oh-lg-vcap">
-                                    <i class="bi bi-diagram-3"></i>@variantCount @PluralCz(variantCount, "varianta", "varianty", "variant") · pin jen na rodiči
+                                    <i class="bi bi-diagram-3"></i>@variantCount @PluralCz(variantCount, "varianta", "varianty", "variant")
                                 </span>
                             }
                         </div>
-                        @if (!isVariant && loc.Latitude.HasValue && loc.Longitude.HasValue)
+                        @if (loc.IsLocated)
                         {
-                            <i class="bi bi-geo-alt-fill oh-lg-pin-hint" title="Zobrazeno na mapě"></i>
+                            <i class="bi bi-geo-alt-fill oh-lg-pin-hint" title="Lokace má GPS"></i>
                         }
                     </div>
                 </CellDisplayTemplate>
@@ -241,6 +241,17 @@ else
                     {
                         <div class="oh-lg-region"><i class="bi bi-compass"></i>@loc.Region</div>
                     }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            <DxGridDataColumn FieldName="IsLocated" Caption="GPS" Width="100px">
+                <CellDisplayTemplate>
+                    @{
+                        var loc = (LocationListDto)context.DataItem;
+                    }
+                    <span class="@(loc.IsLocated ? "oh-lg-assigned" : "oh-lg-notassigned")">
+                        <i class="bi @(loc.IsLocated ? "bi-geo-alt-fill" : "bi-geo")"></i>@(loc.IsLocated ? "Ano" : "Ne")
+                    </span>
                 </CellDisplayTemplate>
             </DxGridDataColumn>
 
@@ -362,12 +373,12 @@ else
                         }
                         @if (isAssigned)
                         {
-                            <span class="oh-lg-assigned"><i class="bi bi-check-lg"></i>Ano</span>
-                            <button class="oh-lg-assign-btn"
-                                    @onclick="() => UnassignLocationAsync(loc.Id)"
-                                    @onclick:stopPropagation="true"
-                                    title="Odebrat z aktuální hry">
-                                <i class="bi bi-dash-lg"></i>Odebrat
+                             <span class="oh-lg-assigned"><i class="bi bi-check-lg"></i>Ano</span>
+                             <button class="oh-lg-assign-btn"
+                                     @onclick="() => PromptUnassign(loc)"
+                                     @onclick:stopPropagation="true"
+                                     title="Odebrat z aktuální hry">
+                                 <i class="bi bi-dash-lg"></i>Odebrat
                             </button>
                         }
                         else
@@ -415,8 +426,6 @@ else
             <DxGridDataColumn FieldName="Description" Caption="Popis" Width="300px" Visible="false" />
             <DxGridDataColumn FieldName="Details" Caption="Podrobnosti" Width="300px" Visible="false" />
             <DxGridDataColumn FieldName="NpcInfo" Caption="NPC" Width="220px" Visible="false" />
-            <DxGridDataColumn FieldName="Latitude" Caption="Šířka" Width="120px" DisplayFormat="F5" Visible="false" />
-            <DxGridDataColumn FieldName="Longitude" Caption="Délka" Width="120px" DisplayFormat="F5" Visible="false" />
             @* Rubber stamp thumbnail — hidden by default; organizers reveal via
                the column chooser. Filter/sort on the URL is not meaningful, so
                both are disabled. *@
@@ -538,10 +547,24 @@ else
     </BodyContentTemplate>
 </DxPopup>
 
+<DxPopup @bind-Visible="@isUnassignVisible" HeaderText="Odebrat lokaci z aktuální hry?" Width="420px">
+    <BodyContentTemplate Context="popupContext">
+        <p>Opravdu chcete odebrat lokaci <strong>@unassignTarget?.Name</strong> z aktuální hry? Lokace zůstane v katalogu.</p>
+        @if (unassignError is not null)
+        {
+            <div class="alert alert-danger py-2">@unassignError</div>
+        }
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isUnassignVisible = false">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmUnassignLocationAsync" disabled="@isSaving">Odebrat</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
 @* Destructive delete now lives on the Location detail page — per issue #94
    the list no longer ships a delete button, and this confirmation popup is
    gone with it. If reintroduced, remember the MEMORY destructive-action-
-   confirm rule and keep the Api.DeleteAsync bool-return check. *@
+   confirm rule and surface failed deletes in the existing error area. *@
 
 @code {
     [SupplyParameterFromQuery]
@@ -557,6 +580,7 @@ else
     private bool confusedFailed; // flips true if /img/drozd/drozd-confused.svg 404s (in-grid no-rows, #149)
     private bool isGpsVisible;
     private bool isLinkVisible;
+    private bool isUnassignVisible;
     private bool isSaving;
 
     // Toolbar filter state
@@ -585,6 +609,8 @@ else
     private int? linkParentId;
     private List<LocationListDto> linkCandidates = [];
     private string? linkError;
+    private LocationListDto? unassignTarget;
+    private string? unassignError;
 
     private record KindFilterOption(LocationKind Value, string Label);
 
@@ -820,7 +846,8 @@ else
                         gpsParsed.Value.lat, gpsParsed.Value.lon,
                         detail.Description,
                         Details: detail.Details, GamePotential: detail.GamePotential, Region: detail.Region,
-                        NpcInfo: detail.NpcInfo, SetupNotes: detail.SetupNotes));
+                        NpcInfo: detail.NpcInfo, SetupNotes: detail.SetupNotes,
+                        ParentLocationId: detail.ParentLocationId));
             }
             isGpsVisible = false;
             await LoadDataAsync();
@@ -929,10 +956,41 @@ else
         StateHasChanged();
     }
 
-    private async Task UnassignLocationAsync(int locationId)
+    private void PromptUnassign(LocationListDto loc)
     {
-        await Api.DeleteAsync($"/api/locations/by-game/{gameId}/{locationId}");
-        assignedLocationIds.Remove(locationId);
-        StateHasChanged();
+        unassignTarget = loc;
+        unassignError = null;
+        isUnassignVisible = true;
+    }
+
+    private async Task ConfirmUnassignLocationAsync()
+    {
+        if (unassignTarget is null) return;
+        unassignError = null;
+        isSaving = true;
+        try
+        {
+            var (ok, problem) = await Api.DeleteWithProblemAsync(
+                $"/api/games/{gameId}/locations/{unassignTarget.Id}");
+            if (!ok)
+            {
+                unassignError = problem ?? "Nepodařilo se odebrat lokaci z aktuální hry.";
+                return;
+            }
+
+            assignedLocationIds.Remove(unassignTarget.Id);
+            isUnassignVisible = false;
+            unassignTarget = null;
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            unassignError = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
     }
 }
