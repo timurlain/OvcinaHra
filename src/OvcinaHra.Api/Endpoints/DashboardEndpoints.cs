@@ -54,9 +54,16 @@ public static class DashboardEndpoints
     private static async Task<Ok<DashboardIssuesDto>> GetIssues(int gameId, WorldDbContext db)
     {
         // Sequential awaits — same DbContext concurrency rule as Stats above.
-        var locationsNoGps = await db.GameLocations
-            .Where(gl => gl.GameId == gameId && gl.Location.Coordinates == null)
-            .CountAsync();
+        var locationRows = await db.GameLocations
+            .Where(gl => gl.GameId == gameId)
+            .Select(gl => new LocationEndpoints.LocationCoordinateState(
+                gl.LocationId,
+                gl.Location.Coordinates != null ? gl.Location.Coordinates.Latitude : (decimal?)null,
+                gl.Location.Coordinates != null ? gl.Location.Coordinates.Longitude : (decimal?)null,
+                gl.Location.ParentLocationId))
+            .ToListAsync();
+        var locationLookup = await LocationEndpoints.BuildLocationStateLookupAsync(db, locationRows);
+        var locationsNoGps = locationRows.Count(row => !LocationEndpoints.IsLocated(locationLookup, row.Id));
         var itemsNoPrice = await db.GameItems
             .Where(gi => gi.GameId == gameId && gi.IsSold && gi.Price == null)
             .CountAsync();

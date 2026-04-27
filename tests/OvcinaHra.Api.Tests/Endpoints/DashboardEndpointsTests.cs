@@ -5,6 +5,7 @@ using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Tests.Fixtures;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
+using OvcinaHra.Shared.Domain.ValueObjects;
 using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Tests.Endpoints;
@@ -90,6 +91,44 @@ public class DashboardEndpointsTests(PostgresFixture postgres)
         var noGpsIssue = Assert.Single(issues.Issues, i => i.Key == "locations-no-gps");
         Assert.Equal(1, noGpsIssue.Count);
         Assert.Equal("/locations", noGpsIssue.TargetRoute);
+    }
+
+    [Fact]
+    public async Task Issues_LocationsWithoutGps_UsesInheritedParentGps()
+    {
+        var game = await CreateGameAsync();
+
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var parent = new Location
+            {
+                Name = "Parent coords",
+                LocationKind = LocationKind.Wilderness,
+                Coordinates = new GpsCoordinates(49.4532m, 18.0203m)
+            };
+            db.Locations.Add(parent);
+            await db.SaveChangesAsync();
+
+            var child = new Location
+            {
+                Name = "Child inherits coords",
+                LocationKind = LocationKind.Wilderness,
+                ParentLocationId = parent.Id
+            };
+            db.Locations.Add(child);
+            await db.SaveChangesAsync();
+
+            db.GameLocations.Add(new GameLocation { GameId = game.Id, LocationId = child.Id });
+            await db.SaveChangesAsync();
+        }
+
+        var issues = await Client.GetFromJsonAsync<DashboardIssuesDto>(
+            $"/api/dashboard/issues?gameId={game.Id}");
+
+        Assert.NotNull(issues);
+        var noGpsIssue = Assert.Single(issues.Issues, i => i.Key == "locations-no-gps");
+        Assert.Equal(0, noGpsIssue.Count);
     }
 
     [Fact]
