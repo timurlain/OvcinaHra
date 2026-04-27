@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
@@ -47,9 +48,17 @@ public static class RegistraceImportProblems
     public const string NotFoundTitle = "Hra nenalezena.";
     public static string NotFoundDetail(int localGameId) =>
         $"Hra s ID {localGameId} v této instanci OvčinaHra neexistuje.";
+
+    public const string TimeoutTitle = "Registrační služba neodpovídá.";
+    public const string TimeoutDetail =
+        "Registrační služba neodpovídá v čase, zkuste to prosím za chvíli.";
 }
 
-public class RegistraceImportService(HttpClient httpClient, IConfiguration configuration, WorldDbContext db)
+public class RegistraceImportService(
+    HttpClient httpClient,
+    IConfiguration configuration,
+    WorldDbContext db,
+    ILogger<RegistraceImportService> logger)
 {
     private readonly string _baseUrl = configuration["IntegrationApi:BaseUrl"] ?? "https://registrace.ovcina.cz";
     private readonly string? _apiKey = configuration["IntegrationApi:ApiKey"];
@@ -89,9 +98,11 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
     /// to (and should not) hand over a registrace id directly.
     /// Network/parse failures are folded into <c>ImportResultDto.Errors</c>
     /// — the original behavior the standalone "Importovat" button relies on.
-    /// Catches <see cref="HttpRequestException"/>, <see cref="TaskCanceledException"/>
-    /// (timeouts), and <see cref="System.Text.Json.JsonException"/> (malformed
-    /// upstream payload) so the button surfaces a Czech error rather than a 500.
+    /// Catches <see cref="HttpRequestException"/> and
+    /// <see cref="System.Text.Json.JsonException"/> (malformed upstream payload)
+    /// so the button surfaces a Czech error rather than a 500.
+    /// <see cref="TaskCanceledException"/> is intentionally left for endpoints
+    /// to translate into 504 Gateway Timeout.
     /// </summary>
     public async Task<ImportResultDto> ImportAsync(int localGameId)
     {
@@ -102,10 +113,6 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
         catch (HttpRequestException ex)
         {
             return new ImportResultDto(0, 0, 0, [$"Failed to fetch from registrace: {ex.Message}"]);
-        }
-        catch (TaskCanceledException ex)
-        {
-            return new ImportResultDto(0, 0, 0, [$"Timed out while fetching from registrace: {ex.Message}"]);
         }
         catch (JsonException ex)
         {
@@ -240,13 +247,14 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
 
     private async Task<List<RegistraceCharacterRecord>> FetchCharactersAsync(int externalGameId)
     {
+        var endpoint = $"/api/v1/games/{externalGameId}/characters";
         var request = new HttpRequestMessage(HttpMethod.Get,
-            $"{_baseUrl.TrimEnd('/')}/api/v1/games/{externalGameId}/characters");
+            $"{_baseUrl.TrimEnd('/')}{endpoint}");
 
         if (!string.IsNullOrWhiteSpace(_apiKey))
             request.Headers.Add("X-Api-Key", _apiKey);
 
-        var response = await httpClient.SendAsync(request);
+        var response = await SendAsync(request, endpoint);
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync();
@@ -265,18 +273,50 @@ public class RegistraceImportService(HttpClient httpClient, IConfiguration confi
     {
         var externalGameId = await ResolveExternalGameIdAsync(localGameId);
 
+        var endpoint = $"/api/v1/games/{externalGameId}/adults";
         var request = new HttpRequestMessage(HttpMethod.Get,
-            $"{_baseUrl.TrimEnd('/')}/api/v1/games/{externalGameId}/adults");
+            $"{_baseUrl.TrimEnd('/')}{endpoint}");
 
         if (!string.IsNullOrWhiteSpace(_apiKey))
             request.Headers.Add("X-Api-Key", _apiKey);
 
-        var response = await httpClient.SendAsync(request);
+        var response = await SendAsync(request, endpoint);
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync();
         return JsonSerializer.Deserialize<List<RegistraceAdultDto>>(json,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+    }
+
+    private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, string endpoint)
+    {
+        using var activity = logger.BeginScope(new Dictionary<string, object?>
+        {
+            ["Endpoint"] = endpoint
+        });
+        var sw = Stopwatch.StartNew();
+        try
+        {
+            var response = await httpClient.SendAsync(request);
+            logger.LogInformation(
+                "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}",
+                endpoint, sw.ElapsedMilliseconds, response.IsSuccessStatusCode ? "success" : "error");
+            return response;
+        }
+        catch (TaskCanceledException)
+        {
+            logger.LogInformation(
+                "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}",
+                endpoint, sw.ElapsedMilliseconds, "timeout");
+            throw;
+        }
+        catch (Exception)
+        {
+            logger.LogInformation(
+                "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}",
+                endpoint, sw.ElapsedMilliseconds, "error");
+            throw;
+        }
     }
 
     private sealed record RegistraceCharacterRecord(

@@ -283,6 +283,13 @@ public static class CharacterEndpoints
                 title: RegistraceImportProblems.NotLinkedTitle,
                 statusCode: StatusCodes.Status400BadRequest);
         }
+        catch (TaskCanceledException)
+        {
+            return TypedResults.Problem(
+                detail: RegistraceImportProblems.TimeoutDetail,
+                title: RegistraceImportProblems.TimeoutTitle,
+                statusCode: StatusCodes.Status504GatewayTimeout);
+        }
     }
 
     /// <summary>
@@ -359,6 +366,15 @@ public static class CharacterEndpoints
             try
             {
                 imported = await importService.ImportOrThrowAsync(gameId);
+            }
+            catch (TaskCanceledException)
+            {
+                // Don't commit — rollback on dispose preserves the original
+                // roster instead of leaving an empty database.
+                return TypedResults.Problem(
+                    detail: RegistraceImportProblems.TimeoutDetail,
+                    title: RegistraceImportProblems.TimeoutTitle,
+                    statusCode: StatusCodes.Status504GatewayTimeout);
             }
             catch (HttpRequestException ex)
             {

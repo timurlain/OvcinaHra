@@ -49,8 +49,10 @@ try
     var oidcAuthority = builder.Configuration["Oidc:Authority"];
     var jwtKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!));
 
-    builder.Services.AddHttpClient<RegistraceImportService>();
-    builder.Services.AddHttpClient<RegistraceGameService>();
+    builder.Services.AddHttpClient<RegistraceImportService>(client =>
+        client.Timeout = TimeSpan.FromSeconds(15));
+    builder.Services.AddHttpClient<RegistraceGameService>(client =>
+        client.Timeout = TimeSpan.FromSeconds(15));
     builder.Services.Configure<BotConsultOptions>(builder.Configuration.GetSection("BotConsult"));
     builder.Services.AddHttpClient<IBotConsultClient, BotConsultClient>(client =>
         {

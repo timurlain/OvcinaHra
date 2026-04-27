@@ -55,6 +55,13 @@ public static class NpcEndpoints
                 title: RegistraceImportProblems.NotLinkedTitle,
                 statusCode: StatusCodes.Status400BadRequest);
         }
+        catch (TaskCanceledException)
+        {
+            return TypedResults.Problem(
+                detail: RegistraceImportProblems.TimeoutDetail,
+                title: RegistraceImportProblems.TimeoutTitle,
+                statusCode: StatusCodes.Status504GatewayTimeout);
+        }
         catch (HttpRequestException ex)
         {
             return TypedResults.Problem(
