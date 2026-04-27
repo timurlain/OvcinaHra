@@ -38,6 +38,7 @@
         ShowGroupPanel="@ShowGroupPanel"
         VirtualScrollingEnabled="true"
         ColumnResizeMode="GridColumnResizeMode.NextColumn"
+        TextWrapEnabled="@TextWrapEnabled"
         AutoExpandAllGroupRows="@AutoExpandAllGroupRows"
         CustomizeElement="@OnCustomizeElement"
         CssClass="@($"ovcina-grid {CssClass}")"
@@ -60,6 +61,13 @@
 @if (!string.IsNullOrEmpty(LayoutKey))
 {
     <div class="ovcina-grid-tools" role="toolbar" aria-label="Nástroje zobrazení">
+        @if (ShowColumnChooserButton)
+        {
+            <button type="button" class="btn btn-sm btn-link ovcina-grid-reset" @onclick="ShowColumnChooser" title="Vybrat sloupce">
+                <i class="bi bi-layout-three-columns" aria-hidden="true"></i>
+                <span>Sloupce</span>
+            </button>
+        }
         <button type="button" class="btn btn-sm btn-link ovcina-grid-reset" @onclick="ShowResetConfirmation" title="Resetovat zobrazení">
             <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
             <span>Resetovat zobrazení</span>
@@ -89,6 +97,8 @@
     [Parameter] public string CssClass { get; set; } = "";
     [Parameter] public bool ShowGroupPanel { get; set; }
     [Parameter] public bool AutoExpandAllGroupRows { get; set; }
+    [Parameter] public bool TextWrapEnabled { get; set; }
+    [Parameter] public bool ShowColumnChooserButton { get; set; }
     [Parameter] public GridSelectionMode SelectionMode { get; set; } = GridSelectionMode.Single;
     [Parameter] public IReadOnlyList<object>? SelectedDataItems { get; set; }
     [Parameter] public EventCallback<IReadOnlyList<object>> SelectedDataItemsChanged { get; set; }
@@ -176,6 +186,11 @@
     private void HideResetConfirmation()
     {
         isResetConfirmVisible = false;
+    }
+
+    private void ShowColumnChooser()
+    {
+        Grid?.ShowColumnChooser();
     }
 
     private async Task ConfirmResetLayoutAsync()

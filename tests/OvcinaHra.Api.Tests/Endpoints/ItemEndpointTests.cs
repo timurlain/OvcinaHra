@@ -201,8 +201,41 @@ public class ItemEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
         var updated = Assert.Single(gameItems);
         Assert.Equal(200, updated.Price);
         Assert.Equal(10, updated.StockCount);
+        Assert.True(updated.IsSold);
         Assert.Equal("Jen pro mágy", updated.SaleCondition);
         Assert.True(updated.IsFindable);
+    }
+
+    [Fact]
+    public async Task UpdateGameItem_DerivesIsSoldFromPrice()
+    {
+        var gameResponse = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Test Hra", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
+
+        var itemResponse = await Client.PostAsJsonAsync("/api/items", new CreateItemDto("Lektvar", ItemType.Potion));
+        var item = await itemResponse.Content.ReadFromJsonAsync<ItemDetailDto>();
+
+        await Client.PostAsJsonAsync("/api/items/game-item",
+            new CreateGameItemDto(game!.Id, item!.Id, Price: 100, IsSold: true));
+
+        var clearResponse = await Client.PutAsJsonAsync($"/api/items/game-item/{game.Id}/{item.Id}",
+            new UpdateGameItemDto(Price: 0, StockCount: null, IsSold: true, SaleCondition: null, IsFindable: false));
+        Assert.Equal(HttpStatusCode.NoContent, clearResponse.StatusCode);
+
+        var clearedItems = await Client.GetFromJsonAsync<List<GameItemDto>>($"/api/items/by-game/{game.Id}");
+        var cleared = Assert.Single(clearedItems!);
+        Assert.Equal(0, cleared.Price);
+        Assert.False(cleared.IsSold);
+
+        var soldResponse = await Client.PutAsJsonAsync($"/api/items/game-item/{game.Id}/{item.Id}",
+            new UpdateGameItemDto(Price: 50, StockCount: null, IsSold: false, SaleCondition: null, IsFindable: false));
+        Assert.Equal(HttpStatusCode.NoContent, soldResponse.StatusCode);
+
+        var soldItems = await Client.GetFromJsonAsync<List<GameItemDto>>($"/api/items/by-game/{game.Id}");
+        var sold = Assert.Single(soldItems!);
+        Assert.Equal(50, sold.Price);
+        Assert.True(sold.IsSold);
     }
 
     [Fact]
