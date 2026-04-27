@@ -62,6 +62,12 @@ else
         </div>
     </div>
 
+    @* Issue #271 — Karta + Upravit always render; the three data tabs only
+       appear when the item actually has data of that kind. The visibility
+       gates are derived from the same usage counts that feed the badges,
+       so a count of zero hides the tab entirely instead of leading the
+       user to a "Žádné..." dead-end. Tabs come back automatically once a
+       recipe / drop / shop assignment is added elsewhere. *@
     <div class="oh-it-d-tabs">
         <button class="oh-it-d-tab @(activeTab == "karta" ? "oh-it-d-active" : null)" @onclick='() => SetTab("karta")'>
             <i class="bi bi-bookmark-fill"></i> Karta
@@ -69,27 +75,27 @@ else
         <button class="oh-it-d-tab @(activeTab == "upravit" ? "oh-it-d-active" : null)" @onclick='() => SetTab("upravit")'>
             <i class="bi bi-pencil"></i> Upravit
         </button>
-        <button class="oh-it-d-tab @(activeTab == "tvorba" ? "oh-it-d-active" : null)" @onclick='() => SetTab("tvorba")'>
-            <i class="bi bi-tools"></i> Tvorba
-            @if (TvorbaCount > 0)
-            {
+        @if (TvorbaCount > 0)
+        {
+            <button class="oh-it-d-tab @(activeTab == "tvorba" ? "oh-it-d-active" : null)" @onclick='() => SetTab("tvorba")'>
+                <i class="bi bi-tools"></i> Tvorba
                 <span class="oh-it-d-tab-count">@TvorbaCount</span>
-            }
-        </button>
-        <button class="oh-it-d-tab @(activeTab == "vyskyt" ? "oh-it-d-active" : null)" @onclick='() => SetTab("vyskyt")'>
-            <i class="bi bi-geo-alt"></i> Výskyt
-            @if (VyskytCount > 0)
-            {
+            </button>
+        }
+        @if (VyskytCount > 0)
+        {
+            <button class="oh-it-d-tab @(activeTab == "vyskyt" ? "oh-it-d-active" : null)" @onclick='() => SetTab("vyskyt")'>
+                <i class="bi bi-geo-alt"></i> Výskyt
                 <span class="oh-it-d-tab-count">@VyskytCount</span>
-            }
-        </button>
-        <button class="oh-it-d-tab @(activeTab == "obchod" ? "oh-it-d-active" : null)" @onclick='() => SetTab("obchod")'>
-            <i class="bi bi-shop"></i> Obchod
-            @if (ObchodCount > 0)
-            {
+            </button>
+        }
+        @if (ObchodCount > 0)
+        {
+            <button class="oh-it-d-tab @(activeTab == "obchod" ? "oh-it-d-active" : null)" @onclick='() => SetTab("obchod")'>
+                <i class="bi bi-shop"></i> Obchod
                 <span class="oh-it-d-tab-count">@ObchodCount</span>
-            }
-        </button>
+            </button>
+        }
     </div>
 
     <div class="oh-it-d-body">
@@ -314,6 +320,22 @@ else
                             </DxFormLayoutItem>
                             <DxFormLayoutItem Caption="Podmínka prodeje" ColSpanMd="12">
                                 <DxTextBox @bind-Text="@pgSaleCondition" />
+                                @* Issue #270 — quick-append helper. Pick a building from the
+                                   catalog → click → "Vyžaduje budovu: {Name}" gets appended
+                                   to the free-text note. No per-game DB link, just a textual
+                                   memory aid for organizers. *@
+                                <div class="d-flex gap-2 mt-1">
+                                    <DxComboBox Data="@allBuildings" @bind-Value="@pgBuildingPickerId"
+                                                TextFieldName="Name" ValueFieldName="Id"
+                                                NullText="(vyber budovu)"
+                                                SearchMode="ListSearchMode.AutoSearch"
+                                                CssClass="flex-grow-1" />
+                                    <button class="btn btn-sm btn-outline-primary" type="button"
+                                            disabled="@(pgBuildingPickerId is null)"
+                                            @onclick="AppendBuildingToPgSaleCondition">
+                                        <i class="bi bi-plus-lg"></i> Vyžaduje budovu
+                                    </button>
+                                </div>
                             </DxFormLayoutItem>
                         }
                     </DxFormLayoutGroup>
@@ -590,6 +612,21 @@ else
             </DxFormLayoutItem>
             <DxFormLayoutItem Caption="Podmínka prodeje" ColSpanMd="12">
                 <DxTextBox @bind-Text="@shopEditSaleCondition" NullText="(bez podmínky)" />
+                @* Issue #270 — same quick-append helper as the Upravit tab. Same
+                   format ("Vyžaduje budovu: {Name}") so both surfaces produce
+                   identical strings the organizer can grep for. *@
+                <div class="d-flex gap-2 mt-1">
+                    <DxComboBox Data="@allBuildings" @bind-Value="@shopEditBuildingPickerId"
+                                TextFieldName="Name" ValueFieldName="Id"
+                                NullText="(vyber budovu)"
+                                SearchMode="ListSearchMode.AutoSearch"
+                                CssClass="flex-grow-1" />
+                    <button class="btn btn-sm btn-outline-primary" type="button"
+                            disabled="@(shopEditBuildingPickerId is null)"
+                            @onclick="AppendBuildingToShopEditSaleCondition">
+                        <i class="bi bi-plus-lg"></i> Vyžaduje budovu
+                    </button>
+                </div>
             </DxFormLayoutItem>
         </DxFormLayout>
         @if (shopEditError is not null)
@@ -663,6 +700,13 @@ else
     private string? shopEditSaleCondition;
     private string? shopEditError;
 
+    // Issue #270 — building catalog cache + picker selection for the Obchod
+    // sell-condition quick-append. Loaded once on first LoadAsync; the same
+    // cache feeds both the Upravit tab and the per-game popup.
+    private List<BuildingListDto> allBuildings = [];
+    private int? pgBuildingPickerId;
+    private int? shopEditBuildingPickerId;
+
     private static readonly List<EnumItem<ItemType>> itemTypeValues = Enum.GetValues<ItemType>()
         .Select(v => new EnumItem<ItemType>(v, v.GetDisplayName())).ToList();
     private static readonly List<EnumItem<PhysicalForm?>> physicalFormValues =
@@ -704,6 +748,17 @@ else
         _lastId = Id;
         try
         {
+            // Buildings catalog feeds the Obchod quick-append picker (#270).
+            // Lazy-load the first time we need it; the list rarely changes
+            // during a session and is small enough to cache for the lifetime
+            // of the page instance. Best-effort — failure shouldn't block
+            // the item itself from rendering.
+            if (allBuildings.Count == 0)
+            {
+                try { allBuildings = await Api.GetListAsync<BuildingListDto>("/api/buildings"); }
+                catch { allBuildings = []; }
+            }
+
             item = await Api.GetAsync<ItemDetailDto>($"/api/items/{Id}");
             if (item is not null)
             {
@@ -857,7 +912,38 @@ else
         shopEditIsSold = s.IsSold;
         shopEditIsFindable = s.IsFindable;
         shopEditSaleCondition = s.SaleCondition;
+        shopEditBuildingPickerId = null;
         isShopEditVisible = true;
+    }
+
+    // Issue #270 — append "Vyžaduje budovu: {Name}" to the active sale
+    // condition string. Separator " · " matches the dot-separator already
+    // used elsewhere in detail rows (e.g. ED. labels). No DB link, just a
+    // textual hint per the issue's explicit "just save it into the note".
+    private void AppendBuildingToPgSaleCondition()
+    {
+        if (pgBuildingPickerId is not int bid) return;
+        var building = allBuildings.FirstOrDefault(b => b.Id == bid);
+        pgBuildingPickerId = null;
+        if (building is null) return;
+        pgSaleCondition = AppendBuildingSnippet(pgSaleCondition, building.Name);
+    }
+
+    private void AppendBuildingToShopEditSaleCondition()
+    {
+        if (shopEditBuildingPickerId is not int bid) return;
+        var building = allBuildings.FirstOrDefault(b => b.Id == bid);
+        shopEditBuildingPickerId = null;
+        if (building is null) return;
+        shopEditSaleCondition = AppendBuildingSnippet(shopEditSaleCondition, building.Name);
+    }
+
+    private static string AppendBuildingSnippet(string? current, string buildingName)
+    {
+        var snippet = $"Vyžaduje budovu: {buildingName}";
+        return string.IsNullOrWhiteSpace(current)
+            ? snippet
+            : $"{current.TrimEnd()} · {snippet}";
     }
 
     private async Task SaveShopEditAsync()

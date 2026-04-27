@@ -68,13 +68,25 @@ else
         isModalVisible = true;
     }
 
+    // Issue #234 — server now returns Czech ProblemDetails on validation
+    // failures (empty name, length, dup); switch to *WithProblemAsync so the
+    // server's `detail` round-trips into the existing error banner instead of
+    // being swallowed by EnsureSuccessStatusCode's generic exception message.
     private async Task SaveAsync()
     {
         error = null; isSaving = true;
         try
         {
-            if (editingId.HasValue) await Api.PutAsync($"/api/tags/{editingId}", new UpdateTagDto(name));
-            else await Api.PostAsync<CreateTagDto, TagDto>("/api/tags", new CreateTagDto(name, kind));
+            if (editingId.HasValue)
+            {
+                var (ok, problem) = await Api.PutWithProblemAsync($"/api/tags/{editingId}", new UpdateTagDto(name));
+                if (!ok) { error = problem ?? "Uložení tagu se nezdařilo."; return; }
+            }
+            else
+            {
+                var (ok, _, problem) = await Api.PostWithProblemAsync<CreateTagDto, TagDto>("/api/tags", new CreateTagDto(name, kind));
+                if (!ok) { error = problem ?? "Vytvoření tagu se nezdařilo."; return; }
+            }
             isModalVisible = false; await LoadAsync();
         }
         catch (Exception ex) { error = ex.Message; } finally { isSaving = false; }
@@ -82,7 +94,12 @@ else
 
     private async Task ConfirmDeleteAsync()
     {
-        try { await Api.DeleteAsync($"/api/tags/{editingId}"); isDeleteVisible = false; isModalVisible = false; await LoadAsync(); }
+        try
+        {
+            var (ok, problem) = await Api.DeleteWithProblemAsync($"/api/tags/{editingId}");
+            if (!ok) { error = problem ?? "Smazání tagu se nezdařilo."; return; }
+            isDeleteVisible = false; isModalVisible = false; await LoadAsync();
+        }
         catch (Exception ex) { error = ex.Message; }
     }
 }
