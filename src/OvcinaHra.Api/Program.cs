@@ -96,6 +96,7 @@ try
     // thumbnail presets so list pages never pay the cold-resize cost at
     // runtime. Runs in the background — does not block startup.
     builder.Services.AddHostedService<ThumbnailBackfillHostedService>();
+    builder.Services.AddHostedService<EventIdempotencyCleanupService>();
 
     // In-memory log ring buffer for production debugging
     var logBuffer = new LogRingBuffer();

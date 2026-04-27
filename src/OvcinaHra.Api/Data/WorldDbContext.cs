@@ -52,6 +52,7 @@ public class WorldDbContext(DbContextOptions<WorldDbContext> options) : DbContex
     public DbSet<Kingdom> Kingdoms => Set<Kingdom>();
     public DbSet<CharacterAssignment> CharacterAssignments => Set<CharacterAssignment>();
     public DbSet<CharacterEvent> CharacterEvents => Set<CharacterEvent>();
+    public DbSet<EventIdempotency> EventIdempotencies => Set<EventIdempotency>();
     public DbSet<GameEvent> GameEvents => Set<GameEvent>();
     public DbSet<GameEventTimeSlot> GameEventTimeSlots => Set<GameEventTimeSlot>();
     public DbSet<GameEventLocation> GameEventLocations => Set<GameEventLocation>();

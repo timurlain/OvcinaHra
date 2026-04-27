@@ -1,6 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using OvcinaHra.Api.Data;
+using OvcinaHra.Api.Services;
 using OvcinaHra.Api.Tests.Fixtures;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
@@ -37,6 +41,26 @@ public class ScanEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
             new CreateSecretStashDto(name));
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<SecretStashDetailDto>())!;
+    }
+
+    private async Task<HttpResponseMessage> PostJsonWithIdempotencyAsync<T>(
+        string url,
+        T payload,
+        string key)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = JsonContent.Create(payload)
+        };
+        request.Headers.Add("X-Idempotency-Key", key);
+        return await Client.SendAsync(request);
+    }
+
+    private async Task<HttpResponseMessage> DeleteWithIdempotencyAsync(string url, string key)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Delete, url);
+        request.Headers.Add("X-Idempotency-Key", key);
+        return await Client.SendAsync(request);
     }
 
     private async Task<(CharacterDetailDto character, CharacterAssignmentDto assignment)> SeedCharacterWithAssignment(
@@ -99,6 +123,35 @@ public class ScanEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
         Assert.NotNull(profile);
         Assert.Equal(1, profile.CurrentLevel);
         Assert.Equal(1, profile.TotalXp);
+    }
+
+    [Fact]
+    public async Task PostEvent_WithSameIdempotencyKey_ReplaysOriginalEvent()
+    {
+        await SeedCharacterWithAssignment(externalPersonId: 111);
+        var payload = new CreateCharacterEventDto(CharacterEventType.LevelUp, "{}");
+
+        var firstResponse = await PostJsonWithIdempotencyAsync(
+            "/api/scan/111/events", payload, "scan-level-111");
+        var secondResponse = await PostJsonWithIdempotencyAsync(
+            "/api/scan/111/events", payload, "scan-level-111");
+
+        Assert.Equal(HttpStatusCode.Created, firstResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
+        var first = await firstResponse.Content.ReadFromJsonAsync<CharacterEventDto>();
+        var second = await secondResponse.Content.ReadFromJsonAsync<CharacterEventDto>();
+        Assert.Equal(first!.Id, second!.Id);
+
+        var profile = await Client.GetFromJsonAsync<ScanCharacterDto>("/api/scan/111");
+        Assert.Equal(1, profile!.CurrentLevel);
+
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        var key = await db.EventIdempotencies.SingleAsync();
+        key.CreatedAtUtc = DateTime.UtcNow.AddDays(-8);
+        await db.SaveChangesAsync();
+        var deleted = await EventIdempotencyCleanupService.CleanupAsync(db, DateTime.UtcNow);
+        Assert.Equal(1, deleted);
     }
 
     [Fact]
@@ -191,6 +244,30 @@ public class ScanEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
     }
 
     [Fact]
+    public async Task DeleteLastLevelUp_WithSameIdempotencyKey_ReplaysAuditEvent()
+    {
+        await SeedCharacterWithAssignment(externalPersonId: 112);
+        await Client.PostAsJsonAsync("/api/scan/112/events",
+            new CreateCharacterEventDto(CharacterEventType.LevelUp, "{}"));
+
+        var firstResponse = await DeleteWithIdempotencyAsync(
+            "/api/scan/112/events/last-levelup", "undo-level-112");
+        var secondResponse = await DeleteWithIdempotencyAsync(
+            "/api/scan/112/events/last-levelup", "undo-level-112");
+
+        Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
+        var first = await firstResponse.Content.ReadFromJsonAsync<CharacterEventDto>();
+        var second = await secondResponse.Content.ReadFromJsonAsync<CharacterEventDto>();
+        Assert.Equal(first!.Id, second!.Id);
+
+        var events = await Client.GetFromJsonAsync<List<CharacterEventDto>>("/api/scan/112/events");
+        Assert.NotNull(events);
+        Assert.DoesNotContain(events, e => e.EventType == CharacterEventType.LevelUp);
+        Assert.Single(events, e => e.EventType == CharacterEventType.LevelUpReverted);
+    }
+
+    [Fact]
     public async Task PendingTreasureQuests_ReturnsUnverifiedStashQuest()
     {
         var game = await CreateGameAsync("Scan poklad");
@@ -252,6 +329,29 @@ public class ScanEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
             "/api/scan/108/treasure-quests/pending");
         Assert.NotNull(pending);
         Assert.Empty(pending);
+    }
+
+    [Fact]
+    public async Task VerifyTreasureQuest_WithSameIdempotencyKey_ReplaysOriginalEvent()
+    {
+        var game = await CreateGameAsync("Scan idempotence");
+        var stash = await CreateSecretStashAsync("Idempotentní skrýš");
+        await SeedCharacterWithAssignment(externalPersonId: 113, gameId: game.Id);
+        var createQuest = await Client.PostAsJsonAsync("/api/treasure-quests",
+            new CreateTreasureQuestDto("Jedno razítko", GameTimePhase.Early, game.Id, SecretStashId: stash.Id));
+        var quest = await createQuest.Content.ReadFromJsonAsync<TreasureQuestListDto>();
+        var payload = new VerifyTreasureQuestDto(stash.Id);
+
+        var firstResponse = await PostJsonWithIdempotencyAsync(
+            $"/api/scan/113/treasure-quests/{quest!.Id}/verify", payload, "verify-113");
+        var secondResponse = await PostJsonWithIdempotencyAsync(
+            $"/api/scan/113/treasure-quests/{quest.Id}/verify", payload, "verify-113");
+
+        Assert.Equal(HttpStatusCode.Created, firstResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
+        var first = await firstResponse.Content.ReadFromJsonAsync<CharacterEventDto>();
+        var second = await secondResponse.Content.ReadFromJsonAsync<CharacterEventDto>();
+        Assert.Equal(first!.Id, second!.Id);
     }
 
     [Fact]
