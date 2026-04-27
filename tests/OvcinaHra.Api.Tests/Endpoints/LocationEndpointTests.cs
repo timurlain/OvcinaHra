@@ -204,6 +204,52 @@ public class LocationEndpointTests(PostgresFixture postgres) : IntegrationTestBa
     }
 
     [Fact]
+    public async Task ChildWithLegacyCoordinates_HidesCoordinates_AndInheritsLocatedOnlyFromParent()
+    {
+        var gameResponse = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Legacy Child GPS Test", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
+
+        int parentId, childId;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var parent = new Location
+            {
+                Name = "Legacy Parent Without GPS",
+                LocationKind = LocationKind.PointOfInterest
+            };
+            var child = new Location
+            {
+                Name = "Legacy Child With Own GPS",
+                LocationKind = LocationKind.PointOfInterest,
+                ParentLocation = parent,
+                Coordinates = new GpsCoordinates(49.0m, 17.0m)
+            };
+            db.Locations.AddRange(parent, child);
+            await db.SaveChangesAsync();
+
+            db.GameLocations.Add(new GameLocation { GameId = game!.Id, LocationId = child.Id });
+            await db.SaveChangesAsync();
+
+            parentId = parent.Id;
+            childId = child.Id;
+        }
+
+        var detail = await Client.GetFromJsonAsync<LocationDetailDto>($"/api/locations/{childId}");
+        Assert.Null(detail!.Latitude);
+        Assert.Null(detail.Longitude);
+
+        var catalogLocations = (await Client.GetFromJsonAsync<List<LocationListDto>>("/api/locations"))!;
+        Assert.False(catalogLocations.Single(l => l.Id == parentId).IsLocated);
+        Assert.False(catalogLocations.Single(l => l.Id == childId).IsLocated);
+
+        var gameLocations = (await Client.GetFromJsonAsync<List<LocationListDto>>(
+            $"/api/locations/by-game/{game!.Id}"))!;
+        Assert.False(Assert.Single(gameLocations).IsLocated);
+    }
+
+    [Fact]
     public async Task Create_WithLoreFields_ReturnsAllFields()
     {
         var dto = new CreateLocationDto("Aradhrynd", LocationKind.Town,

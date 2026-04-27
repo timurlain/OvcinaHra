@@ -426,8 +426,14 @@ else
     <BodyContentTemplate Context="popupContext">
         <p>Opravdu chcete odebrat lokaci <strong>@loc?.Name</strong> z této hry? Lokace zůstane v katalogu.</p>
         <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" @onclick="() => isRemoveFromGameVisible = false">Zrušit</button>
-            <button class="btn btn-danger" @onclick="ConfirmRemoveFromGameAsync">Odebrat</button>
+            <button class="btn btn-secondary" @onclick="() => isRemoveFromGameVisible = false" disabled="@isSaving">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmRemoveFromGameAsync" disabled="@isSaving">
+                @if (isSaving)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                Odebrat
+            </button>
         </div>
     </BodyContentTemplate>
 </DxPopup>
@@ -735,9 +741,10 @@ else
 
     private async Task ConfirmRemoveFromGameAsync()
     {
-        if (!GameContext.SelectedGameId.HasValue) return;
+        if (!GameContext.SelectedGameId.HasValue || isSaving) return;
 
         error = null;
+        isSaving = true;
         try
         {
             var (ok, problem) = await Api.DeleteWithProblemAsync(
@@ -751,7 +758,8 @@ else
             isRemoveFromGameVisible = false;
             Nav.NavigateTo("/locations");
         }
-        catch (Exception ex) { error = ex.Message; isRemoveFromGameVisible = false; }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isSaving = false; }
     }
 
     private void OpenFullMap() => Nav.NavigateTo($"/map?focus={Id}");
