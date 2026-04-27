@@ -50,7 +50,7 @@
 </div>
 
 @code {
-    private const int MinimumTypeaheadLength = 3;
+    private const int MinimumAutoTypeaheadLength = 6;
     private const int ResultLimit = 8;
     private static readonly TimeSpan DebounceDelay = TimeSpan.FromMilliseconds(275);
 
@@ -68,7 +68,8 @@
         query = args.Value?.ToString() ?? "";
         searched = false;
 
-        if (query.Length < MinimumTypeaheadLength)
+        var trimmedQuery = query.Trim();
+        if (trimmedQuery.Length < MinimumAutoTypeaheadLength)
         {
             CancelDebounce();
             results.Clear();
@@ -114,7 +115,7 @@
     {
         var searchQuery = query.Trim();
         if (string.IsNullOrWhiteSpace(searchQuery)
-            || (!force && searchQuery.Length < MinimumTypeaheadLength))
+            || (!force && searchQuery.Length < MinimumAutoTypeaheadLength))
             return;
 
         searching = true;
