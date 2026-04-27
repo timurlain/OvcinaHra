@@ -59,7 +59,7 @@
 
 @if (!string.IsNullOrEmpty(LayoutKey))
 {
-    <div class="ovcina-grid-tools" aria-label="Nástroje zobrazení">
+    <div class="ovcina-grid-tools" role="toolbar" aria-label="Nástroje zobrazení">
         <button type="button" class="btn btn-sm btn-link ovcina-grid-reset" @onclick="ShowResetConfirmation" title="Resetovat zobrazení">
             <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
             <span>Resetovat zobrazení</span>
@@ -165,7 +165,7 @@
 
         await TryRemoveLocalStorageItemAsync(LayoutKey, "remove legacy layout key during save");
         var json = JsonSerializer.Serialize(e.Layout);
-        _ = SaveLayoutDebouncedAsync(storageKey, json);
+        _ = SaveLayoutDebouncedSafeAsync(storageKey, json);
     }
 
     private void ShowResetConfirmation()
@@ -200,25 +200,38 @@
         }
     }
 
+    private async Task SaveLayoutDebouncedSafeAsync(string storageKey, string json)
+    {
+        try
+        {
+            await SaveLayoutDebouncedAsync(storageKey, json);
+        }
+        catch (Exception ex)
+        {
+            LogLayoutFailure("save grid layout", ex);
+        }
+    }
+
     private async Task SaveLayoutDebouncedAsync(string storageKey, string json)
     {
         saveDebounceCts?.Cancel();
         saveDebounceCts?.Dispose();
         saveDebounceCts = new CancellationTokenSource();
-        var token = saveDebounceCts.Token;
+        var currentSaveCts = saveDebounceCts;
+        var token = currentSaveCts.Token;
 
         try
         {
             await Task.Delay(SaveDebounceMilliseconds, token);
+
+            if (token.IsCancellationRequested || !ReferenceEquals(saveDebounceCts, currentSaveCts))
+                return;
+
             await JS.InvokeVoidAsync("localStorage.setItem", storageKey, json);
         }
         catch (OperationCanceledException)
         {
             // Superseded by a newer layout change.
-        }
-        catch (Exception ex)
-        {
-            LogLayoutFailure("save grid layout", ex);
         }
     }
 
