@@ -16,7 +16,7 @@ public static class SearchEndpoints
 
     private static async Task<Ok<SearchResponseDto>> Search(string q, WorldDbContext db, int? gameId = null, int limit = 20)
     {
-        if (string.IsNullOrWhiteSpace(q) || q.Length < 2)
+        if (string.IsNullOrWhiteSpace(q))
             return TypedResults.Ok(new SearchResponseDto(q ?? "", 0, []));
 
         var terms = q.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

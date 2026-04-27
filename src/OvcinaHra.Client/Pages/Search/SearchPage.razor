@@ -53,7 +53,7 @@
 
     private async Task SearchAsync()
     {
-        if (string.IsNullOrWhiteSpace(query) || query.Length < 2) return;
+        if (string.IsNullOrWhiteSpace(query)) return;
         searching = true;
         try
         {

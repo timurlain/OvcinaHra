@@ -1,0 +1,225 @@
+@inject ApiClient Api
+@inject NavigationManager Nav
+@implements IDisposable
+
+<div class="oh-nav-search"
+     @onclick:stopPropagation="true"
+     @onfocusin="HandleFocusIn"
+     @onfocusout="HandleFocusOutAsync">
+    <div class="oh-nav-search-box">
+        <i class="bi bi-search"></i>
+        <input value="@query"
+               @oninput="HandleInputAsync"
+               @onkeydown="HandleKeyDownAsync"
+               @onfocus="ShowExistingResults"
+               placeholder="Hledat..."
+               aria-label="Hledat"
+               autocomplete="off" />
+        @if (searching)
+        {
+            <span class="spinner-border spinner-border-sm oh-nav-search-spinner" aria-hidden="true"></span>
+        }
+    </div>
+
+    @if (dropdownVisible)
+    {
+        <div class="oh-nav-search-results">
+            @if (showNoResults)
+            {
+                <div class="oh-nav-search-empty">Žádné výsledky</div>
+            }
+            else
+            {
+                @foreach (var item in results)
+                {
+                    <button type="button"
+                            class="oh-nav-search-result"
+                            @key="SearchResultKey(item)"
+                            @onclick="() => NavigateToResult(item)">
+                        <i class="bi @IconFor(item.EntityType)"></i>
+                        <span class="oh-nav-search-result-text">
+                            <strong>@item.Name</strong>
+                            <small>@LabelFor(item.EntityType)</small>
+                        </span>
+                    </button>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private const int MinimumTypeaheadLength = 3;
+    private const int ResultLimit = 8;
+    private static readonly TimeSpan DebounceDelay = TimeSpan.FromMilliseconds(275);
+
+    private readonly List<SearchResultDto> results = [];
+    private CancellationTokenSource? debounceCts;
+    private string query = "";
+    private bool searching;
+    private bool dropdownVisible;
+    private bool searched;
+    private int focusVersion;
+    private bool showNoResults => searched && !searching && results.Count == 0;
+
+    private async Task HandleInputAsync(ChangeEventArgs args)
+    {
+        query = args.Value?.ToString() ?? "";
+        searched = false;
+
+        if (query.Length < MinimumTypeaheadLength)
+        {
+            CancelDebounce();
+            results.Clear();
+            searching = false;
+            dropdownVisible = false;
+            return;
+        }
+
+        CancelDebounce();
+        debounceCts = new CancellationTokenSource();
+        var token = debounceCts.Token;
+
+        try
+        {
+            await Task.Delay(DebounceDelay, token);
+            await SearchAsync(force: false, token);
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer keystroke scheduled the next search.
+        }
+    }
+
+    private async Task HandleKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+        {
+            CancelDebounce();
+            await SearchAsync(force: true, CancellationToken.None);
+        }
+        else if (args.Key == "Escape")
+        {
+            CancelDebounce();
+            query = "";
+            results.Clear();
+            searching = false;
+            searched = false;
+            dropdownVisible = false;
+        }
+    }
+
+    private async Task SearchAsync(bool force, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(query) || (!force && query.Length < MinimumTypeaheadLength))
+            return;
+
+        searching = true;
+        dropdownVisible = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var url = $"/api/search?q={Uri.EscapeDataString(query)}&limit={ResultLimit}";
+            var response = await Api.GetAsync<SearchResponseDto>(url);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            results.Clear();
+            if (response is not null)
+                results.AddRange(response.Results.Take(ResultLimit));
+        }
+        catch when (!cancellationToken.IsCancellationRequested)
+        {
+            results.Clear();
+        }
+        finally
+        {
+            searching = false;
+
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                searched = true;
+                dropdownVisible = true;
+            }
+        }
+    }
+
+    private void ShowExistingResults()
+    {
+        if (results.Count > 0 || searched)
+            dropdownVisible = true;
+    }
+
+    private void HandleFocusIn()
+    {
+        focusVersion++;
+    }
+
+    private async Task HandleFocusOutAsync()
+    {
+        var version = ++focusVersion;
+        await Task.Delay(120);
+        if (version != focusVersion)
+            return;
+
+        dropdownVisible = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void NavigateToResult(SearchResultDto item)
+    {
+        var route = DetailRouteFor(item);
+        if (route is null) return;
+
+        query = "";
+        results.Clear();
+        searching = false;
+        dropdownVisible = false;
+        searched = false;
+        Nav.NavigateTo(route);
+    }
+
+    private static string? DetailRouteFor(SearchResultDto item) => item.EntityType switch
+    {
+        "Location" => $"/locations/{item.Id}",
+        "Item" => $"/items/{item.Id}",
+        "Monster" => $"/monsters/{item.Id}",
+        "Quest" => $"/quests/{item.Id}",
+        "Spell" => $"/spells/{item.Id}",
+        _ => null
+    };
+
+    private static string LabelFor(string entityType) => entityType switch
+    {
+        "Location" => "Lokace",
+        "Item" => "Předmět",
+        "Monster" => "Příšera",
+        "Quest" => "Quest",
+        "Spell" => "Kouzlo",
+        _ => entityType
+    };
+
+    private static string IconFor(string entityType) => entityType switch
+    {
+        "Location" => "bi-geo-alt-fill",
+        "Item" => "bi-gem",
+        "Monster" => "bi-shield-fill",
+        "Quest" => "bi-journal-text",
+        "Spell" => "bi-magic",
+        _ => "bi-search"
+    };
+
+    private static string SearchResultKey(SearchResultDto item) => $"{item.EntityType}:{item.Id}";
+
+    private void CancelDebounce()
+    {
+        debounceCts?.Cancel();
+        debounceCts?.Dispose();
+        debounceCts = null;
+    }
+
+    public void Dispose()
+    {
+        CancelDebounce();
+    }
+}

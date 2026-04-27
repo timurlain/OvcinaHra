@@ -12,6 +12,8 @@
 </div>
 
 <div class="@NavMenuCssClass oh-nav" @onclick="CollapseOnMobile">
+    <NavSearch />
+
     @* Always-visible: Přehled + Mapa (mode-agnostic overviews) *@
     <div class="oh-nav-fixed-top">
         <NavLink class="oh-nav-item" href="" Match="NavLinkMatch.All">
@@ -211,10 +213,6 @@
         <NavLink class="oh-nav-item" href="tags">
             <span class="oh-nav-rail"></span>
             <i class="bi bi-tags-fill ni"></i><span class="oh-nav-label">Tagy</span>
-        </NavLink>
-        <NavLink class="oh-nav-item" href="search">
-            <span class="oh-nav-rail"></span>
-            <i class="bi bi-search ni"></i><span class="oh-nav-label">Hledání</span>
         </NavLink>
     </div>
 
