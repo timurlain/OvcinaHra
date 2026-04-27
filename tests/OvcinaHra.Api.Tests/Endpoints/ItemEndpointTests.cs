@@ -101,6 +101,60 @@ public class ItemEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
     }
 
     [Fact]
+    public async Task GetByGame_RecipeSummary_IncludesAllLabelledSections_WhenAllPresent()
+    {
+        var game = await CreateGameAsync("Recipe Summary Hra");
+        var outputItem = await CreateItemAsync("Elixír odvahy", ItemType.Potion);
+        var herb = await CreateItemAsync("Bylina", ItemType.Ingredient);
+        var vial = await CreateItemAsync("Lahvička", ItemType.Ingredient);
+        var building = await CreateBuildingAsync("Alchymistická dílna");
+        var skillId = await SeedGameSkillAsync(game.Id, "Alchymie");
+
+        await LinkGameItemAsync(game.Id, outputItem.Id);
+        var recipe = await CreateRecipeAsync(game.Id, outputItem.Id,
+            ingredientNotes: "Použij čerstvé listy.",
+            requiredSkillIds: [skillId]);
+        await AddIngredientAsync(recipe.Id, herb.Id, 3);
+        await AddIngredientAsync(recipe.Id, vial.Id);
+        await AddBuildingRequirementAsync(recipe.Id, building.Id);
+
+        var response = await Client.GetAsync($"/api/items/by-game/{game.Id}");
+        response.EnsureSuccessStatusCode();
+        var items = await response.Content.ReadFromJsonAsync<List<GameItemListDto>>();
+
+        Assert.NotNull(items);
+        var item = Assert.Single(items);
+        var summary = Assert.IsType<string>(item.RecipeSummary);
+        Assert.Equal(
+            "Suroviny: 3× Bylina, 1× Lahvička │ Pozn.: Použij čerstvé listy. │ Budovy: Alchymistická dílna │ Dovednosti: Alchymie",
+            summary);
+    }
+
+    [Fact]
+    public async Task GetByGame_RecipeSummary_OmitsEmptySections()
+    {
+        var game = await CreateGameAsync("Recipe Summary Empty Sections Hra");
+        var outputItem = await CreateItemAsync("Jednoduchý lektvar", ItemType.Potion);
+        var herb = await CreateItemAsync("Bylina", ItemType.Ingredient);
+
+        await LinkGameItemAsync(game.Id, outputItem.Id);
+        var recipe = await CreateRecipeAsync(game.Id, outputItem.Id);
+        await AddIngredientAsync(recipe.Id, herb.Id, 2);
+
+        var response = await Client.GetAsync($"/api/items/by-game/{game.Id}");
+        response.EnsureSuccessStatusCode();
+        var items = await response.Content.ReadFromJsonAsync<List<GameItemListDto>>();
+
+        Assert.NotNull(items);
+        var item = Assert.Single(items);
+        var summary = Assert.IsType<string>(item.RecipeSummary);
+        Assert.Equal("Suroviny: 2× Bylina", summary);
+        Assert.DoesNotContain("Pozn.:", summary);
+        Assert.DoesNotContain("Budovy:", summary);
+        Assert.DoesNotContain("Dovednosti:", summary);
+    }
+
+    [Fact]
     public async Task CreateGameItem_Valid_ReturnsCreated()
     {
         var gameResponse = await Client.PostAsJsonAsync("/api/games",
@@ -274,5 +328,80 @@ public class ItemEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
         Assert.Single(usage.Shops);
         Assert.Equal(25, usage.Shops[0].Price);
         Assert.Equal("Jen v noci", usage.Shops[0].SaleCondition);
+    }
+
+    private async Task<GameDetailDto> CreateGameAsync(string name)
+    {
+        var response = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto(name, 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<GameDetailDto>())!;
+    }
+
+    private async Task<ItemDetailDto> CreateItemAsync(string name, ItemType type)
+    {
+        var response = await Client.PostAsJsonAsync("/api/items", new CreateItemDto(name, type));
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<ItemDetailDto>())!;
+    }
+
+    private async Task<BuildingDetailDto> CreateBuildingAsync(string name)
+    {
+        var response = await Client.PostAsJsonAsync("/api/buildings", new CreateBuildingDto(name));
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<BuildingDetailDto>())!;
+    }
+
+    private async Task LinkGameItemAsync(int gameId, int itemId)
+    {
+        var response = await Client.PostAsJsonAsync("/api/items/game-item",
+            new CreateGameItemDto(gameId, itemId));
+        response.EnsureSuccessStatusCode();
+    }
+
+    private async Task<CraftingRecipeDetailDto> CreateRecipeAsync(
+        int gameId,
+        int outputItemId,
+        string? ingredientNotes = null,
+        IReadOnlyList<int>? requiredSkillIds = null)
+    {
+        var response = await Client.PostAsJsonAsync("/api/crafting",
+            new CreateCraftingRecipeDto(gameId, outputItemId,
+                RequiredSkillIds: requiredSkillIds,
+                IngredientNotes: ingredientNotes));
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<CraftingRecipeDetailDto>())!;
+    }
+
+    private async Task AddIngredientAsync(int recipeId, int itemId, int quantity = 1)
+    {
+        var response = await Client.PostAsJsonAsync($"/api/crafting/{recipeId}/ingredients",
+            new AddCraftingIngredientDto(itemId, quantity));
+        response.EnsureSuccessStatusCode();
+    }
+
+    private async Task AddBuildingRequirementAsync(int recipeId, int buildingId)
+    {
+        var response = await Client.PostAsJsonAsync($"/api/crafting/{recipeId}/buildings",
+            new AddCraftingBuildingReqDto(buildingId));
+        response.EnsureSuccessStatusCode();
+    }
+
+    private async Task<int> SeedGameSkillAsync(int gameId, string name)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        var gameSkill = new GameSkill
+        {
+            GameId = gameId,
+            TemplateSkillId = null,
+            Name = name,
+            Category = SkillCategory.Class,
+            XpCost = 5,
+            LevelRequirement = null
+        };
+        db.GameSkills.Add(gameSkill);
+        await db.SaveChangesAsync();
+        return gameSkill.Id;
     }
 }
