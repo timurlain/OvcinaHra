@@ -1,5 +1,6 @@
 @inject ApiClient Api
 @inject NavigationManager Nav
+@inject ILogger<NavSearch> Logger
 @implements IDisposable
 
 <div class="oh-nav-search"
@@ -111,7 +112,9 @@
 
     private async Task SearchAsync(bool force, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(query) || (!force && query.Length < MinimumTypeaheadLength))
+        var searchQuery = query.Trim();
+        if (string.IsNullOrWhiteSpace(searchQuery)
+            || (!force && searchQuery.Length < MinimumTypeaheadLength))
             return;
 
         searching = true;
@@ -120,17 +123,21 @@
 
         try
         {
-            var url = $"/api/search?q={Uri.EscapeDataString(query)}&limit={ResultLimit}";
-            var response = await Api.GetAsync<SearchResponseDto>(url);
+            var url = $"/api/search?q={Uri.EscapeDataString(searchQuery)}&limit={ResultLimit}";
+            var response = await Api.GetAsync<SearchResponseDto>(url, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
 
             results.Clear();
             if (response is not null)
                 results.AddRange(response.Results.Take(ResultLimit));
         }
-        catch when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
         {
             results.Clear();
+            LogSearchFailure(searchQuery, ex);
         }
         finally
         {
@@ -143,6 +150,21 @@
             }
         }
     }
+
+    private void LogSearchFailure(string searchQuery, Exception exception)
+    {
+        Logger.LogWarning(
+            exception,
+            "NavSearch typeahead failed for {Query} with status {StatusCode}. {Exception}",
+            searchQuery,
+            StatusCodeFrom(exception),
+            exception);
+    }
+
+    private static object? StatusCodeFrom(Exception exception)
+        => exception is HttpRequestException httpException
+            ? httpException.StatusCode
+            : null;
 
     private void ShowExistingResults()
     {

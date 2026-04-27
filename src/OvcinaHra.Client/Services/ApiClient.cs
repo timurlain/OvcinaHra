@@ -25,13 +25,13 @@ public class ApiClient
         return await _http.GetFromJsonAsync<List<T>>(url, JsonOptions) ?? [];
     }
 
-    public async Task<T?> GetAsync<T>(string url)
+    public async Task<T?> GetAsync<T>(string url, CancellationToken cancellationToken = default)
     {
-        var response = await _http.GetAsync(url);
+        var response = await _http.GetAsync(url, cancellationToken);
         if (response.StatusCode == HttpStatusCode.NotFound)
             return default;
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<T>(JsonOptions);
+        return await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
     }
 
     public async Task<TResponse?> PostAsync<TRequest, TResponse>(string url, TRequest data)
