@@ -5,10 +5,13 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using OvcinaHra.Api.Configuration;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Endpoints;
 using OvcinaHra.Api.Logging;
 using OvcinaHra.Api.Services;
+using Polly;
+using Polly.Extensions.Http;
 using Serilog;
 
 // Two-stage bootstrap: early logger catches startup errors
@@ -48,6 +51,14 @@ try
 
     builder.Services.AddHttpClient<RegistraceImportService>();
     builder.Services.AddHttpClient<RegistraceGameService>();
+    builder.Services.Configure<BotConsultOptions>(builder.Configuration.GetSection("BotConsult"));
+    builder.Services.AddHttpClient<IBotConsultClient, BotConsultClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(60);
+        })
+        .AddPolicyHandler(HttpPolicyExtensions
+            .HandleTransientHttpError()
+            .WaitAndRetryAsync(1, _ => TimeSpan.FromMilliseconds(200)));
 
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -245,6 +256,7 @@ try
     app.MapTreasurePlanningEndpoints().RequireAuthorization();
     app.MapTimelineEndpoints().RequireAuthorization();
     app.MapDashboardEndpoints().RequireAuthorization();
+    app.MapConsultEndpoints();
     app.MapMapEndpoints().RequireAuthorization();
     app.MapGameEventEndpoints();
     app.MapSearchEndpoints().RequireAuthorization();
