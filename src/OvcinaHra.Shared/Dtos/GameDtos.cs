@@ -42,6 +42,14 @@ public record UpdateGameDto(
     decimal? BoundingBoxNeLat = null,
     decimal? BoundingBoxNeLng = null);
 
+public record GameStampDto(
+    int LocationId,
+    string LocationName,
+    string StampImageUrl,
+    IReadOnlyList<GameStampStashDto> Stashes);
+
+public record GameStampStashDto(int Id, string Name);
+
 /// <summary>
 /// Links this game to a game in registrace-ovčina.
 /// </summary>

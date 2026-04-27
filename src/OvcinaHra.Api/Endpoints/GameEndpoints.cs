@@ -34,6 +34,7 @@ public static class GameEndpoints
         group.MapGet("/{id:int}/overlay", GetOverlay);
         group.MapPut("/{id:int}/overlay", UpdateOverlay);
 
+        group.MapGet("/{gameId:int}/stamps", GetGameStamps);
         group.MapGet("/{gameId:int}/skills", GetGameSkills);
         group.MapGet("/{gameId:int}/skills/{gameSkillId:int}", GetGameSkillById);
         group.MapPost("/{gameId:int}/skills", CreateGameSkill);
@@ -355,6 +356,49 @@ public static class GameEndpoints
         game.OverlayJson = serialized;
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
+    }
+
+    private static async Task<Results<Ok<List<GameStampDto>>, NotFound>> GetGameStamps(
+        int gameId, WorldDbContext db, IBlobStorageService blobService, CancellationToken ct)
+    {
+        var gameExists = await db.Games.AnyAsync(g => g.Id == gameId, ct);
+        if (!gameExists)
+            return TypedResults.NotFound();
+
+        var rows = await db.GameSecretStashes
+            .AsNoTracking()
+            .Where(gs => gs.GameId == gameId
+                && gs.Location.StampImagePath != null
+                && gs.Location.StampImagePath != "")
+            .OrderBy(gs => gs.Location.Name)
+            .ThenBy(gs => gs.SecretStash.Name)
+            .Select(gs => new
+            {
+                gs.LocationId,
+                LocationName = gs.Location.Name,
+                StampImagePath = gs.Location.StampImagePath!,
+                StashId = gs.SecretStashId,
+                StashName = gs.SecretStash.Name
+            })
+            .ToListAsync(ct);
+
+        var stamps = new List<GameStampDto>();
+        foreach (var locationGroup in rows.GroupBy(r => new { r.LocationId, r.LocationName, r.StampImagePath }))
+        {
+            var stampImageUrl = await blobService.GetSasUrlAsync(locationGroup.Key.StampImagePath, ct);
+            if (stampImageUrl is null)
+                continue;
+
+            stamps.Add(new GameStampDto(
+                locationGroup.Key.LocationId,
+                locationGroup.Key.LocationName,
+                stampImageUrl,
+                locationGroup
+                    .Select(r => new GameStampStashDto(r.StashId, r.StashName))
+                    .ToList()));
+        }
+
+        return TypedResults.Ok(stamps);
     }
 
     private static async Task<Results<Ok<IReadOnlyList<GameSkillDto>>, NotFound>> GetGameSkills(
