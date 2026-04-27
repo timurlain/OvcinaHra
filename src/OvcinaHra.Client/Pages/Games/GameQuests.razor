@@ -20,11 +20,14 @@
     </div>
     <div class="d-flex gap-2">
         <button class="btn btn-outline-secondary" type="button"
-                @onclick='() => Nav.NavigateTo("/quests")'>
+                @onclick='() => Nav.NavigateTo("/quests?mode=catalogue")'>
             <i class="bi bi-journal-richtext"></i> Katalog
         </button>
-        <button class="btn btn-outline-primary" type="button" @onclick="() => isFromTemplateVisible = true">
-            <i class="bi bi-files"></i> Přidat ze šablony
+        <button class="btn btn-outline-primary" type="button" @onclick="OpenFromCatalogAsync">
+            <i class="bi bi-files"></i> Přidat z katalogu
+        </button>
+        <button class="btn btn-outline-primary" type="button" @onclick="OpenBulkFromCatalogAsync">
+            <i class="bi bi-ui-checks-grid"></i> Přidat hromadně z katalogu
         </button>
         <button class="btn btn-primary" type="button" @onclick="OpenBlankCreateModal">
             <i class="bi bi-plus-lg"></i> Od nuly
@@ -32,16 +35,23 @@
     </div>
 </div>
 
-@* State filter pill row *@
-<div class="oh-qst-state-pillrow mb-3">
-    @foreach (var (key, label) in stateFilterOptions)
-    {
-        <button type="button"
-                class="oh-qst-state-pill @(stateFilter == key ? "oh-qst-state-pill--on" : "")"
-                @onclick="() => stateFilter = key">
-            @label
-        </button>
-    }
+<div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+    <DxTagBox Data="@questTypeValues" Values="@selectedQuestTypes"
+              ValuesChanged="@((IEnumerable<QuestType> values) => OnQuestTypesChanged(values))"
+              TextFieldName="Display" ValueFieldName="Value"
+              NullText="Všechny typy"
+              SearchMode="ListSearchMode.AutoSearch"
+              style="min-width:220px" />
+    <div class="oh-qst-state-pillrow mb-0">
+        @foreach (var (key, label) in stateFilterOptions)
+        {
+            <button type="button"
+                    class="oh-qst-state-pill @(stateFilter == key ? "oh-qst-state-pill--on" : "")"
+                    @onclick="() => stateFilter = key">
+                @label
+            </button>
+        }
+    </div>
 </div>
 
 @if (loading)
@@ -117,23 +127,23 @@ else
 @* Add-from-template popup: pick a catalog quest, server CopyToGame creates
    the per-game fork with deep-copied tags/locations/encounters/rewards. *@
 <DxPopup AllowResize="true" @bind-Visible="@isFromTemplateVisible"
-         HeaderText="Přidat quest ze šablony" Width="640px">
+         HeaderText="Přidat quest z katalogu" Width="640px">
     <BodyContentTemplate Context="ctx">
         @if (catalog is null)
         {
             <p class="text-muted">Načítám katalog…</p>
         }
-        else if (catalog.Count == 0)
+        else if (AvailableCatalogQuests.Count == 0)
         {
-            <p class="text-muted">V katalogu nejsou žádné šablony questů.</p>
+            <p class="text-muted">V katalogu nejsou žádné další questy pro tuto hru.</p>
         }
         else
         {
             <DxFormLayout>
-                <DxFormLayoutItem Caption="Šablona" ColSpanMd="12">
-                    <DxComboBox Data="@catalog" @bind-Value="@templateId"
+                <DxFormLayoutItem Caption="Quest z katalogu" ColSpanMd="12">
+                    <DxComboBox Data="@AvailableCatalogQuests" @bind-Value="@templateId"
                                 TextFieldName="Name" ValueFieldName="Id"
-                                NullText="(vyberte šablonu)"
+                                NullText="(vyberte quest)"
                                 SearchMode="ListSearchMode.AutoSearch" />
                 </DxFormLayoutItem>
             </DxFormLayout>
@@ -158,6 +168,66 @@ else
                     disabled="@(isCopying || templateId is null)">
                 @if (isCopying) { <span class="spinner-border spinner-border-sm me-1"></span> }
                 Vytvořit kopii
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+<DxPopup AllowResize="true" @bind-Visible="@isBulkFromCatalogVisible"
+         HeaderText="Přidat hromadně z katalogu" Width="1000px">
+    <BodyContentTemplate Context="bulkCtx">
+        @if (catalog is null)
+        {
+            <p class="text-muted">Načítám katalog…</p>
+        }
+        else if (AvailableCatalogQuests.Count == 0)
+        {
+            <p class="text-muted">V katalogu nejsou žádné další questy pro tuto hru.</p>
+        }
+        else
+        {
+            <OvcinaGrid Data="@AvailableCatalogQuests" KeyFieldName="Id" LayoutKey="grid-layout-quests-bulk-add-v1"
+                        SelectionMode="GridSelectionMode.Multiple"
+                        SelectedDataItems="@selectedBulkQuestItems"
+                        SelectedDataItemsChanged="@OnBulkQuestSelectionChanged">
+                <Columns>
+                    <DxGridDataColumn Caption="" Width="48px" AllowSort="false" AllowGroup="false">
+                        <CellDisplayTemplate>
+                            @{ var q = (QuestCatalogDto)context.DataItem; }
+                            <input type="checkbox"
+                                   checked="@IsBulkQuestSelected(q.Id)"
+                                   @onchange="@((ChangeEventArgs e) => ToggleBulkQuest(q, e))"
+                                   @onclick:stopPropagation="true" />
+                        </CellDisplayTemplate>
+                    </DxGridDataColumn>
+                    <DxGridDataColumn FieldName="Name" Caption="Název" MinWidth="220" />
+                    <DxGridDataColumn FieldName="QuestTypeDisplay" Caption="Typ" Width="140px" />
+                    <DxGridDataColumn FieldName="EncountersCount" Caption="Setkání" Width="100px" />
+                    <DxGridDataColumn FieldName="RewardsCount" Caption="Odměny" Width="100px" />
+                    <DxGridDataColumn FieldName="RewardSummary" Caption="Souhrn odměn" MinWidth="240" />
+                    <DxGridDataColumn FieldName="Description" Caption="Popis" MinWidth="240" Visible="false" />
+                </Columns>
+            </OvcinaGrid>
+        }
+
+        @if (bulkError is not null)
+        {
+            <div class="alert alert-danger mt-2">@bulkError</div>
+        }
+        @if (bulkResult?.Skipped.Count > 0)
+        {
+            <div class="alert alert-warning mt-2">
+                Přidáno: @bulkResult.Added.Count, přeskočeno: @bulkResult.Skipped.Count.
+            </div>
+        }
+
+        <div class="d-flex gap-2 justify-content-end mt-3">
+            <button class="btn btn-secondary" type="button" @onclick="() => isBulkFromCatalogVisible = false" disabled="@isBulkAdding">Zavřít</button>
+            <button class="btn btn-primary" type="button"
+                    @onclick="BulkAddFromCatalogAsync"
+                    disabled="@(isBulkAdding || selectedBulkQuestItems.Count == 0)">
+                @if (isBulkAdding) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Přidat vybrané
             </button>
         </div>
     </BodyContentTemplate>
@@ -196,6 +266,7 @@ else
     private bool loading = true;
 
     private string stateFilter = "all"; // all | inactive | active | done
+    private List<QuestType> selectedQuestTypes = [];
 
     private static readonly (string Key, string Label)[] stateFilterOptions =
     [
@@ -206,13 +277,15 @@ else
     ];
 
     private List<QuestListDto> filtered =>
-        quests.Where(q => stateFilter switch
-        {
-            "inactive" => q.State == QuestState.Inactive,
-            "active"   => q.State == QuestState.Active,
-            "done"     => q.State == QuestState.Completed,
-            _          => true
-        }).ToList();
+        quests.Where(q =>
+            (selectedQuestTypes.Count == 0 || selectedQuestTypes.Contains(q.QuestType))
+            && (stateFilter switch
+            {
+                "inactive" => q.State == QuestState.Inactive,
+                "active"   => q.State == QuestState.Active,
+                "done"     => q.State == QuestState.Completed,
+                _          => true
+            })).ToList();
 
     // Add-from-template state
     private bool isFromTemplateVisible;
@@ -220,6 +293,13 @@ else
     private bool isCopying;
     private string? copyError;
     private List<string> copyWarnings = [];
+
+    // Bulk add state
+    private bool isBulkFromCatalogVisible;
+    private IReadOnlyList<object> selectedBulkQuestItems = [];
+    private bool isBulkAdding;
+    private string? bulkError;
+    private BulkAddQuestsResponse? bulkResult;
 
     // Blank create state
     private bool isBlankVisible;
@@ -232,6 +312,11 @@ else
         .Select(v => new EnumItem<QuestType>(v, v.GetDisplayName())).ToList();
 
     private record EnumItem<T>(T Value, string Display);
+
+    private List<QuestCatalogDto> AvailableCatalogQuests =>
+        catalog?
+            .Where(c => !quests.Any(q => string.Equals(q.Name, c.Name, StringComparison.OrdinalIgnoreCase)))
+            .ToList() ?? [];
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -271,7 +356,25 @@ else
     {
         if (catalog is not null) return;
         try { catalog = await Api.GetListAsync<QuestCatalogDto>("/api/quests/all"); }
-        catch (Exception ex) { copyError = ex.Message; catalog = []; }
+        catch (Exception ex) { copyError = ex.Message; bulkError = ex.Message; catalog = []; }
+    }
+
+    private async Task OpenFromCatalogAsync()
+    {
+        copyError = null;
+        copyWarnings = [];
+        templateId = null;
+        isFromTemplateVisible = true;
+        await LoadCatalogIfNeededAsync();
+    }
+
+    private async Task OpenBulkFromCatalogAsync()
+    {
+        bulkError = null;
+        bulkResult = null;
+        selectedBulkQuestItems = [];
+        isBulkFromCatalogVisible = true;
+        await LoadCatalogIfNeededAsync();
     }
 
     private async Task CopyFromTemplateAsync()
@@ -301,6 +404,60 @@ else
         }
         catch (Exception ex) { copyError = ex.Message; }
         finally { isCopying = false; }
+    }
+
+    private void OnQuestTypesChanged(IEnumerable<QuestType> values) =>
+        selectedQuestTypes = values.ToList();
+
+    private void OnBulkQuestSelectionChanged(IReadOnlyList<object> items) =>
+        selectedBulkQuestItems = items;
+
+    private bool IsBulkQuestSelected(int questId) =>
+        selectedBulkQuestItems.OfType<QuestCatalogDto>().Any(q => q.Id == questId);
+
+    private void ToggleBulkQuest(QuestCatalogDto quest, ChangeEventArgs e)
+    {
+        var items = selectedBulkQuestItems
+            .OfType<QuestCatalogDto>()
+            .Where(q => q.Id != quest.Id)
+            .Cast<object>()
+            .ToList();
+        if (e.Value is true)
+            items.Add(quest);
+        selectedBulkQuestItems = items;
+    }
+
+    private async Task BulkAddFromCatalogAsync()
+    {
+        var selectedIds = selectedBulkQuestItems
+            .OfType<QuestCatalogDto>()
+            .Select(q => q.Id)
+            .Distinct()
+            .ToArray();
+        if (selectedIds.Length == 0) return;
+
+        bulkError = null;
+        bulkResult = null;
+        isBulkAdding = true;
+        try
+        {
+            var (ok, result, problem) = await Api.PostWithProblemAsync<BulkAddQuestsRequest, BulkAddQuestsResponse>(
+                $"/api/games/{GameId}/quests/bulk",
+                new BulkAddQuestsRequest(selectedIds));
+            if (!ok || result is null)
+            {
+                bulkError = problem ?? "Hromadné přidání questů se nepodařilo.";
+                return;
+            }
+
+            bulkResult = result;
+            selectedBulkQuestItems = [];
+            await LoadAsync();
+            if (result.Skipped.Count == 0)
+                isBulkFromCatalogVisible = false;
+        }
+        catch (Exception ex) { bulkError = ex.Message; }
+        finally { isBulkAdding = false; }
     }
 
     private async Task OpenBlankCreateModal()

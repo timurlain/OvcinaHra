@@ -103,7 +103,7 @@
                         <span class="oh-nav-rail"></span>
                         <img src="img/troll.svg" class="ni oh-nav-icon-svg" alt="" /><span class="oh-nav-label">Příšery</span>
                     </NavLink>
-                    <NavLink class="oh-nav-item" href="quests">
+                    <NavLink class="oh-nav-item" href="@QuestGameHref">
                         <span class="oh-nav-rail"></span>
                         <i class="bi bi-journal-text ni"></i><span class="oh-nav-label">Questy</span>
                     </NavLink>
@@ -160,7 +160,7 @@
                         <span class="oh-nav-rail"></span>
                         <img src="img/troll.svg" class="ni oh-nav-icon-svg" alt="" /><span class="oh-nav-label">Příšery</span>
                     </NavLink>
-                    <NavLink class="oh-nav-item" href="quests?catalog=true">
+                    <NavLink class="oh-nav-item" href="quests?mode=catalogue">
                         <span class="oh-nav-rail"></span>
                         <i class="bi bi-journal-text ni"></i><span class="oh-nav-label">Questy</span>
                     </NavLink>
@@ -263,6 +263,10 @@
             return name.Length > 20 ? name[..19] + "…" : name;
         }
     }
+
+    private string QuestGameHref => GameContext.SelectedGameId is int gameId
+        ? $"games/{gameId}/quests"
+        : "quests?mode=game";
 
     protected override void OnInitialized()
     {
