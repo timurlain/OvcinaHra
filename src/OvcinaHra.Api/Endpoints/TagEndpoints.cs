@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
@@ -9,6 +10,11 @@ namespace OvcinaHra.Api.Endpoints;
 
 public static class TagEndpoints
 {
+    // Matches Tag.Name HasMaxLength(100) in TagConfiguration. Centralised here
+    // so Create + Update validate the same ceiling and the Czech error message
+    // can quote the limit verbatim.
+    private const int NameMaxLength = 100;
+
     public static RouteGroupBuilder MapTagEndpoints(this IEndpointRouteBuilder routes)
     {
         var group = routes.MapGroup("/api/tags").WithTags("Tags");
@@ -45,25 +51,116 @@ public static class TagEndpoints
         return TypedResults.Ok(new TagDto(tag.Id, tag.Name, tag.Kind));
     }
 
-    private static async Task<Created<TagDto>> Create(CreateTagDto dto, WorldDbContext db)
+    // Issue #234 — name now flows through Trim + non-empty + max-length +
+    // dup-check guards that surface Czech ProblemDetails verbatim instead of
+    // hiding behind EnsureSuccessStatusCode. The client passes the user's
+    // typed name through unchanged (PostAsJsonAsync, JSON body) so any char
+    // — `+`, `&`, `:`, `'`, space — round-trips end-to-end.
+    private static async Task<Results<Created<TagDto>, ProblemHttpResult>> Create(CreateTagDto dto, WorldDbContext db)
     {
-        var tag = new Tag { Name = dto.Name, Kind = dto.Kind };
+        var name = dto.Name?.Trim() ?? "";
+        if (string.IsNullOrEmpty(name))
+            return TypedResults.Problem(
+                title: "Uložení selhalo",
+                detail: "Název tagu nesmí být prázdný.",
+                statusCode: StatusCodes.Status400BadRequest);
+
+        if (name.Length > NameMaxLength)
+            return TypedResults.Problem(
+                title: "Uložení selhalo",
+                detail: $"Název tagu nesmí přesáhnout {NameMaxLength} znaků.",
+                statusCode: StatusCodes.Status400BadRequest);
+
+        if (!Enum.IsDefined(dto.Kind))
+            return TypedResults.Problem(
+                title: "Uložení selhalo",
+                detail: "Neplatný druh tagu.",
+                statusCode: StatusCodes.Status400BadRequest);
+
+        // EF translates Trim() to Postgres TRIM() so legacy rows that already
+        // have whitespace padding still collide on the dup-check.
+        var collision = await db.Tags
+            .AnyAsync(t => t.Kind == dto.Kind && t.Name.Trim() == name);
+        if (collision)
+            return TypedResults.Problem(
+                title: "Uložení selhalo",
+                detail: $"Tag s názvem „{name}“ už v této kategorii existuje.",
+                statusCode: StatusCodes.Status400BadRequest);
+
+        var tag = new Tag { Name = name, Kind = dto.Kind };
         db.Tags.Add(tag);
-        await db.SaveChangesAsync();
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            // Concurrency race: AnyAsync above passed but a parallel request
+            // beat us to the (Kind, Name) UNIQUE index. Surface the same Czech
+            // ProblemDetails as the explicit dup-check so the client never
+            // sees a 500 for what is conceptually a duplicate-name conflict.
+            // Per Copilot review on PR #282 — same pattern as GameEndpoints.
+            return TypedResults.Problem(
+                title: "Uložení selhalo",
+                detail: $"Tag s názvem „{name}“ už v této kategorii existuje.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
 
         return TypedResults.Created($"/api/tags/{tag.Id}", new TagDto(tag.Id, tag.Name, tag.Kind));
     }
 
-    private static async Task<Results<NoContent, NotFound>> Update(int id, UpdateTagDto dto, WorldDbContext db)
+    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> Update(int id, UpdateTagDto dto, WorldDbContext db)
     {
+        // FindAsync first so a 404 on a missing id wins over the 400 input
+        // validation below — see _review-instincts §1.
         var tag = await db.Tags.FindAsync(id);
         if (tag is null)
             return TypedResults.NotFound();
 
-        tag.Name = dto.Name;
-        await db.SaveChangesAsync();
+        var name = dto.Name?.Trim() ?? "";
+        if (string.IsNullOrEmpty(name))
+            return TypedResults.Problem(
+                title: "Uložení selhalo",
+                detail: "Název tagu nesmí být prázdný.",
+                statusCode: StatusCodes.Status400BadRequest);
+
+        if (name.Length > NameMaxLength)
+            return TypedResults.Problem(
+                title: "Uložení selhalo",
+                detail: $"Název tagu nesmí přesáhnout {NameMaxLength} znaků.",
+                statusCode: StatusCodes.Status400BadRequest);
+
+        var collision = await db.Tags
+            .AnyAsync(t => t.Id != id && t.Kind == tag.Kind && t.Name.Trim() == name);
+        if (collision)
+            return TypedResults.Problem(
+                title: "Uložení selhalo",
+                detail: $"Tag s názvem „{name}“ už v této kategorii existuje.",
+                statusCode: StatusCodes.Status400BadRequest);
+
+        tag.Name = name;
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            // Same race as Create — a concurrent rename can still violate the
+            // (Kind, Name) UNIQUE index between AnyAsync and SaveChangesAsync.
+            // Per Copilot review on PR #282.
+            return TypedResults.Problem(
+                title: "Uložení selhalo",
+                detail: $"Tag s názvem „{name}“ už v této kategorii existuje.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
         return TypedResults.NoContent();
     }
+
+    // Npgsql surfaces unique-index violations as PostgresException with
+    // SqlState 23505. Mirrors the helper in GameEndpoints (PR #282 / Copilot).
+    private static bool IsUniqueViolation(DbUpdateException ex) =>
+        ex.InnerException is PostgresException pg
+        && pg.SqlState == PostgresErrorCodes.UniqueViolation;
 
     private static async Task<Results<NoContent, NotFound>> Delete(int id, WorldDbContext db)
     {

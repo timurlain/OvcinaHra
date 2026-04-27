@@ -15,6 +15,12 @@
          HeaderText="@(detail is null ? "Recept" : (detail.Title ?? "Recept"))"
          Width="780px">
     <BodyContentTemplate Context="ctx">
+        @* Issue #236 — wrap the body in a max-height scroll container so the
+           Suroviny + Vyžaduje sections (and inline editor states) don't push
+           the Save/Zrušit footer below the viewport on shorter laptop screens.
+           DxPopup doesn't constrain BodyContentTemplate height by default; the
+           popup grew with content and stranded the footer off-bottom. *@
+        <div style="max-height: 75vh; overflow-y: auto; overflow-x: hidden; padding-right: 6px;">
         @if (loading || detail is null)
         {
             <p class="text-muted">Načítám…</p>
@@ -95,7 +101,10 @@
             }
         }
 
-        <div class="d-flex gap-2 justify-content-end mt-3">
+        </div>
+        @* Footer sits OUTSIDE the scroll wrapper so Save/Zrušit are always
+           visible even when the body needs to scroll (#236). *@
+        <div class="d-flex gap-2 justify-content-end mt-3 pt-2 border-top">
             <button type="button" class="btn btn-secondary" @onclick="Cancel" disabled="@isSaving">Zrušit</button>
             <button type="button" class="btn btn-primary" @onclick="SaveAsync"
                     disabled="@(isSaving || detail is null || editOutputItemId is null)">

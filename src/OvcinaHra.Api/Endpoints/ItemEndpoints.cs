@@ -75,7 +75,11 @@ public static class ItemEndpoints
             r.ReqWarrior, r.ReqArcher, r.ReqMage, r.ReqThief,
             r.IsUnique, r.IsLimited, r.ImagePath,
             Note: r.Note,
-            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "items", r.Id, "small"),
+            // Issue #269 — was "small" (120×120 square crop) which stripped
+            // top + bottom of 5:7 portrait card photos. "medium" is 240×336
+            // (5:7) so the bytes match the .oh-it-tile container ratio and
+            // ImageSharp's Crop mode no longer eats the card art.
+            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "items", r.Id, "medium"),
             HasRecipe: craftedSet.Contains(r.Id))).ToList();
         return TypedResults.Ok(items);
     }
@@ -90,7 +94,7 @@ public static class ItemEndpoints
         // round-trip just to render the hero (per Copilot review on PR #90).
         var imageUrl = string.IsNullOrWhiteSpace(item.ImagePath)
             ? null
-            : ImageEndpoints.ThumbUrl(http, "items", item.Id, "small");
+            : ImageEndpoints.ThumbUrl(http, "items", item.Id, "medium");
 
         // Issue #154 — same flag as the catalog list, populated here so the
         // quick-peek popup can gate the IsCraftable badge consistently.
@@ -218,7 +222,7 @@ public static class ItemEndpoints
                 gi.GameId, gi.Price, gi.StockCount, gi.IsSold, gi.SaleCondition, gi.IsFindable,
                 summaryByItemId.GetValueOrDefault(gi.ItemId),
                 Note: gi.Item.Note,
-                ImageUrl: string.IsNullOrWhiteSpace(gi.Item.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "items", gi.Item.Id, "small"),
+                ImageUrl: string.IsNullOrWhiteSpace(gi.Item.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "items", gi.Item.Id, "medium"),
                 HasRecipe: hasRecipeByItemId.Contains(gi.ItemId)))
             .ToList();
 
