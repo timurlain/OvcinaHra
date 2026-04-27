@@ -1,4 +1,6 @@
+using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Mvc;
 using OvcinaHra.Api.Tests.Fixtures;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
@@ -8,11 +10,15 @@ namespace OvcinaHra.Api.Tests.Endpoints;
 public class SearchEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
     [Fact]
-    public async Task Search_EmptyQuery_ReturnsEmpty()
+    public async Task Search_EmptyQuery_ReturnsBadRequestProblemDetails()
     {
-        var result = await Client.GetFromJsonAsync<SearchResponseDto>("/api/search?q=");
-        Assert.NotNull(result);
-        Assert.Empty(result.Results);
+        var response = await Client.GetAsync("/api/search?q=");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Neplatný vyhledávací dotaz", problem.Title);
+        Assert.Contains("nesmí být prázdný", problem.Detail ?? "");
     }
 
     [Fact]
