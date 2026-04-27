@@ -254,7 +254,7 @@ public class RegistraceImportService(
         if (!string.IsNullOrWhiteSpace(_apiKey))
             request.Headers.Add("X-Api-Key", _apiKey);
 
-        var response = await SendAsync(request, endpoint);
+        using var response = await SendAsync(request, endpoint);
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync();
@@ -280,7 +280,7 @@ public class RegistraceImportService(
         if (!string.IsNullOrWhiteSpace(_apiKey))
             request.Headers.Add("X-Api-Key", _apiKey);
 
-        var response = await SendAsync(request, endpoint);
+        using var response = await SendAsync(request, endpoint);
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync();
@@ -290,7 +290,7 @@ public class RegistraceImportService(
 
     private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, string endpoint)
     {
-        using var activity = logger.BeginScope(new Dictionary<string, object?>
+        using var scope = logger.BeginScope(new Dictionary<string, object?>
         {
             ["Endpoint"] = endpoint
         });
@@ -299,20 +299,25 @@ public class RegistraceImportService(
         {
             var response = await httpClient.SendAsync(request);
             logger.LogInformation(
-                "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}",
-                endpoint, sw.ElapsedMilliseconds, response.IsSuccessStatusCode ? "success" : "error");
+                "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}. StatusCode: {StatusCode}",
+                endpoint,
+                sw.ElapsedMilliseconds,
+                response.IsSuccessStatusCode ? "success" : "error",
+                response.StatusCode);
             return response;
         }
-        catch (TaskCanceledException)
+        catch (TaskCanceledException ex)
         {
             logger.LogInformation(
+                ex,
                 "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}",
                 endpoint, sw.ElapsedMilliseconds, "timeout");
             throw;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             logger.LogInformation(
+                ex,
                 "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}",
                 endpoint, sw.ElapsedMilliseconds, "error");
             throw;

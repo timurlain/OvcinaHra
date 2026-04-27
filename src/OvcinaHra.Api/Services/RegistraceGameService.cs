@@ -35,7 +35,7 @@ public class RegistraceGameService(
         if (!string.IsNullOrWhiteSpace(_apiKey))
             request.Headers.Add("X-Api-Key", _apiKey);
 
-        var response = await SendAsync(request, endpoint, ct);
+        using var response = await SendAsync(request, endpoint, ct);
         response.EnsureSuccessStatusCode();
 
         var games = await response.Content.ReadFromJsonAsync<List<RegistraceGameDto>>(JsonOptions, ct);
@@ -45,7 +45,7 @@ public class RegistraceGameService(
     private async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, string endpoint, CancellationToken ct)
     {
-        using var activity = logger.BeginScope(new Dictionary<string, object?>
+        using var scope = logger.BeginScope(new Dictionary<string, object?>
         {
             ["Endpoint"] = endpoint
         });
@@ -54,20 +54,33 @@ public class RegistraceGameService(
         {
             var response = await httpClient.SendAsync(request, ct);
             logger.LogInformation(
-                "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}",
-                endpoint, sw.ElapsedMilliseconds, response.IsSuccessStatusCode ? "success" : "error");
+                "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}. StatusCode: {StatusCode}",
+                endpoint,
+                sw.ElapsedMilliseconds,
+                response.IsSuccessStatusCode ? "success" : "error",
+                response.StatusCode);
             return response;
         }
-        catch (TaskCanceledException)
+        catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
         {
             logger.LogInformation(
+                ex,
                 "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}",
                 endpoint, sw.ElapsedMilliseconds, "timeout");
             throw;
         }
-        catch (Exception)
+        catch (TaskCanceledException ex) when (ct.IsCancellationRequested)
         {
             logger.LogInformation(
+                ex,
+                "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}",
+                endpoint, sw.ElapsedMilliseconds, "error");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogInformation(
+                ex,
                 "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}",
                 endpoint, sw.ElapsedMilliseconds, "error");
             throw;

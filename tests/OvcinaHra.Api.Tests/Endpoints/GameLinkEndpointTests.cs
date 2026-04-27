@@ -33,7 +33,7 @@ public class GameLinkEndpointTests(PostgresFixture postgres)
             services.AddHttpClient<RegistraceGameService>(client =>
                 client.Timeout = TimeSpan.FromSeconds(15))
                 .ConfigurePrimaryHttpMessageHandler(() =>
-                    new SlowRegistraceHandler(TimeSpan.FromSeconds(30)));
+                    new SlowHttpMessageHandler(TimeSpan.FromSeconds(30)));
         });
 
         await using (timeoutFactory)
@@ -165,16 +165,4 @@ public class GameLinkEndpointTests(PostgresFixture postgres)
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
 
-    private sealed class SlowRegistraceHandler(TimeSpan delay) : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            await Task.Delay(delay, cancellationToken);
-            return new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = JsonContent.Create(Array.Empty<RegistraceGameDto>())
-            };
-        }
-    }
 }

@@ -100,7 +100,7 @@ public class RegistraceImportNotLinkedTests(PostgresFixture postgres)
             services.AddHttpClient<RegistraceImportService>(client =>
                 client.Timeout = TimeSpan.FromSeconds(15))
                 .ConfigurePrimaryHttpMessageHandler(() =>
-                    new SlowRegistraceHandler(TimeSpan.FromSeconds(30)));
+                    new SlowHttpMessageHandler(TimeSpan.FromSeconds(30)));
         });
 
         await using (timeoutFactory)
@@ -124,16 +124,4 @@ public class RegistraceImportNotLinkedTests(PostgresFixture postgres)
         }
     }
 
-    private sealed class SlowRegistraceHandler(TimeSpan delay) : HttpMessageHandler
-    {
-        protected override async Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            await Task.Delay(delay, cancellationToken);
-            return new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = JsonContent.Create(Array.Empty<object>())
-            };
-        }
-    }
 }
