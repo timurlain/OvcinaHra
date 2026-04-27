@@ -26,6 +26,11 @@ public static class LocationEndpoints
         group.MapPost("/by-game", AssignToGame);
         group.MapDelete("/by-game/{gameId:int}/{locationId:int}", RemoveFromGame);
 
+        // Issue #252 — drag-drop coordinate patch. Mounted last so the
+        // route table reads top-to-bottom in lifecycle order (CRUD →
+        // queries → game-link → narrow patches).
+        group.MapPatch("/{id:int}/coordinates", PatchCoordinates);
+
         return group;
     }
 
@@ -321,6 +326,49 @@ public static class LocationEndpoints
             return TypedResults.NotFound();
 
         db.GameLocations.Remove(gl);
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Issue #252 — PATCH /api/locations/{id}/coordinates
+    //
+    // Drag-drop relocate path. Replaces the prior GET LocationDetailDto →
+    // PUT UpdateLocationDto round-trip in MapPage.ConfirmDragAsync, which
+    // could clobber concurrent organizer edits on Description / Details /
+    // NpcInfo / etc. since UpdateLocationDto's nullable string fields would
+    // overwrite anything the GET picked up before another organizer's
+    // SaveChangesAsync landed.
+    //
+    // Validation:
+    //   1. 404 first if the location id is missing (per _review-instincts §1).
+    //   2. Then 400 ProblemDetails(czech) on out-of-range lat / lng.
+    //
+    // No audit log added — there's no LocationAudit infrastructure today
+    // (verified via grep of LocationEndpoints + Domain/Entities). Adding
+    // one solely for the coordinate patch would be the first audit on the
+    // Location surface; defer until a broader audit need surfaces. See
+    // Phase-0 Q&A on PR #284.
+    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> PatchCoordinates(
+        int id, LocationCoordinatesPatchDto dto, WorldDbContext db)
+    {
+        var loc = await db.Locations.FindAsync(id);
+        if (loc is null)
+            return TypedResults.NotFound();
+
+        if (dto.Latitude < -90m || dto.Latitude > 90m)
+            return TypedResults.Problem(
+                title: "Neplatná souřadnice",
+                detail: "Zeměpisná šířka musí být v rozsahu -90 až 90 stupňů.",
+                statusCode: StatusCodes.Status400BadRequest);
+
+        if (dto.Longitude < -180m || dto.Longitude > 180m)
+            return TypedResults.Problem(
+                title: "Neplatná souřadnice",
+                detail: "Zeměpisná délka musí být v rozsahu -180 až 180 stupňů.",
+                statusCode: StatusCodes.Status400BadRequest);
+
+        loc.Coordinates = new GpsCoordinates(dto.Latitude, dto.Longitude);
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
     }

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Tests.Fixtures;
@@ -352,5 +353,104 @@ public class LocationEndpointTests(PostgresFixture postgres) : IntegrationTestBa
     {
         var resp = await Client.GetAsync("/api/locations/nearby?lat=95&lng=0&radiusKm=5");
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    // ── Issue #252 — PATCH /api/locations/{id}/coordinates ────────────────
+    // Drag-drop relocate path: only writes Latitude + Longitude so concurrent
+    // edits on Description / Details / NpcInfo can't be clobbered. Validates
+    // 404 ordering, lat/lng range guards, and the no-clobber guarantee.
+
+    [Fact]
+    public async Task PatchCoordinates_UpdatesLatLng_PreservesOtherFields()
+    {
+        var createResp = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Šedý dub", LocationKind.Magical, 49.50m, 17.10m,
+                Description: "Tichý strážce mýtiny.",
+                Details: "Listí svítí v noci",
+                NpcInfo: "Mluví se starcem Lubomírem"));
+        Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
+        var created = await createResp.Content.ReadFromJsonAsync<LocationDetailDto>();
+
+        var patchResp = await Client.PatchAsJsonAsync(
+            $"/api/locations/{created!.Id}/coordinates",
+            new LocationCoordinatesPatchDto(50.123456m, 18.654321m));
+        Assert.Equal(HttpStatusCode.NoContent, patchResp.StatusCode);
+
+        var fetched = await Client.GetFromJsonAsync<LocationDetailDto>($"/api/locations/{created.Id}");
+        Assert.NotNull(fetched);
+        Assert.Equal(50.123456m, fetched!.Latitude);
+        Assert.Equal(18.654321m, fetched.Longitude);
+        // No-clobber guarantee — the prior Description / Details / NpcInfo
+        // round-trip through the PATCH unchanged. This is the core reason
+        // for the new endpoint over GET-LocationDetailDto → PUT-UpdateLocationDto.
+        Assert.Equal("Tichý strážce mýtiny.", fetched.Description);
+        Assert.Equal("Listí svítí v noci", fetched.Details);
+        Assert.Equal("Mluví se starcem Lubomírem", fetched.NpcInfo);
+    }
+
+    [Fact]
+    public async Task PatchCoordinates_MissingId_Returns404_NotValidationFirst()
+    {
+        // 404 must beat 400 on a missing id even when the body is also bad
+        // — REST semantics + _review-instincts §1. lat=999 alone would
+        // trigger a 400, so this proves the FindAsync-first ordering.
+        var resp = await Client.PatchAsJsonAsync(
+            "/api/locations/9999999/coordinates",
+            new LocationCoordinatesPatchDto(999m, 999m));
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task PatchCoordinates_LatitudeOutOfRange_Returns400WithCzechProblemDetails()
+    {
+        var createResp = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("X", LocationKind.Wilderness, 49m, 17m));
+        Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
+        var created = await createResp.Content.ReadFromJsonAsync<LocationDetailDto>();
+
+        var resp = await Client.PatchAsJsonAsync(
+            $"/api/locations/{created!.Id}/coordinates",
+            new LocationCoordinatesPatchDto(95m, 17m));
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        var problem = await resp.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Neplatná souřadnice", problem!.Title);
+        Assert.Contains("šířka", problem.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PatchCoordinates_LongitudeOutOfRange_Returns400WithCzechProblemDetails()
+    {
+        var createResp = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Y", LocationKind.Wilderness, 49m, 17m));
+        var created = await createResp.Content.ReadFromJsonAsync<LocationDetailDto>();
+
+        var resp = await Client.PatchAsJsonAsync(
+            $"/api/locations/{created!.Id}/coordinates",
+            new LocationCoordinatesPatchDto(49m, 200m));
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        var problem = await resp.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Neplatná souřadnice", problem!.Title);
+        Assert.Contains("délka", problem.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PatchCoordinates_BoundaryValues_Accepted()
+    {
+        var createResp = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Edge", LocationKind.PointOfInterest, 0m, 0m));
+        var created = await createResp.Content.ReadFromJsonAsync<LocationDetailDto>();
+
+        // Exact bounds should round-trip — accept any valid lat/lng (Phase-0
+        // Q5 stance, no game-bbox clamp). Includes the corner cases at
+        // ±90 / ±180.
+        foreach (var (lat, lng) in new[] { (90m, 180m), (-90m, -180m), (0m, 0m) })
+        {
+            var resp = await Client.PatchAsJsonAsync(
+                $"/api/locations/{created!.Id}/coordinates",
+                new LocationCoordinatesPatchDto(lat, lng));
+            Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        }
     }
 }

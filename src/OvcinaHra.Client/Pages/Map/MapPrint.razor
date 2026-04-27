@@ -1,0 +1,166 @@
+@page "/map/print"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject GameContextService GameContext
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@implements IDisposable
+@using OvcinaHra.Shared.Dtos
+@using OvcinaHra.Shared.Domain.Enums
+
+@* Issue #259 — printable map view. Two modes:
+     ?mode=labeled — full parent location names, force-shown regardless
+                     of zoom (the label-by-zoom gate from #273 doesn't
+                     apply to print handouts; players can't pinch).
+     ?mode=blind   — numeric ID at each pin position; the printed
+                     legend cross-references IDs to names.
+   Chrome (toolbar / layer rail / peek) is intentionally absent — this
+   page is rendered solo and printed via window.print(). The body
+   class .oh-map-print toggles a print-friendly stylesheet so even the
+   thin in-page toolbar above disappears in @media print. *@
+
+<AuthorizeView>
+    <Authorized>
+        @if (GameContext.SelectedGameId is null)
+        {
+            <MapEmptyState />
+        }
+        else
+        {
+            <div class="oh-map-print-page">
+                <div class="oh-map-print-toolbar oh-no-print">
+                    <button class="btn btn-sm btn-outline-secondary" type="button"
+                            @onclick='() => Nav.NavigateTo("/map")'>
+                        <i class="bi bi-arrow-left"></i> Mapa
+                    </button>
+                    <h1 class="oh-map-print-title">Tisk mapy</h1>
+                    <div class="oh-map-print-pills" role="group" aria-label="Režim tisku">
+                        <a class="oh-map-print-pill @(_mode == "labeled" ? "is-on" : "")"
+                           href="/map/print?mode=labeled">S názvy</a>
+                        <a class="oh-map-print-pill @(_mode == "blind" ? "is-on" : "")"
+                           href="/map/print?mode=blind">Slepá</a>
+                    </div>
+                    <button class="btn btn-sm btn-primary" type="button"
+                            @onclick="PrintAsync">
+                        <i class="bi bi-printer"></i> Tisknout
+                    </button>
+                </div>
+
+                <div class="oh-map-print-canvas">
+                    <MapView @ref="_mapView"
+                             Height="calc(100vh - 90px)"
+                             GameId="@GameContext.SelectedGameId"
+                             OnStyleLoaded="OnMapReadyAsync" />
+                </div>
+
+                @if (_mode == "blind" && _data is not null)
+                {
+                    @* Blind-mode legend — printed under the map as page 2 so
+                       referees can decode pin IDs back to names without
+                       cluttering the map itself. *@
+                    <section class="oh-map-print-legend">
+                        <h2>Legenda — slepá mapa</h2>
+                        <ol class="oh-map-print-legend-list">
+                            @foreach (var l in _legendOrdered)
+                            {
+                                <li><span class="oh-map-print-legend-id">@l.Id</span>@l.Name</li>
+                            }
+                        </ol>
+                    </section>
+                }
+            </div>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <p>Pro pokračování se prosím přihlaste.</p>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    [SupplyParameterFromQuery(Name = "mode")] public string? ModeParam { get; set; }
+
+    private MapView? _mapView;
+    private MapDataDto? _data;
+    private string _mode = "labeled";
+    private List<MapLocationDto> _legendOrdered = [];
+    private bool _bodyClassApplied;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GameContext.InitializeAsync();
+        GameContext.OnGameChanged += HandleGameChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var next = string.Equals(ModeParam, "blind", StringComparison.OrdinalIgnoreCase) ? "blind" : "labeled";
+        if (next == _mode && _bodyClassApplied) return;
+        _mode = next;
+        await ApplyBodyClassAsync();
+        await ReloadDataAndPaintAsync();
+    }
+
+    private void HandleGameChanged() => _ = InvokeAsync(ReloadDataAndPaintAsync);
+
+    private async Task ApplyBodyClassAsync()
+    {
+        // Body classes drive the print stylesheet. .oh-map-print toggles
+        // chrome-hide rules in @media print; .oh-map-print-labeled forces
+        // the label-zoom gate open so every parent name paints.
+        try
+        {
+            await JS.InvokeVoidAsync("ovcinaMapPrint.applyBodyMode", _mode);
+            _bodyClassApplied = true;
+        }
+        catch { /* JS bootstrap not loaded yet — ApplyBodyClassAsync is re-run on style load */ }
+    }
+
+    private async Task OnMapReadyAsync()
+    {
+        await ApplyBodyClassAsync();
+        await ReloadDataAndPaintAsync();
+    }
+
+    private async Task ReloadDataAndPaintAsync()
+    {
+        if (GameContext.SelectedGameId is not int gid) { _data = null; return; }
+        try
+        {
+            _data = await Api.GetAsync<MapDataDto>($"/api/map/data?gameId={gid}");
+        }
+        catch { _data = null; }
+
+        _legendOrdered = _data?.Locations
+            .OrderBy(l => l.Name)
+            .ToList() ?? [];
+
+        await JS.InvokeVoidAsync("ovcinaMap.clearMapPagePins");
+        if (_data is null) return;
+
+        // Per-mode label: blind uses the location's stable DB id; labeled
+        // uses the actual name. The kind argument carries through unchanged
+        // so the per-kind tear-drop color and glyph still apply (the print
+        // sheet wants the icons too — they read as map symbols).
+        foreach (var l in _data.Locations)
+        {
+            var label = _mode == "blind" ? $"#{l.Id}" : l.Name;
+            await JS.InvokeVoidAsync("ovcinaMap.addLocationPin",
+                l.Id, l.Lat, l.Lon, label, l.Kind.ToString());
+        }
+        // Stash pins intentionally omitted — print sheets focus on parent
+        // locations; secret-stash detail belongs in the organizer's tablet.
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private Task PrintAsync() => JS.InvokeVoidAsync("window.print").AsTask();
+
+    public void Dispose()
+    {
+        GameContext.OnGameChanged -= HandleGameChanged;
+        // Best-effort: strip the body classes when navigating away so the
+        // regular /map view doesn't inherit print-mode label rules.
+        try { _ = JS.InvokeVoidAsync("ovcinaMapPrint.applyBodyMode", "off"); }
+        catch { /* JS may already be torn down on circuit drop */ }
+    }
+}

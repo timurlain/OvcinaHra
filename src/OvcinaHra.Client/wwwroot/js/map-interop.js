@@ -92,22 +92,47 @@ window.ovcinaMap = {
             }
         });
 
-        // Issue #258 — zoom-conditional labels. Toggle .oh-map-zoomed-in
-        // on the map container at zoom >= 15 so non-town labels become
-        // visible only when pins are spread out enough to avoid overlap.
-        // Town pins (kingdom seats) are always-visible via a separate
-        // CSS rule that doesn't depend on this class.
-        var LABEL_ZOOM_THRESHOLD = 15;
-        var mc = this._map.getContainer();
-        var applyZoomLabelClass = () => {
-            if (this._map.getZoom() >= LABEL_ZOOM_THRESHOLD) {
-                mc.classList.add('oh-map-zoomed-in');
-            } else {
-                mc.classList.remove('oh-map-zoomed-in');
+        // Issue #273 — per-LocationKind label visibility. Each pin advertises
+        // its kind via `data-kind` and a numeric `data-minzoom`, set in
+        // addLocationPin from KIND_MIN_ZOOM. This handler iterates the
+        // currently painted pins and toggles `oh-pin-label-on` based on the
+        // current zoom — so Towns appear from zoom 0, Villages from 6,
+        // smaller features only at 9-11. Replaces the binary
+        // `oh-map-zoomed-in` toggle (#258) with a graduated reveal.
+        //
+        // Stash pins reuse the same gate keyed off their host location's
+        // kind so a Stash inside Esgaroth shows its label as soon as
+        // Esgaroth's would. Stash kind is captured via `data-kind` in
+        // addStashPin (defaults to "village" when host kind isn't known).
+        var applyZoomLabels = () => {
+            if (!this._map) return;
+            var z = this._map.getZoom();
+            var indicatorEl = document.querySelector('.oh-map-zoom-indicator');
+            if (indicatorEl) indicatorEl.textContent = 'Z ' + z.toFixed(1);
+            var apply = (pin) => {
+                var mz = parseFloat(pin.getAttribute('data-minzoom'));
+                if (isNaN(mz)) return;
+                if (z >= mz) pin.classList.add('oh-pin-label-on');
+                else pin.classList.remove('oh-pin-label-on');
+            };
+            for (var lid in this._mapPagePins.loc) {
+                var lel = this._mapPagePins.loc[lid].getElement();
+                if (lel) {
+                    var lpin = lel.querySelector('.oh-map-pin');
+                    if (lpin) apply(lpin);
+                }
+            }
+            for (var sid in this._mapPagePins.stash) {
+                var sel = this._mapPagePins.stash[sid].getElement();
+                if (sel) {
+                    var spin = sel.querySelector('.oh-map-pin');
+                    if (spin) apply(spin);
+                }
             }
         };
-        applyZoomLabelClass(); // initial state
-        this._map.on('zoomend', applyZoomLabelClass);
+        this._applyZoomLabels = applyZoomLabels;
+        this._map.on('zoomend', applyZoomLabels);
+        this._map.on('zoom', applyZoomLabels); // continuous update for the indicator
 
         // Crosshair cursor while Ctrl/Meta is held — visual hint that
         // Ctrl+Click will place an ungeocoded location. Pure CSS via a
@@ -157,6 +182,29 @@ window.ovcinaMap = {
 
         this._map.addControl(new maplibregl.NavigationControl(), 'top-right');
         this._map.addControl(new maplibregl.ScaleControl(), 'bottom-left');
+
+        // Issue #273 — zoom-level indicator next to the Scale control. Bare-
+        // bones IControl: a styled DIV that the zoom listener above updates
+        // via .textContent. Position 'bottom-left' stacks it under the scale
+        // bar in the same MapLibre control container so dimensions stay
+        // consistent across themes.
+        var ZoomIndicatorControl = function () { };
+        ZoomIndicatorControl.prototype.onAdd = function (map) {
+            var c = document.createElement('div');
+            c.className = 'maplibregl-ctrl maplibregl-ctrl-group oh-map-zoom-indicator';
+            c.title = 'Zoom (úroveň přiblížení)';
+            c.textContent = 'Z ' + map.getZoom().toFixed(1);
+            this._container = c;
+            this._map = map;
+            return c;
+        };
+        ZoomIndicatorControl.prototype.onRemove = function () {
+            if (this._container && this._container.parentNode) {
+                this._container.parentNode.removeChild(this._container);
+            }
+            this._map = undefined;
+        };
+        this._map.addControl(new ZoomIndicatorControl(), 'bottom-left');
     },
 
     switchStyle: function (styleKey) {
@@ -881,6 +929,46 @@ window.ovcinaBboxMap = {
 // ======================================================================
 window.ovcinaMap._mapPagePins = { loc: {}, stash: {} };
 
+// Issue #273 — per-LocationKind minimum zoom thresholds. A pin's text label
+// becomes visible once the map's zoom level reaches the value below for its
+// kind. Town stays at 0 (always visible — kingdom seats are the most
+// important wayfinding anchors). Other kinds graduate so smaller features
+// don't clutter at low zoom. Tweak this single block to retune cadence.
+window.ovcinaMap._kindMinZoom = {
+    town: 0,
+    village: 6,
+    magical: 8,
+    hobbit: 8,
+    wilderness: 9,
+    dungeon: 10,
+    pointofinterest: 11
+};
+window.ovcinaMap._kindMinZoomFor = function (kindRaw) {
+    var k = (kindRaw || 'wilderness').toLowerCase();
+    var mz = this._kindMinZoom[k];
+    return (typeof mz === 'number') ? mz : 11; // unknown kinds → most-conservative
+};
+
+// Issue #257 — per-LocationKind Bootstrap-Icon glyph for the tear-drop pin.
+// The class names map directly to bi-* CSS — no font swap, no SVG sprite.
+// Town gets a shield (kingdom seat anchor), Hobbit gets a filled tree
+// (settled), Wilderness gets an outlined tree (uninhabited), Dungeon gets
+// bricks. Stay aligned with the issue's spec or update the issue when
+// adding a new LocationKind.
+window.ovcinaMap._kindIcon = {
+    town: 'bi-shield-fill',
+    village: 'bi-house-fill',
+    magical: 'bi-stars',
+    hobbit: 'bi-tree-fill',
+    wilderness: 'bi-tree',
+    dungeon: 'bi-bricks',
+    pointofinterest: 'bi-flag'
+};
+window.ovcinaMap._kindIconFor = function (kindRaw) {
+    var k = (kindRaw || 'wilderness').toLowerCase();
+    return this._kindIcon[k] || 'bi-geo-alt-fill';
+};
+
 window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
     if (!this._map) {
         if (this._pinDiag()) console.warn('[pin-diag] addLocationPin called but no map — id=' + id);
@@ -911,16 +999,27 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
     wrapper.style.cursor = 'pointer';
     var pin = document.createElement('div');
     pin.className = 'oh-map-pin oh-map-pin-loc';
-    pin.setAttribute('data-kind', (kind || 'wilderness').toLowerCase());
+    var kindKey = (kind || 'wilderness').toLowerCase();
+    pin.setAttribute('data-kind', kindKey);
+    // Issue #273 — graduated label-visibility-by-zoom. Each pin advertises
+    // its minzoom; the zoomend handler in init() flips `oh-pin-label-on`
+    // when map.getZoom() >= this value. Initial state set inline below
+    // so a pin added between zoomend events shows / hides correctly.
+    var minZoom = this._kindMinZoomFor(kindKey);
+    pin.setAttribute('data-minzoom', String(minZoom));
+    if (this._map.getZoom() >= minZoom) pin.classList.add('oh-pin-label-on');
     wrapper.title = name || '';
-    // Issue #258 — zoom-conditional labels. The label is always rendered,
-    // CSS controls visibility:
-    //   - Town pins (kingdom seats): always shown
-    //   - Other kinds: only shown when the map container has class
-    //     `oh-map-zoomed-in` (set by the zoom listener in init() once
-    //     map.getZoom() >= 15)
-    // pointer-events:none + position:absolute keep the wrapper at 18×18
-    // so MapLibre's drag hit-test stays accurate.
+    // Issue #257 — tear-drop pin chrome. The bubble (oh-map-pin-bg) carries
+    // the per-kind background and the downward triangle tail (::after); the
+    // glyph (Bootstrap-Icons bi-*) sits inside. Anchor moves to 'bottom' so
+    // the tail tip lands on the GPS coord.
+    var bg = document.createElement('div');
+    bg.className = 'oh-map-pin-bg';
+    var glyph = document.createElement('i');
+    glyph.className = 'oh-map-pin-glyph bi ' + this._kindIconFor(kindKey);
+    glyph.setAttribute('aria-hidden', 'true');
+    bg.appendChild(glyph);
+    pin.appendChild(bg);
     if (name) {
         var label = document.createElement('div');
         label.className = 'oh-map-pin-label';
@@ -946,7 +1045,11 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
     } else if (typeof navigator !== 'undefined' && typeof navigator.maxTouchPoints === 'number') {
         draggable = navigator.maxTouchPoints === 0;
     }
-    var marker = new maplibregl.Marker({ element: wrapper, anchor: 'center', draggable: draggable })
+    // Issue #257 — anchor:'bottom' lands the tear-drop tip exactly on the
+    // GPS coord; the previous 'center' put the bubble's centroid there
+    // which felt wrong for a balloon-shaped pin. Stash pins (circular)
+    // keep anchor:'center' below.
+    var marker = new maplibregl.Marker({ element: wrapper, anchor: 'bottom', draggable: draggable })
         .setLngLat([lon, lat])
         .addTo(this._map);
     if (draggable) {
@@ -1044,3 +1147,20 @@ window.ovcinaMap.setMapPageLayerVisibility = function (layer, visible) {
         };
     }
 })();
+
+// Issue #259 — print-mode body class toggle. The print stylesheet is
+// gated behind body.oh-map-print so the regular /map page never picks
+// up @media print's chrome-hide rules accidentally. The labeled variant
+// also force-shows location names regardless of zoom.
+window.ovcinaMapPrint = {
+    applyBodyMode: function (mode) {
+        var b = document.body;
+        if (!b) return;
+        b.classList.remove('oh-map-print', 'oh-map-print-labeled', 'oh-map-print-blind');
+        if (mode === 'labeled') {
+            b.classList.add('oh-map-print', 'oh-map-print-labeled');
+        } else if (mode === 'blind') {
+            b.classList.add('oh-map-print', 'oh-map-print-blind');
+        }
+    }
+};
