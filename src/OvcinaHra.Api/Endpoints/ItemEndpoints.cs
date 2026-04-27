@@ -268,7 +268,7 @@ public static class ItemEndpoints
             ItemId = dto.ItemId,
             Price = dto.Price,
             StockCount = dto.StockCount,
-            IsSold = dto.IsSold,
+            IsSold = dto.Price is > 0,
             SaleCondition = dto.SaleCondition,
             IsFindable = dto.IsFindable
         };
@@ -312,7 +312,7 @@ public static class ItemEndpoints
 
         gi.Price = dto.Price;
         gi.StockCount = dto.StockCount;
-        gi.IsSold = dto.IsSold;
+        gi.IsSold = dto.Price is > 0;
         gi.SaleCondition = string.IsNullOrWhiteSpace(saleCondition) ? null : saleCondition;
         gi.IsFindable = dto.IsFindable;
 

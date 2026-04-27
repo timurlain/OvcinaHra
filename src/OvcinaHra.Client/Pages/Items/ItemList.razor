@@ -108,10 +108,11 @@ else if (Catalog)
        editor appears and the change persists after blur.
        Handler classes (ItemInlineEditBuffer, OnCatalog*) live in @code under
        the "Inline edit (issue #119)" header. *@
-    <OvcinaGrid Data="@visibleCatalogItems" KeyFieldName="Id" LayoutKey="grid-layout-items-v6"
+    <OvcinaGrid Data="@visibleCatalogItems" KeyFieldName="Id" LayoutKey="grid-layout-items-v7"
                 EditMode="GridEditMode.EditCell"
                 CustomizeEditModel="OnCatalogCustomizeEdit"
                 EditModelSaving="OnCatalogSaving"
+                ShowColumnChooserButton="true"
                 EmptyDataAreaTemplate="ItemsConfusedEmpty"
                 RowDoubleClick="@(e => OpenQuickPeek((ItemListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
@@ -156,11 +157,34 @@ else if (Catalog)
                 </CellDisplayTemplate>
             </DxGridDataColumn>
 
-            @* ReadOnly on catalog-shape fields — issue #119 limits inline-edit
-               to Effect only. Name/Typ/Podoba changes live in the edit popup. *@
-            <DxGridDataColumn FieldName="Name" Caption="Název" MinWidth="220" ReadOnly="true" />
-            <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="Typ" Width="130px" ReadOnly="true" />
-            <DxGridDataColumn FieldName="PhysicalFormDisplay" Caption="Podoba" Width="150px" ReadOnly="true" />
+            <DxGridDataColumn FieldName="Name" Caption="Název" Width="220px" FixedPosition="GridColumnFixedPosition.Left">
+                <CellEditTemplate>
+                    <DxTextBox Text="@(((ItemInlineEditBuffer)context.EditModel).Name)"
+                               TextExpression="@(() => ((ItemInlineEditBuffer)context.EditModel).Name)"
+                               TextChanged="@(v => ((ItemInlineEditBuffer)context.EditModel).Name = v ?? string.Empty)" />
+                </CellEditTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="Typ" Width="130px">
+                <CellEditTemplate>
+                    <DxComboBox Data="@itemTypeValues"
+                                Value="@(((ItemInlineEditBuffer)context.EditModel).ItemType)"
+                                ValueExpression="@(() => ((ItemInlineEditBuffer)context.EditModel).ItemType)"
+                                ValueChanged="@((ItemType v) => ((ItemInlineEditBuffer)context.EditModel).ItemType = v)"
+                                TextFieldName="Display"
+                                ValueFieldName="Value" />
+                </CellEditTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="PhysicalFormDisplay" Caption="Podoba" Width="150px">
+                <CellEditTemplate>
+                    <DxComboBox Data="@physicalFormValues"
+                                Value="@(((ItemInlineEditBuffer)context.EditModel).PhysicalForm)"
+                                ValueExpression="@(() => ((ItemInlineEditBuffer)context.EditModel).PhysicalForm)"
+                                ValueChanged="@((PhysicalForm? v) => ((ItemInlineEditBuffer)context.EditModel).PhysicalForm = v)"
+                                TextFieldName="Display"
+                                ValueFieldName="Value"
+                                NullText="(žádná)" />
+                </CellEditTemplate>
+            </DxGridDataColumn>
 
             @* Požadavky — single-column 4-pip cluster (issue #97). Icons light up
                by level; tooltip per pip names the class + level. Default visible. *@
@@ -261,10 +285,11 @@ else
        after blur.
        Handler classes (GameItemInlineEditBuffer, OnGame*) live in @code
        under the "Inline edit (issue #119)" header. *@
-    <OvcinaGrid Data="@visibleGameItems" KeyFieldName="Id" LayoutKey="grid-layout-items-game-v6"
+    <OvcinaGrid Data="@visibleGameItems" KeyFieldName="Id" LayoutKey="grid-layout-items-game-v7"
                 EditMode="GridEditMode.EditCell"
                 CustomizeEditModel="OnGameCustomizeEdit"
                 EditModelSaving="OnGameSaving"
+                ShowColumnChooserButton="true"
                 EmptyDataAreaTemplate="ItemsConfusedEmpty"
                 RowDoubleClick="@(e => OpenQuickPeek((GameItemListDto)e.Grid.GetDataItem(e.VisibleIndex)))">
         <Columns>
@@ -317,13 +342,34 @@ else
                 </CellDisplayTemplate>
             </DxGridDataColumn>
 
-            @* ReadOnly on catalog-shape fields — issue #119 scopes inline-edit to
-               per-game data only (Price / StockCount / SaleCondition). Changes to
-               the catalog (Name, Typ, Podoba, Effect, Požadavky) go through the
-               catalog grid or the edit popup. *@
-            <DxGridDataColumn FieldName="Name" Caption="Název" MinWidth="220" ReadOnly="true" />
-            <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="Typ" Width="130px" ReadOnly="true" />
-            <DxGridDataColumn FieldName="PhysicalFormDisplay" Caption="Podoba" Width="150px" ReadOnly="true" />
+            <DxGridDataColumn FieldName="Name" Caption="Název" Width="220px" FixedPosition="GridColumnFixedPosition.Left">
+                <CellEditTemplate>
+                    <DxTextBox Text="@(((GameItemInlineEditBuffer)context.EditModel).Name)"
+                               TextExpression="@(() => ((GameItemInlineEditBuffer)context.EditModel).Name)"
+                               TextChanged="@(v => ((GameItemInlineEditBuffer)context.EditModel).Name = v ?? string.Empty)" />
+                </CellEditTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="Typ" Width="130px">
+                <CellEditTemplate>
+                    <DxComboBox Data="@itemTypeValues"
+                                Value="@(((GameItemInlineEditBuffer)context.EditModel).ItemType)"
+                                ValueExpression="@(() => ((GameItemInlineEditBuffer)context.EditModel).ItemType)"
+                                ValueChanged="@((ItemType v) => ((GameItemInlineEditBuffer)context.EditModel).ItemType = v)"
+                                TextFieldName="Display"
+                                ValueFieldName="Value" />
+                </CellEditTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="PhysicalFormDisplay" Caption="Podoba" Width="150px">
+                <CellEditTemplate>
+                    <DxComboBox Data="@physicalFormValues"
+                                Value="@(((GameItemInlineEditBuffer)context.EditModel).PhysicalForm)"
+                                ValueExpression="@(() => ((GameItemInlineEditBuffer)context.EditModel).PhysicalForm)"
+                                ValueChanged="@((PhysicalForm? v) => ((GameItemInlineEditBuffer)context.EditModel).PhysicalForm = v)"
+                                TextFieldName="Display"
+                                ValueFieldName="Value"
+                                NullText="(žádná)" />
+                </CellEditTemplate>
+            </DxGridDataColumn>
 
             @* Požadavky — single-column 4-pip cluster (issue #97). *@
             <DxGridDataColumn Caption="Požadavky" Width="184px" AllowSort="false" AllowGroup="false">
@@ -408,7 +454,14 @@ else
                 </CellDisplayTemplate>
             </DxGridDataColumn>
 
-            <DxGridDataColumn FieldName="Effect" Caption="Efekt" Width="240px" Visible="false" ReadOnly="true" />
+            <DxGridDataColumn FieldName="Effect" Caption="Efekt" Width="240px" Visible="false">
+                <CellEditTemplate>
+                    <DxTextBox Text="@(((GameItemInlineEditBuffer)context.EditModel).Effect)"
+                               TextExpression="@(() => ((GameItemInlineEditBuffer)context.EditModel).Effect)"
+                               TextChanged="@(v => ((GameItemInlineEditBuffer)context.EditModel).Effect = v)"
+                               NullText="(žádný efekt)" />
+                </CellEditTemplate>
+            </DxGridDataColumn>
             <DxGridDataColumn FieldName="RecipeSummary" Caption="Recept" Width="340px" Visible="false" ReadOnly="true" />
 
             @* Poznámka — issue #120. Same catalog-scoped Note as the catalog grid.
@@ -648,7 +701,7 @@ else
                         <DxFormLayoutItem Caption="Cena" ColSpanMd="4">
                             <DxSpinEdit Value="@giPrice"
                                         ValueExpression="@(() => giPrice)"
-                                        ValueChanged="@((int? v) => { giPrice = v; giIsSold = v.HasValue; })"
+                                        ValueChanged="@((int? v) => { giPrice = v; giIsSold = v is > 0; })"
                                         MinValue="0" NullText="(žádná)" />
                         </DxFormLayoutItem>
                         <DxFormLayoutItem Caption="Počet na skladě" ColSpanMd="4">
@@ -768,8 +821,10 @@ else
 
     private static readonly List<EnumItem<ItemType>> itemTypeValues = Enum.GetValues<ItemType>()
         .Select(v => new EnumItem<ItemType>(v, v.GetDisplayName())).ToList();
-    private static readonly List<EnumItem<PhysicalForm?>> physicalFormValues = Enum.GetValues<PhysicalForm>()
-        .Select(v => new EnumItem<PhysicalForm?>((PhysicalForm?)v, v.GetDisplayName())).ToList();
+    private static readonly List<EnumItem<PhysicalForm?>> physicalFormValues =
+        new[] { new EnumItem<PhysicalForm?>(null, "(nezvoleno)") }
+            .Concat(Enum.GetValues<PhysicalForm>().Select(v => new EnumItem<PhysicalForm?>((PhysicalForm?)v, v.GetDisplayName())))
+            .ToList();
 
     record EnumItem<T>(T Value, string Display);
 
@@ -868,6 +923,9 @@ else
 
     private class ItemInlineEditBuffer
     {
+        public string Name { get; set; } = "";
+        public ItemType ItemType { get; set; }
+        public PhysicalForm? PhysicalForm { get; set; }
         public string? Effect { get; set; }
 
         // Issue #120 — catalog-scoped free-text organizer note. Editable from
@@ -877,6 +935,10 @@ else
 
     private class GameItemInlineEditBuffer
     {
+        public string Name { get; set; } = "";
+        public ItemType ItemType { get; set; }
+        public PhysicalForm? PhysicalForm { get; set; }
+        public string? Effect { get; set; }
         public int? Price { get; set; }
         public int? StockCount { get; set; }
         public string? SaleCondition { get; set; }
@@ -893,6 +955,9 @@ else
         var src = (ItemListDto)e.DataItem;
         e.EditModel = new ItemInlineEditBuffer
         {
+            Name = src.Name,
+            ItemType = src.ItemType,
+            PhysicalForm = src.PhysicalForm,
             Effect = src.Effect,
             Note = src.Note,
         };
@@ -906,18 +971,22 @@ else
 
         // Normalize like the server does — trim + whitespace→null — so the
         // no-op short-circuit and local patch reflect what actually persists.
+        var normalizedName = buf.Name.Trim();
         var normalizedEffect = string.IsNullOrWhiteSpace(buf.Effect) ? null : buf.Effect.Trim();
         var normalizedNote = string.IsNullOrWhiteSpace(buf.Note) ? null : buf.Note.Trim();
 
         // No-op short-circuit — don't PUT if the user tabbed through unchanged.
-        if (string.Equals(normalizedEffect, src.Effect, StringComparison.Ordinal)
+        if (string.Equals(normalizedName, src.Name, StringComparison.Ordinal)
+            && buf.ItemType == src.ItemType
+            && buf.PhysicalForm == src.PhysicalForm
+            && string.Equals(normalizedEffect, src.Effect, StringComparison.Ordinal)
             && string.Equals(normalizedNote, src.Note, StringComparison.Ordinal))
         {
             return;
         }
 
         var (ok, problem) = await Api.PutWithProblemAsync($"/api/items/{src.Id}", new UpdateItemDto(
-            src.Name, src.ItemType, normalizedEffect, src.PhysicalForm,
+            normalizedName, buf.ItemType, normalizedEffect, buf.PhysicalForm,
             src.IsCraftable, src.ReqWarrior, src.ReqArcher, src.ReqMage, src.ReqThief,
             src.IsUnique, src.IsLimited,
             Note: normalizedNote));
@@ -929,7 +998,17 @@ else
         }
 
         var idx = catalogItems.FindIndex(i => i.Id == src.Id);
-        if (idx >= 0) catalogItems[idx] = src with { Effect = normalizedEffect, Note = normalizedNote };
+        if (idx >= 0)
+        {
+            catalogItems[idx] = src with
+            {
+                Name = normalizedName,
+                ItemType = buf.ItemType,
+                PhysicalForm = buf.PhysicalForm,
+                Effect = normalizedEffect,
+                Note = normalizedNote,
+            };
+        }
     }
 
     private void OnGameCustomizeEdit(GridCustomizeEditModelEventArgs e)
@@ -938,6 +1017,10 @@ else
         var src = (GameItemListDto)e.DataItem;
         e.EditModel = new GameItemInlineEditBuffer
         {
+            Name = src.Name,
+            ItemType = src.ItemType,
+            PhysicalForm = src.PhysicalForm,
+            Effect = src.Effect,
             Price = src.Price,
             StockCount = src.StockCount,
             SaleCondition = src.SaleCondition,
@@ -959,57 +1042,74 @@ else
 
         // Normalize free-text fields like the server — trim + whitespace→null —
         // so the no-op short-circuits and local patch reflect persisted state.
+        var normalizedName = buf.Name.Trim();
+        var normalizedEffect = string.IsNullOrWhiteSpace(buf.Effect) ? null : buf.Effect.Trim();
         var normalizedSale = string.IsNullOrWhiteSpace(buf.SaleCondition) ? null : buf.SaleCondition.Trim();
         var normalizedNote = string.IsNullOrWhiteSpace(buf.Note) ? null : buf.Note.Trim();
+        var derivedIsSold = buf.Price is > 0;
 
         var perGameChanged = buf.Price != src.Price
             || buf.StockCount != src.StockCount
+            || derivedIsSold != src.IsSold
             || !string.Equals(normalizedSale, src.SaleCondition, StringComparison.Ordinal);
-        var noteChanged = !string.Equals(normalizedNote, src.Note, StringComparison.Ordinal);
+        var catalogChanged = !string.Equals(normalizedName, src.Name, StringComparison.Ordinal)
+            || buf.ItemType != src.ItemType
+            || buf.PhysicalForm != src.PhysicalForm
+            || !string.Equals(normalizedEffect, src.Effect, StringComparison.Ordinal)
+            || !string.Equals(normalizedNote, src.Note, StringComparison.Ordinal);
 
-        if (!perGameChanged && !noteChanged) return;
+        if (!perGameChanged && !catalogChanged) return;
 
         // Track which save legs actually persisted so a partial failure (e.g.
-        // catalog Note PUT succeeds but per-game PUT 400s on bad Price) still
+        // catalog PUT succeeds but per-game PUT 400s on bad Price) still
         // patches the local list with what the server now holds — otherwise
-        // the grid would display stale "Note edited" while the server already
-        // has the new note, drifting from reality (Copilot review on PR #141).
-        var notePersisted = false;
+        // the grid would display stale catalog values while the server already
+        // has the new values, drifting from reality (Copilot review on PR #141).
+        var catalogPersisted = false;
 
-        // Catalog-scoped Note edit goes to /api/items/{id} (the catalog endpoint),
-        // not /api/items/game-item — the field lives on Item, shared across games.
-        if (noteChanged)
+        // Catalog-scoped fields go to /api/items/{id}, not /api/items/game-item.
+        // They live on Item and are shared across games.
+        if (catalogChanged)
         {
             var catalogResult = await Api.PutWithProblemAsync($"/api/items/{src.Id}", new UpdateItemDto(
-                src.Name, src.ItemType, src.Effect, src.PhysicalForm,
+                normalizedName, buf.ItemType, normalizedEffect, buf.PhysicalForm,
                 src.IsCraftable, src.ReqWarrior, src.ReqArcher, src.ReqMage, src.ReqThief,
                 src.IsUnique, src.IsLimited,
                 Note: normalizedNote));
             if (!catalogResult.Ok)
             {
-                error = catalogResult.ProblemDetail ?? "Uložení poznámky se nezdařilo.";
+                error = catalogResult.ProblemDetail ?? "Uložení údajů předmětu se nezdařilo.";
                 e.Cancel = true;
                 return;
             }
-            notePersisted = true;
+            catalogPersisted = true;
         }
 
         if (perGameChanged)
         {
             var (ok, problem) = await Api.PutWithProblemAsync($"/api/items/game-item/{gid}/{src.Id}",
-                new UpdateGameItemDto(buf.Price, buf.StockCount, src.IsSold, normalizedSale, src.IsFindable));
+                new UpdateGameItemDto(buf.Price, buf.StockCount, derivedIsSold, normalizedSale, src.IsFindable));
             if (!ok)
             {
                 error = problem ?? "Uložení per-hra nastavení se nezdařilo.";
                 e.Cancel = true;
 
-                // Per-game leg failed but the Note leg already persisted —
+                // Per-game leg failed but the catalog leg already persisted —
                 // reflect that in the local list so the grid matches the server.
-                if (notePersisted)
+                if (catalogPersisted)
                 {
-                    var noteIdx = gameItems.FindIndex(g => g.Id == src.Id);
-                    if (noteIdx >= 0)
-                        gameItems[noteIdx] = src with { Note = normalizedNote };
+                    var catalogIdx = gameItems.FindIndex(g => g.Id == src.Id);
+                    if (catalogIdx >= 0)
+                    {
+                        gameItems[catalogIdx] = src with
+                        {
+                            Name = normalizedName,
+                            ItemType = buf.ItemType,
+                            PhysicalForm = buf.PhysicalForm,
+                            Effect = normalizedEffect,
+                            Note = normalizedNote,
+                        };
+                    }
                 }
                 return;
             }
@@ -1020,8 +1120,13 @@ else
         {
             gameItems[idx] = src with
             {
+                Name = normalizedName,
+                ItemType = buf.ItemType,
+                PhysicalForm = buf.PhysicalForm,
+                Effect = normalizedEffect,
                 Price = buf.Price,
                 StockCount = buf.StockCount,
+                IsSold = derivedIsSold,
                 SaleCondition = normalizedSale,
                 Note = normalizedNote,
             };
@@ -1351,6 +1456,7 @@ else
         isSaving = true;
         try
         {
+            giIsSold = giPrice is > 0;
             await Api.PutAsync($"/api/items/game-item/{GameContext.SelectedGameId}/{editingId}",
                 new UpdateGameItemDto(giPrice, giStockCount, giIsSold, giSaleCondition, giIsFindable));
         }
@@ -1430,10 +1536,9 @@ else
     {
         error = null;
 
-        // Issue #185 — when the popup also surfaces per-game settings,
-        // mirror ItemDetail.razor's price guards so the unified Save can't
-        // ship an inconsistent state. Negative is blocked at the SpinEdit
-        // input layer too; this is a paranoia check + clear Czech message.
+        // Issue #293 — IsSold is derived from Cena: > 0 means sold, null/0
+        // means not sold. Negative is blocked at the SpinEdit input layer too;
+        // this is a paranoia check + clear Czech message.
         if (editingId.HasValue && gameItemExists && GameContext.SelectedGameId.HasValue)
         {
             if (giPrice.HasValue && giPrice.Value < 0)
@@ -1441,11 +1546,7 @@ else
                 error = "Cena nesmí být záporná.";
                 return;
             }
-            if (giIsSold && (!giPrice.HasValue || giPrice.Value <= 0))
-            {
-                error = "Prodávaný předmět musí mít cenu vyšší než nula.";
-                return;
-            }
+            giIsSold = giPrice is > 0;
         }
 
         isSaving = true;
@@ -1465,6 +1566,7 @@ else
                 // (e.g. the #99 GameItem-in-use block).
                 if (gameItemExists && GameContext.SelectedGameId is int gid)
                 {
+                    giIsSold = giPrice is > 0;
                     var (ok, problem) = await Api.PutWithProblemAsync(
                         $"/api/items/game-item/{gid}/{editingId}",
                         new UpdateGameItemDto(giPrice, giStockCount, giIsSold, giSaleCondition, giIsFindable));
