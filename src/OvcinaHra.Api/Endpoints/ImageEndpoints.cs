@@ -550,6 +550,10 @@ public static class ImageEndpoints
 
             return null;
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception)
         {
             return ImageValidationProblem("Soubor se nepodařilo přečíst jako obrázek.");

@@ -385,7 +385,7 @@ public static class GameEndpoints
         var stamps = new List<GameStampDto>();
         foreach (var locationGroup in rows.GroupBy(r => new { r.LocationId, r.LocationName, r.StampImagePath }))
         {
-            var stampImageUrl = await blobService.GetSasUrlAsync(locationGroup.Key.StampImagePath, ct);
+            var stampImageUrl = blobService.GetSasUrl(locationGroup.Key.StampImagePath);
             if (stampImageUrl is null)
                 continue;
 
