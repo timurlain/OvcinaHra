@@ -62,6 +62,9 @@ else
                     </button>
                     @if (IsGameScoped)
                     {
+                        <button class="btn btn-secondary" @onclick='() => SwitchTab("sifry")'>
+                            <i class="bi bi-grid-3x3-gap me-1"></i> Šifry
+                        </button>
                         <button class="btn oh-btn-ghost-bordeaux" @onclick="() => isRemoveFromGameVisible = true">
                             <i class="bi bi-bookmark-dash me-1"></i> Odebrat z této hry
                         </button>
