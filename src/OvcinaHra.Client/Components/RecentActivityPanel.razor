@@ -1,5 +1,6 @@
 @using System.Text.Json
 @inject IDashboardEventStream EventStream
+@inject ILogger<RecentActivityPanel> Logger
 @implements IAsyncDisposable
 
 @if (_takeover is not null)
@@ -61,6 +62,12 @@
             </div>
         }
     }
+    @if (_pollingFailed)
+    {
+        <p class="oh-home-recent-warning">
+            <i class="bi bi-wifi-off"></i>Spojení přerušeno, obnovuji…
+        </p>
+    }
 </section>
 
 @code {
@@ -72,6 +79,7 @@
     private DateTime? _latestTimestamp;
     private List<DashboardRecentEventDto>? _rows;
     private DashboardRecentEventDto? _takeover;
+    private bool _pollingFailed;
 
     [Parameter] public int? GameId { get; set; }
     [Parameter] public bool IsRunning { get; set; }
@@ -91,6 +99,7 @@
         _activeGameId = GameId.Value;
         _rows = null;
         _latestTimestamp = null;
+        _pollingFailed = false;
         _pollCts = new CancellationTokenSource();
         await LoadAsync(GameId.Value, sinceUtc: null, showTakeover: false, _pollCts.Token);
         _ = PollAsync(GameId.Value, _pollCts.Token);
@@ -117,34 +126,47 @@
         bool showTakeover,
         CancellationToken cancellationToken)
     {
-        var incoming = await EventStream.GetRecentEventsAsync(gameId, sinceUtc, cancellationToken);
-        if (cancellationToken.IsCancellationRequested) return;
+        try
+        {
+            var incoming = await EventStream.GetRecentEventsAsync(gameId, sinceUtc, cancellationToken);
+            if (cancellationToken.IsCancellationRequested) return;
 
-        if (_rows is null || sinceUtc is null)
-        {
-            _rows = incoming.OrderByDescending(r => r.Timestamp).ThenByDescending(r => r.EventId).ToList();
-        }
-        else if (incoming.Count > 0)
-        {
-            _rows = incoming
-                .Concat(_rows)
-                .GroupBy(r => r.EventId)
-                .Select(g => g.First())
-                .OrderByDescending(r => r.Timestamp)
-                .ThenByDescending(r => r.EventId)
-                .Take(50)
-                .ToList();
-        }
+            if (_rows is null || sinceUtc is null)
+            {
+                _rows = incoming.OrderByDescending(r => r.Timestamp).ThenByDescending(r => r.EventId).ToList();
+            }
+            else if (incoming.Count > 0)
+            {
+                _rows = incoming
+                    .Concat(_rows)
+                    .GroupBy(r => r.EventId)
+                    .Select(g => g.First())
+                    .OrderByDescending(r => r.Timestamp)
+                    .ThenByDescending(r => r.EventId)
+                    .Take(50)
+                    .ToList();
+            }
 
-        _latestTimestamp = _rows.FirstOrDefault()?.Timestamp ?? _latestTimestamp;
-        if (showTakeover)
+            _pollingFailed = false;
+            _latestTimestamp = _rows.FirstOrDefault()?.Timestamp ?? _latestTimestamp;
+            if (showTakeover)
+            {
+                var takeover = incoming
+                    .Where(IsTakeoverEvent)
+                    .OrderByDescending(r => r.Timestamp)
+                    .ThenByDescending(r => r.EventId)
+                    .FirstOrDefault(r => _seenTakeovers.Add(r.EventId));
+                if (takeover is not null) ShowTakeover(takeover);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            var takeover = incoming
-                .Where(IsTakeoverEvent)
-                .OrderByDescending(r => r.Timestamp)
-                .ThenByDescending(r => r.EventId)
-                .FirstOrDefault(r => _seenTakeovers.Add(r.EventId));
-            if (takeover is not null) ShowTakeover(takeover);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _pollingFailed = true;
+            Logger.LogWarning(ex, "Recent activity polling failed; retrying on the next tick.");
         }
 
         await InvokeAsync(StateHasChanged);
