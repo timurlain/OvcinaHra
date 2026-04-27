@@ -62,6 +62,43 @@ public class RegistraceImportNotLinkedTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task AvailablePlayers_GameLinkedButRegistraceTimeout_Returns504WithinConfiguredTimeout()
+    {
+        var game = await CreateGameAsync("NPC timeout");
+        var link = await Client.PostAsJsonAsync($"/api/games/{game.Id}/link",
+            new LinkGameDto(654321));
+        link.EnsureSuccessStatusCode();
+
+        var (timeoutFactory, timeoutClient) = await Postgres.CreateClientAsync(services =>
+        {
+            services.RemoveAll<RegistraceImportService>();
+            services.AddHttpClient<RegistraceImportService>(client =>
+                client.Timeout = TimeSpan.FromSeconds(15))
+                .ConfigurePrimaryHttpMessageHandler(() =>
+                    new SlowHttpMessageHandler(TimeSpan.FromSeconds(30)));
+        });
+
+        await using (timeoutFactory)
+        using (timeoutClient)
+        {
+            var sw = Stopwatch.StartNew();
+            var response = await timeoutClient.GetAsync($"/api/npcs/available-players/{game.Id}");
+            sw.Stop();
+
+            Assert.Equal(HttpStatusCode.GatewayTimeout, response.StatusCode);
+            Assert.True(
+                sw.Elapsed < TimeSpan.FromSeconds(20),
+                $"Expected the 15s registrace timeout, got {sw.Elapsed.TotalSeconds:F1}s.");
+
+            var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+            Assert.NotNull(problem);
+            Assert.Equal((int)HttpStatusCode.GatewayTimeout, problem.Status);
+            Assert.Equal(RegistraceImportProblems.TimeoutTitle, problem.Title);
+            Assert.Equal(RegistraceImportProblems.TimeoutDetail, problem.Detail);
+        }
+    }
+
+    [Fact]
     public async Task Import_GameLinkedButRegistraceUnreachable_DoesNotShortCircuitWith400()
     {
         // When ExternalGameId is set we expect the service to reach the
@@ -123,5 +160,4 @@ public class RegistraceImportNotLinkedTests(PostgresFixture postgres)
             Assert.Equal(RegistraceImportProblems.TimeoutDetail, problem.Detail);
         }
     }
-
 }

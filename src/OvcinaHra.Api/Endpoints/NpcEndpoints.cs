@@ -32,11 +32,11 @@ public static class NpcEndpoints
     }
 
     private static async Task<Results<Ok<List<RegistraceAdultDto>>, ProblemHttpResult>> GetAvailablePlayers(
-        int gameId, RegistraceImportService registrace)
+        int gameId, RegistraceImportService registrace, CancellationToken ct)
     {
         try
         {
-            var adults = await registrace.FetchAdultsAsync(gameId);
+            var adults = await registrace.FetchAdultsAsync(gameId, ct);
             return TypedResults.Ok(adults);
         }
         catch (GameNotFoundException)
@@ -55,7 +55,7 @@ public static class NpcEndpoints
                 title: RegistraceImportProblems.NotLinkedTitle,
                 statusCode: StatusCodes.Status400BadRequest);
         }
-        catch (TaskCanceledException)
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested)
         {
             return TypedResults.Problem(
                 detail: RegistraceImportProblems.TimeoutDetail,

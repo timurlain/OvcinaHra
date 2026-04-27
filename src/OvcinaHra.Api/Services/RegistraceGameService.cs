@@ -53,17 +53,23 @@ public class RegistraceGameService(
         try
         {
             var response = await httpClient.SendAsync(request, ct);
-            logger.LogInformation(
-                "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}. StatusCode: {StatusCode}",
-                endpoint,
-                sw.ElapsedMilliseconds,
-                response.IsSuccessStatusCode ? "success" : "error",
-                response.StatusCode);
+            if (response.IsSuccessStatusCode)
+            {
+                logger.LogInformation(
+                    "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}. StatusCode: {StatusCode}",
+                    endpoint, sw.ElapsedMilliseconds, "success", response.StatusCode);
+            }
+            else
+            {
+                logger.LogWarning(
+                    "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}. StatusCode: {StatusCode}",
+                    endpoint, sw.ElapsedMilliseconds, "error", response.StatusCode);
+            }
             return response;
         }
         catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
         {
-            logger.LogInformation(
+            logger.LogWarning(
                 ex,
                 "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}",
                 endpoint, sw.ElapsedMilliseconds, "timeout");
@@ -79,7 +85,7 @@ public class RegistraceGameService(
         }
         catch (Exception ex)
         {
-            logger.LogInformation(
+            logger.LogError(
                 ex,
                 "Registrace upstream {Endpoint} completed in {ElapsedMs} ms with {Outcome}",
                 endpoint, sw.ElapsedMilliseconds, "error");

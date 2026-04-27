@@ -259,11 +259,11 @@ public static class CharacterEndpoints
     }
 
     private static async Task<Results<Ok<ImportResultDto>, ProblemHttpResult>> ImportFromRegistrace(
-        int gameId, RegistraceImportService importService)
+        int gameId, RegistraceImportService importService, CancellationToken ct)
     {
         try
         {
-            var result = await importService.ImportAsync(gameId);
+            var result = await importService.ImportAsync(gameId, ct);
             return TypedResults.Ok(result);
         }
         catch (GameNotFoundException)
@@ -283,7 +283,7 @@ public static class CharacterEndpoints
                 title: RegistraceImportProblems.NotLinkedTitle,
                 statusCode: StatusCodes.Status400BadRequest);
         }
-        catch (TaskCanceledException)
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested)
         {
             return TypedResults.Problem(
                 detail: RegistraceImportProblems.TimeoutDetail,
@@ -305,7 +305,7 @@ public static class CharacterEndpoints
     /// local roster wiped while the upstream is unreachable.
     /// </remarks>
     private static async Task<Results<Ok<ReimportCharactersResponse>, ProblemHttpResult>> ReimportFromRegistrace(
-        int gameId, RegistraceImportService importService, WorldDbContext db)
+        int gameId, RegistraceImportService importService, WorldDbContext db, CancellationToken ct)
     {
         // Pre-validate BEFORE opening the SERIALIZABLE transaction. A bogus
         // gameId would otherwise hold locks on Characters / CharacterAssignments
@@ -319,13 +319,13 @@ public static class CharacterEndpoints
             var preCheck = await db.Games
                 .Where(g => g.Id == gameId)
                 .Select(g => new { g.ExternalGameId })
-                .FirstOrDefaultAsync();
+                .FirstOrDefaultAsync(ct);
             if (preCheck is null)
                 throw new GameNotFoundException(gameId);
             if (preCheck.ExternalGameId is null)
                 throw new GameNotLinkedToRegistraceException(gameId);
 
-            await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+            await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
 
             // 1. Null parent self-references ONLY on imported characters that
             //    are about to be wiped in step 3 (i.e. those whose only
@@ -339,13 +339,13 @@ public static class CharacterEndpoints
                     && db.CharacterAssignments
                         .Where(a => a.CharacterId == c.Id)
                         .All(a => a.GameId == gameId))
-                .ExecuteUpdateAsync(s => s.SetProperty(c => c.ParentCharacterId, _ => (int?)null));
+                .ExecuteUpdateAsync(s => s.SetProperty(c => c.ParentCharacterId, _ => (int?)null), ct);
 
             // 2. Hard-delete this game's assignments. Cascades CharacterEvents
             //    via the required FK on CharacterEvent.CharacterAssignmentId.
             var wipedAssignments = await db.CharacterAssignments
                 .Where(a => a.GameId == gameId)
-                .ExecuteDeleteAsync();
+                .ExecuteDeleteAsync(ct);
 
             // 3. Hard-delete imported Character rows that no longer have any
             //    assignment (orphans across all games). Cascades
@@ -356,7 +356,7 @@ public static class CharacterEndpoints
                 .IgnoreQueryFilters()
                 .Where(c => c.ExternalPersonId != null
                     && !db.CharacterAssignments.Any(a => a.CharacterId == c.Id))
-                .ExecuteDeleteAsync();
+                .ExecuteDeleteAsync(ct);
 
             // 4. Run the regular import — recreates Character rows for the
             //    registrace roster and seeds fresh CharacterAssignments.
@@ -365,9 +365,9 @@ public static class CharacterEndpoints
             ImportResultDto imported;
             try
             {
-                imported = await importService.ImportOrThrowAsync(gameId);
+                imported = await importService.ImportOrThrowAsync(gameId, ct);
             }
-            catch (TaskCanceledException)
+            catch (TaskCanceledException) when (!ct.IsCancellationRequested)
             {
                 // Don't commit — rollback on dispose preserves the original
                 // roster instead of leaving an empty database.
@@ -386,7 +386,7 @@ public static class CharacterEndpoints
                     statusCode: StatusCodes.Status502BadGateway);
             }
 
-            await tx.CommitAsync();
+            await tx.CommitAsync(ct);
 
             return TypedResults.Ok(new ReimportCharactersResponse(
                 WipedAssignments: wipedAssignments,
