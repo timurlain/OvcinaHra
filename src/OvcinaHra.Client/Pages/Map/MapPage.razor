@@ -545,23 +545,36 @@
     /// </summary>
     private async Task OnMapClickAsync(OvcinaMapClickEventArgs e)
     {
-        if (!e.CtrlKey) return;
-        if (GameContext.SelectedGameId is not int gid) return;
+        Console.WriteLine($"[map-diag] MapPage.OnMapClick entry lat={e.Latitude} lng={e.Longitude} ctrl={e.CtrlKey} shift={e.ShiftKey} gameId={GameContext.SelectedGameId?.ToString() ?? "null"}");
+        if (!e.CtrlKey)
+        {
+            Console.WriteLine("[map-diag] MapPage.OnMapClick ignored-no-ctrl");
+            return;
+        }
+        if (GameContext.SelectedGameId is not int gid)
+        {
+            Console.WriteLine("[map-diag] MapPage.OnMapClick ignored-no-game");
+            return;
+        }
         _placeMode = e.ShiftKey ? "move" : "place";
         _placeLat = e.Latitude;
         _placeLng = e.Longitude;
         _placeError = null;
         _placeSearch = "";
         _placeSaving = false;
+        Console.WriteLine($"[map-diag] MapPage.OnMapClick placement-start mode={_placeMode} gameId={gid}");
         // Fetch the per-game location list. Filter depends on mode:
         // place mode = only ungeocoded parents; move mode = all parents.
         var all = await Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gid}");
+        Console.WriteLine($"[map-diag] MapPage.OnMapClick candidates-fetched count={all.Count}");
         _placeCandidates = all
             .Where(l => l.ParentLocationId is null
                 && (_placeMode == "move" || l.Latitude is null || l.Longitude is null))
             .OrderBy(l => l.Name)
             .ToList();
+        Console.WriteLine($"[map-diag] MapPage.OnMapClick candidates-filtered mode={_placeMode} count={_placeCandidates.Count}");
         _placeVisible = true;
+        Console.WriteLine("[map-diag] MapPage.OnMapClick popup-visible");
         await InvokeAsync(StateHasChanged);
     }
 

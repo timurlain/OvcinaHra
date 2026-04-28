@@ -296,6 +296,7 @@
         _stagedShapes = new List<MapOverlayShape>(GetCommittedShapes(_activeAudience));
         _createdShapeIds.Clear();
         _overlayError = null;
+        Console.WriteLine($"[map-diag] MapView.EnterEditMode gameId={GameId?.ToString() ?? "null"} tool={_tool} audience={_activeAudience} committed={_stagedShapes.Count}");
         await PushStyleToJsAsync();
         await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _stagedShapes);
         await JS.InvokeVoidAsync("ovcinaOverlay.enterEditMode", _elementId, _tool, _dotnetRef);
@@ -354,6 +355,7 @@
 
     private async Task ChangeToolAsync(string tool)
     {
+        Console.WriteLine($"[map-diag] MapView.ChangeTool from={_tool} to={tool} editMode={_editMode}");
         _tool = tool;
         if (_editMode)
         {
@@ -427,14 +429,23 @@
     [JSInvokable]
     public async Task OnShapeComplete(string shapeJson)
     {
+        Console.WriteLine($"[map-diag] MapView.OnShapeComplete entry length={shapeJson?.Length ?? 0}");
+        if (string.IsNullOrWhiteSpace(shapeJson))
+        {
+            Console.WriteLine("[map-diag] MapView.OnShapeComplete ignored-empty-payload");
+            return;
+        }
         try
         {
             var shape = System.Text.Json.JsonSerializer.Deserialize<MapOverlayShape>(
                 shapeJson,
                 new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (shape is null) return;
+            Console.WriteLine($"[map-diag] MapView.OnShapeComplete parsed id={shape.Id} type={shape.GetType().Name}");
             _stagedShapes.Add(shape);
             _createdShapeIds.Add(shape.Id);
+            Console.WriteLine($"[map-diag] MapView.OnShapeComplete staged={_stagedShapes.Count} created={_createdShapeIds.Count}");
+            await InvokeAsync(StateHasChanged);
             await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _stagedShapes);
         }
         catch (Exception ex) when (ex is System.Text.Json.JsonException
@@ -525,14 +536,19 @@
 
     private async Task UndoLastCreatedShapeAsync()
     {
+        Console.WriteLine($"[map-diag] MapView.UndoLastCreated entry created={_createdShapeIds.Count} staged={_stagedShapes.Count}");
         while (_createdShapeIds.Count > 0)
         {
             var lastIndex = _createdShapeIds.Count - 1;
             var id = _createdShapeIds[lastIndex];
             _createdShapeIds.RemoveAt(lastIndex);
+            Console.WriteLine($"[map-diag] MapView.UndoLastCreated pop id={id}");
 
             if (_stagedShapes.RemoveAll(s => s.Id == id) == 0)
+            {
+                Console.WriteLine($"[map-diag] MapView.UndoLastCreated missing-staged id={id}");
                 continue;
+            }
 
             if (_selectedShape?.Id == id)
             {
@@ -541,9 +557,11 @@
             }
 
             await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _stagedShapes);
+            Console.WriteLine($"[map-diag] MapView.UndoLastCreated rendered staged={_stagedShapes.Count} created={_createdShapeIds.Count}");
             StateHasChanged();
             return;
         }
+        Console.WriteLine("[map-diag] MapView.UndoLastCreated exit-empty");
     }
 
     private Task RequestClearAllAsync()
@@ -629,7 +647,10 @@
 
     [JSInvokable]
     public async Task OnMapClicked(double lat, double lng, bool ctrlKey = false, bool shiftKey = false)
-        => await OnMapClick.InvokeAsync(new OvcinaMapClickEventArgs(lat, lng, ctrlKey, shiftKey));
+    {
+        Console.WriteLine($"[map-diag] MapView.OnMapClicked lat={lat} lng={lng} ctrl={ctrlKey} shift={shiftKey}");
+        await OnMapClick.InvokeAsync(new OvcinaMapClickEventArgs(lat, lng, ctrlKey, shiftKey));
+    }
 
     [JSInvokable]
     public async Task OnPieMarkerClicked(int id)
