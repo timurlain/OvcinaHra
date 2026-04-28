@@ -121,9 +121,9 @@ else
                     {
                         <div class="oh-qst-karta-side-row"><span>Groše</span><strong>@money gr</strong></div>
                     }
-                    @if (!string.IsNullOrWhiteSpace(quest.TimeSlot))
+                    @if (!string.IsNullOrWhiteSpace(quest.TimeSlotName))
                     {
-                        <div class="oh-qst-karta-side-row"><span>Časový slot</span><strong>@quest.TimeSlot</strong></div>
+                        <div class="oh-qst-karta-side-row"><span>Časový slot</span><strong>@quest.TimeSlotName</strong></div>
                     }
                 </div>
 
@@ -194,8 +194,7 @@ else
                     <DxFormLayoutItem Caption="Časový slot" ColSpanMd="4">
                         <DxComboBox TData="TimeSlotOption" TValue="int?"
                                     Data="@availableTimeSlots"
-                                    Value="@editModel.SelectedTimeSlotOptionId"
-                                    ValueChanged="@((int? value) => OnTimeSlotChanged(value))"
+                                    @bind-Value="@editModel.TimeSlotId"
                                     TextFieldName="@nameof(TimeSlotOption.DisplayText)"
                                     ValueFieldName="@nameof(TimeSlotOption.Id)"
                                     NullText="Vyberte časový slot..."
@@ -486,7 +485,6 @@ else
     private string? locError;
 
     // Time slots
-    private const int SavedTimeSlotOptionId = -1;
     private List<TimeSlotOption> availableTimeSlots = [];
 
     // Encounters
@@ -497,7 +495,7 @@ else
     private bool isCopying;
 
     private record TabDef(string Key, string Label, string Icon, int? Count);
-    private record TimeSlotOption(int Id, string DisplayText, string StoredValue);
+    private record TimeSlotOption(int Id, string DisplayText);
 
     private List<TabDef> tabs => quest is null ? [] :
     [
@@ -572,60 +570,25 @@ else
                 : Task.FromResult(new List<GameTimeSlotDto>());
             await Task.WhenAll(locationsTask, slotsTask);
             gameLocations = await locationsTask;
-            availableTimeSlots = BuildTimeSlotOptions(await slotsTask, editModel.TimeSlot);
-            editModel.SelectedTimeSlotOptionId = ResolveTimeSlotOptionId(editModel.TimeSlot);
+            availableTimeSlots = BuildTimeSlotOptions(await slotsTask);
         }
         catch { /* picker data is non-critical for read view */ }
     }
 
-    private static List<TimeSlotOption> BuildTimeSlotOptions(
-        IEnumerable<GameTimeSlotDto> slots,
-        string? currentValue)
-    {
-        var options = slots
+    private static List<TimeSlotOption> BuildTimeSlotOptions(IEnumerable<GameTimeSlotDto> slots) =>
+        slots
             .OrderBy(s => s.Stage)
             .ThenBy(s => s.StartTime)
             .Select(s =>
             {
                 var displayText = FormatTimeSlot(s);
-                return new TimeSlotOption(s.Id, displayText, displayText);
+                return new TimeSlotOption(s.Id, displayText);
             })
             .ToList();
 
-        if (!string.IsNullOrWhiteSpace(currentValue)
-            && !options.Any(o => string.Equals(o.StoredValue, currentValue, StringComparison.Ordinal)))
-        {
-            options.Insert(0, new TimeSlotOption(
-                SavedTimeSlotOptionId,
-                $"{currentValue} (uložená hodnota)",
-                currentValue));
-        }
-
-        return options;
-    }
-
     private static string FormatTimeSlot(GameTimeSlotDto slot)
-    {
-        var yearPrefix = slot.InGameYear is int year ? $"Rok {year}, " : "";
-        var localStartTime = slot.StartTime.ToLocalTime();
-        return $"{slot.StageDisplay}: {yearPrefix}{localStartTime:d.M. HH:mm} ({slot.DurationHours:0.#} h)";
-    }
-
-    private int? ResolveTimeSlotOptionId(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return null;
-
-        return availableTimeSlots.FirstOrDefault(
-            o => string.Equals(o.StoredValue, value, StringComparison.Ordinal))?.Id;
-    }
-
-    private void OnTimeSlotChanged(int? optionId)
-    {
-        editModel.SelectedTimeSlotOptionId = optionId;
-        editModel.TimeSlot = optionId is int id
-            ? availableTimeSlots.FirstOrDefault(o => o.Id == id)?.StoredValue
-            : null;
-    }
+        => TimeSlotDisplayExtensions.FormatTimeSlotDisplay(
+            slot.Stage, slot.InGameYear, slot.StartTime, slot.DurationHours);
 
     private void ResetEditModel()
     {
@@ -636,8 +599,7 @@ else
             QuestType = quest.QuestType,
             Description = quest.Description,
             FullText = quest.FullText,
-            TimeSlot = quest.TimeSlot,
-            SelectedTimeSlotOptionId = ResolveTimeSlotOptionId(quest.TimeSlot),
+            TimeSlotId = quest.TimeSlotId,
             RewardXp = quest.RewardXp,
             RewardMoney = quest.RewardMoney,
             RewardNotes = quest.RewardNotes,
@@ -656,7 +618,7 @@ else
         {
             var dto = new UpdateQuestDto(
                 editModel.Name.Trim(), editModel.QuestType,
-                editModel.Description, editModel.FullText, editModel.TimeSlot,
+                editModel.Description, editModel.FullText, editModel.TimeSlotId,
                 editModel.RewardXp, editModel.RewardMoney, editModel.RewardNotes,
                 editModel.ChainOrder, editModel.ParentQuestId);
             var (ok, problem) = await Api.PutWithProblemAsync($"/api/quests/{quest.Id}", dto);
@@ -779,8 +741,7 @@ else
         public QuestType QuestType { get; set; } = QuestType.General;
         public string? Description { get; set; }
         public string? FullText { get; set; }
-        public string? TimeSlot { get; set; }
-        public int? SelectedTimeSlotOptionId { get; set; }
+        public int? TimeSlotId { get; set; }
         public int? RewardXp { get; set; }
         public int? RewardMoney { get; set; }
         public string? RewardNotes { get; set; }

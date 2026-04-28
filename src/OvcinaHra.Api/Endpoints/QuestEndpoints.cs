@@ -5,6 +5,7 @@ using OvcinaHra.Api.Data;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
+using OvcinaHra.Shared.Extensions;
 
 namespace OvcinaHra.Api.Endpoints;
 
@@ -109,6 +110,54 @@ public static class QuestEndpoints
         return parts.Count > 0 ? string.Join(" · ", parts) : null;
     }
 
+    private static string FormatTimeSlotName(
+        GameTimePhase stage,
+        int? inGameYear,
+        DateTime startTime,
+        TimeSpan duration) =>
+        TimeSlotDisplayExtensions.FormatTimeSlotDisplay(
+            stage, inGameYear, startTime, (decimal)duration.TotalHours);
+
+    private static string? FormatTimeSlotName(
+        GameTimePhase? stage,
+        int? inGameYear,
+        DateTime? startTime,
+        TimeSpan? duration) =>
+        stage is null || startTime is null || duration is null
+            ? null
+            : FormatTimeSlotName(stage.Value, inGameYear, startTime.Value, duration.Value);
+
+    private static string? FormatTimeSlotName(GameTimeSlot? slot) =>
+        slot is null ? null : FormatTimeSlotName(slot.Stage, slot.InGameYear, slot.StartTime, slot.Duration);
+
+    private static ProblemHttpResult TimeSlotProblem(string detail) =>
+        TypedResults.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Neplatný časový slot", detail: detail);
+
+    private static async Task<(ProblemHttpResult? Problem, string? TimeSlotName)> ValidateTimeSlotAsync(
+        WorldDbContext db,
+        int? gameId,
+        int? timeSlotId)
+    {
+        if (timeSlotId is null) return (null, null);
+
+        if (gameId is null)
+            return (TimeSlotProblem("Časový slot lze přiřadit jen questu přiřazenému ke hře."), null);
+
+        var slot = await db.GameTimeSlots
+            .AsNoTracking()
+            .Where(s => s.Id == timeSlotId)
+            .Select(s => new { s.GameId, s.Stage, s.InGameYear, s.StartTime, s.Duration })
+            .FirstOrDefaultAsync();
+
+        if (slot is null)
+            return (TimeSlotProblem("Vybraný časový slot neexistuje."), null);
+
+        if (slot.GameId != gameId.Value)
+            return (TimeSlotProblem("Vybraný časový slot patří jiné hře."), null);
+
+        return (null, FormatTimeSlotName(slot.Stage, slot.InGameYear, slot.StartTime, slot.Duration));
+    }
+
     private static async Task<Results<Created<QuestCopyResultDto>, NotFound>> CopyToGame(int id, int gameId, WorldDbContext db, HttpContext http)
     {
         var result = await CopyQuestToGameAsync(id, gameId, db, http);
@@ -131,11 +180,18 @@ public static class QuestEndpoints
 
         var copy = new Quest
         {
-            Name = source.Name, QuestType = source.QuestType, Description = source.Description,
-            FullText = source.FullText, TimeSlot = source.TimeSlot,
-            RewardXp = source.RewardXp, RewardMoney = source.RewardMoney, RewardNotes = source.RewardNotes,
-            ChainOrder = null, ParentQuestId = null, GameId = gameId,
-            ImagePath = source.ImagePath, State = QuestState.Inactive
+            Name = source.Name,
+            QuestType = source.QuestType,
+            Description = source.Description,
+            FullText = source.FullText,
+            RewardXp = source.RewardXp,
+            RewardMoney = source.RewardMoney,
+            RewardNotes = source.RewardNotes,
+            ChainOrder = null,
+            ParentQuestId = null,
+            GameId = gameId,
+            ImagePath = source.ImagePath,
+            State = QuestState.Inactive
         };
         db.Quests.Add(copy);
         await db.SaveChangesAsync();
@@ -169,7 +225,7 @@ public static class QuestEndpoints
         var thumb = string.IsNullOrWhiteSpace(copy.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "quests", copy.Id, "small");
         return new QuestCopyResultDto(
             new QuestListDto(copy.Id, copy.Name, copy.QuestType, copy.ChainOrder, copy.ParentQuestId, copy.GameId,
-                copy.State, copy.ImagePath, thumb,
+                null, null, copy.State, copy.ImagePath, thumb,
                 EncountersCount: source.QuestEncounters.Count,
                 RewardsCount: source.QuestRewards.Count(r => targetItemIds.Contains(r.ItemId)),
                 LocationsCount: source.QuestLocations.Count(l => targetLocationIds.Contains(l.LocationId)),
@@ -185,8 +241,19 @@ public static class QuestEndpoints
             .OrderBy(q => q.ParentQuestId).ThenBy(q => q.ChainOrder).ThenBy(q => q.Name)
             .Select(q => new
             {
-                q.Id, q.Name, q.QuestType, q.ChainOrder, q.ParentQuestId, q.GameId,
-                q.State, q.ImagePath,
+                q.Id,
+                q.Name,
+                q.QuestType,
+                q.ChainOrder,
+                q.ParentQuestId,
+                q.GameId,
+                q.TimeSlotId,
+                TimeSlotStage = q.TimeSlot == null ? (GameTimePhase?)null : q.TimeSlot.Stage,
+                TimeSlotInGameYear = q.TimeSlot == null ? null : q.TimeSlot.InGameYear,
+                TimeSlotStartTime = q.TimeSlot == null ? (DateTime?)null : q.TimeSlot.StartTime,
+                TimeSlotDuration = q.TimeSlot == null ? (TimeSpan?)null : q.TimeSlot.Duration,
+                q.State,
+                q.ImagePath,
                 EncountersCount = q.QuestEncounters.Count,
                 RewardsCount = q.QuestRewards.Count,
                 LocationsCount = q.QuestLocations.Count,
@@ -196,6 +263,8 @@ public static class QuestEndpoints
 
         var quests = rows.Select(r => new QuestListDto(
             r.Id, r.Name, r.QuestType, r.ChainOrder, r.ParentQuestId, r.GameId,
+            r.TimeSlotId,
+            FormatTimeSlotName(r.TimeSlotStage, r.TimeSlotInGameYear, r.TimeSlotStartTime, r.TimeSlotDuration),
             r.State, r.ImagePath,
             string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "quests", r.Id, "small"),
             r.EncountersCount, r.RewardsCount, r.LocationsCount, r.TagsCount)).ToList();
@@ -210,13 +279,14 @@ public static class QuestEndpoints
             .Include(q => q.QuestLocations).ThenInclude(ql => ql.Location)
             .Include(q => q.QuestEncounters).ThenInclude(qe => qe.Monster)
             .Include(q => q.QuestRewards).ThenInclude(qr => qr.Item)
+            .Include(q => q.TimeSlot)
             .FirstOrDefaultAsync(q => q.Id == id);
         if (q is null) return TypedResults.NotFound();
 
         var imageUrl = string.IsNullOrWhiteSpace(q.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "quests", q.Id, "small");
 
         return TypedResults.Ok(new QuestDetailDto(
-            q.Id, q.Name, q.QuestType, q.Description, q.FullText, q.TimeSlot,
+            q.Id, q.Name, q.QuestType, q.Description, q.FullText, q.TimeSlotId, FormatTimeSlotName(q.TimeSlot),
             q.RewardXp, q.RewardMoney, q.RewardNotes, q.ChainOrder, q.ParentQuestId, q.GameId,
             q.State, q.ImagePath, imageUrl,
             q.QuestTags.Select(qt => new TagDto(qt.Tag.Id, qt.Tag.Name, qt.Tag.Kind)).ToList(),
@@ -225,31 +295,45 @@ public static class QuestEndpoints
             q.QuestRewards.Select(qr => new QuestRewardDto(qr.QuestId, qr.ItemId, qr.Item.Name, qr.Quantity)).ToList()));
     }
 
-    private static async Task<Created<QuestListDto>> Create(CreateQuestDto dto, WorldDbContext db)
+    private static async Task<Results<Created<QuestListDto>, ProblemHttpResult>> Create(CreateQuestDto dto, WorldDbContext db)
     {
+        var timeSlot = await ValidateTimeSlotAsync(db, dto.GameId, dto.TimeSlotId);
+        if (timeSlot.Problem is not null) return timeSlot.Problem;
+
         var q = new Quest
         {
-            Name = dto.Name, QuestType = dto.QuestType, GameId = dto.GameId,
-            Description = dto.Description, FullText = dto.FullText, TimeSlot = dto.TimeSlot,
-            RewardXp = dto.RewardXp, RewardMoney = dto.RewardMoney, RewardNotes = dto.RewardNotes,
-            ChainOrder = dto.ChainOrder, ParentQuestId = dto.ParentQuestId,
+            Name = dto.Name,
+            QuestType = dto.QuestType,
+            GameId = dto.GameId,
+            Description = dto.Description,
+            FullText = dto.FullText,
+            TimeSlotId = dto.TimeSlotId,
+            RewardXp = dto.RewardXp,
+            RewardMoney = dto.RewardMoney,
+            RewardNotes = dto.RewardNotes,
+            ChainOrder = dto.ChainOrder,
+            ParentQuestId = dto.ParentQuestId,
             State = QuestState.Inactive
         };
         db.Quests.Add(q);
         await db.SaveChangesAsync();
         return TypedResults.Created($"/api/quests/{q.Id}",
             new QuestListDto(q.Id, q.Name, q.QuestType, q.ChainOrder, q.ParentQuestId, q.GameId,
+                q.TimeSlotId, timeSlot.TimeSlotName,
                 q.State, q.ImagePath, ImageUrl: null,
                 EncountersCount: 0, RewardsCount: 0, LocationsCount: 0, TagsCount: 0));
     }
 
-    private static async Task<Results<NoContent, NotFound>> Update(int id, UpdateQuestDto dto, WorldDbContext db)
+    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> Update(int id, UpdateQuestDto dto, WorldDbContext db)
     {
         var q = await db.Quests.FindAsync(id);
         if (q is null) return TypedResults.NotFound();
 
+        var timeSlot = await ValidateTimeSlotAsync(db, q.GameId, dto.TimeSlotId);
+        if (timeSlot.Problem is not null) return timeSlot.Problem;
+
         q.Name = dto.Name; q.QuestType = dto.QuestType;
-        q.Description = dto.Description; q.FullText = dto.FullText; q.TimeSlot = dto.TimeSlot;
+        q.Description = dto.Description; q.FullText = dto.FullText; q.TimeSlotId = dto.TimeSlotId;
         q.RewardXp = dto.RewardXp; q.RewardMoney = dto.RewardMoney; q.RewardNotes = dto.RewardNotes;
         q.ChainOrder = dto.ChainOrder; q.ParentQuestId = dto.ParentQuestId;
 
@@ -284,6 +368,14 @@ public static class QuestEndpoints
     {
         var q = await db.Quests.FindAsync(id);
         if (q is null) return TypedResults.NotFound();
+        if (q.TimeSlotId is int timeSlotId)
+        {
+            var slotGameId = await db.GameTimeSlots
+                .Where(s => s.Id == timeSlotId)
+                .Select(s => (int?)s.GameId)
+                .FirstOrDefaultAsync();
+            if (slotGameId != dto.GameId) q.TimeSlotId = null;
+        }
         q.GameId = dto.GameId;
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
@@ -295,6 +387,7 @@ public static class QuestEndpoints
         var q = await db.Quests.FindAsync(id);
         if (q is null) return TypedResults.NotFound();
         q.GameId = null;
+        q.TimeSlotId = null;
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
     }

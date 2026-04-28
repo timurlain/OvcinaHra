@@ -9,7 +9,7 @@ public class Quest
     public QuestType QuestType { get; set; }
     public string? Description { get; set; }
     public string? FullText { get; set; }
-    public string? TimeSlot { get; set; }
+    public int? TimeSlotId { get; set; }
     public int? RewardXp { get; set; }
     public int? RewardMoney { get; set; }
     public string? RewardNotes { get; set; }
@@ -21,6 +21,7 @@ public class Quest
 
     public Quest? ParentQuest { get; set; }
     public Game? Game { get; set; }
+    public GameTimeSlot? TimeSlot { get; set; }
     public ICollection<Quest> ChildQuests { get; set; } = [];
     public ICollection<QuestTagLink> QuestTags { get; set; } = [];
     public ICollection<QuestLocationLink> QuestLocations { get; set; } = [];
