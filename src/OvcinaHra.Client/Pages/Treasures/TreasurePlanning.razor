@@ -773,6 +773,8 @@ else
         if (quickAllocation is null) return;
         quickAllocation = null;
         quickAllocationCollapseCts?.Cancel();
+        quickAllocationCollapseCts?.Dispose();
+        quickAllocationCollapseCts = null;
         LogTreasureAlloc("stepper-collapse", new { source = "click-away", focusedLocationId });
     }
 

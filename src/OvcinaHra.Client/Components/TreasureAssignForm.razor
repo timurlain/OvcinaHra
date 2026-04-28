@@ -67,7 +67,7 @@
                         <i class="bi bi-check-circle text-success"></i>
                         <span class="flex-grow-1">@p.ItemName</span>
                         <span class="oh-tp-focus-quest-meta">
-                            @(p.IsUnique ? "×1" : $"×1 z {p.Count}")
+                            @(p.IsUnique ? $"×{p.Count}" : $"×1 z {p.Count}")
                         </span>
                     </div>
                 }
