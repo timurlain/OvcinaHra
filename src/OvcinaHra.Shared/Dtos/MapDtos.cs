@@ -30,10 +30,21 @@ public record MapLocationDto(
     LocationKind Kind,
     int? KingdomId,
     string? KingdomName,
-    string? ThumbnailUrl)
+    string? ThumbnailUrl,
+    LocationKind? RenderKind = null,
+    string? RenderName = null)
 {
     [JsonIgnore]
     public string KindDisplay => Kind.GetDisplayName();
+
+    [JsonIgnore]
+    public LocationKind EffectiveKind => RenderKind ?? Kind;
+
+    [JsonIgnore]
+    public string EffectiveName => string.IsNullOrWhiteSpace(RenderName) ? Name : RenderName;
+
+    [JsonIgnore]
+    public string EffectiveKindDisplay => EffectiveKind.GetDisplayName();
 }
 
 /// <summary>

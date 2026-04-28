@@ -118,6 +118,56 @@ public class MapEndpointsTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Data_ParentWithHobbitChildUsesChildPresentation()
+    {
+        var game = await CreateGameAsync();
+        int parentId;
+
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var parent = new Location
+            {
+                Name = "Starý brod",
+                LocationKind = LocationKind.Wilderness,
+                Coordinates = new GpsCoordinates(49.5m, 17.1m),
+            };
+            db.Locations.Add(parent);
+            await db.SaveChangesAsync();
+            parentId = parent.Id;
+
+            db.Locations.AddRange(
+                new Location
+                {
+                    Name = "Dcera řeky",
+                    LocationKind = LocationKind.Hobbit,
+                    ParentLocationId = parent.Id,
+                },
+                new Location
+                {
+                    Name = "Druhý hobit",
+                    LocationKind = LocationKind.Hobbit,
+                    ParentLocationId = parent.Id,
+                });
+            db.GameLocations.Add(new GameLocation { GameId = game.Id, LocationId = parent.Id });
+            await db.SaveChangesAsync();
+        }
+
+        var data = await Client.GetFromJsonAsync<MapDataDto>(
+            $"/api/map/data?gameId={game.Id}");
+
+        Assert.NotNull(data);
+        var single = Assert.Single(data.Locations);
+        Assert.Equal(parentId, single.Id);
+        Assert.Equal("Starý brod", single.Name);
+        Assert.Equal(LocationKind.Wilderness, single.Kind);
+        Assert.Equal("Dcera řeky", single.RenderName);
+        Assert.Equal(LocationKind.Hobbit, single.RenderKind);
+        Assert.Equal("Dcera řeky", single.EffectiveName);
+        Assert.Equal(LocationKind.Hobbit, single.EffectiveKind);
+    }
+
+    [Fact]
     public async Task Peek_NonExistentLocation_Returns404()
     {
         var game = await CreateGameAsync();
