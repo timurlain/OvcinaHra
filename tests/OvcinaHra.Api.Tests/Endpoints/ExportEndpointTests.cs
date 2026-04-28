@@ -170,6 +170,76 @@ public class ExportEndpointTests(PostgresFixture postgres)
         Assert.DoesNotContain("Outside Town", pdfText);
     }
 
+    [Fact]
+    public async Task MagicBook_MissingGame_ReturnsNotFound()
+    {
+        var response = await Client.GetAsync("/api/games/999999/exports/magic-book.pdf");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task MagicBook_NoGameSpells_ReturnsCzechProblemDetails()
+    {
+        var game = await CreateGameAsync();
+
+        var response = await Client.GetAsync($"/api/games/{game.Id}/exports/magic-book.pdf");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Vybraná hra nemá přiřazená žádná kouzla.", problem.Detail);
+    }
+
+    [Fact]
+    public async Task MagicBook_GameSpellRows_ReturnsTwoPageA4Pdf()
+    {
+        var game = await CreateGameAsync();
+
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var otherGame = new Game
+            {
+                Name = "Jiná edice",
+                Edition = 31,
+                StartDate = new DateOnly(2026, 6, 1),
+                EndDate = new DateOnly(2026, 6, 3),
+                Status = GameStatus.Active
+            };
+            db.Games.Add(otherGame);
+
+            var gameSpells = Enumerable.Range(1, 20)
+                .Select(i => CreateSpell($"Kouzlo {i}", ((i - 1) % 5) + 1))
+                .ToList();
+            var catalogOnly = CreateSpell("Jen v katalogu", 1);
+            var otherSpell = CreateSpell("Cizí hra", 2);
+            db.Spells.AddRange(gameSpells);
+            db.Spells.AddRange(catalogOnly, otherSpell);
+            await db.SaveChangesAsync();
+
+            db.GameSpells.AddRange(gameSpells.Select(spell => new GameSpell
+            {
+                GameId = game.Id,
+                SpellId = spell.Id
+            }));
+            db.GameSpells.Add(new GameSpell { GameId = otherGame.Id, SpellId = otherSpell.Id });
+            await db.SaveChangesAsync();
+        }
+
+        var response = await Client.GetAsync($"/api/games/{game.Id}/exports/magic-book.pdf");
+
+        response.EnsureSuccessStatusCode();
+        Assert.Equal("application/pdf", response.Content.Headers.ContentType?.MediaType);
+        Assert.Contains("edition-30-kniha-magie-", response.Content.Headers.ContentDisposition?.FileName?.Trim('"'));
+        var bytes = await response.Content.ReadAsByteArrayAsync();
+        Assert.StartsWith("%PDF-1.4", Encoding.ASCII.GetString(bytes, 0, 8));
+        var pdfText = Encoding.ASCII.GetString(bytes);
+        Assert.Contains("/Count 2", pdfText);
+        Assert.Equal(2, CountOccurrences(pdfText, "/Subtype /Image"));
+        WriteMagicBookSmokeArtifact(bytes);
+    }
+
     private sealed class MissingMapyKeyExporter : IExplorerMapExportService
     {
         public Task<ExplorerMapExportFile> RenderExplorerMapAsync(
@@ -179,5 +249,50 @@ public class ExportEndpointTests(PostgresFixture postgres)
             throw new MapExportProblemException(
                 "Mapy.cz API klíč není nastaven.",
                 "Kontaktujte správce systému.");
+    }
+
+    private static Spell CreateSpell(string name, int level) => new()
+    {
+        Name = name,
+        Level = level,
+        ManaCost = level,
+        School = SpellSchool.Fire,
+        IsScroll = false,
+        IsReaction = false,
+        IsLearnable = true,
+        MinMageLevel = level,
+        Price = level * 10,
+        Effect = $"Efekt kouzla {name} s českou diakritikou: žluťoučký kůň úpěl ďábelské ódy.",
+        Description = $"Popis {name}"
+    };
+
+    private static int CountOccurrences(string text, string value)
+    {
+        var count = 0;
+        var index = 0;
+        while ((index = text.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += value.Length;
+        }
+
+        return count;
+    }
+
+    private static void WriteMagicBookSmokeArtifact(byte[] bytes)
+    {
+        if (Environment.GetEnvironmentVariable("OVCINA_WRITE_MAGIC_BOOK_SMOKE") != "1")
+            return;
+
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "OvcinaHra.slnx")))
+            directory = directory.Parent;
+
+        if (directory is null)
+            return;
+
+        var tmp = Path.Combine(directory.FullName, ".tmp");
+        Directory.CreateDirectory(tmp);
+        File.WriteAllBytes(Path.Combine(tmp, "magic-book-A4.pdf"), bytes);
     }
 }

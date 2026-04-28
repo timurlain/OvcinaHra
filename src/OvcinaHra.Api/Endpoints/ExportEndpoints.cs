@@ -12,6 +12,7 @@ public static class ExportEndpoints
         var group = routes.MapGroup("/api/games").WithTags("Exports");
 
         group.MapGet("/{gameId:int}/exports/explorer-map.pdf", DownloadExplorerMapPdf);
+        group.MapGet("/{gameId:int}/exports/magic-book.pdf", DownloadMagicBookPdf);
 
         return group;
     }
@@ -38,6 +39,29 @@ public static class ExportEndpoints
             return TypedResults.NotFound();
         }
         catch (MapExportProblemException ex)
+        {
+            return TypedResults.BadRequest(ValidationProblem(ex.Title, ex.Detail));
+        }
+    }
+
+    private static async Task<Results<FileContentHttpResult, NotFound, BadRequest<ProblemDetails>>> DownloadMagicBookPdf(
+        int gameId,
+        IMagicBookExportService exporter,
+        CancellationToken ct)
+    {
+        try
+        {
+            var pdf = await exporter.RenderMagicBookAsync(gameId, ct);
+            return TypedResults.File(
+                pdf.Bytes,
+                contentType: "application/pdf",
+                fileDownloadName: pdf.FileName);
+        }
+        catch (KeyNotFoundException)
+        {
+            return TypedResults.NotFound();
+        }
+        catch (MagicBookExportProblemException ex)
         {
             return TypedResults.BadRequest(ValidationProblem(ex.Title, ex.Detail));
         }
