@@ -445,6 +445,15 @@ public static class TreasurePlanningEndpoints
             dto.Source
         });
 
+        var item = await db.TreasureItems
+            .Include(ti => ti.Item)
+            .FirstOrDefaultAsync(ti => ti.Id == id);
+
+        if (item is null)
+        {
+            return TypedResults.NotFound();
+        }
+
         if (dto.Delta == 0)
         {
             LogTreasureAlloc(logger, LogLevel.Warning, "count-adjust-validation-rejected", new
@@ -456,15 +465,6 @@ public static class TreasurePlanningEndpoints
             {
                 ["Delta"] = ["Změna počtu nesmí být nula."]
             });
-        }
-
-        var item = await db.TreasureItems
-            .Include(ti => ti.Item)
-            .FirstOrDefaultAsync(ti => ti.Id == id);
-
-        if (item is null)
-        {
-            return TypedResults.NotFound();
         }
 
         if (item.TreasureQuestId is null)
