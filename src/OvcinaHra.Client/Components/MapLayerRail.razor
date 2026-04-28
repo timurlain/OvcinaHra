@@ -46,6 +46,14 @@
         <span class="oh-map-layer-lbl">Skrýše &amp; Poklady</span>
         <span class="oh-map-layer-num text-muted">@StashesCount</span>
     </label>
+
+    <label class="oh-map-layer-row">
+        <input type="checkbox" checked="@OverlaysVisible"
+               @onchange="@(e => OnOverlayVisibilityChange.InvokeAsync((bool)e.Value!))" />
+        <span class="oh-map-layer-dot oh-map-layer-overlay"></span>
+        <span class="oh-map-layer-lbl">Překryv</span>
+    </label>
+
     <p class="oh-map-layer-hint text-muted small fst-italic">
         Setkání questů přibydou, jakmile budou mít body na mapě.
     </p>
@@ -62,9 +70,11 @@
 @code {
     [Parameter] public bool LocationsVisible { get; set; } = true;
     [Parameter] public bool StashesVisible { get; set; } = true;
+    [Parameter] public bool OverlaysVisible { get; set; } = true;
     [Parameter] public int LocationsCount { get; set; }
     [Parameter] public int StashesCount { get; set; }
     [Parameter] public EventCallback<(string Layer, bool Visible)> OnVisibilityChange { get; set; }
+    [Parameter] public EventCallback<bool> OnOverlayVisibilityChange { get; set; }
     [Parameter] public IReadOnlyDictionary<LocationKind, int>? LocationsByKind { get; set; }
     [Parameter] public HashSet<LocationKind> HiddenKinds { get; set; } = new();
     [Parameter] public EventCallback<LocationKind> OnKindToggle { get; set; }

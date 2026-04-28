@@ -785,6 +785,16 @@
     margin-top: 4px;
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
 }
+.oh-lc-title-children {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin-top: 8px;
+    font-size: 0.8125rem;
+    color: var(--oh-text-secondary);
+}
+.oh-lc-title-children .oh-lc-vlbl {
+    font-weight: 700;
+    color: var(--oh-text);
+}
 .oh-lc-title-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 
 .oh-lc-tabs {
@@ -3646,6 +3656,7 @@
 .oh-map-layer-row:hover{background:var(--oh-surface-alt,#F2EBD8)}
 .oh-map-layer-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;background:#2D5016}
 .oh-map-layer-stash{background:#C19A3A}
+.oh-map-layer-overlay{background:#7048a8}
 .oh-map-layer-lbl{flex:1}
 .oh-map-layer-num{font-variant-numeric:tabular-nums}
 .oh-map-layer-hint{margin-top:8px;line-height:1.3}
@@ -3702,6 +3713,9 @@
     filter:drop-shadow(0 1px 1px rgba(0,0,0,.45));z-index:-1}
 .oh-map-pin-glyph{font-size:.95rem;line-height:1;color:var(--pin-glyph);
     text-shadow:0 0 2px rgba(0,0,0,.35)}
+.oh-map-pin-hobbit-icon{display:block;width:17px;height:17px;background:var(--pin-glyph);
+    -webkit-mask:url('/img/map/hobbit-location.svg') center / contain no-repeat;
+    mask:url('/img/map/hobbit-location.svg') center / contain no-repeat}
 /* Stash pins keep the simpler circular shape — they ride on top of a
    location pin and a second tear-drop would clutter the host site. The
    stage-based color stays. */
