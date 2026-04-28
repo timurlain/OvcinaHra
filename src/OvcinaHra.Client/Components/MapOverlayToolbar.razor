@@ -95,7 +95,7 @@
     <div class="oh-mo-actions" role="group" aria-label="Akce">
         <button type="button" class="btn btn-outline-secondary btn-sm" title="Vrátit poslední nově přidaný tvar"
                 disabled="@(!CanUndo)"
-                @onclick="OnUndo">
+                @onclick="UndoClickedAsync">
             <i class="bi bi-arrow-counterclockwise"></i> Zpět
         </button>
         <button type="button" class="btn btn-outline-danger btn-sm" title="Smazat všechny tvary překryvu"
@@ -195,7 +195,18 @@
     [Parameter] public EventCallback OnUndo { get; set; }
     [Parameter] public EventCallback OnClearAll { get; set; }
 
-    private Task SelectToolAsync(string key) => ToolChanged.InvokeAsync(key);
+    private Task SelectToolAsync(string key)
+    {
+        Console.WriteLine($"[map-diag] MapOverlayToolbar.SelectTool key={key}");
+        return ToolChanged.InvokeAsync(key);
+    }
+
+    private Task UndoClickedAsync()
+    {
+        Console.WriteLine($"[map-diag] MapOverlayToolbar.UndoClicked canUndo={CanUndo}");
+        return OnUndo.InvokeAsync();
+    }
+
     private Task SetColorAsync(string hex) => ColorChanged.InvokeAsync(hex);
     private Task SetIconAssetAsync(string key) => IconAssetChanged.InvokeAsync(key);
 
