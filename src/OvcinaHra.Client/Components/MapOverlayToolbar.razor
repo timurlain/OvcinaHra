@@ -93,6 +93,16 @@
 
     @* Save / Cancel. *@
     <div class="oh-mo-actions" role="group" aria-label="Akce">
+        <button type="button" class="btn btn-outline-secondary btn-sm" title="Vrátit poslední nově přidaný tvar"
+                disabled="@(!CanUndo)"
+                @onclick="OnUndo">
+            <i class="bi bi-arrow-counterclockwise"></i> Zpět
+        </button>
+        <button type="button" class="btn btn-outline-danger btn-sm" title="Smazat všechny tvary překryvu"
+                disabled="@(!CanClearAll)"
+                @onclick="OnClearAll">
+            <i class="bi bi-trash3"></i> Smazat vše
+        </button>
         <button type="button" class="btn btn-outline-secondary btn-sm" title="Zahodit změny"
                 @onclick="OnCancel">
             Zrušit
@@ -178,8 +188,12 @@
     [Parameter] public double IconScale { get; set; } = 1.0;
     [Parameter] public EventCallback<double> IconScaleChanged { get; set; }
 
+    [Parameter] public bool CanUndo { get; set; }
+    [Parameter] public bool CanClearAll { get; set; }
     [Parameter] public EventCallback OnSave { get; set; }
     [Parameter] public EventCallback OnCancel { get; set; }
+    [Parameter] public EventCallback OnUndo { get; set; }
+    [Parameter] public EventCallback OnClearAll { get; set; }
 
     private Task SelectToolAsync(string key) => ToolChanged.InvokeAsync(key);
     private Task SetColorAsync(string hex) => ColorChanged.InvokeAsync(hex);
