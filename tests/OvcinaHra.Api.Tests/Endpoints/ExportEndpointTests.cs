@@ -200,6 +200,20 @@ public class ExportEndpointTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public void OrganizerMap_RendersNamesForAllLocationKinds()
+    {
+        foreach (var kind in Enum.GetValues<LocationKind>())
+        {
+            Assert.True(ExplorerMapExportService.ShouldRenderPinLabelForTesting(MapExportKind.Organizer, kind));
+        }
+
+        Assert.True(ExplorerMapExportService.ShouldRenderPinLabelForTesting(MapExportKind.Explorer, LocationKind.Town));
+        Assert.True(ExplorerMapExportService.ShouldRenderPinLabelForTesting(MapExportKind.Kingdom, LocationKind.Village));
+        Assert.False(ExplorerMapExportService.ShouldRenderPinLabelForTesting(MapExportKind.Explorer, LocationKind.Dungeon));
+        Assert.False(ExplorerMapExportService.ShouldRenderPinLabelForTesting(MapExportKind.Kingdom, LocationKind.Hobbit));
+    }
+
+    [Fact]
     public async Task OrganizerMap_NonOrganizer_ReturnsCzechForbiddenProblem()
     {
         using var client = Factory.CreateClient();
