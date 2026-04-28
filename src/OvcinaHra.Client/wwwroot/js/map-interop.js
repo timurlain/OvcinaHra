@@ -52,6 +52,12 @@ window.ovcinaMap = {
         catch (e) { return false; }
     },
 
+    _mapDiag: function (event, data) {
+        try {
+            console.log('[map-diag] map.' + event + ' ' + JSON.stringify(data || {}));
+        } catch (e) { }
+    },
+
     init: function (elementId, dotnetRef, centerLat, centerLon, zoom, mapyCzApiKey, glyphsUrl) {
         if (this._pinDiag()) {
             console.log('[pin-diag] init() — elementId=' + elementId + ', existingMap=' + (this._map ? 'YES' : 'no') + ', center=[' + centerLon + ',' + centerLat + '], zoom=' + zoom);
@@ -81,13 +87,22 @@ window.ovcinaMap = {
         });
 
         this._map.on('click', (e) => {
+            var orig = e.originalEvent;
+            var ctrl = !!(orig && (orig.ctrlKey || orig.metaKey));
+            var shift = !!(orig && orig.shiftKey);
+            this._mapDiag('click', {
+                elementId: this._elementId,
+                lat: e.lngLat.lat,
+                lng: e.lngLat.lng,
+                ctrl: ctrl,
+                shift: shift,
+                hasDotNetRef: !!this._dotnetRef
+            });
             if (this._dotnetRef) {
                 // Forward Ctrl/Meta + Shift state — /map uses
                 //   Ctrl+Click       → place ungeocoded location
                 //   Ctrl+Shift+Click → move existing location (any)
-                var orig = e.originalEvent;
-                var ctrl = !!(orig && (orig.ctrlKey || orig.metaKey));
-                var shift = !!(orig && orig.shiftKey);
+                this._mapDiag('click.invoke-dotnet', { ctrl: ctrl, shift: shift });
                 this._dotnetRef.invokeMethodAsync('OnMapClicked', e.lngLat.lat, e.lngLat.lng, ctrl, shift);
             }
         });
@@ -140,12 +155,25 @@ window.ovcinaMap = {
         // rest of the time. Listeners cleared in dispose().
         var mapContainer = this._map.getContainer();
         var keyDown = function (e) {
-            if (e.key === 'Control' || e.key === 'Meta') mapContainer.classList.add('oh-map-ctrl-held');
+            if (e.key === 'Control' || e.key === 'Meta') {
+                mapContainer.classList.add('oh-map-ctrl-held');
+                window.ovcinaMap._mapDiag('modifier.down', { key: e.key, ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
+            } else if (e.key === 'Shift') {
+                window.ovcinaMap._mapDiag('modifier.down', { key: e.key, ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
+            }
         };
         var keyUp = function (e) {
-            if (e.key === 'Control' || e.key === 'Meta') mapContainer.classList.remove('oh-map-ctrl-held');
+            if (e.key === 'Control' || e.key === 'Meta') {
+                mapContainer.classList.remove('oh-map-ctrl-held');
+                window.ovcinaMap._mapDiag('modifier.up', { key: e.key, ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
+            } else if (e.key === 'Shift') {
+                window.ovcinaMap._mapDiag('modifier.up', { key: e.key, ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
+            }
         };
-        var blur = function () { mapContainer.classList.remove('oh-map-ctrl-held'); };
+        var blur = function () {
+            mapContainer.classList.remove('oh-map-ctrl-held');
+            window.ovcinaMap._mapDiag('modifier.blur', {});
+        };
         document.addEventListener('keydown', keyDown);
         document.addEventListener('keyup', keyUp);
         window.addEventListener('blur', blur);
