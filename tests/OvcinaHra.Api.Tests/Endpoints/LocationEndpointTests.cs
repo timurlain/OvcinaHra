@@ -173,8 +173,42 @@ public class LocationEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         Assert.Equal(parent.Id, child.ParentLocationId);
 
         var locations = (await Client.GetFromJsonAsync<List<LocationListDto>>("/api/locations"))!;
-        Assert.True(locations.Single(l => l.Id == parent.Id).IsLocated);
-        Assert.True(locations.Single(l => l.Id == child.Id).IsLocated);
+        var parentListRow = locations.Single(l => l.Id == parent.Id);
+        var childListRow = locations.Single(l => l.Id == child.Id);
+        Assert.True(parentListRow.IsLocated);
+        Assert.Equal(49.0m, parentListRow.EffectiveLatitude);
+        Assert.Equal(17.0m, parentListRow.EffectiveLongitude);
+        Assert.True(childListRow.IsLocated);
+        Assert.Equal(49.0m, childListRow.EffectiveLatitude);
+        Assert.Equal(17.0m, childListRow.EffectiveLongitude);
+    }
+
+    [Fact]
+    public async Task GetByGame_WithChildLocation_ReturnsInheritedCoordinates()
+    {
+        var gameResponse = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Inherited GPS Game", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
+
+        var parentResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Inherited GPS Parent", LocationKind.PointOfInterest, 49.25m, 17.75m));
+        var parent = await parentResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+
+        var childResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Inherited GPS Child", LocationKind.PointOfInterest, 50.0m, 18.0m,
+                ParentLocationId: parent!.Id));
+        var child = await childResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+
+        await Client.PostAsJsonAsync("/api/locations/by-game", new GameLocationDto(game!.Id, child!.Id));
+
+        var gameLocations = (await Client.GetFromJsonAsync<List<LocationListDto>>(
+            $"/api/locations/by-game/{game.Id}"))!;
+        var row = Assert.Single(gameLocations);
+        Assert.Null(row.Latitude);
+        Assert.Null(row.Longitude);
+        Assert.True(row.IsLocated);
+        Assert.Equal(49.25m, row.EffectiveLatitude);
+        Assert.Equal(17.75m, row.EffectiveLongitude);
     }
 
     [Fact]

@@ -2449,15 +2449,18 @@
 .oh-tp-map-toolbar-spacer{flex:1}
 .oh-tp-map-count{font-family:var(--oh-font-mono);color:var(--oh-text);font-size:.8125rem}
 
-/* Pie pins (SVG built in JS — only positioning + state CSS here) */
+/* Treasure count pins (SVG built in JS — only positioning + state CSS here) */
 .oh-tp-pin{cursor:pointer;transition:transform .15s ease,filter .15s ease}
-.oh-tp-pin-pie{width:64px;height:64px}
+.oh-tp-pin-pie{width:48px;height:48px}
 .oh-tp-pin-pie:hover{transform:scale(1.06);filter:drop-shadow(0 4px 8px rgba(40,25,5,.5));z-index:8}
-.oh-tp-pin-svg{display:block}
+.oh-tp-pin-pie.is-filter-zero{opacity:.5}
+.oh-tp-pin-pie.is-filter-zero:hover{opacity:.85}
+.oh-tp-pin-svg{display:block;width:48px;height:48px}
 .oh-tp-pin-backing{fill:rgba(245,237,227,.92);stroke:none}
 .oh-tp-pin-ring{fill:none;stroke:var(--oh-card-border,#8B6F47);stroke-width:2.5}
-.oh-tp-pin-inner{fill:rgba(255,248,240,.95);stroke:#6b5a3a;stroke-width:1}
-.oh-tp-pin-num{font:700 .75rem var(--oh-font-mono);fill:var(--oh-text,#2a2a2a);pointer-events:none;dominant-baseline:middle}
+.oh-tp-pin-inner{fill:rgba(255,248,240,.96);stroke:#6b5a3a;stroke-width:1}
+.oh-tp-pin-num{font:700 .9rem var(--oh-font-mono);fill:var(--oh-text,#2a2a2a);pointer-events:none;dominant-baseline:middle}
+.oh-tp-pin-num-wide{font-size:.68rem}
 .oh-tp-wedge{transition:opacity .2s}
 .oh-tp-wedge-start{fill:var(--oh-stage-start)}
 .oh-tp-wedge-early{fill:var(--oh-stage-early)}

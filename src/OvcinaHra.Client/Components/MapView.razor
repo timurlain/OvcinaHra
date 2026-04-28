@@ -506,11 +506,11 @@
     public async Task UpdateMarkerPositionAsync(int id, double lat, double lon)
         => await JS.InvokeVoidAsync("ovcinaMap.updateMarkerPosition", id, lat, lon);
 
-    public async Task AddPieMarkerAsync(int id, double lat, double lon, int[] counts, int maxCount)
-        => await JS.InvokeVoidAsync("ovcinaMap.addPieMarker", id, lat, lon, counts, maxCount);
+    public async Task AddPieMarkerAsync(int id, double lat, double lon, int[] counts)
+        => await JS.InvokeVoidAsync("ovcinaMap.addPieMarker", id, lat, lon, counts);
 
-    public async Task UpdatePieMarkerCountsAsync(int id, int[] counts, int maxCount)
-        => await JS.InvokeVoidAsync("ovcinaMap.updatePieMarkerCounts", id, counts, maxCount);
+    public async Task UpdatePieMarkerCountsAsync(int id, int[] counts)
+        => await JS.InvokeVoidAsync("ovcinaMap.updatePieMarkerCounts", id, counts);
 
     public async Task RemovePieMarkerAsync(int id)
         => await JS.InvokeVoidAsync("ovcinaMap.removePieMarker", id);
