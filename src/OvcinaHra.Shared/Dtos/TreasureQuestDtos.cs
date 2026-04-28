@@ -46,7 +46,7 @@ public record VerifyTreasureQuestDto(
 
 // --- Treasure Pool DTOs ---
 
-public record TreasurePoolItemDto(int Id, int ItemId, string ItemName, ItemType ItemType, int Count, int GameId)
+public record TreasurePoolItemDto(int Id, int ItemId, string ItemName, ItemType ItemType, int Count, int GameId, bool IsUnique)
 {
     [JsonIgnore]
     public string ItemTypeDisplay => ItemType.GetDisplayName();

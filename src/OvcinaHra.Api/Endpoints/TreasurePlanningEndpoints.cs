@@ -49,7 +49,7 @@ public static class TreasurePlanningEndpoints
             .Where(ti => ti.GameId == gameId && ti.TreasureQuestId == null)
             .Include(ti => ti.Item)
             .OrderBy(ti => ti.Item.ItemType).ThenBy(ti => ti.Item.Name)
-            .Select(ti => new TreasurePoolItemDto(ti.Id, ti.ItemId, ti.Item.Name, ti.Item.ItemType, ti.Count, ti.GameId))
+            .Select(ti => new TreasurePoolItemDto(ti.Id, ti.ItemId, ti.Item.Name, ti.Item.ItemType, ti.Count, ti.GameId, ti.Item.IsUnique))
             .ToListAsync();
         return TypedResults.Ok(items);
     }
@@ -90,7 +90,7 @@ public static class TreasurePlanningEndpoints
         await db.SaveChangesAsync();
 
         return TypedResults.Created($"/api/treasure-planning/pool/{dto.GameId}",
-            new TreasurePoolItemDto(ti.Id, ti.ItemId, gameItem.Item.Name, gameItem.Item.ItemType, ti.Count, ti.GameId));
+            new TreasurePoolItemDto(ti.Id, ti.ItemId, gameItem.Item.Name, gameItem.Item.ItemType, ti.Count, ti.GameId, gameItem.Item.IsUnique));
     }
 
     private static async Task<Results<NoContent, NotFound, ValidationProblem>> RemoveFromPool(int id, WorldDbContext db)

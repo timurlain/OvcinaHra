@@ -3,8 +3,8 @@
 @inject IJSRuntime JS
 
 <div @ref="elementRef"
-     class="oh-tp-pool-tile @(Selected ? "selected" : "")"
-     title="@($"{Item.ItemName} (×{Item.Count})")"
+     class="oh-tp-pool-tile @(Selected ? "selected" : "") @(Item.IsUnique ? "is-unique" : "is-aggregate")"
+     title="@TileLabel"
      @onclick="OnClickInternal">
     @if (!imageFailed)
     {
@@ -18,9 +18,9 @@
     {
         <div class="oh-tp-pool-tile-fallback"><i class="bi bi-gem"></i></div>
     }
-    @if (Item.Count > 1)
+    @if (!Item.IsUnique)
     {
-        <div class="oh-tp-pool-tile-badge">×@Item.Count</div>
+        <div class="oh-tp-pool-tile-badge">@Item.ItemName × @Item.Count</div>
     }
 
     @* Unobtrusive remove affordance — unbundled from the draggable surface:
@@ -43,7 +43,7 @@
         <i class="bi bi-x-lg"></i>
     </button>
 
-    <div class="oh-tp-pool-tile-name">@Item.ItemName</div>
+    <div class="oh-tp-pool-tile-name">@TileLabel</div>
 </div>
 
 <DxPopup @bind-Visible="@isRemoveVisible"
@@ -86,6 +86,7 @@
 
     private bool isRemoveVisible;
     private bool removing;
+    private string TileLabel => Item.IsUnique ? Item.ItemName : $"{Item.ItemName} × {Item.Count}";
 
     protected override void OnParametersSet()
     {
@@ -108,7 +109,9 @@
                 PoolItemId = Item.Id,
                 ItemId = Item.ItemId,
                 ItemName = Item.ItemName,
-                Count = Item.Count
+                Count = Item.Count,
+                IsUnique = Item.IsUnique,
+                Kind = Item.IsUnique ? "unique" : "non-unique"
             });
             await JS.InvokeVoidAsync("ovcinaDnd.setDraggable", elementRef, payload);
         }
