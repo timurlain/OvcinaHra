@@ -192,7 +192,25 @@ else
                                     ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
                     </DxFormLayoutItem>
                     <DxFormLayoutItem Caption="Časový slot" ColSpanMd="4">
-                        <DxTextBox @bind-Text="@editModel.TimeSlot" />
+                        <DxComboBox TData="TimeSlotOption" TValue="int?"
+                                    Data="@availableTimeSlots"
+                                    Value="@editModel.SelectedTimeSlotOptionId"
+                                    ValueChanged="@((int? value) => OnTimeSlotChanged(value))"
+                                    TextFieldName="@nameof(TimeSlotOption.DisplayText)"
+                                    ValueFieldName="@nameof(TimeSlotOption.Id)"
+                                    NullText="Vyberte časový slot..."
+                                    SearchMode="ListSearchMode.AutoSearch"
+                                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                        @if (quest.GameId is null && GameContext.SelectedGameId is null)
+                        {
+                            <div class="form-text text-muted">Nejdřív vyberte hru.</div>
+                        }
+                        else if (availableTimeSlots.Count == 0)
+                        {
+                            <div class="form-text text-muted">
+                                Žádné časové sloty - nejprve je definujte v <a href="/timeline">Harmonogramu</a>.
+                            </div>
+                        }
                     </DxFormLayoutItem>
                 </DxFormLayoutGroup>
 
@@ -497,6 +515,10 @@ else
     private int? newLocationId;
     private string? locError;
 
+    // Time slots
+    private const int SavedTimeSlotOptionId = -1;
+    private List<TimeSlotOption> availableTimeSlots = [];
+
     // Encounters
     private string encView = "seznam";
     private bool isEncAddVisible;
@@ -505,6 +527,7 @@ else
     private bool isCopying;
 
     private record TabDef(string Key, string Label, string Icon, int? Count);
+    private record TimeSlotOption(int Id, string DisplayText, string StoredValue);
 
     private List<TabDef> tabs => quest is null ? [] :
     [
@@ -567,18 +590,73 @@ else
     private async Task LoadPickerDataAsync()
     {
         if (quest is null) return;
+        availableTimeSlots = [];
         try
         {
             var tagsTask = Api.GetListAsync<TagDto>("/api/tags");
-            var gid = quest.GameId ?? GameContext.SelectedGameId;
-            var locationsTask = gid is int g
-                ? Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{g}")
+            var gameId = quest.GameId ?? GameContext.SelectedGameId;
+            var locationsTask = gameId is int gid
+                ? Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gid}")
                 : Api.GetListAsync<LocationListDto>("/api/locations");
-            await Task.WhenAll(tagsTask, locationsTask);
+            var slotsTask = gameId is int slotGameId
+                ? Api.GetListAsync<GameTimeSlotDto>($"/api/timeline/slots/by-game/{slotGameId}")
+                : Task.FromResult(new List<GameTimeSlotDto>());
+            await Task.WhenAll(tagsTask, locationsTask, slotsTask);
             allQuestTags = (await tagsTask).Where(t => t.Kind == TagKind.Quest).ToList();
             gameLocations = await locationsTask;
+            availableTimeSlots = BuildTimeSlotOptions(await slotsTask, editModel.TimeSlot);
+            editModel.SelectedTimeSlotOptionId = ResolveTimeSlotOptionId(editModel.TimeSlot);
         }
         catch { /* picker data is non-critical for read view */ }
+    }
+
+    private static List<TimeSlotOption> BuildTimeSlotOptions(
+        IEnumerable<GameTimeSlotDto> slots,
+        string? currentValue)
+    {
+        var options = slots
+            .OrderBy(s => s.Stage)
+            .ThenBy(s => s.StartTime)
+            .Select(s =>
+            {
+                var displayText = FormatTimeSlot(s);
+                return new TimeSlotOption(s.Id, displayText, displayText);
+            })
+            .ToList();
+
+        if (!string.IsNullOrWhiteSpace(currentValue)
+            && !options.Any(o => string.Equals(o.StoredValue, currentValue, StringComparison.Ordinal)))
+        {
+            options.Insert(0, new TimeSlotOption(
+                SavedTimeSlotOptionId,
+                $"{currentValue} (uložená hodnota)",
+                currentValue));
+        }
+
+        return options;
+    }
+
+    private static string FormatTimeSlot(GameTimeSlotDto slot)
+    {
+        var yearPrefix = slot.InGameYear is int year ? $"Rok {year}, " : "";
+        var localStartTime = slot.StartTime.ToLocalTime();
+        return $"{slot.StageDisplay}: {yearPrefix}{localStartTime:d.M. HH:mm} ({slot.DurationHours:0.#} h)";
+    }
+
+    private int? ResolveTimeSlotOptionId(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+
+        return availableTimeSlots.FirstOrDefault(
+            o => string.Equals(o.StoredValue, value, StringComparison.Ordinal))?.Id;
+    }
+
+    private void OnTimeSlotChanged(int? optionId)
+    {
+        editModel.SelectedTimeSlotOptionId = optionId;
+        editModel.TimeSlot = optionId is int id
+            ? availableTimeSlots.FirstOrDefault(o => o.Id == id)?.StoredValue
+            : null;
     }
 
     private void ResetEditModel()
@@ -591,6 +669,7 @@ else
             Description = quest.Description,
             FullText = quest.FullText,
             TimeSlot = quest.TimeSlot,
+            SelectedTimeSlotOptionId = ResolveTimeSlotOptionId(quest.TimeSlot),
             RewardXp = quest.RewardXp,
             RewardMoney = quest.RewardMoney,
             RewardNotes = quest.RewardNotes,
@@ -756,6 +835,7 @@ else
         public string? Description { get; set; }
         public string? FullText { get; set; }
         public string? TimeSlot { get; set; }
+        public int? SelectedTimeSlotOptionId { get; set; }
         public int? RewardXp { get; set; }
         public int? RewardMoney { get; set; }
         public string? RewardNotes { get; set; }
