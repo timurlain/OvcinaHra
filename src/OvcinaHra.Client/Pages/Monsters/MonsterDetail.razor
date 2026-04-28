@@ -237,7 +237,11 @@ else
                 </DxFormLayoutGroup>
                 <DxFormLayoutGroup Caption="Tagy" ColSpanMd="12">
                     <DxFormLayoutItem ColSpanMd="12">
-                        <TagChipPicker MonsterId="monster.Id" InitialTags="monster.Tags" Changed="OnTagsChangedAsync" />
+                        <TagChipPicker Target="TagChipPickerTarget.Monster"
+                                       EntityId="monster.Id"
+                                       Kind="TagKind.Monster"
+                                       InitialTags="monster.Tags"
+                                       Changed="OnTagsChangedAsync" />
                     </DxFormLayoutItem>
                 </DxFormLayoutGroup>
                 <DxFormLayoutGroup Caption="Poznámky" ColSpanMd="12">

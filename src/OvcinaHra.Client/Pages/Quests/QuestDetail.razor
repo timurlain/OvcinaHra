@@ -257,37 +257,11 @@ else
             @* Tags multi-select — quest tags only (TagKind == Quest) *@
             <div class="oh-qst-edit-tags mt-3">
                 <h6><i class="bi bi-tags"></i> Tagy</h6>
-                @if (quest.Tags.Count > 0)
-                {
-                    <div class="d-flex flex-wrap gap-1 mb-2">
-                        @foreach (var tag in quest.Tags)
-                        {
-                            <span class="oh-qst-tag-chip">
-                                @tag.Name
-                                <button type="button" class="oh-qst-tag-chip-x"
-                                        @onclick="() => RemoveTagAsync(tag)" @onclick:stopPropagation="true"
-                                        title="Odebrat">
-                                    <i class="bi bi-x"></i>
-                                </button>
-                            </span>
-                        }
-                    </div>
-                }
-                else
-                {
-                    <p class="text-muted small mb-2">Žádné tagy.</p>
-                }
-                <div class="d-flex gap-2 align-items-end">
-                    <div style="flex:1">
-                        <DxComboBox Data="@allQuestTags" @bind-Value="@newTagId"
-                                    TextFieldName="Name" ValueFieldName="Id"
-                                    NullText="(vyberte tag)" SearchMode="ListSearchMode.AutoSearch" />
-                    </div>
-                    <button class="btn btn-sm btn-outline-primary" type="button"
-                            disabled="@(newTagId is null)" @onclick="AddTagAsync">
-                        <i class="bi bi-plus"></i> Přidat tag
-                    </button>
-                </div>
+                <TagChipPicker Target="TagChipPickerTarget.Quest"
+                               EntityId="quest.Id"
+                               Kind="TagKind.Quest"
+                               InitialTags="quest.Tags"
+                               Changed="@(async () => await LoadAsync())" />
             </div>
 
             @if (saveError is not null)
@@ -506,10 +480,6 @@ else
     private bool isDeleteVisible;
     private string? deleteError;
 
-    // Tags
-    private List<TagDto> allQuestTags = [];
-    private int? newTagId;
-
     // Locations
     private List<LocationListDto> gameLocations = [];
     private int? newLocationId;
@@ -593,7 +563,6 @@ else
         availableTimeSlots = [];
         try
         {
-            var tagsTask = Api.GetListAsync<TagDto>("/api/tags");
             var gameId = quest.GameId ?? GameContext.SelectedGameId;
             var locationsTask = gameId is int gid
                 ? Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gid}")
@@ -601,8 +570,7 @@ else
             var slotsTask = gameId is int slotGameId
                 ? Api.GetListAsync<GameTimeSlotDto>($"/api/timeline/slots/by-game/{slotGameId}")
                 : Task.FromResult(new List<GameTimeSlotDto>());
-            await Task.WhenAll(tagsTask, locationsTask, slotsTask);
-            allQuestTags = (await tagsTask).Where(t => t.Kind == TagKind.Quest).ToList();
+            await Task.WhenAll(locationsTask, slotsTask);
             gameLocations = await locationsTask;
             availableTimeSlots = BuildTimeSlotOptions(await slotsTask, editModel.TimeSlot);
             editModel.SelectedTimeSlotOptionId = ResolveTimeSlotOptionId(editModel.TimeSlot);
@@ -751,29 +719,6 @@ else
         }
         catch (Exception ex) { error = ex.Message; }
         finally { isCopying = false; }
-    }
-
-    private async Task AddTagAsync()
-    {
-        if (quest is null || newTagId is null) return;
-        try
-        {
-            await Api.PostAsync($"/api/quests/{quest.Id}/tags/{newTagId}");
-            newTagId = null;
-            await LoadAsync();
-        }
-        catch (Exception ex) { saveError = ex.Message; }
-    }
-
-    private async Task RemoveTagAsync(TagDto tag)
-    {
-        if (quest is null) return;
-        try
-        {
-            await Api.DeleteAsync($"/api/quests/{quest.Id}/tags/{tag.Id}");
-            await LoadAsync();
-        }
-        catch (Exception ex) { saveError = ex.Message; }
     }
 
     private async Task AddLocationAsync()

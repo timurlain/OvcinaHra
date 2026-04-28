@@ -51,25 +51,13 @@ public static class TagEndpoints
         return TypedResults.Ok(new TagDto(tag.Id, tag.Name, tag.Kind));
     }
 
-    // Issue #234 — name now flows through Trim + non-empty + max-length +
-    // dup-check guards that surface Czech ProblemDetails verbatim instead of
-    // hiding behind EnsureSuccessStatusCode. The client passes the user's
-    // typed name through unchanged (PostAsJsonAsync, JSON body) so any char
-    // — `+`, `&`, `:`, `'`, space — round-trips end-to-end.
-    private static async Task<Results<Created<TagDto>, ProblemHttpResult>> Create(CreateTagDto dto, WorldDbContext db)
+    // Issue #234/#331 — name flows through Trim + validation that surfaces
+    // Czech ProblemDetails verbatim. Create is idempotent by case-insensitive
+    // (Kind, Name): existing tag wins and keeps its canonical display casing.
+    private static async Task<Results<Created<TagDto>, Ok<TagDto>, ProblemHttpResult>> Create(CreateTagDto dto, WorldDbContext db)
     {
-        var name = dto.Name?.Trim() ?? "";
-        if (string.IsNullOrEmpty(name))
-            return TypedResults.Problem(
-                title: "Uložení selhalo",
-                detail: "Název tagu nesmí být prázdný.",
-                statusCode: StatusCodes.Status400BadRequest);
-
-        if (name.Length > NameMaxLength)
-            return TypedResults.Problem(
-                title: "Uložení selhalo",
-                detail: $"Název tagu nesmí přesáhnout {NameMaxLength} znaků.",
-                statusCode: StatusCodes.Status400BadRequest);
+        if (ValidateName(dto.Name, out var name) is { } problem)
+            return problem;
 
         if (!Enum.IsDefined(dto.Kind))
             return TypedResults.Problem(
@@ -77,15 +65,9 @@ public static class TagEndpoints
                 detail: "Neplatný druh tagu.",
                 statusCode: StatusCodes.Status400BadRequest);
 
-        // EF translates Trim() to Postgres TRIM() so legacy rows that already
-        // have whitespace padding still collide on the dup-check.
-        var collision = await db.Tags
-            .AnyAsync(t => t.Kind == dto.Kind && t.Name.Trim() == name);
-        if (collision)
-            return TypedResults.Problem(
-                title: "Uložení selhalo",
-                detail: $"Tag s názvem „{name}“ už v této kategorii existuje.",
-                statusCode: StatusCodes.Status400BadRequest);
+        var existing = await FindByNameIgnoringCaseAsync(db, dto.Kind, name);
+        if (existing is not null)
+            return TypedResults.Ok(ToDto(existing));
 
         var tag = new Tag { Name = name, Kind = dto.Kind };
         db.Tags.Add(tag);
@@ -95,11 +77,10 @@ public static class TagEndpoints
         }
         catch (DbUpdateException ex) when (IsUniqueViolation(ex))
         {
-            // Concurrency race: AnyAsync above passed but a parallel request
-            // beat us to the (Kind, Name) UNIQUE index. Surface the same Czech
-            // ProblemDetails as the explicit dup-check so the client never
-            // sees a 500 for what is conceptually a duplicate-name conflict.
-            // Per Copilot review on PR #282 — same pattern as GameEndpoints.
+            var existingAfterRace = await FindByNameIgnoringCaseAsync(db, dto.Kind, name);
+            if (existingAfterRace is not null)
+                return TypedResults.Ok(ToDto(existingAfterRace));
+
             return TypedResults.Problem(
                 title: "Uložení selhalo",
                 detail: $"Tag s názvem „{name}“ už v této kategorii existuje.",
@@ -117,22 +98,11 @@ public static class TagEndpoints
         if (tag is null)
             return TypedResults.NotFound();
 
-        var name = dto.Name?.Trim() ?? "";
-        if (string.IsNullOrEmpty(name))
-            return TypedResults.Problem(
-                title: "Uložení selhalo",
-                detail: "Název tagu nesmí být prázdný.",
-                statusCode: StatusCodes.Status400BadRequest);
+        if (ValidateName(dto.Name, out var name) is { } problem)
+            return problem;
 
-        if (name.Length > NameMaxLength)
-            return TypedResults.Problem(
-                title: "Uložení selhalo",
-                detail: $"Název tagu nesmí přesáhnout {NameMaxLength} znaků.",
-                statusCode: StatusCodes.Status400BadRequest);
-
-        var collision = await db.Tags
-            .AnyAsync(t => t.Id != id && t.Kind == tag.Kind && t.Name.Trim() == name);
-        if (collision)
+        var collision = await FindByNameIgnoringCaseAsync(db, tag.Kind, name, exceptId: id);
+        if (collision is not null)
             return TypedResults.Problem(
                 title: "Uložení selhalo",
                 detail: $"Tag s názvem „{name}“ už v této kategorii existuje.",
@@ -161,6 +131,45 @@ public static class TagEndpoints
     private static bool IsUniqueViolation(DbUpdateException ex) =>
         ex.InnerException is PostgresException pg
         && pg.SqlState == PostgresErrorCodes.UniqueViolation;
+
+    private static ProblemHttpResult? ValidateName(string? rawName, out string name)
+    {
+        name = rawName?.Trim() ?? "";
+        if (string.IsNullOrEmpty(name))
+            return TypedResults.Problem(
+                title: "Uložení selhalo",
+                detail: "Název tagu nesmí být prázdný.",
+                statusCode: StatusCodes.Status400BadRequest);
+
+        if (name.Length > NameMaxLength)
+            return TypedResults.Problem(
+                title: "Uložení selhalo",
+                detail: $"Název tagu nesmí přesáhnout {NameMaxLength} znaků.",
+                statusCode: StatusCodes.Status400BadRequest);
+
+        if (name.Any(char.IsControl))
+            return TypedResults.Problem(
+                title: "Uložení selhalo",
+                detail: "Název tagu nesmí obsahovat řídicí znaky.",
+                statusCode: StatusCodes.Status400BadRequest);
+
+        return null;
+    }
+
+    private static async Task<Tag?> FindByNameIgnoringCaseAsync(
+        WorldDbContext db,
+        TagKind kind,
+        string name,
+        int? exceptId = null)
+    {
+        var normalized = name.ToLower();
+        return await db.Tags.FirstOrDefaultAsync(t =>
+            t.Kind == kind
+            && (!exceptId.HasValue || t.Id != exceptId.Value)
+            && t.Name.Trim().ToLower() == normalized);
+    }
+
+    private static TagDto ToDto(Tag tag) => new(tag.Id, tag.Name, tag.Kind);
 
     private static async Task<Results<NoContent, NotFound>> Delete(int id, WorldDbContext db)
     {
