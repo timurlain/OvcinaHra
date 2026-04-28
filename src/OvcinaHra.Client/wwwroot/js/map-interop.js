@@ -883,6 +883,8 @@ window.ovcinaBboxMap = {
     _sourceId: 'oh-bbox-overlay',
     _fillLayerId: 'oh-bbox-overlay-fill',
     _lineLayerId: 'oh-bbox-overlay-line',
+    _dotSourceId: 'oh-bbox-location-dots',
+    _dotLayerId: 'oh-bbox-location-dots-layer',
 
     _styleFor: function (apiKey) {
         if (apiKey && apiKey.length > 5) {
@@ -956,6 +958,70 @@ window.ovcinaBboxMap = {
         });
     },
 
+    _locationDotsFeatureCollection: function (dots) {
+        var features = (dots || [])
+            .filter(function (dot) {
+                return dot && Number.isFinite(dot.lat) && Number.isFinite(dot.lon);
+            })
+            .map(function (dot) {
+                return {
+                    type: 'Feature',
+                    geometry: { type: 'Point', coordinates: [dot.lon, dot.lat] },
+                    properties: {
+                        kind: dot.kind || 'wilderness',
+                        color: dot.color || '#2D5016',
+                        strokeColor: dot.strokeColor || '#FFFFFF'
+                    }
+                };
+            });
+        return { type: 'FeatureCollection', features: features };
+    },
+
+    _addOrUpdateLocationDots: function (map, dots) {
+        var self = window.ovcinaBboxMap;
+        var featureCollection = self._locationDotsFeatureCollection(dots);
+        var src = map.getSource(self._dotSourceId);
+        if (src) {
+            src.setData(featureCollection);
+            return;
+        }
+
+        map.addSource(self._dotSourceId, { type: 'geojson', data: featureCollection });
+        map.addLayer({
+            id: self._dotLayerId,
+            type: 'circle',
+            source: self._dotSourceId,
+            paint: {
+                'circle-radius': 3,
+                'circle-color': ['get', 'color'],
+                'circle-stroke-color': ['get', 'strokeColor'],
+                'circle-stroke-width': 1
+            }
+        }, map.getLayer(self._fillLayerId) ? self._fillLayerId : undefined);
+    },
+
+    _whenStyleReady: function (inst, apply) {
+        var map = inst.map;
+        if (inst.styleReady || map.isStyleLoaded()) {
+            inst.styleReady = true;
+            apply();
+            return;
+        }
+
+        var applied = false;
+        var once = function () {
+            if (applied) return;
+            applied = true;
+            inst.styleReady = true;
+            apply();
+        };
+        map.once('load', once);
+        map.once('styledata', function () {
+            var style = map.getStyle && map.getStyle();
+            if (style && Array.isArray(style.layers)) once();
+        });
+    },
+
     _removeOverlay: function (map) {
         var self = window.ovcinaBboxMap;
         if (map.getLayer(self._lineLayerId)) map.removeLayer(self._lineLayerId);
@@ -977,7 +1043,13 @@ window.ovcinaBboxMap = {
         map.addControl(new maplibregl.NavigationControl(), 'top-right');
         map.addControl(new maplibregl.ScaleControl(), 'bottom-left');
         map.on('error', function (e) { console.warn('Bbox map tile error:', e.error && e.error.message || e); });
-        this._instances[elementId] = { map: map, hasOverlay: false };
+        var inst = { map: map, hasOverlay: false, styleReady: false };
+        map.on('load', function () { inst.styleReady = true; });
+        map.on('styledata', function () {
+            var style = map.getStyle && map.getStyle();
+            if (style && Array.isArray(style.layers)) inst.styleReady = true;
+        });
+        this._instances[elementId] = inst;
     },
 
     getBounds: function (elementId) {
@@ -997,7 +1069,7 @@ window.ovcinaBboxMap = {
         if (!inst) return;
         var map = inst.map;
         var apply = function () { window.ovcinaBboxMap._addOrUpdateOverlay(map, swLat, swLng, neLat, neLng); };
-        if (map.isStyleLoaded()) apply(); else map.once('styledata', apply);
+        window.ovcinaBboxMap._whenStyleReady(inst, apply);
         inst.hasOverlay = true;
     },
 
@@ -1006,6 +1078,21 @@ window.ovcinaBboxMap = {
         if (!inst) return;
         window.ovcinaBboxMap._removeOverlay(inst.map);
         inst.hasOverlay = false;
+    },
+
+    setLocationDots: function (elementId, dots) {
+        var inst = this._instances[elementId];
+        if (!inst) {
+            console.warn('[bbox-author] passthrough ok=false');
+            return;
+        }
+
+        var map = inst.map;
+        var apply = function () {
+            window.ovcinaBboxMap._addOrUpdateLocationDots(map, dots || []);
+            console.log('[bbox-author] passthrough ok=true');
+        };
+        window.ovcinaBboxMap._whenStyleReady(inst, apply);
     },
 
     fitToBounds: function (elementId, swLat, swLng, neLat, neLng, paddingPx) {
