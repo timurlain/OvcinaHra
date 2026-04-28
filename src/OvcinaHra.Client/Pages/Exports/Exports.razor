@@ -34,6 +34,26 @@
                 <p>Slepá mapa A4 s vybraným podkladem a číslovanými lokacemi.</p>
             </div>
         </button>
+        <button type="button"
+                class="oh-exports-card oh-exports-card-button"
+                title="Vyexportuje knihu kouzel do A4 PDF, které po rozstřižení dá dvě A6 knížečky."
+                disabled="@isMagicBookDownloading"
+                @onclick="DownloadMagicBookAsync">
+            <div class="oh-exports-card-icon">
+                @if (isMagicBookDownloading)
+                {
+                    <span class="spinner-border spinner-border-sm"></span>
+                }
+                else
+                {
+                    <i class="bi bi-magic"></i>
+                }
+            </div>
+            <div class="oh-exports-card-body">
+                <h3>Export Knihy magie (A4 → A6)</h3>
+                <p>Dvě A6 stránky kouzel aktuální hry, vytištěné dvakrát na A4.</p>
+            </div>
+        </button>
     </div>
 
     @if (downloadError is not null)
@@ -252,6 +272,7 @@
 
     private bool showCharacterExport;
     private bool isDownloading;
+    private bool isMagicBookDownloading;
     private string selectedBasemap = TouristBasemap;
     private string? downloadError;
 
@@ -306,6 +327,40 @@
         finally
         {
             isDownloading = false;
+        }
+    }
+
+    private async Task DownloadMagicBookAsync()
+    {
+        if (GameContext.SelectedGameId is not int gameId)
+        {
+            downloadError = "Nejdřív vyberte hru.";
+            return;
+        }
+
+        isMagicBookDownloading = true;
+        downloadError = null;
+        try
+        {
+            var (ok, file, problem) = await Api.DownloadWithProblemAsync($"/api/games/{gameId}/exports/magic-book.pdf");
+            if (!ok || file is null)
+            {
+                downloadError = problem ?? "PDF se nepodařilo připravit.";
+                return;
+            }
+
+            await using var stream = new MemoryStream(file.Bytes);
+            using var streamReference = new DotNetStreamReference(stream);
+            await JS.InvokeVoidAsync("ovcinaDownloadFile", file.FileName, file.ContentType, streamReference);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            downloadError = "PDF se nepodařilo stáhnout.";
+        }
+        finally
+        {
+            isMagicBookDownloading = false;
         }
     }
 
