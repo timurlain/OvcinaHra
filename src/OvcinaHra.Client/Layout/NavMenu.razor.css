@@ -25,6 +25,19 @@
         opacity: 0.92;
     }
 
+.sb-brand-title {
+    white-space: nowrap;
+}
+
+.oh-brand-version {
+    color: rgba(255, 255, 255, 0.62);
+    font-family: var(--oh-font-mono);
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+}
+
 .sb-brand-toggler {
     margin-left: auto;
     background-color: rgba(255, 255, 255, 0.15);

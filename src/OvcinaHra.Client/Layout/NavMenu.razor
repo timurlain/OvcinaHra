@@ -5,7 +5,9 @@
 @implements IDisposable
 
 <div class="sb-brand">
-    <i class="bi bi-feather"></i><span>OvčinaHra</span>
+    <i class="bi bi-feather"></i>
+    <span class="sb-brand-title">Ovčina</span>
+    <span class="oh-brand-version">v @AppVersion</span>
     <button title="Navigační menu" class="sb-brand-toggler" @onclick="ToggleNavMenu" aria-label="Navigační menu">
         <i class="bi bi-list"></i>
     </button>
@@ -222,7 +224,7 @@
         </button>
         @if (!Collapsed)
         {
-            <span>© 2026 Ovčina v@(AppVersion)</span>
+            <span>© 2026 Ovčina</span>
         }
     </div>
 </div>
