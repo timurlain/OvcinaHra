@@ -555,7 +555,6 @@ public static class SeedEndpoints
                 QuestType = qType,
                 Description = raw.Description,
                 FullText = raw.FullText,
-                TimeSlot = raw.TimeSlot,
                 RewardXp = raw.RewardXp,
                 RewardMoney = raw.RewardMoney,
                 RewardNotes = raw.RewardNotes,
@@ -593,7 +592,7 @@ public static class SeedEndpoints
     }
 
     private record SeedQuestData(
-        string Name, string QuestType, string? TimeSlot,
+        string Name, string QuestType,
         string? Description, string? FullText,
         int? RewardXp, int? RewardMoney, string? RewardNotes,
         string? ChainName, int? ChainOrder);

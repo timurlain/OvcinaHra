@@ -349,6 +349,7 @@ else
 
     private static QuestListDto CatalogToList(QuestCatalogDto c) =>
         new(c.Id, c.Name, c.QuestType, ChainOrder: null, ParentQuestId: null, GameId: c.GameId,
+            TimeSlotId: null, TimeSlotName: null,
             State: QuestState.Inactive,  // catalog has no runtime state — chip hidden via ShowState=false
             ImagePath: c.ImagePath, ImageUrl: c.ImageUrl,
             EncountersCount: c.EncountersCount, RewardsCount: c.RewardsCount,

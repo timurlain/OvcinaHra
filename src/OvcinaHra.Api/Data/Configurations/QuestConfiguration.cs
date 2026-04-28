@@ -14,6 +14,10 @@ public class QuestConfiguration : IEntityTypeConfiguration<Quest>
         builder.Property(e => e.State).HasConversion<string>().HasMaxLength(20);
         builder.HasOne(e => e.ParentQuest).WithMany(q => q.ChildQuests).HasForeignKey(e => e.ParentQuestId);
         builder.HasOne(e => e.Game).WithMany(g => g.Quests).HasForeignKey(e => e.GameId).IsRequired(false);
+        builder.HasOne(e => e.TimeSlot)
+            .WithMany(ts => ts.Quests)
+            .HasForeignKey(e => e.TimeSlotId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         builder.Property<NpgsqlTypes.NpgsqlTsVector>("SearchVector")
             .HasColumnType("tsvector")
