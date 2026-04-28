@@ -53,7 +53,9 @@
                 tempPoints: [],         // in-progress polyline/polygon vertices
                 dragStart: null,        // rectangle/circle drag origin {lat, lng}
                 previewFeature: null,
-                keydownHandler: null
+                keydownHandler: null,
+                shapes: [],
+                textMarkers: {}
             };
         }
         return instances[mapId];
@@ -83,7 +85,91 @@
         return ring;
     }
 
+    function pick(obj, name, fallback) {
+        if (!obj) return fallback;
+        if (obj[name] !== undefined) return obj[name];
+        const pascal = name.charAt(0).toUpperCase() + name.slice(1);
+        return obj[pascal] !== undefined ? obj[pascal] : fallback;
+    }
+
+    function numberOr(value, fallback) {
+        const n = Number(value);
+        return Number.isFinite(n) ? n : fallback;
+    }
+
+    function normalizeCoord(coord) {
+        if (!coord) return null;
+        const lat = numberOr(pick(coord, 'lat', NaN), NaN);
+        const lng = numberOr(pick(coord, 'lng', NaN), NaN);
+        return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+    }
+
+    function normalizePoints(points) {
+        return (points || [])
+            .map(normalizeCoord)
+            .filter(p => p !== null);
+    }
+
+    function normalizeShape(shape) {
+        const type = pick(shape, 'type', null);
+        const id = pick(shape, 'id', null);
+        if (!shape || !type || !id) return null;
+
+        const normalized = {
+            id: id,
+            type: type,
+            color: pick(shape, 'color', '#000000') || '#000000',
+            strokeWidth: numberOr(pick(shape, 'strokeWidth', 2), 2),
+            fillColor: pick(shape, 'fillColor', null)
+        };
+
+        switch (type) {
+            case 'text': {
+                const coord = normalizeCoord(pick(shape, 'coord', null));
+                if (!coord) return null;
+                normalized.coord = coord;
+                normalized.text = pick(shape, 'text', '') || '';
+                normalized.fontSize = numberOr(pick(shape, 'fontSize', 14), 14);
+                return normalized;
+            }
+            case 'icon': {
+                const coord = normalizeCoord(pick(shape, 'coord', null));
+                if (!coord) return null;
+                normalized.coord = coord;
+                normalized.assetKey = pick(shape, 'assetKey', null);
+                normalized.rotation = numberOr(pick(shape, 'rotation', 0), 0);
+                normalized.scale = numberOr(pick(shape, 'scale', 1), 1);
+                return normalized;
+            }
+            case 'freehand':
+            case 'polyline':
+            case 'polygon':
+                normalized.points = normalizePoints(pick(shape, 'points', []));
+                return normalized;
+            case 'rectangle': {
+                const sw = normalizeCoord(pick(shape, 'sw', null));
+                const ne = normalizeCoord(pick(shape, 'ne', null));
+                if (!sw || !ne) return null;
+                normalized.sw = sw;
+                normalized.ne = ne;
+                return normalized;
+            }
+            case 'circle': {
+                const center = normalizeCoord(pick(shape, 'center', null));
+                if (!center) return null;
+                normalized.center = center;
+                normalized.radiusMeters = numberOr(pick(shape, 'radiusMeters', 0), 0);
+                return normalized;
+            }
+            default:
+                return null;
+        }
+    }
+
     function shapeToFeature(shape) {
+        shape = normalizeShape(shape);
+        if (!shape) return null;
+
         const base = {
             type: 'Feature',
             id: shape.id,
@@ -147,6 +233,49 @@
                 return null;
         }
         return base;
+    }
+
+    function clearTextMarkers(inst) {
+        for (const marker of Object.values(inst.textMarkers || {})) {
+            try { marker.remove(); } catch (e) { /* best-effort */ }
+        }
+        inst.textMarkers = {};
+    }
+
+    function renderTextMarkers(map, inst, shapes) {
+        clearTextMarkers(inst);
+        const canDrag = inst.editMode === true && inst.tool === 'select';
+        for (const shape of shapes.filter(s => s.type === 'text')) {
+            const el = document.createElement('div');
+            el.className = 'oh-overlay-text-marker';
+            if (canDrag) el.classList.add('oh-overlay-text-marker-draggable');
+            el.textContent = shape.text;
+            el.style.color = shape.color;
+            el.style.fontSize = `${shape.fontSize}px`;
+            el.title = canDrag ? 'Přetáhnout text' : '';
+            el.addEventListener('click', function (ev) {
+                ev.stopPropagation();
+                if (inst.editMode === true && inst.tool === 'select') {
+                    emitSelection(inst, shape.id);
+                }
+            });
+
+            const marker = new maplibregl.Marker({ element: el, draggable: canDrag })
+                .setLngLat([shape.coord.lng, shape.coord.lat])
+                .addTo(map);
+
+            if (canDrag) {
+                marker.on('dragstart', function () {
+                    emitSelection(inst, shape.id);
+                });
+                marker.on('dragend', function () {
+                    const lngLat = marker.getLngLat();
+                    emitShapeMoved(inst, shape.id, lngLat.lat, lngLat.lng);
+                });
+            }
+
+            inst.textMarkers[shape.id] = marker;
+        }
     }
 
     // ---- Source + layer management ----------------------------------------
@@ -291,14 +420,22 @@
     function render(mapId, shapes) {
         const map = getMap(mapId);
         if (!map) return;
+        const inst = ensureInstance(mapId);
+        const normalizedShapes = (shapes || [])
+            .map(normalizeShape)
+            .filter(s => s !== null);
+        inst.shapes = normalizedShapes;
+
         const paint = () => {
             ensureLayers(map, SRC_SAVED, LYR_FILLS, LYR_STROKES, LYR_TEXT, LYR_ICONS);
             ensureLayers(map, SRC_PREVIEW, LYR_PREVIEW_FILLS, LYR_PREVIEW_STROKES, LYR_PREVIEW_TEXT, LYR_PREVIEW_ICONS);
             ensureSelectionLayers(map);
-            const features = (shapes || [])
+            const features = normalizedShapes
+                .filter(s => s.type !== 'text')
                 .map(shapeToFeature)
                 .filter(f => f !== null);
             setSourceData(map, SRC_SAVED, features);
+            renderTextMarkers(map, inst, normalizedShapes);
             // Icons load asynchronously — MapLibre will silently fail to render
             // a symbol whose `icon-image` isn't registered yet, so we trigger
             // load + force a re-paint when ready.
@@ -340,6 +477,7 @@
             // Disable map-level double-click zoom so polyline/polygon "dblclick
             // to finish" doesn't also zoom the viewport.
             if (map.doubleClickZoom && map.doubleClickZoom.disable) map.doubleClickZoom.disable();
+            renderTextMarkers(map, inst, inst.shapes || []);
             attachHandlers(map, inst);
         };
         if (map.isStyleLoaded()) setup(); else map.once('styledata', setup);
@@ -357,6 +495,7 @@
         // Cursor: drawing tools get crosshair, select gets default (handler swaps
         // to pointer on hover-over-shape). Idle (null) also gets default.
         try { map.getCanvas().style.cursor = (tool && tool !== 'select') ? 'crosshair' : ''; } catch (e) { }
+        renderTextMarkers(map, inst, inst.shapes || []);
         attachHandlers(map, inst);
     }
 
@@ -373,6 +512,7 @@
             if (map.doubleClickZoom && map.doubleClickZoom.enable) map.doubleClickZoom.enable();
             restoreMapInteractions(map, inst);
             teardownPreview(map);
+            renderTextMarkers(map, inst, inst.shapes || []);
         }
         // Restore location markers and the global edit-mode flag regardless
         // of map presence — a SwitchStyle race could leave markers locked.
@@ -802,6 +942,15 @@
         }
     }
 
+    function emitShapeMoved(inst, shapeId, lat, lng) {
+        if (!inst.dotnetRef) return;
+        try {
+            inst.dotnetRef.invokeMethodAsync('OnShapeMoved', shapeId, lat, lng);
+        } catch (e) {
+            console.warn('Overlay shape move emit failed:', e);
+        }
+    }
+
     // ---- Selection highlight overlay --------------------------------------
 
     function ensureSelectionLayers(map) {
@@ -906,6 +1055,7 @@
             detachHandlers(map, inst);
             try { restoreMapInteractions(map, inst); } catch (e) { /* best-effort */ }
             try { teardownPreview(map); } catch (e) { /* map may be gone */ }
+            try { clearTextMarkers(inst); } catch (e) { /* map may be gone */ }
             // Remove overlay source + layers so a subsequent remount starts
             // clean — avoids orphaned style-dependent layers when the user
             // navigates away and back.
@@ -970,6 +1120,7 @@
         clearSelection: clearSelection,
         getIconAssets: getIconAssets,
         // Exposed for unit-testability / future tools; not called by Blazor.
-        _circleToPolygonRing: circleToPolygonRing
+        _circleToPolygonRing: circleToPolygonRing,
+        _normalizeShape: normalizeShape
     };
 })();

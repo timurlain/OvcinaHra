@@ -235,6 +235,39 @@ public class GameEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
     }
 
     [Fact]
+    public async Task Overlay_PutCamelCaseTextShape_RoundTripsText()
+    {
+        var game = await CreateGameAsync("Overlay-CamelText");
+        var payload = new
+        {
+            shapes = new[]
+            {
+                new
+                {
+                    type = "text",
+                    id = "txt-1",
+                    color = "#242F3D",
+                    coord = new { lat = 49.5, lng = 17.1 },
+                    text = "Žluťoučký kůň",
+                    fontSize = 18
+                }
+            }
+        };
+
+        var putResponse = await Client.PutAsJsonAsync($"/api/games/{game.Id}/overlay", payload);
+        Assert.Equal(HttpStatusCode.NoContent, putResponse.StatusCode);
+
+        var getResponse = await Client.GetAsync($"/api/games/{game.Id}/overlay");
+        getResponse.EnsureSuccessStatusCode();
+        var roundTripped = await getResponse.Content.ReadFromJsonAsync<MapOverlayDto>();
+        var text = Assert.IsType<TextShape>(Assert.Single(roundTripped!.Shapes));
+        Assert.Equal("Žluťoučký kůň", text.Text);
+        Assert.Equal(18, text.FontSize);
+        Assert.Equal(49.5, text.Coord.Lat);
+        Assert.Equal(17.1, text.Coord.Lng);
+    }
+
+    [Fact]
     public async Task Overlay_PutOversized_Returns400()
     {
         var game = await CreateGameAsync("Overlay-Oversize");
