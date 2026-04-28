@@ -49,17 +49,17 @@
     --oh-stage-endgame-soft:  rgba( 74,  29,  36, 0.12);
 
     /* === Location kind (map marker dots — canon) ===
-       User-confirmed palette refresh 2026-04-26. Town swapped from
-       mauve to black (kingdom seats stand out as anchors); Dungeon
-       lightened to gray so it's distinguishable from Town. White
+       User-confirmed palette refresh 2026-04-28. Dungeon uses black as
+       the strongest underworld marker; Town uses gray as a stable anchor
+       without competing with Dungeon. White
        wilderness still needs a dark border on map pins (see
        .oh-map-pin-loc[data-kind="wilderness"]). */
-    --oh-kind-town:            #000000;
+    --oh-kind-town:            #6D6D6D;
     --oh-kind-village:         #FF0000;
     --oh-kind-magical:         #EAF626;
     --oh-kind-hobbit:          #9400D4;
     --oh-kind-wilderness:      #FFFFFF;
-    --oh-kind-dungeon:         #6D6D6D;
+    --oh-kind-dungeon:         #000000;
     --oh-kind-pointofinterest: #FF6600;
 
     /* === Status === */
