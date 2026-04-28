@@ -1,4 +1,5 @@
 using System.Data;
+using System.Text.Json;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
@@ -10,6 +11,8 @@ namespace OvcinaHra.Api.Endpoints;
 
 public static class TreasurePlanningEndpoints
 {
+    private static readonly JsonSerializerOptions TreasureAllocLogJsonOptions = new(JsonSerializerDefaults.Web);
+
     public static RouteGroupBuilder MapTreasurePlanningEndpoints(this IEndpointRouteBuilder routes)
     {
         var group = routes.MapGroup("/api/treasure-planning").WithTags("TreasurePlanning");
@@ -229,22 +232,25 @@ public static class TreasurePlanningEndpoints
         var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.TreasurePlanningEndpoints");
         var poolCount = dto.TreasureItemIds?.Count ?? 0;
         var unlimitedCount = dto.UnlimitedItems?.Count ?? 0;
-        logger.LogInformation(
-            "[treasure-alloc] {{\"event\":\"assign-entry\",\"gameId\":{GameId},\"locationId\":{LocationId},\"secretStashId\":{SecretStashId},\"poolCount\":{PoolCount},\"unlimitedCount\":{UnlimitedCount}}}",
+        LogTreasureAlloc(logger, LogLevel.Information, "assign-entry", new
+        {
             dto.GameId,
             dto.LocationId,
             dto.SecretStashId,
             poolCount,
-            unlimitedCount);
+            unlimitedCount
+        });
 
         // Validate XOR
         if ((dto.LocationId is null) == (dto.SecretStashId is null))
         {
-            logger.LogWarning(
-                "[treasure-alloc] {{\"event\":\"assign-validation-rejected\",\"reason\":\"location-stash-xor\",\"gameId\":{GameId},\"locationId\":{LocationId},\"secretStashId\":{SecretStashId}}}",
+            LogTreasureAlloc(logger, LogLevel.Warning, "assign-validation-rejected", new
+            {
+                reason = "location-stash-xor",
                 dto.GameId,
                 dto.LocationId,
-                dto.SecretStashId);
+                dto.SecretStashId
+            });
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["LocationId"] = ["Musí být vyplněna buď lokace, nebo tajná skrýš (ne obojí)."]
@@ -260,11 +266,13 @@ public static class TreasurePlanningEndpoints
                 LocationId = dto.LocationId, SecretStashId = dto.SecretStashId, GameId = dto.GameId
             };
             db.TreasureQuests.Add(quest);
-            logger.LogInformation(
-                "[treasure-alloc] {{\"event\":\"assign-before-save\",\"phase\":\"create-quest\",\"gameId\":{GameId},\"locationId\":{LocationId},\"secretStashId\":{SecretStashId}}}",
+            LogTreasureAlloc(logger, LogLevel.Information, "assign-before-save", new
+            {
+                phase = "create-quest",
                 dto.GameId,
                 dto.LocationId,
-                dto.SecretStashId);
+                dto.SecretStashId
+            });
             await db.SaveChangesAsync(); // get the ID
 
             // Assign pool items
@@ -289,12 +297,14 @@ public static class TreasurePlanningEndpoints
                 }
             }
 
-            logger.LogInformation(
-                "[treasure-alloc] {{\"event\":\"assign-before-save\",\"phase\":\"attach-items\",\"questId\":{QuestId},\"gameId\":{GameId},\"poolCount\":{PoolCount},\"unlimitedCount\":{UnlimitedCount}}}",
-                quest.Id,
+            LogTreasureAlloc(logger, LogLevel.Information, "assign-before-save", new
+            {
+                phase = "attach-items",
+                questId = quest.Id,
                 dto.GameId,
                 poolCount,
-                unlimitedCount);
+                unlimitedCount
+            });
             await db.SaveChangesAsync();
 
             // Reload with includes for response
@@ -304,11 +314,12 @@ public static class TreasurePlanningEndpoints
                 .Include(t => t.TreasureItems).ThenInclude(ti => ti.Item)
                 .FirstAsync(t => t.Id == quest.Id);
 
-            logger.LogInformation(
-                "[treasure-alloc] {{\"event\":\"assign-success\",\"questId\":{QuestId},\"gameId\":{GameId},\"itemCount\":{ItemCount}}}",
-                quest.Id,
+            LogTreasureAlloc(logger, LogLevel.Information, "assign-success", new
+            {
+                questId = quest.Id,
                 dto.GameId,
-                loaded.TreasureItems.Sum(ti => ti.Count));
+                itemCount = loaded.TreasureItems.Sum(ti => ti.Count)
+            });
 
             return TypedResults.Created($"/api/treasure-quests/{quest.Id}",
                 new TreasureQuestDetailDto(
@@ -318,16 +329,28 @@ public static class TreasurePlanningEndpoints
         }
         catch (Exception ex)
         {
-            logger.LogError(
-                ex,
-                "[treasure-alloc] {{\"event\":\"assign-catch\",\"gameId\":{GameId},\"locationId\":{LocationId},\"secretStashId\":{SecretStashId},\"poolCount\":{PoolCount},\"unlimitedCount\":{UnlimitedCount}}}",
+            LogTreasureAlloc(logger, LogLevel.Error, "assign-catch", new
+            {
                 dto.GameId,
                 dto.LocationId,
                 dto.SecretStashId,
                 poolCount,
-                unlimitedCount);
+                unlimitedCount
+            }, ex);
             throw;
         }
+    }
+
+    private static void LogTreasureAlloc(ILogger logger, LogLevel level, string eventName, object payload, Exception? exception = null)
+    {
+        var json = JsonSerializer.Serialize(new { Event = eventName, Payload = payload }, TreasureAllocLogJsonOptions);
+        if (exception is null)
+        {
+            logger.Log(level, "[treasure-alloc] {Payload}", json);
+            return;
+        }
+
+        logger.Log(level, exception, "[treasure-alloc] {Payload}", json);
     }
 
     // ── Issue #160: bulk refill ───────────────────────────────────────────
