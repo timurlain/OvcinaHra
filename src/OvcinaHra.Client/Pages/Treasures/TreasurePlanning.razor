@@ -97,7 +97,7 @@ else
                    Without this the map looks empty and the user can't tell
                    whether it's a bug or a data state (#211 reproduction). *@
                 @{
-                    var withGps = locations.Count(l => l.Latitude.HasValue && l.Longitude.HasValue);
+                    var withGps = locations.Count(l => l.IsLocated);
                     var missingGps = locations.Count - withGps;
                 }
                 @if (locations.Count == 0)
@@ -114,7 +114,7 @@ else
                     <div class="alert alert-info small mb-2 d-flex align-items-center gap-2">
                         <i class="bi bi-geo-alt"></i>
                         <span>
-                            Žádná z @locations.Count přiřazených lokací nemá nastavené GPS souřadnice.
+                            Žádná z @locations.Count přiřazených lokací nemá dostupné GPS souřadnice.
                             Otevři detail lokace a nastav je, aby se zobrazila na mapě —
                             nebo přepni na <button type="button" class="btn btn-link btn-sm p-0 align-baseline"
                                 @onclick='() => SetTreasuresViewAsync("cards")'>karty</button>.
@@ -127,7 +127,7 @@ else
                         <i class="bi bi-geo-alt"></i>
                         <span>
                             Mapa zobrazuje @withGps z @locations.Count lokací.
-                            @missingGps @(missingGps == 1 ? "lokace nemá" : missingGps < 5 ? "lokace nemají" : "lokací nemá") nastavené GPS —
+                            @missingGps @(missingGps == 1 ? "lokace nemá" : missingGps < 5 ? "lokace nemají" : "lokací nemá") dostupné GPS —
                             otevři jejich detail a nastav souřadnice, nebo přepni na
                             <button type="button" class="btn btn-link btn-sm p-0 align-baseline"
                                 @onclick='() => SetTreasuresViewAsync("cards")'>karty</button>.
@@ -719,6 +719,7 @@ else
     private MapView? mapView;
     private bool styleLoaded;
     private bool markersPlaced;
+    private sealed record LocatedTreasureLocation(LocationListDto Location, decimal Latitude, decimal Longitude);
 
     // ===== Overview =====
     private bool overviewVisible;
@@ -767,7 +768,6 @@ else
         new("early", "early",    GameTimePhase.Early,    "Rozvoj hry"),
         new("mid",   "midgame",  GameTimePhase.Midgame,  "Střed hry"),
         new("late",  "lategame", GameTimePhase.Lategame, "Závěr hry"),
-        new("end",   "endgame",  GameTimePhase.EndGame,  "Konec hry"),
     ];
 
     private static readonly List<EnumItem<GameTimePhase>> difficultyValues = Enum.GetValues<GameTimePhase>()
@@ -886,22 +886,28 @@ else
         // placed. Saved bbox stays as a fallback (and CZ countryside as a
         // last resort) so games without placements still render somewhere
         // sensible.
-        var placed = locations.Where(l => l.Latitude.HasValue && l.Longitude.HasValue).ToList();
+        var placed = locations
+            .Select(ToLocatedTreasureLocation)
+            .OfType<LocatedTreasureLocation>()
+            .ToList();
+        var cardsByLocationId = locationCards.ToDictionary(c => c.LocationId);
+
         await FitMapToLocationExtentOrFallbackAsync(placed);
-        foreach (var loc in placed)
+        foreach (var placedLocation in placed)
         {
-            var card = locationCards.FirstOrDefault(c => c.LocationId == loc.Id);
+            var loc = placedLocation.Location;
+            cardsByLocationId.TryGetValue(loc.Id, out var card);
             if (card is null || card.TotalItems == 0)
             {
                 await mapView.AddZeroMarkerAsync(loc.Id,
-                    (double)loc.Latitude!.Value, (double)loc.Longitude!.Value,
+                    (double)placedLocation.Latitude, (double)placedLocation.Longitude,
                     loc.Name, KindSlug(loc.LocationKind));
             }
             else
             {
                 var counts = new[] { card.StartCount, card.EarlyCount, card.MidgameCount, card.LategameCount };
                 await mapView.AddPieMarkerAsync(loc.Id,
-                    (double)loc.Latitude!.Value, (double)loc.Longitude!.Value,
+                    (double)placedLocation.Latitude, (double)placedLocation.Longitude,
                     counts, maxCount);
             }
         }
@@ -914,9 +920,20 @@ else
     private int? _cachedBoundsGameId;
     private (double SwLat, double SwLng, double NeLat, double NeLng)? _cachedBounds;
 
+    private static LocatedTreasureLocation? ToLocatedTreasureLocation(LocationListDto location)
+    {
+        if (location.EffectiveLatitude.HasValue && location.EffectiveLongitude.HasValue)
+            return new LocatedTreasureLocation(location, location.EffectiveLatitude.Value, location.EffectiveLongitude.Value);
+
+        if (!location.ParentLocationId.HasValue && location.Latitude.HasValue && location.Longitude.HasValue)
+            return new LocatedTreasureLocation(location, location.Latitude.Value, location.Longitude.Value);
+
+        return null;
+    }
+
     /// <summary>
     /// Issue #160: zoom the Treasures map tight on the smallest box that
-    /// contains every placed <see cref="LocationListDto"/> for the active
+    /// contains every placed map location for the active
     /// game. Three-tier fallback so the map renders cleanly even on
     /// freshly-created games:
     ///   1. ≥ 2 placed locations → fitBounds to their extent (40px padding
@@ -927,16 +944,16 @@ else
     ///      set, else the CZ-countryside default the BoundingBoxPicker uses.
     /// Saved-bbox fetch is best-effort: a 5xx must not break the page.
     /// </summary>
-    private async Task FitMapToLocationExtentOrFallbackAsync(IReadOnlyList<LocationListDto> placed)
+    private async Task FitMapToLocationExtentOrFallbackAsync(IReadOnlyList<LocatedTreasureLocation> placed)
     {
         if (mapView is null) return;
 
         if (placed.Count >= 2)
         {
-            var minLat = placed.Min(l => (double)l.Latitude!.Value);
-            var maxLat = placed.Max(l => (double)l.Latitude!.Value);
-            var minLng = placed.Min(l => (double)l.Longitude!.Value);
-            var maxLng = placed.Max(l => (double)l.Longitude!.Value);
+            var minLat = placed.Min(l => (double)l.Latitude);
+            var maxLat = placed.Max(l => (double)l.Latitude);
+            var minLng = placed.Min(l => (double)l.Longitude);
+            var maxLng = placed.Max(l => (double)l.Longitude);
             await mapView.FitBoundsAsync(minLat, minLng, maxLat, maxLng);
             return;
         }
@@ -944,7 +961,7 @@ else
         if (placed.Count == 1)
         {
             var only = placed[0];
-            await mapView.SetCenterAsync((double)only.Latitude!.Value, (double)only.Longitude!.Value, 14);
+            await mapView.SetCenterAsync((double)only.Latitude, (double)only.Longitude, 14);
             return;
         }
 

@@ -555,34 +555,29 @@ window.ovcinaMap._pieMarkers = {};
 window.ovcinaMap._zeroMarkers = {};
 window.ovcinaMap._activePieStages = null; // Set<string> | null (null = all active)
 
-window.ovcinaMap._buildPieSvg = function (counts, maxCount) {
+window.ovcinaMap._filteredTreasureCount = function (counts) {
     var c0 = counts[0] | 0, c1 = counts[1] | 0, c2 = counts[2] | 0, c3 = counts[3] | 0;
-    var total = c0 + c1 + c2 + c3;
-    var cap = Math.max(1, maxCount || total);
-    var maxR = 28;
     var stages = ['start', 'early', 'mid', 'late'];
-    // Each wedge occupies a fixed 90° quadrant. Path uses a small arc.
-    // Paths below are parameterised by `r` (scaled radius per stage).
-    var paths = [
-        function (r) { return 'M0,0 L0,' + (-r) + ' A' + r + ',' + r + ' 0 0 1 ' + r + ',0 Z'; }, // NE / Start
-        function (r) { return 'M0,0 L' + r + ',0 A' + r + ',' + r + ' 0 0 1 0,' + r + ' Z'; }, // SE / Early
-        function (r) { return 'M0,0 L0,' + r + ' A' + r + ',' + r + ' 0 0 1 ' + (-r) + ',0 Z'; }, // SW / Mid
-        function (r) { return 'M0,0 L' + (-r) + ',0 A' + r + ',' + r + ' 0 0 1 0,' + (-r) + ' Z'; } // NW / Late
-    ];
-    var svg = '<svg width="64" height="64" viewBox="-32 -32 64 64" class="oh-tp-pin-svg">';
-    // Parchment backing disc (shows through in unfilled portions).
-    svg += '<circle class="oh-tp-pin-backing" r="' + maxR + '" cx="0" cy="0" />';
-    // Coloured wedges at scaled radius (skip zero-count stages).
     var cs = [c0, c1, c2, c3];
-    for (var i = 0; i < 4; i++) {
-        if (cs[i] <= 0) continue;
-        var r = Math.max(6, maxR * Math.min(1, cs[i] / cap));
-        svg += '<path class="oh-tp-wedge oh-tp-wedge-' + stages[i] + '" data-stage="' + stages[i] + '" d="' + paths[i](r.toFixed(2)) + '"/>';
+    if (!this._activePieStages) {
+        return c0 + c1 + c2 + c3;
     }
-    // Outer ring + inner numeral disc.
-    svg += '<circle class="oh-tp-pin-ring" r="' + (maxR + 1) + '" cx="0" cy="0" />';
-    svg += '<circle class="oh-tp-pin-inner" r="10" cx="0" cy="0" />';
-    svg += '<text class="oh-tp-pin-num" x="0" y="4" text-anchor="middle">' + total + '</text>';
+    var total = 0;
+    for (var i = 0; i < stages.length; i++) {
+        if (this._activePieStages.has(stages[i])) total += cs[i];
+    }
+    return total;
+};
+
+window.ovcinaMap._buildPieSvg = function (counts) {
+    var total = this._filteredTreasureCount(counts);
+    var label = total > 999 ? '999+' : String(total);
+    var labelClass = label.length > 2 ? ' oh-tp-pin-num-wide' : '';
+    var svg = '<svg width="48" height="48" viewBox="-24 -24 48 48" class="oh-tp-pin-svg">';
+    svg += '<circle class="oh-tp-pin-backing" r="21" cx="0" cy="0" />';
+    svg += '<circle class="oh-tp-pin-ring" r="22" cx="0" cy="0" />';
+    svg += '<circle class="oh-tp-pin-inner" r="15" cx="0" cy="0" />';
+    svg += '<text class="oh-tp-pin-num' + labelClass + '" x="0" y="4" text-anchor="middle">' + label + '</text>';
     svg += '</svg>';
     return svg;
 };
@@ -613,7 +608,7 @@ window.ovcinaMap.addPieMarker = function (id, lat, lon, counts, maxCount) {
     var wrap = document.createElement('div');
     wrap.className = 'oh-tp-pin oh-tp-pin-pie';
     wrap.setAttribute('data-pie-id', id);
-    wrap.innerHTML = this._buildPieSvg(counts, maxCount);
+    wrap.innerHTML = this._buildPieSvg(counts);
 
     var self = this;
     wrap.addEventListener('click', function (e) {
@@ -634,7 +629,7 @@ window.ovcinaMap.updatePieMarkerCounts = function (id, counts, maxCount) {
     var rec = this._pieMarkers[id];
     if (!rec) return;
     rec.counts = counts.slice();
-    rec.element.innerHTML = this._buildPieSvg(counts, maxCount);
+    rec.element.innerHTML = this._buildPieSvg(counts);
     this._applyStageFilterToElement(rec.element);
 };
 
@@ -706,11 +701,12 @@ window.ovcinaMap.clearPieMarkers = function () {
 })();
 
 window.ovcinaMap._applyStageFilterToElement = function (el) {
-    var active = this._activePieStages;
-    var wedges = el.querySelectorAll('[data-stage]');
-    for (var i = 0; i < wedges.length; i++) {
-        var s = wedges[i].getAttribute('data-stage');
-        wedges[i].style.opacity = (!active || active.has(s)) ? '1' : '0.15';
+    var id = el.getAttribute('data-pie-id');
+    var rec = id ? this._pieMarkers[id] : null;
+    if (rec) {
+        var total = this._filteredTreasureCount(rec.counts);
+        rec.element.innerHTML = this._buildPieSvg(rec.counts);
+        rec.element.classList.toggle('is-filter-zero', total === 0);
     }
 };
 
