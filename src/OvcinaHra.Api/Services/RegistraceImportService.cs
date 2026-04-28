@@ -142,10 +142,18 @@ public class RegistraceImportService(
 
         var records = await FetchCharactersAsync(externalGameId, ct);
 
-        // Kingdom-name → id lookup, loaded once per import. Names from registrace
-        // are matched case-insensitively against the Kingdom lookup table.
-        var kingdomByName = await db.Kingdoms
-            .ToDictionaryAsync(k => k.Name, k => k.Id, StringComparer.OrdinalIgnoreCase, ct);
+        // Kingdom-name → id lookup, loaded once per import. Registrace and the
+        // local lookup can spell the same kingdom with different separators or
+        // diacritics, so normalize and alias known variants before matching.
+        var kingdomRows = await db.Kingdoms
+            .Select(k => new { k.Id, k.Name })
+            .ToListAsync(ct);
+        var kingdomByName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kingdom in kingdomRows)
+        {
+            foreach (var key in GetKingdomLookupKeys(kingdom.Name))
+                kingdomByName.TryAdd(key, kingdom.Id);
+        }
 
         foreach (var record in records)
         {
@@ -209,10 +217,13 @@ public class RegistraceImportService(
                         .WhenTrue(pc, ref playerClass);
 
                 int? kingdomId = null;
-                if (!string.IsNullOrWhiteSpace(record.KingdomName)
-                    && kingdomByName.TryGetValue(record.KingdomName, out var kid))
+                foreach (var key in GetKingdomLookupKeys(record.KingdomName))
                 {
-                    kingdomId = kid;
+                    if (kingdomByName.TryGetValue(key, out var kid))
+                    {
+                        kingdomId = kid;
+                        break;
+                    }
                 }
 
                 if (assignment is null)
@@ -369,8 +380,21 @@ public class RegistraceImportService(
             "aradhryand" => Race.Elf,
             "azanulinbar-dum" or "azanulinbar dum" => Race.Dwarf,
             "esgaroth" => Race.Human,
-            "novy arnor" => null,
+            "novy arnor" or "novy-arnor" => null,
             _ => null
+        };
+    }
+
+    public static IReadOnlyList<string> GetKingdomLookupKeys(string? kingdomName)
+    {
+        var normalized = NormalizeKingdomName(kingdomName);
+        if (normalized.Length == 0) return [];
+
+        return normalized switch
+        {
+            "novy arnor" => [normalized, "novy-arnor"],
+            "novy-arnor" => [normalized, "novy arnor"],
+            _ => [normalized]
         };
     }
 
