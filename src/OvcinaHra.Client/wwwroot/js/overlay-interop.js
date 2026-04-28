@@ -36,6 +36,12 @@
     // Singleton state, keyed by mapId so future multi-map callers don't collide.
     const instances = {};
 
+    function mapDiag(event, data) {
+        try {
+            console.log('[map-diag] overlay.' + event + ' ' + JSON.stringify(data || {}));
+        } catch (e) { }
+    }
+
     function getMap(mapId) {
         // Phase 1+2: MapView only boots the global `ovcinaMap`. If we ever host
         // overlays on a second MapLibre instance, widen this lookup to a
@@ -436,12 +442,16 @@
 
     function render(mapId, shapes) {
         const map = getMap(mapId);
-        if (!map) return;
+        if (!map) {
+            mapDiag('render.no-map', { mapId: mapId });
+            return;
+        }
         const inst = ensureInstance(mapId);
         const normalizedShapes = (shapes || [])
             .map(normalizeShape)
             .filter(s => s !== null);
         inst.shapes = normalizedShapes;
+        mapDiag('render', { mapId: mapId, shapeCount: normalizedShapes.length });
 
         const paint = () => {
             ensureLayers(map, SRC_SAVED, LYR_FILLS, LYR_STROKES, LYR_TEXT, LYR_ICONS);
@@ -464,7 +474,20 @@
 
     function enterEditMode(mapId, tool, dotnetRef) {
         const map = getMap(mapId);
-        if (!map) return;
+        if (!map) {
+            mapDiag('enter-edit.no-map', { mapId: mapId, tool: tool });
+            return;
+        }
+        const inst = ensureInstance(mapId);
+        inst.tool = tool;
+        inst.dotnetRef = dotnetRef;
+        inst.editMode = true;
+        mapDiag('enter-edit', {
+            mapId: mapId,
+            tool: tool,
+            shapeCount: inst.shapes ? inst.shapes.length : 0,
+            hasDotNetRef: !!dotnetRef
+        });
         // If the editor is invoked before `render()` has been called (e.g.
         // game has no saved overlay yet) the source+layer pair is missing and
         // preview updates would no-op — make sure both exist before wiring
@@ -474,10 +497,6 @@
             ensureLayers(map, SRC_PREVIEW, LYR_PREVIEW_FILLS, LYR_PREVIEW_STROKES, LYR_PREVIEW_TEXT, LYR_PREVIEW_ICONS);
             ensureSelectionLayers(map);
             ensureIconsLoaded(map).then(function () { try { map.triggerRepaint(); } catch (e) { } });
-            const inst = ensureInstance(mapId);
-            inst.tool = tool;
-            inst.dotnetRef = dotnetRef;
-            inst.editMode = true;
             map.getCanvas().style.cursor = tool === 'select' ? '' : 'crosshair';
             // Suspend MapLibre handlers that compete with click-to-draw: drag-pan
             // would steal mousedown+mousemove from freehand/rectangle/circle and
@@ -496,20 +515,32 @@
             // to finish" doesn't also zoom the viewport.
             if (map.doubleClickZoom && map.doubleClickZoom.disable) map.doubleClickZoom.disable();
             renderTextMarkers(map, inst, inst.shapes || []);
+            detachHandlers(map, inst);
             attachHandlers(map, inst);
         };
-        if (map.isStyleLoaded()) setup(); else map.once('styledata', setup);
+        if (map.isStyleLoaded()) setup();
+        else {
+            mapDiag('enter-edit.defer-style', { mapId: mapId, tool: tool });
+            map.once('styledata', setup);
+        }
     }
 
     function switchTool(mapId, tool) {
         const inst = instances[mapId];
-        if (!inst) return;
+        if (!inst) {
+            mapDiag('switch-tool.no-instance', { mapId: mapId, tool: tool });
+            return;
+        }
         const map = getMap(mapId);
-        if (!map) return;
+        if (!map) {
+            mapDiag('switch-tool.no-map', { mapId: mapId, tool: tool });
+            return;
+        }
         detachHandlers(map, inst);
         resetInProgress(inst);
         teardownPreview(map);
         inst.tool = tool;
+        mapDiag('switch-tool', { mapId: mapId, tool: tool });
         // Cursor: drawing tools get crosshair, select gets default (handler swaps
         // to pointer on hover-over-shape). Idle (null) also gets default.
         try { map.getCanvas().style.cursor = (tool && tool !== 'select') ? 'crosshair' : ''; } catch (e) { }
@@ -634,7 +665,10 @@
     }
 
     function emitShape(inst, shape) {
-        if (!inst.dotnetRef) return;
+        if (!inst.dotnetRef) {
+            mapDiag('shape.emit.no-dotnet', { mapId: inst.mapId, type: shape && shape.type, id: shape && shape.id });
+            return;
+        }
         try {
             // System.Text.Json's [JsonPolymorphic] requires the discriminator
             // ("type") to be the FIRST JSON property — otherwise it throws
@@ -643,6 +677,7 @@
             // chokepoint reorders so `type` lands first regardless. DO NOT
             // remove without also reordering every emitShape() call site.
             const orderedShape = { type: shape.type, ...shape };
+            mapDiag('shape.emit', { mapId: inst.mapId, type: orderedShape.type, id: orderedShape.id });
             inst.dotnetRef.invokeMethodAsync('OnShapeComplete', JSON.stringify(orderedShape));
         } catch (e) {
             console.warn('Overlay shape emit failed:', e);
@@ -686,6 +721,7 @@
         const onDown = function (e) {
             drawing = true;
             inst.tempPoints = [{ lat: e.lngLat.lat, lng: e.lngLat.lng }];
+            mapDiag('freehand.down', { mapId: inst.mapId, lat: e.lngLat.lat, lng: e.lngLat.lng });
             if (map.dragPan && map.dragPan.disable) map.dragPan.disable();
         };
         const onMove = function (e) {
@@ -695,11 +731,15 @@
                 type: 'freehand', color: currentStyle().color,
                 strokeWidth: currentStyle().strokeWidth, points: inst.tempPoints
             });
+            if (inst.tempPoints.length <= 5 || inst.tempPoints.length % 10 === 0) {
+                mapDiag('freehand.move', { mapId: inst.mapId, pointCount: inst.tempPoints.length });
+            }
         };
         const onUp = function () {
             if (!drawing) return;
             drawing = false;
             if (map.dragPan && map.dragPan.enable) map.dragPan.enable();
+            mapDiag('freehand.up', { mapId: inst.mapId, pointCount: inst.tempPoints.length });
             if (inst.tempPoints.length >= 2) {
                 emitShape(inst, {
                     id: uuid(),
@@ -1034,9 +1074,22 @@
     // ---- Preview rendering ------------------------------------------------
 
     function updatePreview(map, shape) {
-        const feature = shapeToFeature(shape);
-        if (!feature) { teardownPreview(map); return; }
+        // Preview shapes are transient and intentionally never persisted.
+        // Give them an ephemeral id so normalizeShape can render during drag
+        // without weakening the saved-shape id contract.
+        const previewShape = shape
+            ? { ...shape, id: pick(shape, 'id', null) || '__preview-' + (pick(shape, 'type', 'shape') || 'shape') }
+            : shape;
+        const feature = shapeToFeature(previewShape);
+        if (!feature) {
+            mapDiag('preview.empty', { type: shape && shape.type });
+            teardownPreview(map);
+            return;
+        }
         setSourceData(map, SRC_PREVIEW, [feature]);
+        if (shape && shape.type === 'freehand') {
+            mapDiag('preview.update', { type: shape.type, pointCount: shape.points ? shape.points.length : 0 });
+        }
     }
 
     // ---- Style config set by the toolbar ----------------------------------
