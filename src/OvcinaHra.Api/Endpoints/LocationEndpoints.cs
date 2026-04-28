@@ -70,21 +70,27 @@ public static class LocationEndpoints
             db,
             rows.Select(r => new LocationCoordinateState(r.Id, r.Latitude, r.Longitude, r.ParentLocationId)));
 
-        var locations = rows.Select(r => new LocationListDto(
-            r.Id, r.Name, r.LocationKind,
-            r.Region,
-            r.Latitude,
-            r.Longitude,
-            r.ParentLocationId,
-            r.Description, r.Details, r.GamePotential, r.NpcInfo, r.SetupNotes,
-            Array.Empty<LocationStashDto>(),
-            Array.Empty<LocationQuestDto>(),
-            Array.Empty<LocationTreasureQuestDto>(),
-            ImagePath: r.ImagePath,
-            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locations", r.Id, "small"),
-            StampImagePath: r.StampImagePath,
-            StampImageUrl: string.IsNullOrWhiteSpace(r.StampImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locationstamps", r.Id, "small"),
-            IsLocated: IsLocated(lookup, r.Id))).ToList();
+        var locations = rows.Select(r =>
+        {
+            var effective = GetEffectiveCoordinates(lookup, r.Id);
+            return new LocationListDto(
+                r.Id, r.Name, r.LocationKind,
+                r.Region,
+                r.Latitude,
+                r.Longitude,
+                r.ParentLocationId,
+                r.Description, r.Details, r.GamePotential, r.NpcInfo, r.SetupNotes,
+                Array.Empty<LocationStashDto>(),
+                Array.Empty<LocationQuestDto>(),
+                Array.Empty<LocationTreasureQuestDto>(),
+                ImagePath: r.ImagePath,
+                ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locations", r.Id, "small"),
+                StampImagePath: r.StampImagePath,
+                StampImageUrl: string.IsNullOrWhiteSpace(r.StampImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locationstamps", r.Id, "small"),
+                IsLocated: effective.HasValue,
+                EffectiveLatitude: effective?.Latitude,
+                EffectiveLongitude: effective?.Longitude);
+        }).ToList();
 
         return TypedResults.Ok(locations);
     }
@@ -327,26 +333,32 @@ public static class LocationEndpoints
             db,
             rows.Select(r => new LocationCoordinateState(r.Id, r.Latitude, r.Longitude, r.ParentLocationId)));
 
-        var dtos = rows.Select(r => new LocationListDto(
-            r.Id, r.Name, r.LocationKind,
-            r.Region,
-            r.Latitude,
-            r.Longitude,
-            r.ParentLocationId,
-            r.Description, r.Details, r.GamePotential, r.NpcInfo, r.SetupNotes,
-            Stashes: r.Stashes.Select(s => new LocationStashDto(
-                s.SecretStashId,
-                s.StashName,
-                s.TreasureQuests,
-                ImagePath: s.StashImagePath,
-                ImageUrl: string.IsNullOrWhiteSpace(s.StashImagePath) ? null : ImageEndpoints.ThumbUrl(http, "secretstashes", s.SecretStashId, "medium"))).ToList(),
-            Quests: r.Quests,
-            LocationTreasureQuests: r.LocationTreasureQuests,
-            ImagePath: r.ImagePath,
-            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locations", r.Id, "small"),
-            StampImagePath: r.StampImagePath,
-            StampImageUrl: string.IsNullOrWhiteSpace(r.StampImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locationstamps", r.Id, "small"),
-            IsLocated: IsLocated(lookup, r.Id))).ToList();
+        var dtos = rows.Select(r =>
+        {
+            var effective = GetEffectiveCoordinates(lookup, r.Id);
+            return new LocationListDto(
+                r.Id, r.Name, r.LocationKind,
+                r.Region,
+                r.Latitude,
+                r.Longitude,
+                r.ParentLocationId,
+                r.Description, r.Details, r.GamePotential, r.NpcInfo, r.SetupNotes,
+                Stashes: r.Stashes.Select(s => new LocationStashDto(
+                    s.SecretStashId,
+                    s.StashName,
+                    s.TreasureQuests,
+                    ImagePath: s.StashImagePath,
+                    ImageUrl: string.IsNullOrWhiteSpace(s.StashImagePath) ? null : ImageEndpoints.ThumbUrl(http, "secretstashes", s.SecretStashId, "medium"))).ToList(),
+                Quests: r.Quests,
+                LocationTreasureQuests: r.LocationTreasureQuests,
+                ImagePath: r.ImagePath,
+                ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locations", r.Id, "small"),
+                StampImagePath: r.StampImagePath,
+                StampImageUrl: string.IsNullOrWhiteSpace(r.StampImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locationstamps", r.Id, "small"),
+                IsLocated: effective.HasValue,
+                EffectiveLatitude: effective?.Latitude,
+                EffectiveLongitude: effective?.Longitude);
+        }).ToList();
 
         return TypedResults.Ok(dtos);
     }
@@ -392,19 +404,25 @@ public static class LocationEndpoints
     internal static bool IsLocated(
         IReadOnlyDictionary<int, LocationCoordinateState> lookup,
         int? locationId,
+        int depth = 0) =>
+        GetEffectiveCoordinates(lookup, locationId, depth).HasValue;
+
+    internal static (decimal Latitude, decimal Longitude)? GetEffectiveCoordinates(
+        IReadOnlyDictionary<int, LocationCoordinateState> lookup,
+        int? locationId,
         int depth = 0)
     {
         if (locationId is null
             || depth > LocationInheritanceMaxDepth
             || !lookup.TryGetValue(locationId.Value, out var row))
         {
-            return false;
+            return null;
         }
 
         if (!row.ParentLocationId.HasValue && row.Latitude.HasValue && row.Longitude.HasValue)
-            return true;
+            return (row.Latitude.Value, row.Longitude.Value);
 
-        return IsLocated(lookup, row.ParentLocationId, depth + 1);
+        return GetEffectiveCoordinates(lookup, row.ParentLocationId, depth + 1);
     }
 
     private static async Task<Results<Created, Conflict>> AssignToGame(GameLocationDto dto, WorldDbContext db)

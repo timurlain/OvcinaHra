@@ -24,7 +24,9 @@ public record LocationListDto(
     string? ImageUrl = null,
     string? StampImagePath = null,
     string? StampImageUrl = null,
-    bool IsLocated = false)
+    bool IsLocated = false,
+    decimal? EffectiveLatitude = null,
+    decimal? EffectiveLongitude = null)
 {
     [JsonIgnore]
     public string LocationKindDisplay => LocationKind.GetDisplayName();
