@@ -89,17 +89,18 @@
     private int? _selectedId;
     private bool _wasVisible;
 
-    public override async Task SetParametersAsync(ParameterView parameters)
+    protected override async Task OnParametersSetAsync()
     {
-        await base.SetParametersAsync(parameters);
-        if (Visible && !_wasVisible)
+        var shouldLoad = Visible && !_wasVisible;
+        _wasVisible = Visible;
+
+        if (shouldLoad)
         {
             Console.WriteLine($"[registrace] popup opened gameId={GameId}");
             _selectedId = null;
             linkError = null;
             await LoadAsync();
         }
-        _wasVisible = Visible;
     }
 
     private async Task LoadAsync()
