@@ -93,9 +93,25 @@ public class ApiClient
 
     public async Task<T?> PostMultipartAsync<T>(string url, MultipartFormDataContent content)
     {
-        var response = await _http.PostAsync(url, content);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<T>(JsonOptions);
+        var (ok, value, problemDetail, statusCode) = await PostMultipartWithProblemAsync<T>(url, content);
+        if (!ok)
+            throw new HttpRequestException(problemDetail ?? $"HTTP {(int)statusCode}", null, statusCode);
+        return value;
+    }
+
+    public async Task<(bool Ok, TResponse? Value, string? ProblemDetail, HttpStatusCode StatusCode)> PostMultipartWithProblemAsync<TResponse>(
+        string url,
+        MultipartFormDataContent content,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await _http.PostAsync(url, content, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            return (false, default, await ReadProblemDetailAsync(response), response.StatusCode);
+
+        if (response.Content.Headers.ContentLength == 0 || response.StatusCode == HttpStatusCode.NoContent)
+            return (true, default, null, response.StatusCode);
+
+        return (true, await response.Content.ReadFromJsonAsync<TResponse>(JsonOptions, cancellationToken), null, response.StatusCode);
     }
 
     public async Task<bool> DeleteAsync(string url)
