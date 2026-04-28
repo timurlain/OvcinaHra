@@ -385,7 +385,7 @@
         // payload that PaintPinsAsync iterates, so chip totals always match
         // what the user sees on the map.
         _locationsByKind = _data?.Locations
-            .GroupBy(l => l.Kind)
+            .GroupBy(l => l.EffectiveKind)
             .ToDictionary(g => g.Key, g => g.Count());
 
         await PaintPinsAsync();
@@ -404,14 +404,14 @@
 
         if (_locationsVisible)
         {
-            foreach (var l in _data.Locations.OrderBy(l => l.Kind == LocationKind.Hobbit ? 1 : 0))
+            foreach (var l in _data.Locations.OrderBy(l => l.EffectiveKind == LocationKind.Hobbit ? 1 : 0))
             {
                 // Skip kinds the user has hidden via the legend chips. The
                 // counts in the rail still show the underlying total, but
                 // the pins drop out of the painted set.
-                if (_hiddenKinds.Contains(l.Kind)) continue;
+                if (_hiddenKinds.Contains(l.EffectiveKind)) continue;
                 await JS.InvokeVoidAsync("ovcinaMap.addLocationPin",
-                    l.Id, l.Lat, l.Lon, l.Name, l.Kind.ToString());
+                    l.Id, l.Lat, l.Lon, l.EffectiveName, l.EffectiveKind.ToString());
             }
         }
         if (_stashesVisible)

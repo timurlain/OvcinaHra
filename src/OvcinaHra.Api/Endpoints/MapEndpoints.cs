@@ -46,6 +46,12 @@ public static class MapEndpoints
                 Lat = gl.Location.Coordinates!.Latitude,
                 Lon = gl.Location.Coordinates!.Longitude,
                 gl.Location.ImagePath,
+                HobbitChildName = db.Locations
+                    .Where(child => child.ParentLocationId == gl.LocationId
+                        && child.LocationKind == LocationKind.Hobbit)
+                    .OrderBy(child => child.Id)
+                    .Select(child => child.Name)
+                    .FirstOrDefault(),
             })
             .ToListAsync();
 
@@ -57,7 +63,9 @@ public static class MapEndpoints
             // null so the cockpit's kingdom-tint chip stays inert until
             // a follow-up adds the relationship.
             KingdomId: null, KingdomName: null,
-            ThumbnailUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : blob.GetSasUrl(r.ImagePath))).ToList();
+            ThumbnailUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : blob.GetSasUrl(r.ImagePath),
+            RenderKind: r.HobbitChildName is null ? null : LocationKind.Hobbit,
+            RenderName: r.HobbitChildName)).ToList();
 
         // Game-scoped stashes. Each pin sits at GameSecretStash.LocationId
         // (which has GPS via Location.Coordinates). Treasure count + highest

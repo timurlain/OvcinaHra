@@ -138,14 +138,14 @@
         if (_data is null) return;
 
         // Per-mode label: blind uses the location's stable DB id; labeled
-        // uses the actual name. The kind argument carries through unchanged
-        // so the per-kind tear-drop color and glyph still apply (the print
-        // sheet wants the icons too — they read as map symbols).
+        // uses the map-facing name. The kind argument carries the map-facing
+        // kind so parent pins with Hobbit child variants print like the
+        // on-screen map.
         foreach (var l in _data.Locations)
         {
-            var label = _mode == "blind" ? $"#{l.Id}" : l.Name;
+            var label = _mode == "blind" ? $"#{l.Id}" : l.EffectiveName;
             await JS.InvokeVoidAsync("ovcinaMap.addLocationPin",
-                l.Id, l.Lat, l.Lon, label, l.Kind.ToString());
+                l.Id, l.Lat, l.Lon, label, l.EffectiveKind.ToString());
         }
         // Stash pins intentionally omitted — print sheets focus on parent
         // locations; secret-stash detail belongs in the organizer's tablet.
