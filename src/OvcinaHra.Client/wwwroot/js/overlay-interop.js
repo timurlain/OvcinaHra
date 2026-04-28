@@ -55,7 +55,8 @@
                 previewFeature: null,
                 keydownHandler: null,
                 shapes: [],
-                textMarkers: {}
+                textMarkers: {},
+                visible: true
             };
         }
         return instances[mapId];
@@ -252,6 +253,7 @@
             el.textContent = shape.text;
             el.style.color = shape.color;
             el.style.fontSize = `${shape.fontSize}px`;
+            el.style.display = inst.visible === false ? 'none' : '';
             el.title = canDrag ? 'Přetáhnout text' : '';
             el.addEventListener('click', function (ev) {
                 ev.stopPropagation();
@@ -275,6 +277,21 @@
             }
 
             inst.textMarkers[shape.id] = marker;
+        }
+    }
+
+    function setSavedOverlayVisibility(map, inst) {
+        const isVisible = inst.visible !== false;
+        const visibility = isVisible ? 'visible' : 'none';
+        for (const layerId of [LYR_FILLS, LYR_STROKES, LYR_TEXT, LYR_ICONS]) {
+            if (map.getLayer(layerId)) {
+                try { map.setLayoutProperty(layerId, 'visibility', visibility); }
+                catch (e) { /* style may be changing; next render reapplies */ }
+            }
+        }
+        for (const marker of Object.values(inst.textMarkers || {})) {
+            const el = marker && marker.getElement ? marker.getElement() : null;
+            if (el) el.style.display = isVisible ? '' : 'none';
         }
     }
 
@@ -436,6 +453,7 @@
                 .filter(f => f !== null);
             setSourceData(map, SRC_SAVED, features);
             renderTextMarkers(map, inst, normalizedShapes);
+            setSavedOverlayVisibility(map, inst);
             // Icons load asynchronously — MapLibre will silently fail to render
             // a symbol whose `icon-image` isn't registered yet, so we trigger
             // load + force a re-paint when ready.
@@ -1105,6 +1123,13 @@
         highlightSelection(map, null);
     }
 
+    function setVisibility(mapId, visible) {
+        const inst = ensureInstance(mapId);
+        inst.visible = visible !== false;
+        const map = getMap(mapId);
+        if (map) setSavedOverlayVisibility(map, inst);
+    }
+
     function getIconAssets() {
         return ICON_ASSETS.slice();
     }
@@ -1118,6 +1143,7 @@
         setStyle: setStyle,
         selectShape: selectShape,
         clearSelection: clearSelection,
+        setVisibility: setVisibility,
         getIconAssets: getIconAssets,
         // Exposed for unit-testability / future tools; not called by Blazor.
         _circleToPolygonRing: circleToPolygonRing,

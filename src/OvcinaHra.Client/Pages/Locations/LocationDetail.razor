@@ -48,6 +48,18 @@ else
                         <a href="/locations/@parent.Id" class="oh-link"><i class="bi bi-arrow-up-short"></i> @parent.Name</a>
                     }
                 </div>
+                @if (variants.Count > 0)
+                {
+                    <div class="oh-lc-title-children">
+                        <span class="oh-lc-vlbl">Podřízené lokace:</span>
+                        @foreach (var v in variants)
+                        {
+                            <NavLink class="oh-lc-vchip" href="@($"/locations/{v.Id}")">
+                                <i class="bi bi-arrow-right-short"></i> @v.Name
+                            </NavLink>
+                        }
+                    </div>
+                }
             </div>
             <div class="oh-lc-title-actions">
                 @if (activeTab == "upravit")

@@ -1015,8 +1015,12 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
     // the tail tip lands on the GPS coord.
     var bg = document.createElement('div');
     bg.className = 'oh-map-pin-bg';
-    var glyph = document.createElement('i');
-    glyph.className = 'oh-map-pin-glyph bi ' + this._kindIconFor(kindKey);
+    var glyph = document.createElement(kindKey === 'hobbit' ? 'span' : 'i');
+    if (kindKey === 'hobbit') {
+        glyph.className = 'oh-map-pin-hobbit-icon';
+    } else {
+        glyph.className = 'oh-map-pin-glyph bi ' + this._kindIconFor(kindKey);
+    }
     glyph.setAttribute('aria-hidden', 'true');
     bg.appendChild(glyph);
     pin.appendChild(bg);
