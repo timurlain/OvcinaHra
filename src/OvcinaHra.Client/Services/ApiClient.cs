@@ -22,9 +22,9 @@ public class ApiClient
 
     public sealed record FileDownload(byte[] Bytes, string ContentType, string FileName);
 
-    public async Task<List<T>> GetListAsync<T>(string url)
+    public async Task<List<T>> GetListAsync<T>(string url, CancellationToken cancellationToken = default)
     {
-        return await _http.GetFromJsonAsync<List<T>>(url, JsonOptions) ?? [];
+        return await _http.GetFromJsonAsync<List<T>>(url, JsonOptions, cancellationToken) ?? [];
     }
 
     public async Task<T?> GetAsync<T>(string url, CancellationToken cancellationToken = default)
@@ -36,33 +36,50 @@ public class ApiClient
         return await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
     }
 
-    public async Task<TResponse?> PostAsync<TRequest, TResponse>(string url, TRequest data)
+    public async Task<(bool Ok, HttpStatusCode StatusCode, T? Value)> GetWithStatusAsync<T>(
+        string url,
+        CancellationToken cancellationToken = default)
     {
-        var response = await _http.PostAsJsonAsync(url, data, JsonOptions);
+        using var response = await _http.GetAsync(url, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            return (false, response.StatusCode, default);
+
+        if (response.Content.Headers.ContentLength == 0 || response.StatusCode == HttpStatusCode.NoContent)
+            return (true, response.StatusCode, default);
+
+        return (true, response.StatusCode, await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken));
+    }
+
+    public async Task<TResponse?> PostAsync<TRequest, TResponse>(
+        string url,
+        TRequest data,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _http.PostAsJsonAsync(url, data, JsonOptions, cancellationToken);
         response.EnsureSuccessStatusCode();
         if (response.Content.Headers.ContentLength == 0 || response.StatusCode == System.Net.HttpStatusCode.NoContent)
             return default;
-        var content = await response.Content.ReadAsStringAsync();
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
         if (string.IsNullOrEmpty(content))
             return default;
         return JsonSerializer.Deserialize<TResponse>(content, JsonOptions);
     }
 
-    public async Task PostAsync<TRequest>(string url, TRequest data)
+    public async Task PostAsync<TRequest>(string url, TRequest data, CancellationToken cancellationToken = default)
     {
-        var response = await _http.PostAsJsonAsync(url, data, JsonOptions);
+        var response = await _http.PostAsJsonAsync(url, data, JsonOptions, cancellationToken);
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task PostAsync(string url)
+    public async Task PostAsync(string url, CancellationToken cancellationToken = default)
     {
-        var response = await _http.PostAsync(url, null);
+        var response = await _http.PostAsync(url, null, cancellationToken);
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task PutAsync<TRequest>(string url, TRequest data)
+    public async Task PutAsync<TRequest>(string url, TRequest data, CancellationToken cancellationToken = default)
     {
-        var response = await _http.PutAsJsonAsync(url, data, JsonOptions);
+        var response = await _http.PutAsJsonAsync(url, data, JsonOptions, cancellationToken);
         response.EnsureSuccessStatusCode();
     }
 
@@ -85,6 +102,12 @@ public class ApiClient
     {
         var response = await _http.DeleteAsync(url);
         return response.IsSuccessStatusCode;
+    }
+
+    public async Task DeleteRequiredAsync(string url, CancellationToken cancellationToken = default)
+    {
+        var response = await _http.DeleteAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
     }
 
     public async Task<(bool Ok, FileDownload? File, string? ProblemDetail)> DownloadWithProblemAsync(string url)

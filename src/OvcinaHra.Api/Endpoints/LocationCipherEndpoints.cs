@@ -17,6 +17,7 @@ public static class LocationCipherEndpoints
     {
         var group = routes.MapGroup("/api/location-ciphers").WithTags("LocationCiphers");
 
+        group.MapGet("/{gameId:int}", GetByGame);
         group.MapGet("/{gameId:int}/{locationId:int}", GetByLocation);
         group.MapGet("/{gameId:int}/{locationId:int}/pdf", DownloadLocationPdf);
         group.MapGet("/{gameId:int}/{locationId:int}/{skillSlug}/pdf", DownloadSinglePdf);
@@ -24,6 +25,33 @@ public static class LocationCipherEndpoints
         group.MapDelete("/{gameId:int}/{locationId:int}/{skillSlug}", Delete);
 
         return group;
+    }
+
+    private static async Task<Ok<List<LocationCipherDto>>> GetByGame(int gameId, WorldDbContext db)
+    {
+        var rows = await db.LocationCiphers
+            .Where(c => c.GameId == gameId
+                && c.Location.GameLocations.Any(gl => gl.GameId == gameId))
+            .OrderBy(c => c.LocationId)
+            .ThenBy(c => c.SkillKey)
+            .Select(c => new
+            {
+                c.Id,
+                c.GameId,
+                c.LocationId,
+                c.SkillKey,
+                c.MessageRaw,
+                c.MessageNormalized,
+                c.QuestId,
+                QuestName = c.Quest == null ? null : c.Quest.Name
+            })
+            .ToListAsync();
+
+        return TypedResults.Ok(rows
+            .Select(c => ToDto(
+                c.Id, c.GameId, c.LocationId, c.SkillKey, c.MessageRaw,
+                c.MessageNormalized, c.QuestId, c.QuestName))
+            .ToList());
     }
 
     private static async Task<Results<Ok<List<LocationCipherSlotDto>>, NotFound>> GetByLocation(

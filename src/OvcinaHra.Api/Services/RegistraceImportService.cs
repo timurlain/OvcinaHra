@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
@@ -6,7 +8,6 @@ using OvcinaHra.Api.Data;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
-using OvcinaHra.Shared.Extensions;
 
 namespace OvcinaHra.Api.Services;
 
@@ -150,6 +151,8 @@ public class RegistraceImportService(
         {
             try
             {
+                var race = InferRaceFromKingdomName(record.KingdomName);
+
                 // Look up Character by ExternalPersonId (including deleted)
                 var character = await db.Characters
                     .IgnoreQueryFilters()
@@ -166,7 +169,7 @@ public class RegistraceImportService(
                         Name = name,
                         PlayerFirstName = record.PersonFirstName,
                         PlayerLastName = record.PersonLastName,
-                        Race = RaceExtensions.TryParseRace(record.Race),
+                        Race = race,
                         BirthYear = record.PersonBirthYear,
                         IsPlayedCharacter = true,
                         ExternalPersonId = record.PersonId,
@@ -182,7 +185,7 @@ public class RegistraceImportService(
                     // Name is intentionally NOT updated — it's user-editable in our app
                     character.PlayerFirstName = record.PersonFirstName;
                     character.PlayerLastName = record.PersonLastName;
-                    character.Race = RaceExtensions.TryParseRace(record.Race);
+                    character.Race = race;
                     character.BirthYear = record.PersonBirthYear;
                     character.UpdatedAtUtc = DateTime.UtcNow;
 
@@ -357,6 +360,60 @@ public class RegistraceImportService(
         [property: JsonPropertyName("kingdomId")] int? KingdomId,
         [property: JsonPropertyName("levelReached")] int? LevelReached,
         [property: JsonPropertyName("continuityStatus")] string? ContinuityStatus);
+
+    public static Race? InferRaceFromKingdomName(string? kingdomName)
+    {
+        var normalized = NormalizeKingdomName(kingdomName);
+        return normalized switch
+        {
+            "aradhryand" => Race.Elf,
+            "azanulinbar-dum" or "azanulinbar dum" => Race.Dwarf,
+            "esgaroth" => Race.Human,
+            "novy arnor" => null,
+            _ => null
+        };
+    }
+
+    private static string NormalizeKingdomName(string? kingdomName)
+    {
+        if (string.IsNullOrWhiteSpace(kingdomName)) return "";
+
+        var normalized = kingdomName.Trim()
+            .Replace('–', '-')
+            .Replace('—', '-')
+            .Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(normalized.Length);
+        foreach (var ch in normalized)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.NonSpacingMark)
+                builder.Append(ch);
+        }
+
+        var tokens = builder.ToString()
+            .Normalize(NormalizationForm.FormC)
+            .ToLowerInvariant()
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var normalizedTokens = new List<string>(tokens.Length);
+        foreach (var token in tokens)
+        {
+            if (token == "-")
+            {
+                if (normalizedTokens.Count > 0)
+                    normalizedTokens[^1] += "-";
+                continue;
+            }
+
+            if (normalizedTokens.Count > 0 && normalizedTokens[^1].EndsWith('-'))
+            {
+                normalizedTokens[^1] += token;
+                continue;
+            }
+
+            normalizedTokens.Add(token);
+        }
+
+        return string.Join(' ', normalizedTokens);
+    }
 }
 
 internal static class BoolExtensions
