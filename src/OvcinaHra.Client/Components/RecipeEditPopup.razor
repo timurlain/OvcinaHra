@@ -29,13 +29,13 @@
         {
             <DxFormLayout>
                 <DxFormLayoutGroup Caption="Identita" ColSpanMd="12">
-                    <DxFormLayoutItem Caption="Výstupní předmět" ColSpanMd="8">
+                    <DxFormLayoutItem Caption="Výstupní předmět" ColSpanMd="12">
                         <DxComboBox Data="@craftableItems" @bind-Value="@editOutputItemId"
                                     TextFieldName="Name" ValueFieldName="Id"
                                     NullText="(vyberte vyráběný předmět)"
                                     SearchMode="ListSearchMode.AutoSearch" />
                     </DxFormLayoutItem>
-                    <DxFormLayoutItem Caption="Kategorie" ColSpanMd="4">
+                    <DxFormLayoutItem Caption="Kategorie" ColSpanMd="12">
                         <DxTextBox Text="@SelectedEditCategoryDisplay" ReadOnly="true" />
                     </DxFormLayoutItem>
                     <DxFormLayoutItem Caption="Název" ColSpanMd="8">
@@ -130,6 +130,7 @@
     private int? editLocationId;
 
     private List<ItemListDto> allItems = [];
+    private List<RecipeListDto> allRecipes = [];
     private List<LocationListDto> allLocations = [];
     private List<BuildingListDto> allBuildings = [];
     private List<GameSkillDto> gameSkills = [];
@@ -138,7 +139,14 @@
     private IReadOnlyList<RecipeBuildingPicker.BuildingRow> _buildingRows = [];
     private List<int> _skillIds = [];
 
-    private List<ItemListDto> craftableItems => allItems.Where(i => i.IsCraftable).ToList();
+    private List<ItemListDto> craftableItems => allItems
+        .Where(i => i.IsCraftable
+            && (i.Id == detail?.OutputItemId
+                || !allRecipes.Any(r =>
+                    r.Id != detail?.Id
+                    && r.GameId == detail?.GameId
+                    && r.OutputItemId == i.Id)))
+        .ToList();
     private string SelectedEditCategoryDisplay => allItems
         .FirstOrDefault(i => i.Id == editOutputItemId)?.ItemTypeDisplay ?? "Podle výstupu";
 
@@ -186,10 +194,12 @@
 
             // Picker source data — fetch in parallel to avoid serial waterfall.
             var itemsTask = Api.GetListAsync<ItemListDto>("/api/items");
+            var recipesTask = Api.GetListAsync<RecipeListDto>("/api/recipes");
             var locationsTask = Api.GetListAsync<LocationListDto>("/api/locations");
             var buildingsTask = Api.GetListAsync<BuildingListDto>("/api/buildings");
-            await Task.WhenAll(itemsTask, locationsTask, buildingsTask);
+            await Task.WhenAll(itemsTask, recipesTask, locationsTask, buildingsTask);
             allItems = await itemsTask;
+            allRecipes = await recipesTask;
             allLocations = await locationsTask;
             allBuildings = await buildingsTask;
 
