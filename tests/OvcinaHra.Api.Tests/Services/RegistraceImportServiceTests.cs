@@ -8,6 +8,8 @@ public class RegistraceImportServiceTests
     [Theory]
     [InlineData("Aradhryand", Race.Elf)]
     [InlineData("Azanulinbar-Dum", Race.Dwarf)]
+    [InlineData("Azanulinbar – Dum", Race.Dwarf)]
+    [InlineData("Azanulinbar—Dum", Race.Dwarf)]
     [InlineData("Esgaroth", Race.Human)]
     [InlineData("Nový Arnor", null)]
     [InlineData("Novy Arnor", null)]

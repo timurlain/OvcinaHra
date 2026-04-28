@@ -389,12 +389,30 @@ public class RegistraceImportService(
                 builder.Append(ch);
         }
 
-        return string.Join(
-            ' ',
-            builder.ToString()
-                .Normalize(NormalizationForm.FormC)
-                .ToLowerInvariant()
-                .Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        var tokens = builder.ToString()
+            .Normalize(NormalizationForm.FormC)
+            .ToLowerInvariant()
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var normalizedTokens = new List<string>(tokens.Length);
+        foreach (var token in tokens)
+        {
+            if (token == "-")
+            {
+                if (normalizedTokens.Count > 0)
+                    normalizedTokens[^1] += "-";
+                continue;
+            }
+
+            if (normalizedTokens.Count > 0 && normalizedTokens[^1].EndsWith('-'))
+            {
+                normalizedTokens[^1] += token;
+                continue;
+            }
+
+            normalizedTokens.Add(token);
+        }
+
+        return string.Join(' ', normalizedTokens);
     }
 }
 
