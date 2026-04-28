@@ -28,6 +28,38 @@ public class LocationCipherEndpointTests(PostgresFixture postgres) : Integration
     }
 
     [Fact]
+    public async Task GetByGame_ReturnsOnlyCiphersForRequestedGame()
+    {
+        var (game, location) = await CreateAssignedLocationAsync();
+        var (otherGame, otherLocation) = await CreateAssignedLocationAsync();
+        var firstResponse = await Client.PutAsJsonAsync(
+            $"/api/location-ciphers/{game.Id}/{location.Id}/hledani-magie",
+            new UpsertLocationCipherDto("Tady žije vlčí smečka"));
+        firstResponse.EnsureSuccessStatusCode();
+        var secondResponse = await Client.PutAsJsonAsync(
+            $"/api/location-ciphers/{game.Id}/{location.Id}/lezeni",
+            new UpsertLocationCipherDto("Vylez po skale"));
+        secondResponse.EnsureSuccessStatusCode();
+        var otherResponse = await Client.PutAsJsonAsync(
+            $"/api/location-ciphers/{otherGame.Id}/{otherLocation.Id}/prohledavani",
+            new UpsertLocationCipherDto("Cizi hra"));
+        otherResponse.EnsureSuccessStatusCode();
+
+        var ciphers = await Client.GetFromJsonAsync<List<LocationCipherDto>>(
+            $"/api/location-ciphers/{game.Id}");
+
+        Assert.NotNull(ciphers);
+        Assert.Equal(2, ciphers!.Count);
+        Assert.All(ciphers, c =>
+        {
+            Assert.Equal(game.Id, c.GameId);
+            Assert.Equal(location.Id, c.LocationId);
+        });
+        Assert.Contains(ciphers, c => c.SkillSlug == "hledani-magie");
+        Assert.Contains(ciphers, c => c.SkillSlug == "lezeni");
+    }
+
+    [Fact]
     public async Task Put_NormalizesMessage_AndReturnsPreviewOnGet()
     {
         var (game, location) = await CreateAssignedLocationAsync();
@@ -174,13 +206,14 @@ public class LocationCipherEndpointTests(PostgresFixture postgres) : Integration
 
     private async Task<(GameDetailDto Game, LocationDetailDto Location)> CreateAssignedLocationAsync()
     {
+        var suffix = Guid.NewGuid().ToString("N")[..8];
         var gameResponse = await Client.PostAsJsonAsync("/api/games",
-            new CreateGameDto("Šifrová hra", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+            new CreateGameDto($"Šifrová hra {suffix}", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
         gameResponse.EnsureSuccessStatusCode();
         var game = (await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>())!;
 
         var locationResponse = await Client.PostAsJsonAsync("/api/locations",
-            new CreateLocationDto("Vlčí jeskyně", LocationKind.Wilderness, 49.5m, 17.1m));
+            new CreateLocationDto($"Vlčí jeskyně {suffix}", LocationKind.Wilderness, 49.5m, 17.1m));
         locationResponse.EnsureSuccessStatusCode();
         var location = (await locationResponse.Content.ReadFromJsonAsync<LocationDetailDto>())!;
 
