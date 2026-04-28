@@ -1,6 +1,8 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Services;
@@ -201,6 +203,14 @@ public class GameEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
         var putResponse = await Client.PutAsJsonAsync($"/api/games/{game.Id}/overlay", dto);
         Assert.Equal(HttpStatusCode.NoContent, putResponse.StatusCode);
 
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var stored = await db.GameMapOverlays.SingleAsync(o =>
+                o.GameId == game.Id && o.Audience == MapOverlayAudience.Player);
+            Assert.Contains("\"t1\"", stored.OverlayJson);
+        }
+
         var getResponse = await Client.GetAsync($"/api/games/{game.Id}/overlay");
         Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
 
@@ -304,6 +314,44 @@ public class GameEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
 
         var getResponse = await Client.GetAsync("/api/games/999999/overlay");
         Assert.Equal(HttpStatusCode.NotFound, getResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Overlay_OrganizerAudience_IsSeparateFromPlayer()
+    {
+        var game = await CreateGameAsync("Overlay-Audiences");
+        var player = new MapOverlayDto([new TextShape("p", "#242F3D", new OverlayCoord(49.5, 17.1), "Hráčská")]);
+        var organizer = new MapOverlayDto([new TextShape("o", "#242F3D", new OverlayCoord(49.6, 17.2), "Organizátorská")]);
+
+        var playerPut = await Client.PutAsJsonAsync($"/api/games/{game.Id}/overlay", player);
+        var organizerPut = await Client.PutAsJsonAsync($"/api/games/{game.Id}/overlay?audience=organizer", organizer);
+
+        Assert.Equal(HttpStatusCode.NoContent, playerPut.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, organizerPut.StatusCode);
+
+        var playerGet = await Client.GetFromJsonAsync<MapOverlayDto>($"/api/games/{game.Id}/overlay?audience=player");
+        var organizerGet = await Client.GetFromJsonAsync<MapOverlayDto>($"/api/games/{game.Id}/overlay?audience=organizer");
+        Assert.Equal("Hráčská", Assert.IsType<TextShape>(Assert.Single(playerGet!.Shapes)).Text);
+        Assert.Equal("Organizátorská", Assert.IsType<TextShape>(Assert.Single(organizerGet!.Shapes)).Text);
+    }
+
+    [Fact]
+    public async Task Overlay_OrganizerAudience_NonOrganizerGetsForbidden()
+    {
+        var game = await CreateGameAsync("Overlay-Forbidden");
+        using var client = Factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            TestJwt.CreateToken(Factory.Services, "Player"));
+
+        var response = await client.PutAsJsonAsync(
+            $"/api/games/{game.Id}/overlay?audience=organizer",
+            new MapOverlayDto([]));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Pouze organizátoři mohou pracovat s organizátorským překryvem.", problem.Detail);
     }
 
     [Fact]

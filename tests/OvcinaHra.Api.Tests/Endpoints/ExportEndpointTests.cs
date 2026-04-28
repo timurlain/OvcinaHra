@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using Microsoft.AspNetCore.Mvc;
@@ -105,7 +106,7 @@ public class ExportEndpointTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task ExplorerMap_BlankExport_UsesTownVillageNamesAndIdsForOtherKinds()
+    public async Task ExplorerMap_BlankExport_UsesLabelOverlayAndIdsForOtherKinds()
     {
         var game = await CreateGameAsync();
         const int wildernessId = 12345;
@@ -163,11 +164,112 @@ public class ExportEndpointTests(PostgresFixture postgres)
         var bytes = await response.Content.ReadAsByteArrayAsync();
         Assert.StartsWith("%PDF-1.4", Encoding.ASCII.GetString(bytes, 0, 8));
         var pdfText = Encoding.ASCII.GetString(bytes);
-        Assert.Contains("Town Alpha", pdfText);
-        Assert.Contains("Village Beta", pdfText);
+        Assert.Contains("/SMask", pdfText);
         Assert.Contains($"({wildernessId})", pdfText);
         Assert.DoesNotContain("Hidden Wild", pdfText);
         Assert.DoesNotContain("Outside Town", pdfText);
+    }
+
+    [Fact]
+    public async Task ExplorerMap_PinLabelOverlay_PreservesCzechGlyphPath()
+    {
+        var lines = ExplorerMapExportService.WrapPinLabelForTesting("Vořařská osada");
+
+        Assert.Contains("ř", string.Concat(lines));
+        Assert.Contains("á", string.Concat(lines));
+    }
+
+    [Fact]
+    public void ExplorerMap_ReducedMargin_ExpandsMapArea()
+    {
+        var area = ExplorerMapExportService.CalculateMapAreaForTesting(
+            MapExportPageFormat.A4Portrait,
+            aspectRatio: 2.0);
+
+        Assert.Equal(12, area.X, precision: 3);
+        Assert.True(area.Width > 570);
+    }
+
+    [Fact]
+    public void ExplorerMap_LongPinLabel_WrapsAcrossMultipleLines()
+    {
+        var lines = ExplorerMapExportService.WrapPinLabelForTesting("Caras Amarth - Karaskov");
+
+        Assert.True(lines.Count >= 2);
+        Assert.All(lines, line => Assert.True(line.Length <= 14));
+    }
+
+    [Fact]
+    public async Task OrganizerMap_NonOrganizer_ReturnsCzechForbiddenProblem()
+    {
+        using var client = Factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            TestJwt.CreateToken(Factory.Services, "Player"));
+
+        var response = await client.GetAsync("/api/games/30/exports/organizer-map.pdf?style=blank");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Přístup odepřen", problem.Title);
+        Assert.Equal("Pouze organizátoři mohou stáhnout tuto mapu.", problem.Detail);
+    }
+
+    [Fact]
+    public async Task KingdomMap_BlankExport_UsesA3MediaBox()
+    {
+        var game = await CreateGameAsync();
+        await SetGameBoundsAsync(game.Id);
+
+        var response = await Client.GetAsync($"/api/games/{game.Id}/exports/kingdom-map.pdf?style=blank");
+
+        response.EnsureSuccessStatusCode();
+        var bytes = await response.Content.ReadAsByteArrayAsync();
+        var pdfText = Encoding.ASCII.GetString(bytes);
+        Assert.Contains("/MediaBox [0 0 841.89 1190.551]", pdfText);
+        Assert.Contains("edition-30-kralovstvi-A3-", response.Content.Headers.ContentDisposition?.FileName?.Trim('"'));
+        WriteMapSmokeArtifact("kingdom-smoke.pdf", bytes);
+    }
+
+    [Fact]
+    public async Task OrganizerMap_IncludesOrganizerOverlayButExplorerDoesNot()
+    {
+        var game = await CreateGameAsync();
+        await SetGameBoundsAsync(game.Id);
+
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            db.GameMapOverlays.AddRange(
+                new GameMapOverlay
+                {
+                    GameId = game.Id,
+                    Audience = MapOverlayAudience.Player,
+                    OverlayJson = """{"Shapes":[{"type":"text","Id":"p","Color":"#242F3D","Coord":{"Lat":49.5,"Lng":17.5},"Text":"PlayerOverlay","FontSize":14}]}"""
+                },
+                new GameMapOverlay
+                {
+                    GameId = game.Id,
+                    Audience = MapOverlayAudience.Organizer,
+                    OverlayJson = """{"Shapes":[{"type":"text","Id":"o","Color":"#242F3D","Coord":{"Lat":49.55,"Lng":17.55},"Text":"OrganizerOverlay","FontSize":14}]}"""
+                });
+            await db.SaveChangesAsync();
+        }
+
+        var organizer = await Client.GetAsync($"/api/games/{game.Id}/exports/organizer-map.pdf?style=blank");
+        organizer.EnsureSuccessStatusCode();
+        var organizerBytes = await organizer.Content.ReadAsByteArrayAsync();
+        var organizerText = Encoding.ASCII.GetString(organizerBytes);
+        Assert.Contains("PlayerOverlay", organizerText);
+        Assert.Contains("OrganizerOverlay", organizerText);
+        WriteMapSmokeArtifact("organizer-smoke.pdf", organizerBytes);
+
+        var explorer = await Client.GetAsync($"/api/games/{game.Id}/exports/explorer-map.pdf?style=blank");
+        explorer.EnsureSuccessStatusCode();
+        var explorerText = Encoding.ASCII.GetString(await explorer.Content.ReadAsByteArrayAsync());
+        Assert.Contains("PlayerOverlay", explorerText);
+        Assert.DoesNotContain("OrganizerOverlay", explorerText);
     }
 
     [Fact]
@@ -242,13 +344,27 @@ public class ExportEndpointTests(PostgresFixture postgres)
 
     private sealed class MissingMapyKeyExporter : IExplorerMapExportService
     {
-        public Task<ExplorerMapExportFile> RenderExplorerMapAsync(
+        public Task<ExplorerMapExportFile> RenderMapAsync(
             int gameId,
             MapExportBasemapStyle style,
+            MapExportKind kind,
+            MapExportPageFormat pageFormat,
             CancellationToken ct = default) =>
             throw new MapExportProblemException(
                 "Mapy.cz API klíč není nastaven.",
                 "Kontaktujte správce systému.");
+    }
+
+    private async Task SetGameBoundsAsync(int gameId)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        var entity = await db.Games.SingleAsync(g => g.Id == gameId);
+        entity.BoundingBoxSwLat = 49.0m;
+        entity.BoundingBoxSwLng = 17.0m;
+        entity.BoundingBoxNeLat = 50.0m;
+        entity.BoundingBoxNeLng = 18.0m;
+        await db.SaveChangesAsync();
     }
 
     private static Spell CreateSpell(string name, int level) => new()
@@ -294,5 +410,22 @@ public class ExportEndpointTests(PostgresFixture postgres)
         var tmp = Path.Combine(directory.FullName, ".tmp");
         Directory.CreateDirectory(tmp);
         File.WriteAllBytes(Path.Combine(tmp, "magic-book-A4.pdf"), bytes);
+    }
+
+    private static void WriteMapSmokeArtifact(string fileName, byte[] bytes)
+    {
+        if (Environment.GetEnvironmentVariable("OVCINA_WRITE_MAP_EXPORT_SMOKE") != "1")
+            return;
+
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "OvcinaHra.slnx")))
+            directory = directory.Parent;
+
+        if (directory is null)
+            return;
+
+        var tmp = Path.Combine(directory.FullName, ".tmp");
+        Directory.CreateDirectory(tmp);
+        File.WriteAllBytes(Path.Combine(tmp, fileName), bytes);
     }
 }

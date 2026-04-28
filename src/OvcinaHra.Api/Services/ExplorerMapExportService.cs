@@ -8,7 +8,9 @@ using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Services.Pdf;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
+using SixLabors.Fonts;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
@@ -17,13 +19,17 @@ namespace OvcinaHra.Api.Services;
 
 public interface IExplorerMapExportService
 {
-    Task<ExplorerMapExportFile> RenderExplorerMapAsync(
+    Task<ExplorerMapExportFile> RenderMapAsync(
         int gameId,
         MapExportBasemapStyle style,
+        MapExportKind kind,
+        MapExportPageFormat pageFormat,
         CancellationToken ct = default);
 }
 
 public sealed record ExplorerMapExportFile(byte[] Bytes, string FileName);
+
+internal sealed record MapExportMapArea(double X, double Y, double Width, double Height);
 
 public sealed class MapExportProblemException : Exception
 {
@@ -48,21 +54,36 @@ public sealed class ExplorerMapExportService(
     WorldDbContext db,
     IMapDataService mapData,
     IMapTileClient tileClient,
+    IWebHostEnvironment environment,
     ILogger<ExplorerMapExportService> logger) : IExplorerMapExportService
 {
     private const double A4Width = 595.276;
     private const double A4Height = 841.89;
-    private const double PageMargin = 24;
+    private const double A3Width = 841.89;
+    private const double A3Height = 1190.551;
+    private const double PageMargin = 12;
     private const double PixelScale = 2.5;
+    private const double LabelRasterScale = 3;
+    private const int LabelMaxCharsPerLine = 14;
+    private const int LabelMaxLines = 3;
     private const int TileFetchConcurrency = 6;
 
     private static readonly JsonSerializerOptions OverlayJsonOptions = new() { WriteIndented = false };
 
-    public async Task<ExplorerMapExportFile> RenderExplorerMapAsync(
+    public async Task<ExplorerMapExportFile> RenderMapAsync(
         int gameId,
         MapExportBasemapStyle style,
+        MapExportKind kind,
+        MapExportPageFormat pageFormat,
         CancellationToken ct = default)
     {
+        logger.LogInformation(
+            "[map-export-pr3] map export entry gameId={GameId} kind={Kind} pageFormat={PageFormat} style={Style}",
+            gameId,
+            kind,
+            pageFormat,
+            style);
+
         var game = await db.Games
             .AsNoTracking()
             .Where(g => g.Id == gameId)
@@ -74,8 +95,7 @@ public sealed class ExplorerMapExportService(
                 g.BoundingBoxSwLat,
                 g.BoundingBoxSwLng,
                 g.BoundingBoxNeLat,
-                g.BoundingBoxNeLng,
-                g.OverlayJson
+                g.BoundingBoxNeLng
             })
             .FirstOrDefaultAsync(ct);
         if (game is null)
@@ -104,29 +124,71 @@ public sealed class ExplorerMapExportService(
             .ThenBy(l => l.Id)
             .ToList();
 
-        var layout = ExportLayout.For(A4Width, A4Height, bounds.AspectRatio);
+        var page = PageGeometry.For(pageFormat);
+        var layout = ExportLayout.For(page.Width, page.Height, bounds.AspectRatio);
         var mapImage = await RenderBasemapAsync(style, bounds, layout, ct);
-        var overlay = DeserializeOverlay(game.OverlayJson);
+        var overlays = await LoadOverlaysAsync(gameId, kind, ct);
+        var labelOverlay = RenderPinLabelOverlay(page, layout, bounds, locations, ct);
 
-        var canvas = new PdfCanvas(A4Height);
-        canvas.FillRectangle(0, 0, A4Width, A4Height, "#ffffff");
+        var canvas = new PdfCanvas(page.Height);
+        canvas.FillRectangle(0, 0, page.Width, page.Height, "#ffffff");
         canvas.FillRectangle(layout.MapX, layout.MapY, layout.MapWidth, layout.MapHeight, "#f8f5ed");
         canvas.BeginClip(layout.MapX, layout.MapY, layout.MapWidth, layout.MapHeight);
         if (mapImage is not null)
             canvas.DrawImage("Im1", layout.MapX, layout.MapY, layout.MapWidth, layout.MapHeight);
-        RenderOverlay(canvas, layout, bounds, overlay);
+        foreach (var overlay in overlays)
+            RenderOverlay(canvas, layout, bounds, overlay);
         RenderPins(canvas, layout, bounds, locations);
+        if (labelOverlay is not null)
+            canvas.DrawImage("Labels", 0, 0, page.Width, page.Height);
         canvas.EndClip();
         canvas.StrokeRectangle(layout.MapX, layout.MapY, layout.MapWidth, layout.MapHeight, 0.8, "#6f6658");
 
-        var pdf = SimpleImagePdfWriter.Build(
-            A4Width,
-            A4Height,
-            canvas.Content.ToString(),
-            mapImage);
+        var images = new Dictionary<string, PdfImage>();
+        if (mapImage is not null)
+            images["Im1"] = mapImage;
+        if (labelOverlay is not null)
+            images["Labels"] = labelOverlay;
 
-        var fileName = $"{Slugify(game.Name)}-postavy-{DateTime.Today:yyyy-MM-dd}.pdf";
+        var pdf = SimpleImagePdfWriter.Build([
+            new PdfImagePage(page.Width, page.Height, canvas.Content.ToString(), images)
+        ]);
+
+        var fileName = BuildFileName(game.Name, kind);
+        logger.LogInformation(
+            "[map-export-pr3] map export exit gameId={GameId} kind={Kind} pageFormat={PageFormat} fileName={FileName} bytes={ByteCount} overlays={OverlayCount}",
+            gameId,
+            kind,
+            pageFormat,
+            fileName,
+            pdf.Length,
+            overlays.Count);
         return new ExplorerMapExportFile(pdf, fileName);
+    }
+
+    private async Task<IReadOnlyList<MapOverlayDto>> LoadOverlaysAsync(
+        int gameId,
+        MapExportKind kind,
+        CancellationToken ct)
+    {
+        var audiences = kind switch
+        {
+            MapExportKind.Organizer => new[] { MapOverlayAudience.Player, MapOverlayAudience.Organizer },
+            _ => [MapOverlayAudience.Player]
+        };
+
+        var rows = await db.GameMapOverlays
+            .AsNoTracking()
+            .Where(o => o.GameId == gameId && audiences.Contains(o.Audience))
+            .OrderBy(o => o.Audience == MapOverlayAudience.Player ? 0 : 1)
+            .Select(o => o.OverlayJson)
+            .ToListAsync(ct);
+
+        return rows
+            .Select(DeserializeOverlay)
+            .Where(o => o is not null)
+            .Select(o => o!)
+            .ToList();
     }
 
     private async Task<PdfImage?> RenderBasemapAsync(
@@ -206,12 +268,182 @@ public sealed class ExplorerMapExportService(
         await using var stream = new MemoryStream();
         await stitched.SaveAsJpegAsync(stream, new JpegEncoder { Quality = 88 }, ct);
         logger.LogInformation(
-            "Rendered explorer map basemap style={Style} zoom={Zoom} tiles={TileCount}",
+            "[map-export-pr3] rendered map basemap style={Style} zoom={Zoom} tiles={TileCount}",
             style,
             zoom,
             (maxTileX - minTileX + 1) * (maxTileY - minTileY + 1));
         return new PdfImage(width, height, stream.ToArray());
     }
+
+    private PdfImage? RenderPinLabelOverlay(
+        PageGeometry page,
+        ExportLayout layout,
+        MapBounds bounds,
+        IReadOnlyList<MapLocationDto> locations,
+        CancellationToken ct)
+    {
+        var labelLocations = locations
+            .Where(l => l.EffectiveKind is LocationKind.Town or LocationKind.Village)
+            .ToList();
+        if (labelLocations.Count == 0)
+            return null;
+
+        var width = (int)Math.Ceiling(page.Width * LabelRasterScale);
+        var height = (int)Math.Ceiling(page.Height * LabelRasterScale);
+        using var image = new Image<Rgba32>(width, height, Color.Transparent);
+        var font = LoadLabelFont(10.5f * (float)LabelRasterScale);
+        var ink = Color.ParseHex("#fff8e8");
+        var outline = Color.ParseHex("#17120d");
+
+        image.Mutate(ctx =>
+        {
+            foreach (var location in labelLocations)
+            {
+                var point = layout.Project(bounds, location.Lat, location.Lon);
+                DrawPinLabel(ctx, point, location.EffectiveName, font, ink, outline);
+            }
+        });
+
+        var rgb = new byte[width * height * 3];
+        var alpha = new byte[width * height];
+        image.ProcessPixelRows(accessor =>
+        {
+            for (var y = 0; y < accessor.Height; y++)
+            {
+                var row = accessor.GetRowSpan(y);
+                for (var x = 0; x < row.Length; x++)
+                {
+                    var pixel = row[x];
+                    var i = y * width + x;
+                    rgb[i * 3] = pixel.R;
+                    rgb[i * 3 + 1] = pixel.G;
+                    rgb[i * 3 + 2] = pixel.B;
+                    alpha[i] = pixel.A;
+                }
+            }
+        });
+
+        ct.ThrowIfCancellationRequested();
+        return SimpleImagePdfWriter.BuildRgbaImage(width, height, rgb, alpha);
+    }
+
+    private Font LoadLabelFont(float size)
+    {
+        var fonts = new FontCollection();
+        var fontPath = Path.Combine(environment.ContentRootPath, "Fonts", "Kalam", "Kalam-Regular.ttf");
+        var family = fonts.Add(fontPath);
+        return family.CreateFont(size);
+    }
+
+    private static void DrawPinLabel(
+        IImageProcessingContext ctx,
+        PdfPoint pinTip,
+        string text,
+        Font font,
+        Color ink,
+        Color outline)
+    {
+        var lines = WrapPinLabel(text);
+        var lineHeight = font.Size * 0.92f;
+        var totalHeight = lines.Count * lineHeight;
+        var centerX = (float)(pinTip.X * LabelRasterScale);
+        var y = (float)((pinTip.Y + 5) * LabelRasterScale);
+        if (lines.Count > 1)
+            y -= totalHeight * 0.12f;
+
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var line = lines[i];
+            var width = ApproxKalamWidth(line, font.Size);
+            var x = centerX - width / 2f;
+            var baseline = y + i * lineHeight;
+            DrawOutlinedText(ctx, line, font, ink, outline, new PointF(x, baseline));
+        }
+    }
+
+    private static void DrawOutlinedText(
+        IImageProcessingContext ctx,
+        string text,
+        Font font,
+        Color ink,
+        Color outline,
+        PointF point)
+    {
+        var offset = (float)LabelRasterScale;
+        foreach (var (dx, dy) in new[] { (-offset, 0f), (offset, 0f), (0f, -offset), (0f, offset) })
+            ctx.DrawText(text, font, outline, new PointF(point.X + dx, point.Y + dy));
+        ctx.DrawText(text, font, ink, point);
+    }
+
+    internal static IReadOnlyList<string> WrapPinLabelForTesting(string text) => WrapPinLabel(text);
+
+    internal static MapExportMapArea CalculateMapAreaForTesting(MapExportPageFormat format, double aspectRatio)
+    {
+        var page = PageGeometry.For(format);
+        var layout = ExportLayout.For(page.Width, page.Height, aspectRatio);
+        return new MapExportMapArea(layout.MapX, layout.MapY, layout.MapWidth, layout.MapHeight);
+    }
+
+    private static IReadOnlyList<string> WrapPinLabel(string text)
+    {
+        var normalized = text.Trim();
+        if (normalized.Length <= LabelMaxCharsPerLine)
+            return [normalized];
+
+        var tokens = SplitLabelTokens(normalized);
+        var lines = new List<string>();
+        var current = string.Empty;
+
+        foreach (var token in tokens)
+        {
+            if (current.Length == 0)
+            {
+                current = token;
+                continue;
+            }
+
+            if (current.Length + 1 + token.Length <= LabelMaxCharsPerLine)
+            {
+                current += token.StartsWith("-", StringComparison.Ordinal) ? token : " " + token;
+                continue;
+            }
+
+            lines.Add(current.Trim());
+            current = token.TrimStart();
+            if (lines.Count == LabelMaxLines - 1)
+                break;
+        }
+
+        if (lines.Count < LabelMaxLines && !string.IsNullOrWhiteSpace(current))
+            lines.Add(current.Trim());
+
+        return lines.Count == 0 ? [normalized] : lines;
+    }
+
+    private static List<string> SplitLabelTokens(string text)
+    {
+        var tokens = new List<string>();
+        foreach (var word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (word.Length <= LabelMaxCharsPerLine || !word.Contains('-'))
+            {
+                tokens.Add(word);
+                continue;
+            }
+
+            var parts = word.Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            for (var i = 0; i < parts.Length; i++)
+            {
+                var part = parts[i];
+                tokens.Add(i < parts.Length - 1 ? part + "-" : part);
+            }
+        }
+
+        return tokens;
+    }
+
+    private static float ApproxKalamWidth(string text, float fontSize) =>
+        text.Sum(ch => char.IsWhiteSpace(ch) ? 0.28f : 0.54f) * fontSize;
 
     private static int ChooseZoom(MapBounds bounds, int targetWidth, int targetHeight)
     {
@@ -298,17 +530,6 @@ public sealed class ExplorerMapExportService(
             var kind = location.EffectiveKind;
             var showName = kind is LocationKind.Town or LocationKind.Village;
             DrawPin(canvas, point.X, point.Y, kind, showName ? null : location.Id.ToString(CultureInfo.InvariantCulture));
-
-            if (showName)
-            {
-                canvas.DrawLabel(
-                    NormalizePdfText(location.EffectiveName, 34),
-                    point.X + 10,
-                    point.Y - 17,
-                    8.5,
-                    "#1f1a12",
-                    "#ffffff");
-            }
         }
     }
 
@@ -376,6 +597,19 @@ public sealed class ExplorerMapExportService(
         return string.IsNullOrWhiteSpace(result) ? "ovcina" : result;
     }
 
+    private static string BuildFileName(string gameName, MapExportKind kind)
+    {
+        var suffix = kind switch
+        {
+            MapExportKind.Explorer => "postavy",
+            MapExportKind.Organizer => "organizatori",
+            MapExportKind.Kingdom => "kralovstvi-A3",
+            _ => "mapa"
+        };
+
+        return $"{Slugify(gameName)}-{suffix}-{DateTime.Today:yyyy-MM-dd}.pdf";
+    }
+
     private static string NormalizePdfText(string value, int maxLength)
     {
         var decomposed = value.Normalize(NormalizationForm.FormD);
@@ -440,6 +674,16 @@ public sealed class ExplorerMapExportService(
 
         public bool Contains(double lat, double lon) =>
             lat >= South && lat <= North && lon >= West && lon <= East;
+    }
+
+    private sealed record PageGeometry(double Width, double Height)
+    {
+        public static PageGeometry For(MapExportPageFormat format) => format switch
+        {
+            MapExportPageFormat.A4Portrait => new PageGeometry(A4Width, A4Height),
+            MapExportPageFormat.A3Portrait => new PageGeometry(A3Width, A3Height),
+            _ => new PageGeometry(A4Width, A4Height)
+        };
     }
 
     private sealed record ExportLayout(double MapX, double MapY, double MapWidth, double MapHeight)

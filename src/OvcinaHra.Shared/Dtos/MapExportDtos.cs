@@ -11,3 +11,18 @@ public enum MapExportBasemapStyle
     Osm,
     Blank
 }
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum MapExportKind
+{
+    Explorer,
+    Organizer,
+    Kingdom
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum MapExportPageFormat
+{
+    A4Portrait,
+    A3Portrait
+}

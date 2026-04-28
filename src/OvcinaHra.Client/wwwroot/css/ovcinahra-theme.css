@@ -2614,6 +2614,10 @@
 .oh-mo-stroke-val{font-family:var(--oh-font-mono,Menlo,monospace);color:var(--oh-text,#2a2a2a);
     font-size:.75rem;min-width:30px;text-align:right}
 .oh-map-overlay-edit-btn{position:absolute;top:12px;left:12px;right:auto;z-index:19}
+.oh-map-overlay-audience{position:absolute;top:12px;left:12px;right:auto;z-index:21;
+    display:flex;gap:6px;padding:6px;background:rgba(250,246,236,.94);
+    border:1px solid var(--oh-border,#d8d2be);border-radius:6px;
+    box-shadow:0 2px 8px rgba(0,0,0,.16)}
 .oh-map-overlay-error{position:absolute;top:72px;left:50%;transform:translateX(-50%);z-index:21;
     display:flex;align-items:center;gap:8px;max-width:min(520px,calc(100% - 24px));
     margin:0;padding:8px 12px;font-size:.875rem}
@@ -3660,6 +3664,7 @@
 .oh-map-layer-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;background:#2D5016}
 .oh-map-layer-stash{background:#C19A3A}
 .oh-map-layer-overlay{background:#7048a8}
+.oh-map-layer-organizer-overlay{background:#b26223}
 .oh-map-layer-lbl{flex:1}
 .oh-map-layer-num{font-variant-numeric:tabular-nums}
 .oh-map-layer-hint{margin-top:8px;line-height:1.3}

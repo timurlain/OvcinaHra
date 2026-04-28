@@ -4,8 +4,11 @@
 @inject GameContextService GameContext
 @inject IJSRuntime JS
 @inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthStateProvider
 @implements IDisposable
+@using System.Security.Claims
 @using System.Web
+@using Microsoft.AspNetCore.Components.Authorization
 @using OvcinaHra.Shared.Dtos
 @using OvcinaHra.Shared.Domain.Enums
 
@@ -39,12 +42,15 @@
                     <MapLayerRail LocationsVisible="@_locationsVisible"
                                    StashesVisible="@_stashesVisible"
                                    OverlaysVisible="@_overlaysVisible"
+                                   OrganizerOverlayEnabled="@_isOrganizer"
+                                   OrganizerOverlayVisible="@_organizerOverlayVisible"
                                    LocationsCount="@(_data?.Locations.Count ?? 0)"
                                    StashesCount="@(_data?.Stashes.Count ?? 0)"
                                    LocationsByKind="@_locationsByKind"
                                    HiddenKinds="@_hiddenKinds"
                                    OnVisibilityChange="OnLayerVisibilityChange"
                                    OnOverlayVisibilityChange="OnOverlayVisibilityChange"
+                                   OnOrganizerOverlayVisibilityChange="OnOrganizerOverlayVisibilityChange"
                                    OnKindToggle="OnKindToggle" />
 
                     <div class="oh-map-canvas">
@@ -62,6 +68,8 @@
                                  Height="calc(100vh - 200px)"
                                  GameId="@GameContext.SelectedGameId"
                                  OverlayVisible="@_overlaysVisible"
+                                 OrganizerOverlayEnabled="@_isOrganizer"
+                                 OrganizerOverlayVisible="@_organizerOverlayVisible"
                                  OnStyleLoaded="OnMapReadyAsync"
                                  OnMapPagePinClick="OnPinClickedAsync"
                                  OnMapPagePinDrag="OnPinDraggedAsync"
@@ -210,6 +218,8 @@
     private bool _locationsVisible = true;
     private bool _stashesVisible = true;
     private bool _overlaysVisible = true;
+    private bool _organizerOverlayVisible = true;
+    private bool _isOrganizer;
     // Per-LocationKind hide set. Empty (default) = all kinds visible.
     // Persists alongside the layer-visibility flags.
     private HashSet<LocationKind> _hiddenKinds = new();
@@ -268,6 +278,8 @@
     protected override async Task OnInitializedAsync()
     {
         Console.WriteLine("[map-diag] OnInitializedAsync entry");
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        _isOrganizer = IsOrganizer(auth.User);
         await GameContext.InitializeAsync();
         Console.WriteLine($"[map-diag] After InitializeAsync — SelectedGameId={GameContext.SelectedGameId?.ToString() ?? "null"}");
         GameContext.OnGameChanged += HandleGameChanged;
@@ -343,6 +355,7 @@
             _locationsVisible = saved.Locations;
             _stashesVisible = saved.Stashes;
             _overlaysVisible = saved.Overlays ?? true;
+            _organizerOverlayVisible = _isOrganizer && (saved.OrganizerOverlays ?? true);
             if (saved.HiddenKinds is { Count: > 0 })
             {
                 _hiddenKinds = saved.HiddenKinds.ToHashSet();
@@ -356,7 +369,7 @@
         try
         {
             var json = System.Text.Json.JsonSerializer.Serialize(
-                new LayerState(_locationsVisible, _stashesVisible, _hiddenKinds.ToList(), _overlaysVisible));
+                new LayerState(_locationsVisible, _stashesVisible, _hiddenKinds.ToList(), _overlaysVisible, _organizerOverlayVisible));
             await JS.InvokeVoidAsync("localStorage.setItem", LayerStateKey, json);
         }
         catch { /* same fallback */ }
@@ -441,6 +454,18 @@
         if (_mapView is not null)
         {
             await _mapView.SetOverlayVisibilityAsync(visible);
+        }
+        await PersistLayerStateAsync();
+        PushUrl();
+    }
+
+    private async Task OnOrganizerOverlayVisibilityChange(bool visible)
+    {
+        Console.WriteLine($"[map-export-pr3] organizer overlay visibility changed visible={visible}");
+        _organizerOverlayVisible = visible;
+        if (_mapView is not null)
+        {
+            await _mapView.SetOrganizerOverlayVisibilityAsync(visible);
         }
         await PersistLayerStateAsync();
         PushUrl();
@@ -670,6 +695,7 @@
             _locationsVisible = set.Contains("loc");
             _stashesVisible = set.Contains("stash");
             _overlaysVisible = set.Contains("overlay");
+            _organizerOverlayVisible = _isOrganizer && set.Contains("organizer-overlay");
             _urlLayersHydratedFromQuery = true;
         }
 
@@ -719,12 +745,14 @@
         var pairs = new List<string>();
 
         // Layers — emit only when not the default (all visible).
-        if (!(_locationsVisible && _stashesVisible && _overlaysVisible))
+        var organizerOverlayAtDefault = !_isOrganizer || _organizerOverlayVisible;
+        if (!(_locationsVisible && _stashesVisible && _overlaysVisible && organizerOverlayAtDefault))
         {
-            var parts = new List<string>(3);
+            var parts = new List<string>(4);
             if (_locationsVisible) parts.Add("loc");
             if (_stashesVisible) parts.Add("stash");
             if (_overlaysVisible) parts.Add("overlay");
+            if (_isOrganizer && _organizerOverlayVisible) parts.Add("organizer-overlay");
             // Empty string is meaningful (all optional layers off); always emit the key.
             pairs.Add($"layers={Uri.EscapeDataString(string.Join(',', parts))}");
         }
@@ -752,7 +780,17 @@
         bool Locations,
         bool Stashes,
         List<LocationKind>? HiddenKinds = null,
-        bool? Overlays = null);
+        bool? Overlays = null,
+        bool? OrganizerOverlays = null);
+
+    private static bool IsOrganizer(ClaimsPrincipal user)
+    {
+        var roles = user.FindAll(ClaimTypes.Role)
+            .Concat(user.FindAll("role"))
+            .Select(c => c.Value);
+
+        return roles.Any(role => role is "Organizer" or "Organizator" or "Organizátor" or "Admin");
+    }
 
     public void Dispose() => GameContext.OnGameChanged -= HandleGameChanged;
 }
