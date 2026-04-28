@@ -102,6 +102,58 @@ public class TreasurePlanningPoolEndpointTests(PostgresFixture postgres) : Integ
     }
 
     [Fact]
+    public async Task AssignTreasure_WithPartialPoolCount_SplitsStackAndStepperAdjustsCount()
+    {
+        var game = await CreateGameAsync();
+        var location = await CreateLocationAsync();
+        var item = await CreateItemAsync("Bronz");
+        await AssignItemToGameAsync(game.Id, item.Id);
+        var pool = await AddPoolItemAsync(game.Id, item.Id, count: 5);
+
+        var assignResponse = await Client.PostAsJsonAsync("/api/treasure-planning/assign",
+            new AssignTreasureDto(
+                Title: "Bronz",
+                Difficulty: GameTimePhase.Early,
+                GameId: game.Id,
+                LocationId: location.Id,
+                PoolItems: [new PoolItemAssignDto(pool.Id, 1)]));
+        assignResponse.EnsureSuccessStatusCode();
+
+        var quest = (await assignResponse.Content.ReadFromJsonAsync<TreasureQuestDetailDto>())!;
+        var assigned = Assert.Single(quest.Items);
+        Assert.Equal(1, assigned.Count);
+
+        var poolAfterAssign = await Client.GetFromJsonAsync<List<TreasurePoolItemDto>>(
+            $"/api/treasure-planning/pool/{game.Id}");
+        var poolRow = Assert.Single(poolAfterAssign!, p => p.ItemId == item.Id);
+        Assert.Equal(4, poolRow.Count);
+
+        var plusResponse = await Client.PostAsJsonAsync(
+            $"/api/treasure-planning/treasure-items/{assigned.Id}/adjust-count",
+            new AdjustTreasureItemCountDto(3, "test-stepper"));
+        plusResponse.EnsureSuccessStatusCode();
+        var afterPlus = (await plusResponse.Content.ReadFromJsonAsync<TreasureItemDto>())!;
+        Assert.Equal(4, afterPlus.Count);
+
+        var poolAfterPlus = await Client.GetFromJsonAsync<List<TreasurePoolItemDto>>(
+            $"/api/treasure-planning/pool/{game.Id}");
+        poolRow = Assert.Single(poolAfterPlus!, p => p.ItemId == item.Id);
+        Assert.Equal(1, poolRow.Count);
+
+        var minusResponse = await Client.PostAsJsonAsync(
+            $"/api/treasure-planning/treasure-items/{assigned.Id}/adjust-count",
+            new AdjustTreasureItemCountDto(-1, "test-stepper"));
+        minusResponse.EnsureSuccessStatusCode();
+        var afterMinus = (await minusResponse.Content.ReadFromJsonAsync<TreasureItemDto>())!;
+        Assert.Equal(3, afterMinus.Count);
+
+        var poolAfterMinus = await Client.GetFromJsonAsync<List<TreasurePoolItemDto>>(
+            $"/api/treasure-planning/pool/{game.Id}");
+        poolRow = Assert.Single(poolAfterMinus!, p => p.ItemId == item.Id);
+        Assert.Equal(2, poolRow.Count);
+    }
+
+    [Fact]
     public async Task RemoveFromPool_NonExistentRow_ReturnsNotFound()
     {
         var response = await Client.DeleteAsync("/api/treasure-planning/pool/999999");

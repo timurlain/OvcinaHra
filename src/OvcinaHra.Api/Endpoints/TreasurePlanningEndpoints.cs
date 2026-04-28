@@ -39,6 +39,7 @@ public static class TreasurePlanningEndpoints
 
         // Assignment
         group.MapPost("/assign", AssignTreasure);
+        group.MapPost("/treasure-items/{id:int}/adjust-count", AdjustTreasureItemCount);
 
         return group;
     }
@@ -230,7 +231,12 @@ public static class TreasurePlanningEndpoints
         ILoggerFactory loggerFactory)
     {
         var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.TreasurePlanningEndpoints");
-        var poolCount = dto.TreasureItemIds?.Count ?? 0;
+        var poolAssignments = dto.PoolItems?
+            .GroupBy(p => p.TreasureItemId)
+            .Select(g => new PoolItemAssignDto(g.Key, g.Sum(p => p.Count)))
+            .ToList() ?? [];
+        var legacyPoolItemIds = dto.TreasureItemIds ?? [];
+        var poolCount = poolAssignments.Count + legacyPoolItemIds.Count;
         var unlimitedCount = dto.UnlimitedItems?.Count ?? 0;
         LogTreasureAlloc(logger, LogLevel.Information, "assign-entry", new
         {
@@ -238,6 +244,7 @@ public static class TreasurePlanningEndpoints
             dto.LocationId,
             dto.SecretStashId,
             poolCount,
+            poolUnits = poolAssignments.Sum(p => p.Count),
             unlimitedCount
         });
 
@@ -257,6 +264,82 @@ public static class TreasurePlanningEndpoints
             });
         }
 
+        if (poolAssignments.Count > 0 && legacyPoolItemIds.Count > 0)
+        {
+            LogTreasureAlloc(logger, LogLevel.Warning, "assign-validation-rejected", new
+            {
+                reason = "mixed-pool-contracts",
+                dto.GameId,
+                poolAssignmentRows = poolAssignments.Count,
+                legacyPoolRows = legacyPoolItemIds.Count
+            });
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["PoolItems"] = ["Použijte buď položky s počtem, nebo starý seznam položek — ne obojí."]
+            });
+        }
+
+        Dictionary<int, TreasureItem> poolItemsById = [];
+        if (poolAssignments.Count > 0)
+        {
+            var poolIds = poolAssignments.Select(p => p.TreasureItemId).ToHashSet();
+            poolItemsById = await db.TreasureItems
+                .Include(ti => ti.Item)
+                .Where(ti => ti.GameId == dto.GameId && ti.TreasureQuestId == null && poolIds.Contains(ti.Id))
+                .ToDictionaryAsync(ti => ti.Id);
+
+            var missing = poolIds.Except(poolItemsById.Keys).ToList();
+            if (missing.Count > 0)
+            {
+                LogTreasureAlloc(logger, LogLevel.Warning, "assign-validation-rejected", new
+                {
+                    reason = "pool-item-missing",
+                    dto.GameId,
+                    missing
+                });
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["PoolItems"] = ["Některé položky už nejsou v zásobníku."]
+                });
+            }
+
+            foreach (var assignment in poolAssignments)
+            {
+                var poolItem = poolItemsById[assignment.TreasureItemId];
+                if (assignment.Count <= 0 || assignment.Count > poolItem.Count)
+                {
+                    LogTreasureAlloc(logger, LogLevel.Warning, "assign-validation-rejected", new
+                    {
+                        reason = "pool-count-out-of-range",
+                        dto.GameId,
+                        assignment.TreasureItemId,
+                        requested = assignment.Count,
+                        available = poolItem.Count
+                    });
+                    return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["PoolItems"] = [$"Počet pro {poolItem.Item.Name} musí být mezi 1 a {poolItem.Count}."]
+                    });
+                }
+
+                if (poolItem.Item.IsUnique && assignment.Count != poolItem.Count)
+                {
+                    LogTreasureAlloc(logger, LogLevel.Warning, "assign-validation-rejected", new
+                    {
+                        reason = "unique-partial-count",
+                        dto.GameId,
+                        assignment.TreasureItemId,
+                        requested = assignment.Count,
+                        available = poolItem.Count
+                    });
+                    return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["PoolItems"] = [$"{poolItem.Item.Name} je unikátní předmět a musí se přiřadit celý."]
+                    });
+                }
+            }
+        }
+
         try
         {
             // Create the quest
@@ -271,11 +354,12 @@ public static class TreasurePlanningEndpoints
                 phase = "create-quest",
                 dto.GameId,
                 dto.LocationId,
-                dto.SecretStashId
+                dto.SecretStashId,
+                poolUnits = poolAssignments.Sum(p => p.Count)
             });
             await db.SaveChangesAsync(); // get the ID
 
-            // Assign pool items
+            // Assign legacy pool items by moving the whole row.
             if (dto.TreasureItemIds is { Count: > 0 })
             {
                 var poolItems = await db.TreasureItems
@@ -283,6 +367,11 @@ public static class TreasurePlanningEndpoints
                     .ToListAsync();
                 foreach (var item in poolItems)
                     item.TreasureQuestId = quest.Id;
+            }
+
+            foreach (var assignment in poolAssignments)
+            {
+                AssignPoolItemToQuest(poolItemsById[assignment.TreasureItemId], assignment.Count, quest.Id, db);
             }
 
             // Add unlimited items directly
@@ -303,6 +392,7 @@ public static class TreasurePlanningEndpoints
                 questId = quest.Id,
                 dto.GameId,
                 poolCount,
+                poolUnits = poolAssignments.Sum(p => p.Count),
                 unlimitedCount
             });
             await db.SaveChangesAsync();
@@ -339,6 +429,187 @@ public static class TreasurePlanningEndpoints
             }, ex);
             throw;
         }
+    }
+
+    private static async Task<Results<Ok<TreasureItemDto>, ValidationProblem, NotFound>> AdjustTreasureItemCount(
+        int id,
+        AdjustTreasureItemCountDto dto,
+        WorldDbContext db,
+        ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.TreasurePlanningEndpoints");
+        LogTreasureAlloc(logger, LogLevel.Information, "count-adjust-entry", new
+        {
+            treasureItemId = id,
+            dto.Delta,
+            dto.Source
+        });
+
+        if (dto.Delta == 0)
+        {
+            LogTreasureAlloc(logger, LogLevel.Warning, "count-adjust-validation-rejected", new
+            {
+                reason = "zero-delta",
+                treasureItemId = id
+            });
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["Delta"] = ["Změna počtu nesmí být nula."]
+            });
+        }
+
+        var item = await db.TreasureItems
+            .Include(ti => ti.Item)
+            .FirstOrDefaultAsync(ti => ti.Id == id);
+
+        if (item is null)
+        {
+            return TypedResults.NotFound();
+        }
+
+        if (item.TreasureQuestId is null)
+        {
+            LogTreasureAlloc(logger, LogLevel.Warning, "count-adjust-validation-rejected", new
+            {
+                reason = "pool-row-not-target",
+                treasureItemId = id
+            });
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["TreasureItemId"] = ["Počet lze upravovat jen u již umístěného pokladu."]
+            });
+        }
+
+        if (item.Item.IsUnique)
+        {
+            LogTreasureAlloc(logger, LogLevel.Warning, "count-adjust-validation-rejected", new
+            {
+                reason = "unique-item",
+                treasureItemId = id,
+                item.ItemId
+            });
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["TreasureItemId"] = ["Unikátní předmět nelze upravovat po kusech."]
+            });
+        }
+
+        if (dto.Delta < 0)
+        {
+            var removeCount = -dto.Delta;
+            if (item.Count - removeCount < 1)
+            {
+                LogTreasureAlloc(logger, LogLevel.Warning, "count-adjust-validation-rejected", new
+                {
+                    reason = "below-one",
+                    treasureItemId = id,
+                    item.Count,
+                    dto.Delta
+                });
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["Delta"] = ["Počet pokladu nesmí klesnout pod 1."]
+                });
+            }
+
+            item.Count -= removeCount;
+            await ReturnToPoolAsync(db, item.GameId, item.ItemId, removeCount);
+        }
+        else
+        {
+            var remaining = dto.Delta;
+            var poolRows = await db.TreasureItems
+                .Where(ti => ti.GameId == item.GameId && ti.ItemId == item.ItemId && ti.TreasureQuestId == null)
+                .OrderBy(ti => ti.Id)
+                .ToListAsync();
+            var available = poolRows.Sum(ti => ti.Count);
+            if (available < remaining)
+            {
+                LogTreasureAlloc(logger, LogLevel.Warning, "count-adjust-validation-rejected", new
+                {
+                    reason = "not-enough-pool",
+                    treasureItemId = id,
+                    requested = dto.Delta,
+                    available
+                });
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["Delta"] = [$"V zásobníku je už jen {available} kusů."]
+                });
+            }
+
+            foreach (var poolRow in poolRows)
+            {
+                if (remaining == 0) break;
+                var take = Math.Min(poolRow.Count, remaining);
+                poolRow.Count -= take;
+                remaining -= take;
+                if (poolRow.Count == 0)
+                {
+                    db.TreasureItems.Remove(poolRow);
+                }
+            }
+            item.Count += dto.Delta;
+        }
+
+        LogTreasureAlloc(logger, LogLevel.Information, "count-adjust-before-save", new
+        {
+            treasureItemId = id,
+            item.ItemId,
+            item.GameId,
+            dto.Delta,
+            item.Count,
+            dto.Source
+        });
+        await db.SaveChangesAsync();
+
+        LogTreasureAlloc(logger, LogLevel.Information, "count-adjust-success", new
+        {
+            treasureItemId = id,
+            item.ItemId,
+            item.GameId,
+            item.Count
+        });
+
+        return TypedResults.Ok(new TreasureItemDto(item.Id, item.ItemId, item.Item.Name, item.Count, item.TreasureQuestId));
+    }
+
+    private static void AssignPoolItemToQuest(TreasureItem poolItem, int count, int questId, WorldDbContext db)
+    {
+        if (count == poolItem.Count)
+        {
+            poolItem.TreasureQuestId = questId;
+            return;
+        }
+
+        poolItem.Count -= count;
+        db.TreasureItems.Add(new TreasureItem
+        {
+            ItemId = poolItem.ItemId,
+            GameId = poolItem.GameId,
+            Count = count,
+            TreasureQuestId = questId
+        });
+    }
+
+    private static async Task ReturnToPoolAsync(WorldDbContext db, int gameId, int itemId, int count)
+    {
+        var poolRow = await db.TreasureItems
+            .FirstOrDefaultAsync(ti => ti.GameId == gameId && ti.ItemId == itemId && ti.TreasureQuestId == null);
+
+        if (poolRow is null)
+        {
+            db.TreasureItems.Add(new TreasureItem
+            {
+                GameId = gameId,
+                ItemId = itemId,
+                Count = count,
+                TreasureQuestId = null
+            });
+            return;
+        }
+
+        poolRow.Count += count;
     }
 
     private static void LogTreasureAlloc(ILogger logger, LogLevel level, string eventName, object payload, Exception? exception = null)

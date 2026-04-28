@@ -68,9 +68,12 @@ public record AssignTreasureDto(
     string Title, GameTimePhase Difficulty, int GameId,
     string? Clue = null, int? LocationId = null, int? SecretStashId = null,
     List<int>? TreasureItemIds = null,
-    List<UnlimitedItemAssignDto>? UnlimitedItems = null);
+    List<UnlimitedItemAssignDto>? UnlimitedItems = null,
+    List<PoolItemAssignDto>? PoolItems = null);
 
 public record UnlimitedItemAssignDto(int ItemId, int Count = 1);
+public record PoolItemAssignDto(int TreasureItemId, int Count = 1);
+public record AdjustTreasureItemCountDto(int Delta, string? Source = null);
 
 public record TreasureSummaryDto(
     int PoolRemaining, int Placed,
