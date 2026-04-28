@@ -1,0 +1,83 @@
+@using OvcinaHra.Shared.Dtos
+@using OvcinaHra.Shared.Extensions
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<button @ref="elementRef"
+        type="button"
+        class="@CssClass"
+        @key="Location.LocationId"
+        @onclick="HandleClick">
+    <div class="oh-tp-card-hdr">
+        <span class="oh-tp-card-kind">@Location.LocationKind.GetDisplayName()</span>
+        <span class="oh-tp-card-count">@Location.TotalItems pokladů</span>
+    </div>
+    <div class="oh-tp-card-name">
+        @Location.LocationName <span class="oh-tp-card-name-count">(@Location.TotalItems)</span>
+    </div>
+    @if (Location.StashCount > 0)
+    {
+        <div class="oh-tp-card-stash">
+            <i class="bi bi-archive"></i> @Location.StashCount / @Location.MaxStashes skrýší
+            @if (Location.Stashes.Sum(s => s.ItemCount) > 0)
+            {
+                <span>· @Location.Stashes.Sum(s => s.ItemCount) ve skrýších</span>
+            }
+        </div>
+    }
+    @if (HasSelectedPool)
+    {
+        <div class="oh-tp-card-cta">
+            <i class="bi bi-plus-circle"></i> Přidat vybrané sem
+        </div>
+    }
+</button>
+
+@code {
+    [Parameter, EditorRequired] public TreasurePlanningLocationDto Location { get; set; } = default!;
+    [Parameter] public bool IsFocused { get; set; }
+    [Parameter] public bool HasSelectedPool { get; set; }
+    [Parameter] public EventCallback<int> OnClick { get; set; }
+    [Parameter] public EventCallback<PiePayloadEventArgs> OnDrop { get; set; }
+
+    private ElementReference elementRef;
+    private DotNetObjectReference<TreasureLocationTargetCard>? dropRef;
+    private int wiredLocationId;
+
+    private string CssClass =>
+        $"oh-tp-card {(IsFocused ? "is-focused" : "")} {(HasSelectedPool ? "has-pending" : "")}".Trim();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (dropRef is null)
+        {
+            dropRef = DotNetObjectReference.Create(this);
+        }
+
+        if (wiredLocationId != Location.LocationId)
+        {
+            wiredLocationId = Location.LocationId;
+            await JS.InvokeVoidAsync("ovcinaDnd.setDropTarget", elementRef, Location.LocationId, dropRef);
+        }
+    }
+
+    private Task HandleClick() => OnClick.InvokeAsync(Location.LocationId);
+
+    [JSInvokable]
+    public Task OnTreasurePoolDropped(int locationId, string payload) =>
+        OnDrop.InvokeAsync(new PiePayloadEventArgs(locationId, payload));
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("ovcinaDnd.clearDropTarget", elementRef);
+        }
+        catch
+        {
+            // Browser teardown can race component disposal in Blazor WASM.
+        }
+
+        dropRef?.Dispose();
+    }
+}

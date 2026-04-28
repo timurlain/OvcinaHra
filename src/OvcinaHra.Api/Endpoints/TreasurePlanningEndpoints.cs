@@ -221,62 +221,113 @@ public static class TreasurePlanningEndpoints
             CountByDifficulty(GameTimePhase.Lategame)));
     }
 
-    private static async Task<Results<Created<TreasureQuestDetailDto>, ValidationProblem>> AssignTreasure(AssignTreasureDto dto, WorldDbContext db)
+    private static async Task<Results<Created<TreasureQuestDetailDto>, ValidationProblem>> AssignTreasure(
+        AssignTreasureDto dto,
+        WorldDbContext db,
+        ILoggerFactory loggerFactory)
     {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.TreasurePlanningEndpoints");
+        var poolCount = dto.TreasureItemIds?.Count ?? 0;
+        var unlimitedCount = dto.UnlimitedItems?.Count ?? 0;
+        logger.LogInformation(
+            "[treasure-alloc] {{\"event\":\"assign-entry\",\"gameId\":{GameId},\"locationId\":{LocationId},\"secretStashId\":{SecretStashId},\"poolCount\":{PoolCount},\"unlimitedCount\":{UnlimitedCount}}}",
+            dto.GameId,
+            dto.LocationId,
+            dto.SecretStashId,
+            poolCount,
+            unlimitedCount);
+
         // Validate XOR
         if ((dto.LocationId is null) == (dto.SecretStashId is null))
         {
+            logger.LogWarning(
+                "[treasure-alloc] {{\"event\":\"assign-validation-rejected\",\"reason\":\"location-stash-xor\",\"gameId\":{GameId},\"locationId\":{LocationId},\"secretStashId\":{SecretStashId}}}",
+                dto.GameId,
+                dto.LocationId,
+                dto.SecretStashId);
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["LocationId"] = ["Musí být vyplněna buď lokace, nebo tajná skrýš (ne obojí)."]
             });
         }
 
-        // Create the quest
-        var quest = new TreasureQuest
+        try
         {
-            Title = dto.Title, Clue = dto.Clue, Difficulty = dto.Difficulty,
-            LocationId = dto.LocationId, SecretStashId = dto.SecretStashId, GameId = dto.GameId
-        };
-        db.TreasureQuests.Add(quest);
-        await db.SaveChangesAsync(); // get the ID
-
-        // Assign pool items
-        if (dto.TreasureItemIds is { Count: > 0 })
-        {
-            var poolItems = await db.TreasureItems
-                .Where(ti => dto.TreasureItemIds.Contains(ti.Id) && ti.TreasureQuestId == null && ti.GameId == dto.GameId)
-                .ToListAsync();
-            foreach (var item in poolItems)
-                item.TreasureQuestId = quest.Id;
-        }
-
-        // Add unlimited items directly
-        if (dto.UnlimitedItems is { Count: > 0 })
-        {
-            foreach (var ui in dto.UnlimitedItems)
+            // Create the quest
+            var quest = new TreasureQuest
             {
-                db.TreasureItems.Add(new TreasureItem
-                {
-                    ItemId = ui.ItemId, GameId = dto.GameId, Count = ui.Count, TreasureQuestId = quest.Id
-                });
+                Title = dto.Title, Clue = dto.Clue, Difficulty = dto.Difficulty,
+                LocationId = dto.LocationId, SecretStashId = dto.SecretStashId, GameId = dto.GameId
+            };
+            db.TreasureQuests.Add(quest);
+            logger.LogInformation(
+                "[treasure-alloc] {{\"event\":\"assign-before-save\",\"phase\":\"create-quest\",\"gameId\":{GameId},\"locationId\":{LocationId},\"secretStashId\":{SecretStashId}}}",
+                dto.GameId,
+                dto.LocationId,
+                dto.SecretStashId);
+            await db.SaveChangesAsync(); // get the ID
+
+            // Assign pool items
+            if (dto.TreasureItemIds is { Count: > 0 })
+            {
+                var poolItems = await db.TreasureItems
+                    .Where(ti => dto.TreasureItemIds.Contains(ti.Id) && ti.TreasureQuestId == null && ti.GameId == dto.GameId)
+                    .ToListAsync();
+                foreach (var item in poolItems)
+                    item.TreasureQuestId = quest.Id;
             }
+
+            // Add unlimited items directly
+            if (dto.UnlimitedItems is { Count: > 0 })
+            {
+                foreach (var ui in dto.UnlimitedItems)
+                {
+                    db.TreasureItems.Add(new TreasureItem
+                    {
+                        ItemId = ui.ItemId, GameId = dto.GameId, Count = ui.Count, TreasureQuestId = quest.Id
+                    });
+                }
+            }
+
+            logger.LogInformation(
+                "[treasure-alloc] {{\"event\":\"assign-before-save\",\"phase\":\"attach-items\",\"questId\":{QuestId},\"gameId\":{GameId},\"poolCount\":{PoolCount},\"unlimitedCount\":{UnlimitedCount}}}",
+                quest.Id,
+                dto.GameId,
+                poolCount,
+                unlimitedCount);
+            await db.SaveChangesAsync();
+
+            // Reload with includes for response
+            var loaded = await db.TreasureQuests
+                .Include(t => t.Location)
+                .Include(t => t.SecretStash)
+                .Include(t => t.TreasureItems).ThenInclude(ti => ti.Item)
+                .FirstAsync(t => t.Id == quest.Id);
+
+            logger.LogInformation(
+                "[treasure-alloc] {{\"event\":\"assign-success\",\"questId\":{QuestId},\"gameId\":{GameId},\"itemCount\":{ItemCount}}}",
+                quest.Id,
+                dto.GameId,
+                loaded.TreasureItems.Sum(ti => ti.Count));
+
+            return TypedResults.Created($"/api/treasure-quests/{quest.Id}",
+                new TreasureQuestDetailDto(
+                    loaded.Id, loaded.Title, loaded.Clue, loaded.Difficulty,
+                    loaded.LocationId, loaded.Location?.Name, loaded.SecretStashId, loaded.SecretStash?.Name, loaded.GameId,
+                    loaded.TreasureItems.Select(ti => new TreasureItemDto(ti.Id, ti.ItemId, ti.Item.Name, ti.Count, ti.TreasureQuestId)).ToList()));
         }
-
-        await db.SaveChangesAsync();
-
-        // Reload with includes for response
-        var loaded = await db.TreasureQuests
-            .Include(t => t.Location)
-            .Include(t => t.SecretStash)
-            .Include(t => t.TreasureItems).ThenInclude(ti => ti.Item)
-            .FirstAsync(t => t.Id == quest.Id);
-
-        return TypedResults.Created($"/api/treasure-quests/{quest.Id}",
-            new TreasureQuestDetailDto(
-                loaded.Id, loaded.Title, loaded.Clue, loaded.Difficulty,
-                loaded.LocationId, loaded.Location?.Name, loaded.SecretStashId, loaded.SecretStash?.Name, loaded.GameId,
-                loaded.TreasureItems.Select(ti => new TreasureItemDto(ti.Id, ti.ItemId, ti.Item.Name, ti.Count, ti.TreasureQuestId)).ToList()));
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "[treasure-alloc] {{\"event\":\"assign-catch\",\"gameId\":{GameId},\"locationId\":{LocationId},\"secretStashId\":{SecretStashId},\"poolCount\":{PoolCount},\"unlimitedCount\":{UnlimitedCount}}}",
+                dto.GameId,
+                dto.LocationId,
+                dto.SecretStashId,
+                poolCount,
+                unlimitedCount);
+            throw;
+        }
     }
 
     // ── Issue #160: bulk refill ───────────────────────────────────────────

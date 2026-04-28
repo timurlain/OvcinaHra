@@ -1,5 +1,6 @@
 @page "/treasures"
 @attribute [Authorize]
+@using System.Text.Json
 @using OvcinaHra.Client.Components
 @using OvcinaHra.Shared.Dtos
 @using OvcinaHra.Shared.Domain.Enums
@@ -157,13 +158,26 @@ else
                             <span class="text-muted small">Typ:</span>
                             <button type="button"
                                     class="oh-tp-kind-pill @(treasuresKindFilter is null ? "on" : "")"
-                                    @onclick="() => treasuresKindFilter = null">vše</button>
+                                    @onclick="() => SetTreasuresKindFilter(null)">vše</button>
                             @foreach (var kind in locationCards.Select(l => l.LocationKind).Distinct().OrderBy(k => k.GetDisplayName()))
                             {
                                 var k = kind;
                                 <button type="button"
                                         class="oh-tp-kind-pill @(treasuresKindFilter == k ? "on" : "")"
-                                        @onclick="() => treasuresKindFilter = k">@k.GetDisplayName()</button>
+                                        @onclick="() => SetTreasuresKindFilter(k)">@k.GetDisplayName()</button>
+                            }
+                        </div>
+                        <div class="oh-tp-kind-filter">
+                            <span class="text-muted small">Region:</span>
+                            <button type="button"
+                                    class="oh-tp-kind-pill @(treasuresRegionFilter is null ? "on" : "")"
+                                    @onclick="() => SetTreasuresRegionFilter(null)">vše</button>
+                            @foreach (var region in GetRegionOptions(locationCards))
+                            {
+                                var r = region;
+                                <button type="button"
+                                        class="oh-tp-kind-pill @(treasuresRegionFilter == r ? "on" : "")"
+                                        @onclick="() => SetTreasuresRegionFilter(r)">@r</button>
                             }
                         </div>
                     }
@@ -171,12 +185,10 @@ else
                 @if (treasuresView == "cards")
                 {
                     @* Cards view: groups by Region, click a card → focus/assign flow *@
-                    var filtered = treasuresKindFilter.HasValue
-                        ? locationCards.Where(l => l.LocationKind == treasuresKindFilter.Value).ToList()
-                        : locationCards.ToList();
+                    var filtered = GetFilteredLocationCards().ToList();
                     var grouped = filtered
-                        .GroupBy(l => string.IsNullOrWhiteSpace(l.Region) ? "(bez regionu)" : l.Region!)
-                        .OrderBy(g => g.Key)
+                        .GroupBy(GetRegionLabel)
+                        .OrderBy(g => GetRegionSortKey(g.Key))
                         .ToList();
                     if (grouped.Count == 0)
                     {
@@ -193,25 +205,11 @@ else
                                         @foreach (var loc in grp.OrderBy(l => l.LocationName))
                                         {
                                             var isFocused = focusedLocationId == loc.LocationId;
-                                            <button type="button"
-                                                    class="oh-tp-card @(isFocused ? "is-focused" : "")"
-                                                    @key="loc.LocationId"
-                                                    @onclick="() => HandlePieClick(loc.LocationId)">
-                                                <div class="oh-tp-card-hdr">
-                                                    <span class="oh-tp-card-kind">@loc.LocationKind.GetDisplayName()</span>
-                                                    @if (loc.TotalItems > 0)
-                                                    {
-                                                        <span class="oh-tp-card-count">@loc.TotalItems pokladů</span>
-                                                    }
-                                                </div>
-                                                <div class="oh-tp-card-name">@loc.LocationName</div>
-                                                @if (loc.StashCount > 0)
-                                                {
-                                                    <div class="oh-tp-card-stash">
-                                                        <i class="bi bi-archive"></i> @loc.StashCount / @loc.MaxStashes skrýší
-                                                    </div>
-                                                }
-                                            </button>
+                                            <TreasureLocationTargetCard Location="loc"
+                                                                        IsFocused="isFocused"
+                                                                        HasSelectedPool="@(selectedPool.Count > 0)"
+                                                                        OnClick="HandleLocationTargetClick"
+                                                                        OnDrop="HandlePieDrop" />
                                         }
                                     </div>
                                 </div>
@@ -261,7 +259,7 @@ else
                         {
                             <div class="oh-tp-drag-hint">
                                 <i class="bi bi-arrow-left-right"></i>
-                                Přetáhni vybrané kachličky na špendlík na mapě, nebo klikni na lokaci pro přidání.
+                                Přetáhni vybrané kachličky na špendlík nebo kartu lokace, případně klikni na lokaci pro přidání.
                             </div>
                         }
                         @if (poolItems.Count == 0)
@@ -292,28 +290,54 @@ else
                     @* --- Location focus --- *@
                     var loc = locationCards.FirstOrDefault(l => l.LocationId == focusedLocationId);
                     <div class="oh-tp-assign-hdr">
-                        <h5>@(loc?.LocationName ?? "Lokace")</h5>
+                        <h5>
+                            @(loc?.LocationName ?? "Lokace")
+                            @if (loc is not null)
+                            {
+                                <span class="oh-tp-location-total">(@loc.TotalItems)</span>
+                            }
+                        </h5>
                         <button class="oh-tp-close" @onclick="CloseFocus" title="Zavřít">
                             <i class="bi bi-x-lg"></i>
                         </button>
                     </div>
                     <div class="oh-tp-assign-tabs">
                         <button class="oh-tp-assign-tab @(focusTab == "prehled" ? "active" : "")"
-                                @onclick='() => focusTab = "prehled"'>Přehled</button>
+                                @onclick='() => SetFocusTab("prehled", "tab")'>Přehled</button>
                         <button class="oh-tp-assign-tab @(focusTab == "pridat" ? "active" : "")"
-                                @onclick='() => focusTab = "pridat"'>Přidat poklad</button>
+                                @onclick='() => SetFocusTab("pridat", "tab")'>Přidat poklad</button>
                     </div>
                     <div class="oh-tp-assign-body">
                         @if (focusTab == "prehled" && loc is not null)
                         {
                             <div class="oh-tp-focus-summary">
                                 <div class="oh-tp-focus-stats">
+                                    <span><i class="bi bi-box-seam"></i> Celkem @loc.TotalItems</span>
                                     <span><span class="sw" style="background:var(--oh-stage-start)"></span>Start @loc.StartCount</span>
                                     <span><span class="sw" style="background:var(--oh-stage-early)"></span>Rozvoj @loc.EarlyCount</span>
                                     <span><span class="sw" style="background:var(--oh-stage-midgame)"></span>Střed @loc.MidgameCount</span>
                                     <span><span class="sw" style="background:var(--oh-stage-lategame)"></span>Závěr @loc.LategameCount</span>
                                 </div>
+                                @if (selectedPool.Count > 0)
+                                {
+                                    <button type="button"
+                                            class="btn btn-sm btn-primary"
+                                            @onclick='() => StartAddToFocusedLocation("focus-cta")'>
+                                        <i class="bi bi-plus-circle me-1"></i>Přiřadit vybrané sem
+                                    </button>
+                                }
                             </div>
+                            @if (loc.Stashes.Count > 0)
+                            {
+                                <div class="oh-tp-stash-summary">
+                                    @foreach (var stash in loc.Stashes.OrderBy(s => s.Name))
+                                    {
+                                        <span class="oh-tp-stash-chip">
+                                            <i class="bi bi-archive"></i>@stash.Name <strong>@stash.ItemCount</strong>
+                                        </span>
+                                    }
+                                </div>
+                            }
 
                             var locQuests = allQuests.Where(q => q.LocationId == focusedLocationId).ToList();
                             var stashIds = loc.Stashes.Select(s => s.Id).ToHashSet();
@@ -362,7 +386,7 @@ else
                                                 Unlimited="@unlimitedItems"
                                                 InitialDifficulty="@lastUsedDifficulty"
                                                 OnSave="HandleAssignSaveAsync"
-                                                OnCancel='() => focusTab = "prehled"' />
+                                                OnCancel='() => SetFocusTab("prehled", "cancel")' />
                         }
                     </div>
                 }
@@ -659,6 +683,9 @@ else
 }
 
 @code {
+    private static readonly JsonSerializerOptions TreasureAllocLogJsonOptions = new(JsonSerializerDefaults.Web);
+    private const string NoRegionLabel = "Bez regionu";
+
     // ===== Data =====
     private List<TreasurePoolItemDto> poolItems = [];
     private List<TreasurePlanningLocationDto> locationCards = [];
@@ -678,6 +705,14 @@ else
         var existing = selectedPool.FirstOrDefault(s => s.Id == p.Id);
         if (existing is not null) selectedPool.Remove(existing);
         else selectedPool.Add(p);
+        LogTreasureAlloc("click-treasure", new
+        {
+            poolItemId = p.Id,
+            p.ItemId,
+            selected = existing is null,
+            selectedCount = selectedPool.Count,
+            focusedLocationId
+        });
     }
 
     // ===== Stage filter =====
@@ -700,6 +735,12 @@ else
         if (mapView is not null) await mapView.SetStageFilterAsync(activeStages);
     }
 
+    private static void LogTreasureAlloc(string eventName, object payload)
+    {
+        var json = JsonSerializer.Serialize(new { Event = eventName, Payload = payload }, TreasureAllocLogJsonOptions);
+        Console.WriteLine($"[treasure-alloc] {json}");
+    }
+
     // ===== Focus state =====
     private int? focusedLocationId;
     private string focusTab = "prehled";
@@ -710,6 +751,7 @@ else
     private const string TreasuresViewKey = "oh-tp-view";
     private string treasuresView = "map";
     private OvcinaHra.Shared.Domain.Enums.LocationKind? treasuresKindFilter;
+    private string? treasuresRegionFilter;
     private GameTimePhase lastUsedDifficulty = GameTimePhase.Start;
 
     // ===== Game context =====
@@ -794,6 +836,7 @@ else
         markersPlaced = false;
         focusedLocationId = null;
         selectedPool.Clear();
+        treasuresRegionFilter = null;
         await LoadAllAsync();
         await PlaceMarkersIfReadyAsync();
         StateHasChanged();
@@ -824,6 +867,8 @@ else
         // Prune selection of items that left the pool.
         var poolIds = poolItems.Select(p => p.Id).ToHashSet();
         selectedPool.RemoveAll(s => !poolIds.Contains(s.Id));
+        if (treasuresRegionFilter is not null && !GetRegionOptions(locationCards).Contains(treasuresRegionFilter))
+            treasuresRegionFilter = null;
 
         loading = false;
     }
@@ -854,9 +899,53 @@ else
     {
         if (treasuresView == next) return;
         treasuresView = next;
+        LogTreasureAlloc("view-change", new { view = next, gameId });
         try { await JS.InvokeVoidAsync("localStorage.setItem", TreasuresViewKey, next); }
         catch { /* non-fatal */ }
     }
+
+    private void SetTreasuresKindFilter(OvcinaHra.Shared.Domain.Enums.LocationKind? next)
+    {
+        treasuresKindFilter = next;
+        LogTreasureAlloc("kind-filter-change", new
+        {
+            kind = next?.ToString(),
+            gameId
+        });
+    }
+
+    private void SetTreasuresRegionFilter(string? next)
+    {
+        treasuresRegionFilter = next;
+        LogTreasureAlloc("region-filter-change", new
+        {
+            region = next,
+            gameId
+        });
+    }
+
+    private IEnumerable<TreasurePlanningLocationDto> GetFilteredLocationCards()
+    {
+        IEnumerable<TreasurePlanningLocationDto> filtered = locationCards;
+        if (treasuresKindFilter.HasValue)
+            filtered = filtered.Where(l => l.LocationKind == treasuresKindFilter.Value);
+        if (!string.IsNullOrWhiteSpace(treasuresRegionFilter))
+            filtered = filtered.Where(l => GetRegionLabel(l) == treasuresRegionFilter);
+        return filtered;
+    }
+
+    private static string GetRegionLabel(TreasurePlanningLocationDto location) =>
+        string.IsNullOrWhiteSpace(location.Region) ? NoRegionLabel : location.Region.Trim();
+
+    private static string GetRegionSortKey(string region) =>
+        region == NoRegionLabel ? "\uFFFF" : region;
+
+    private static List<string> GetRegionOptions(IEnumerable<TreasurePlanningLocationDto> locations) =>
+        locations
+            .Select(GetRegionLabel)
+            .Distinct(StringComparer.CurrentCultureIgnoreCase)
+            .OrderBy(GetRegionSortKey)
+            .ToList();
 
     private async Task PlaceMarkersIfReadyAsync()
     {
@@ -1004,12 +1093,44 @@ else
     };
 
     // ===== Handlers from MapView =====
-    private Task HandlePieClick(int locationId)
+    private Task HandlePieClick(int locationId) => HandleLocationTargetClick(locationId);
+
+    private Task HandleLocationTargetClick(int locationId)
     {
         focusedLocationId = locationId;
-        focusTab = "prehled";
+        focusTab = selectedPool.Count > 0 ? "pridat" : "prehled";
+        LogTreasureAlloc("click-to-allocate", new
+        {
+            locationId,
+            selectedCount = selectedPool.Count,
+            targetTab = focusTab,
+            view = treasuresView
+        });
         StateHasChanged();
         return Task.CompletedTask;
+    }
+
+    private void SetFocusTab(string tab, string source)
+    {
+        focusTab = tab;
+        LogTreasureAlloc("focus-tab-change", new
+        {
+            tab,
+            source,
+            focusedLocationId,
+            selectedCount = selectedPool.Count
+        });
+    }
+
+    private void StartAddToFocusedLocation(string source)
+    {
+        focusTab = "pridat";
+        LogTreasureAlloc("button-allocate", new
+        {
+            source,
+            focusedLocationId,
+            selectedCount = selectedPool.Count
+        });
     }
 
     private async Task HandlePieDrop(PiePayloadEventArgs args)
@@ -1017,23 +1138,46 @@ else
         // Payload: { PoolItemId, ItemId, ItemName, Count }
         try
         {
-            using var doc = System.Text.Json.JsonDocument.Parse(args.Payload);
+            LogTreasureAlloc("drop-received", new
+            {
+                args.LocationId,
+                args.Payload
+            });
+            using var doc = JsonDocument.Parse(args.Payload);
             var poolItemId = doc.RootElement.GetProperty("PoolItemId").GetInt32();
             var picked = poolItems.FirstOrDefault(p => p.Id == poolItemId);
-            if (picked is null) return;
+            if (picked is null)
+            {
+                LogTreasureAlloc("drop-rejected", new
+                {
+                    reason = "pool-item-not-found",
+                    poolItemId,
+                    args.LocationId
+                });
+                return;
+            }
 
             // Ensure the dragged item is selected; keep any prior selection intact
             // so the user can batch-drop multiple onto the same pin.
-            if (!IsSelected(picked)) selectedPool.Add(picked);
+            if (!IsSelected(picked))
+            {
+                selectedPool.Add(picked);
+            }
 
             focusedLocationId = args.LocationId;
             focusTab = "pridat";
+            LogTreasureAlloc("drop-applied", new
+            {
+                args.LocationId,
+                poolItemId,
+                selectedCount = selectedPool.Count
+            });
             StateHasChanged();
             await Task.CompletedTask;
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Pie drop payload error: {ex.Message}");
+            Console.Error.WriteLine($"[treasure-alloc] {JsonSerializer.Serialize(new { Event = "drop-error", ex.Message }, TreasureAllocLogJsonOptions)}");
         }
     }
 
@@ -1047,13 +1191,34 @@ else
     // ===== Save assignment =====
     private async Task HandleAssignSaveAsync(AssignTreasureDto dto)
     {
-        await Api.PostAsync<AssignTreasureDto, TreasureQuestDetailDto>("/api/treasure-planning/assign", dto);
+        LogTreasureAlloc("assign-save-entry", new
+        {
+            dto.GameId,
+            dto.LocationId,
+            dto.SecretStashId,
+            poolCount = dto.TreasureItemIds?.Count ?? 0,
+            unlimitedCount = dto.UnlimitedItems?.Count ?? 0
+        });
+        var result = await Api.PostWithProblemAsync<AssignTreasureDto, TreasureQuestDetailDto>("/api/treasure-planning/assign", dto);
+        if (!result.Ok)
+        {
+            LogTreasureAlloc("assign-save-rejected", new { result.ProblemDetail });
+            throw new InvalidOperationException(result.ProblemDetail ?? "Přiřazení pokladu se nepodařilo.");
+        }
+
         lastUsedDifficulty = dto.Difficulty;
         selectedPool.Clear();
         markersPlaced = false;
         await LoadAllAsync();
         await PlaceMarkersIfReadyAsync();
         focusTab = "prehled";
+        LogTreasureAlloc("assign-save-success", new
+        {
+            questId = result.Value?.Id,
+            dto.GameId,
+            dto.LocationId,
+            dto.SecretStashId
+        });
         StateHasChanged();
     }
 

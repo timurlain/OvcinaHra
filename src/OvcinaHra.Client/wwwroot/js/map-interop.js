@@ -581,10 +581,20 @@ window.ovcinaMap._buildPieSvg = function (counts) {
 
 window.ovcinaMap._wireDropTarget = function (element, locationId) {
     var self = this;
+    var lastDragOverLog = 0;
     element.addEventListener('dragover', function (e) {
         e.preventDefault();
         if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
         element.classList.add('oh-tp-pin-dragtarget');
+        var now = Date.now();
+        if (now - lastDragOverLog > 750) {
+            lastDragOverLog = now;
+            console.log('[treasure-alloc] ' + JSON.stringify({
+                event: 'drag-over',
+                target: 'map-pin',
+                locationId: locationId
+            }));
+        }
     });
     element.addEventListener('dragleave', function () {
         element.classList.remove('oh-tp-pin-dragtarget');
@@ -594,6 +604,12 @@ window.ovcinaMap._wireDropTarget = function (element, locationId) {
         element.classList.remove('oh-tp-pin-dragtarget');
         var payload = e.dataTransfer && e.dataTransfer.getData('application/x-oh-pool-item');
         if (self._dotnetRef && payload) {
+            console.log('[treasure-alloc] ' + JSON.stringify({
+                event: 'drop',
+                target: 'map-pin',
+                locationId: locationId,
+                payload: window.ovcinaDnd ? window.ovcinaDnd.parsePayload(payload) : payload
+            }));
             self._dotnetRef.invokeMethodAsync('OnPieMarkerDropped', locationId, payload);
         }
     });
@@ -720,6 +736,15 @@ window.ovcinaMap.setStageFilter = function (stages) {
 // ----------------------------------------------------------------------
 window.ovcinaDnd = {
     _wired: new WeakMap(),
+    _dropTargets: new WeakMap(),
+
+    parsePayload: function (payload) {
+        try {
+            return JSON.parse(payload);
+        } catch (e) {
+            return payload;
+        }
+    },
 
     setDraggable: function (element, payload) {
         if (!element) return;
@@ -737,6 +762,7 @@ window.ovcinaDnd = {
                 e.dataTransfer.setData('application/x-oh-pool-item', p);
                 e.dataTransfer.effectAllowed = 'move';
             }
+            console.log('[treasure-alloc] ' + JSON.stringify({ event: 'drag-start', payload: self.parsePayload(p) }));
             element.classList.add('oh-tp-pool-tile-dragging');
         });
         element.addEventListener('dragend', function () {
@@ -748,6 +774,64 @@ window.ovcinaDnd = {
         if (!element) return;
         this._wired.delete(element);
         element.removeAttribute('draggable');
+    },
+
+    setDropTarget: function (element, locationId, dotnetRef) {
+        if (!element) return;
+        var existing = this._dropTargets.get(element);
+        if (existing) {
+            existing.locationId = locationId;
+            existing.dotnetRef = dotnetRef;
+            return;
+        }
+
+        var record = {
+            locationId: locationId,
+            dotnetRef: dotnetRef,
+            lastDragOverLog: 0
+        };
+        this._dropTargets.set(element, record);
+
+        var self = this;
+        element.addEventListener('dragover', function (e) {
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+            element.classList.add('oh-tp-card-dragtarget');
+
+            var now = Date.now();
+            if (now - record.lastDragOverLog > 750) {
+                record.lastDragOverLog = now;
+                console.log('[treasure-alloc] ' + JSON.stringify({
+                    event: 'drag-over',
+                    target: 'location-card',
+                    locationId: record.locationId
+                }));
+            }
+        });
+        element.addEventListener('dragleave', function () {
+            element.classList.remove('oh-tp-card-dragtarget');
+        });
+        element.addEventListener('drop', function (e) {
+            e.preventDefault();
+            element.classList.remove('oh-tp-card-dragtarget');
+            var payload = e.dataTransfer && e.dataTransfer.getData('application/x-oh-pool-item');
+            if (!payload) return;
+            console.log('[treasure-alloc] ' + JSON.stringify({
+                event: 'drop',
+                target: 'location-card',
+                locationId: record.locationId,
+                payload: self.parsePayload(payload)
+            }));
+            if (record.dotnetRef) {
+                record.dotnetRef.invokeMethodAsync('OnTreasurePoolDropped', record.locationId, payload);
+            }
+        });
+    },
+
+    clearDropTarget: function (element) {
+        if (!element) return;
+        this._dropTargets.delete(element);
+        element.classList.remove('oh-tp-card-dragtarget');
     },
 
     // Generic DOM helper used by pages that want a smooth scroll to a known
