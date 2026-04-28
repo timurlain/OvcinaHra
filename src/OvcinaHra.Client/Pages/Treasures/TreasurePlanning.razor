@@ -877,10 +877,6 @@ else
         if (mapView is null) return;
         await mapView.ClearPieMarkersAsync();
 
-        var maxCount = Math.Max(1, locationCards
-            .SelectMany(l => new[] { l.StartCount, l.EarlyCount, l.MidgameCount, l.LategameCount })
-            .DefaultIfEmpty(0).Max());
-
         // Issue #160 / #103: prefer the LOCATION-EXTENT bbox over the saved
         // game bbox so the map starts tight on what the organizer actually
         // placed. Saved bbox stays as a fallback (and CZ countryside as a
@@ -908,7 +904,7 @@ else
                 var counts = new[] { card.StartCount, card.EarlyCount, card.MidgameCount, card.LategameCount };
                 await mapView.AddPieMarkerAsync(loc.Id,
                     (double)placedLocation.Latitude, (double)placedLocation.Longitude,
-                    counts, maxCount);
+                    counts);
             }
         }
 

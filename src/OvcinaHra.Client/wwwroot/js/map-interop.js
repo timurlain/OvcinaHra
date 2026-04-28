@@ -545,11 +545,8 @@ window.ovcinaMiniMap = {
 
 // ----------------------------------------------------------------------
 // Pie-wedge markers for /treasures planning.
-// Fixed-quadrant layout — Start=NE, Early=SE, Mid=SW, Late=NW — with
-// per-stage wedge radius scaled by count / maxCount. Unfilled portion
-// shows a muted parchment disc beneath the coloured wedges. Pie markers
-// are tracked separately from ovcinaMap._markers so the /map and
-// /treasures pages never collide.
+// Count-badge treasure markers are tracked separately from ovcinaMap._markers
+// so the /map and /treasures pages never collide.
 // ----------------------------------------------------------------------
 window.ovcinaMap._pieMarkers = {};
 window.ovcinaMap._zeroMarkers = {};
@@ -602,13 +599,12 @@ window.ovcinaMap._wireDropTarget = function (element, locationId) {
     });
 };
 
-window.ovcinaMap.addPieMarker = function (id, lat, lon, counts, maxCount) {
+window.ovcinaMap.addPieMarker = function (id, lat, lon, counts) {
     if (!this._map) return;
     this.removePieMarker(id);
     var wrap = document.createElement('div');
     wrap.className = 'oh-tp-pin oh-tp-pin-pie';
     wrap.setAttribute('data-pie-id', id);
-    wrap.innerHTML = this._buildPieSvg(counts);
 
     var self = this;
     wrap.addEventListener('click', function (e) {
@@ -625,11 +621,10 @@ window.ovcinaMap.addPieMarker = function (id, lat, lon, counts, maxCount) {
     this._applyStageFilterToElement(wrap);
 };
 
-window.ovcinaMap.updatePieMarkerCounts = function (id, counts, maxCount) {
+window.ovcinaMap.updatePieMarkerCounts = function (id, counts) {
     var rec = this._pieMarkers[id];
     if (!rec) return;
     rec.counts = counts.slice();
-    rec.element.innerHTML = this._buildPieSvg(counts);
     this._applyStageFilterToElement(rec.element);
 };
 
