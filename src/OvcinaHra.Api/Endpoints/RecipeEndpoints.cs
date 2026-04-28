@@ -22,7 +22,7 @@ public static class RecipeEndpoints
     {
         var group = routes.MapGroup("/api/recipes").WithTags("Recipes");
 
-        // Catalog (templates: GameId == null)
+        // Recipe overview (all CraftingRecipe rows, catalog and per-game).
         group.MapGet("/", GetCatalog);
         group.MapGet("/{id:int}", GetById);
         group.MapPost("/", Create);
@@ -41,13 +41,12 @@ public static class RecipeEndpoints
     {
         var rows = await db.CraftingRecipes
             .AsNoTracking()
-            .Where(r => r.GameId == null)
             .OrderBy(r => r.Name ?? r.OutputItem.Name)
             .Select(r => new
             {
                 r.Id,
                 r.Name,
-                r.Category,
+                Category = r.OutputItem.ItemType,
                 r.GameId,
                 r.TemplateRecipeId,
                 r.OutputItemId,
@@ -68,7 +67,7 @@ public static class RecipeEndpoints
                     .Select(sr => new { sr.GameSkillId, SkillName = sr.GameSkill.Name })
                     .ToList(),
                 r.IngredientNotes,
-                ForksCount = db.CraftingRecipes.Count(f => f.TemplateRecipeId == r.Id)
+                ForksCount = r.GameId == null ? db.CraftingRecipes.Count(f => f.TemplateRecipeId == r.Id) : 0
             })
             .ToListAsync();
 
@@ -85,7 +84,7 @@ public static class RecipeEndpoints
             {
                 r.Id,
                 r.Name,
-                r.Category,
+                Category = r.OutputItem.ItemType,
                 r.GameId,
                 r.TemplateRecipeId,
                 r.OutputItemId,
@@ -133,7 +132,7 @@ public static class RecipeEndpoints
         return TypedResults.Ok(new RecipeDetailDto(
             r.Id, r.Name,
             Title: r.Name ?? r.OutputItem.Name,
-            r.Category, r.GameId, r.TemplateRecipeId,
+            r.OutputItem.ItemType, r.GameId, r.TemplateRecipeId,
             r.OutputItemId, r.OutputItem.Name,
             OutputItemThumbnailUrl: ThumbForItem(http, r.OutputItem),
             OutputQuantity: 1,
@@ -151,20 +150,23 @@ public static class RecipeEndpoints
     private static async Task<Results<Created<RecipeDetailDto>, BadRequest<ProblemDetails>, NotFound>> Create(
         CreateRecipeDto dto, WorldDbContext db, HttpContext http, CancellationToken ct)
     {
-        if (!Enum.IsDefined(dto.Category))
-            return TypedResults.BadRequest(new ProblemDetails
-            {
-                Title = "Neznámá kategorie",
-                Detail = $"Hodnota '{dto.Category}' není povolena.",
-                Status = StatusCodes.Status400BadRequest
-            });
-
-        var itemExists = await db.Items.AnyAsync(i => i.Id == dto.OutputItemId, ct);
-        if (!itemExists)
+        var outputItem = await db.Items
+            .AsNoTracking()
+            .Where(i => i.Id == dto.OutputItemId)
+            .Select(i => new { i.Id, i.IsCraftable })
+            .SingleOrDefaultAsync(ct);
+        if (outputItem is null)
             return TypedResults.BadRequest(new ProblemDetails
             {
                 Title = "Vybraný výstupní předmět neexistuje.",
                 Detail = $"Předmět s ID {dto.OutputItemId} nebyl nalezen.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        if (!outputItem.IsCraftable)
+            return TypedResults.BadRequest(new ProblemDetails
+            {
+                Title = "Vybraný výstupní předmět není vyráběný.",
+                Detail = "Recept lze vytvořit jen pro předmět s příznakem IsCraftable.",
                 Status = StatusCodes.Status400BadRequest
             });
 
@@ -172,7 +174,6 @@ public static class RecipeEndpoints
         {
             Name = string.IsNullOrWhiteSpace(dto.Name) ? null : dto.Name.Trim(),
             OutputItemId = dto.OutputItemId,
-            Category = dto.Category,
             GameId = dto.GameId,
             LocationId = dto.LocationId,
             TemplateRecipeId = dto.TemplateRecipeId,
@@ -203,20 +204,23 @@ public static class RecipeEndpoints
             .SingleOrDefaultAsync(r => r.Id == id, ct);
         if (recipe is null) return TypedResults.NotFound();
 
-        if (!Enum.IsDefined(dto.Category))
-            return TypedResults.BadRequest(new ProblemDetails
-            {
-                Title = "Neznámá kategorie",
-                Detail = $"Hodnota '{dto.Category}' není povolena.",
-                Status = StatusCodes.Status400BadRequest
-            });
-
-        var itemExists = await db.Items.AnyAsync(i => i.Id == dto.OutputItemId, ct);
-        if (!itemExists)
+        var outputItem = await db.Items
+            .AsNoTracking()
+            .Where(i => i.Id == dto.OutputItemId)
+            .Select(i => new { i.Id, i.IsCraftable })
+            .SingleOrDefaultAsync(ct);
+        if (outputItem is null)
             return TypedResults.BadRequest(new ProblemDetails
             {
                 Title = "Vybraný výstupní předmět neexistuje.",
                 Detail = $"Předmět s ID {dto.OutputItemId} nebyl nalezen.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        if (!outputItem.IsCraftable)
+            return TypedResults.BadRequest(new ProblemDetails
+            {
+                Title = "Vybraný výstupní předmět není vyráběný.",
+                Detail = "Recept lze uložit jen pro předmět s příznakem IsCraftable.",
                 Status = StatusCodes.Status400BadRequest
             });
 
@@ -242,7 +246,6 @@ public static class RecipeEndpoints
 
         recipe.Name = string.IsNullOrWhiteSpace(dto.Name) ? null : dto.Name.Trim();
         recipe.OutputItemId = dto.OutputItemId;
-        recipe.Category = dto.Category;
         recipe.LocationId = dto.LocationId;
         recipe.IngredientNotes = string.IsNullOrWhiteSpace(dto.IngredientNotes) ? null : dto.IngredientNotes.Trim();
 
@@ -307,7 +310,6 @@ public static class RecipeEndpoints
         {
             Name = template.Name,
             OutputItemId = template.OutputItemId,
-            Category = template.Category,
             GameId = gameId,
             LocationId = template.LocationId,  // organizer can re-pin per game on edit
             TemplateRecipeId = template.Id,
@@ -399,7 +401,7 @@ public static class RecipeEndpoints
             (int)r.Id,
             (string?)r.Name,
             Title: (string?)r.Name ?? outputItemName,
-            (RecipeCategory)r.Category,
+            (ItemType)r.Category,
             (int?)r.GameId,
             (int?)r.TemplateRecipeId,
             outputItemId,

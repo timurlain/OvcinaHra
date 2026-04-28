@@ -5,10 +5,8 @@
 @using OvcinaHra.Shared.Domain.Enums
 @using OvcinaHra.Shared.Extensions
 
-@* Issue #218 — /recipes cookbook. Vertical list of formula cards filtered
-   to catalog templates (GameId is null). Filter chips for the 4 categories
-   + text search. Click a card → /recipes/{id}. "+ Nový recept" opens a
-   minimal create modal that forwards to detail for full editing. *@
+@* Issue #218/#324 — /recipes cookbook. Vertical list of formula cards for
+   recipe entities, filtered by the output item's ItemType + text search. *@
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h1 class="mb-0">Kniha receptů</h1>
@@ -21,12 +19,12 @@
     <DxTextBox Text="@searchText" TextChanged="@((string v) => searchText = v)"
                NullText="Hledat (název, výstup, surovina)…" CssClass="oh-rec-filter-search" />
     <div class="oh-rec-cat-pillrow" role="group" aria-label="Filtr podle kategorie">
-        @foreach (var (cat, label) in categoryPills)
+        @foreach (var cat in categoryPills)
         {
             <button type="button"
                     class="oh-rec-cat oh-rec-cat-@CssKey(cat) @(selectedCategories.Contains(cat) ? "oh-rec-cat--on" : "")"
                     @onclick="() => ToggleCategory(cat)">
-                @label
+                @cat.GetDisplayName()
             </button>
         }
     </div>
@@ -58,24 +56,22 @@ else
     </div>
 }
 
-@* Minimal create modal — Name + Output + Category. Save → POST /api/recipes
-   with GameId=null then navigate to /recipes/{id} for full editing. *@
+@* Minimal create modal. Output first; category is derived from selected item. *@
 <DxPopup AllowResize="true" @bind-Visible="@isCreateVisible" HeaderText="Nový recept (šablona)" Width="560px">
     <BodyContentTemplate Context="cCtx">
         <DxFormLayout>
-            <DxFormLayoutItem Caption="Název (volitelně)" ColSpanMd="12">
-                <DxTextBox @bind-Text="@createName"
-                           NullText="(výchozí podle výstupu)" />
-            </DxFormLayoutItem>
             <DxFormLayoutItem Caption="Výstupní předmět" ColSpanMd="8">
-                <DxComboBox Data="@allItems" @bind-Value="@createOutputItemId"
+                <DxComboBox Data="@craftableItems" @bind-Value="@createOutputItemId"
                             TextFieldName="Name" ValueFieldName="Id"
-                            NullText="(vyberte předmět)"
+                            NullText="(vyberte vyráběný předmět)"
                             SearchMode="ListSearchMode.AutoSearch" />
             </DxFormLayoutItem>
             <DxFormLayoutItem Caption="Kategorie" ColSpanMd="4">
-                <DxComboBox Data="@categoryValues" @bind-Value="@createCategory"
-                            TextFieldName="Display" ValueFieldName="Value" />
+                <DxTextBox Text="@SelectedCreateCategoryDisplay" ReadOnly="true" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Název (volitelně)" ColSpanMd="12">
+                <DxTextBox @bind-Text="@createName"
+                           NullText="(výchozí podle výstupu)" />
             </DxFormLayoutItem>
         </DxFormLayout>
         @if (createError is not null)
@@ -98,27 +94,21 @@ else
     private List<ItemListDto> allItems = [];
     private bool loading = true;
     private string searchText = "";
-    private HashSet<RecipeCategory> selectedCategories = [];
+    private HashSet<ItemType> selectedCategories = [];
 
     private bool isCreateVisible;
     private bool isCreating;
     private string? createError;
     private string? createName;
     private int? createOutputItemId;
-    private RecipeCategory createCategory = RecipeCategory.Ostatni;
 
-    private static readonly (RecipeCategory Cat, string Label)[] categoryPills =
-    [
-        (RecipeCategory.Budova,   "Budova"),
-        (RecipeCategory.Lektvar,  "Lektvar"),
-        (RecipeCategory.Artefakt, "Artefakt"),
-        (RecipeCategory.Ostatni,  "Ostatní")
-    ];
-
-    private static readonly List<EnumItem<RecipeCategory>> categoryValues = Enum.GetValues<RecipeCategory>()
-        .Select(v => new EnumItem<RecipeCategory>(v, v.GetDisplayName())).ToList();
-
-    private record EnumItem<T>(T Value, string Display);
+    private List<ItemListDto> craftableItems => allItems.Where(i => i.IsCraftable).ToList();
+    private IEnumerable<ItemType> categoryPills => recipes
+        .Select(r => r.Category)
+        .Distinct()
+        .OrderBy(c => c.GetDisplayName());
+    private string SelectedCreateCategoryDisplay => allItems
+        .FirstOrDefault(i => i.Id == createOutputItemId)?.ItemTypeDisplay ?? "Podle výstupu";
 
     private List<RecipeListDto> filtered =>
         recipes.Where(r =>
@@ -145,25 +135,23 @@ else
         finally { loading = false; }
     }
 
-    private void ToggleCategory(RecipeCategory c)
+    private void ToggleCategory(ItemType c)
     {
         if (!selectedCategories.Add(c))
             selectedCategories.Remove(c);
     }
 
-    private static string CssKey(RecipeCategory c) => c switch
+    private static string CssKey(ItemType c) => c switch
     {
-        RecipeCategory.Budova    => "budova",
-        RecipeCategory.Lektvar   => "lektvar",
-        RecipeCategory.Artefakt  => "artefakt",
-        _                        => "ostatni"
+        ItemType.Potion => "lektvar",
+        ItemType.Artifact or ItemType.MinorArtifact or ItemType.Jewelry or ItemType.Scroll => "artefakt",
+        _ => "ostatni"
     };
 
     private void OpenCreateModal()
     {
         createName = null;
         createOutputItemId = null;
-        createCategory = RecipeCategory.Ostatni;
         createError = null;
         isCreateVisible = true;
     }
@@ -178,7 +166,6 @@ else
             var dto = new CreateRecipeDto(
                 Name: string.IsNullOrWhiteSpace(createName) ? null : createName.Trim(),
                 OutputItemId: createOutputItemId.Value,
-                Category: createCategory,
                 GameId: null);
             var (ok, created, problem) = await Api.PostWithProblemAsync<CreateRecipeDto, RecipeDetailDto>(
                 "/api/recipes", dto);

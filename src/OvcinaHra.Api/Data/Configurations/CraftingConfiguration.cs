@@ -19,10 +19,6 @@ public class CraftingRecipeConfiguration : IEntityTypeConfiguration<CraftingReci
         // / Building / Item naming columns elsewhere.
         builder.Property(e => e.Name).HasMaxLength(300);
 
-        // Issue #218 — Category enum stored as string (HasConversion). Same
-        // pattern as Quest.State + Building.State elsewhere in the schema.
-        builder.Property(e => e.Category).HasConversion<string>().HasMaxLength(20);
-
         // Issue #218 — self-FK for template fork. ON DELETE SET NULL would be
         // safer than the EF default, but cascading is fine for Phase 1: per-
         // game forks are independent rows that survive their template's

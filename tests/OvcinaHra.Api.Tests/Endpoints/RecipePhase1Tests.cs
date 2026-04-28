@@ -7,17 +7,20 @@ using OvcinaHra.Shared.Dtos;
 namespace OvcinaHra.Api.Tests.Endpoints;
 
 /// <summary>
-/// Phase 1 of the Recipes port (issue #218): adds Recipe.Category enum +
-/// nullable GameId + TemplateRecipeId self-FK + Name. Tests cover the new
-/// /api/recipes endpoints: catalog list/detail, create/update/delete with
-/// the 4-category enum, template fork via /from-template/{id}, and
-/// Smazat-blocking when forks exist.
+/// Phase 1 of the Recipes port (issue #218/#324): nullable GameId +
+/// TemplateRecipeId self-FK + Name. Tests cover /api/recipes list/detail,
+/// create/update/delete, output item type-derived categories, template fork
+/// via /from-template/{id}, and Smazat-blocking when forks exist.
 /// </summary>
 public class RecipePhase1Tests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
-    private async Task<ItemDetailDto> CreateItemAsync(string name = "Lektvar")
+    private async Task<ItemDetailDto> CreateItemAsync(
+        string name = "Lektvar",
+        ItemType itemType = ItemType.Potion,
+        bool isCraftable = true)
     {
-        var r = await Client.PostAsJsonAsync("/api/items", new CreateItemDto(name, ItemType.Potion));
+        var r = await Client.PostAsJsonAsync("/api/items",
+            new CreateItemDto(name, itemType, IsCraftable: isCraftable));
         return (await r.Content.ReadFromJsonAsync<ItemDetailDto>())!;
     }
 
@@ -29,13 +32,12 @@ public class RecipePhase1Tests(PostgresFixture postgres) : IntegrationTestBase(p
     }
 
     [Fact]
-    public async Task Create_CatalogTemplate_DefaultsCategory_AndKeepsGameIdNull()
+    public async Task Create_CatalogTemplate_DerivesCategory_AndKeepsGameIdNull()
     {
-        var item = await CreateItemAsync();
+        var item = await CreateItemAsync(itemType: ItemType.Potion);
         var dto = new CreateRecipeDto(
             Name: "Hojivý lektvar",
             OutputItemId: item.Id,
-            Category: RecipeCategory.Lektvar,
             GameId: null);
 
         var response = await Client.PostAsJsonAsync("/api/recipes", dto);
@@ -45,7 +47,7 @@ public class RecipePhase1Tests(PostgresFixture postgres) : IntegrationTestBase(p
         Assert.NotNull(created);
         Assert.Equal("Hojivý lektvar", created.Name);
         Assert.Equal("Hojivý lektvar", created.Title);
-        Assert.Equal(RecipeCategory.Lektvar, created.Category);
+        Assert.Equal(ItemType.Potion, created.Category);
         Assert.Null(created.GameId);
         Assert.Null(created.TemplateRecipeId);
         Assert.Empty(created.Ingredients);
@@ -69,24 +71,23 @@ public class RecipePhase1Tests(PostgresFixture postgres) : IntegrationTestBase(p
     }
 
     [Fact]
-    public async Task GetCatalog_ReturnsOnlyTemplates()
+    public async Task GetCatalog_ReturnsAllRecipeRows()
     {
         var item = await CreateItemAsync("Šíp");
         var game = await CreateGameAsync();
 
         // Catalog template
         await Client.PostAsJsonAsync("/api/recipes",
-            new CreateRecipeDto("Lovecký šíp", item.Id, RecipeCategory.Artefakt));
+            new CreateRecipeDto("Lovecký šíp", item.Id));
 
         // Per-game record (NOT a fork — od nuly with explicit GameId)
         await Client.PostAsJsonAsync("/api/recipes",
-            new CreateRecipeDto("Šíp pro hru", item.Id, RecipeCategory.Artefakt, GameId: game.Id));
+            new CreateRecipeDto("Šíp pro hru", item.Id, GameId: game.Id));
 
         var catalog = await Client.GetFromJsonAsync<List<RecipeListDto>>("/api/recipes");
         Assert.NotNull(catalog);
-        Assert.All(catalog, r => Assert.Null(r.GameId));
         Assert.Contains(catalog, r => r.Name == "Lovecký šíp");
-        Assert.DoesNotContain(catalog, r => r.Name == "Šíp pro hru");
+        Assert.Contains(catalog, r => r.Name == "Šíp pro hru" && r.GameId == game.Id);
     }
 
     [Fact]
@@ -96,9 +97,9 @@ public class RecipePhase1Tests(PostgresFixture postgres) : IntegrationTestBase(p
         var game = await CreateGameAsync();
 
         await Client.PostAsJsonAsync("/api/recipes",
-            new CreateRecipeDto("Lovecký šíp", item.Id, RecipeCategory.Artefakt));  // catalog
+            new CreateRecipeDto("Lovecký šíp", item.Id));  // catalog
         await Client.PostAsJsonAsync("/api/recipes",
-            new CreateRecipeDto("Šíp od nuly", item.Id, RecipeCategory.Artefakt, GameId: game.Id));  // od nuly
+            new CreateRecipeDto("Šíp od nuly", item.Id, GameId: game.Id));  // od nuly
 
         var perGame = await Client.GetFromJsonAsync<List<RecipeListDto>>($"/api/games/{game.Id}/recipes");
         Assert.NotNull(perGame);
@@ -109,24 +110,24 @@ public class RecipePhase1Tests(PostgresFixture postgres) : IntegrationTestBase(p
     }
 
     [Fact]
-    public async Task Update_ChangesCategoryAndName()
+    public async Task Update_DerivesCategoryFromNewOutputItem_AndChangesName()
     {
         var item = await CreateItemAsync();
+        var artifact = await CreateItemAsync("Amulet", ItemType.Artifact);
         var create = await Client.PostAsJsonAsync("/api/recipes",
-            new CreateRecipeDto("Old Name", item.Id, RecipeCategory.Ostatni));
+            new CreateRecipeDto("Old Name", item.Id));
         var created = (await create.Content.ReadFromJsonAsync<RecipeDetailDto>())!;
 
         var updateDto = new UpdateRecipeDto(
             Name: "New Name",
-            OutputItemId: item.Id,
-            Category: RecipeCategory.Lektvar);
+            OutputItemId: artifact.Id);
         var response = await Client.PutAsJsonAsync($"/api/recipes/{created.Id}", updateDto);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
         var fetched = await Client.GetFromJsonAsync<RecipeDetailDto>($"/api/recipes/{created.Id}");
         Assert.NotNull(fetched);
         Assert.Equal("New Name", fetched.Name);
-        Assert.Equal(RecipeCategory.Lektvar, fetched.Category);
+        Assert.Equal(ItemType.Artifact, fetched.Category);
     }
 
     [Fact]
@@ -140,7 +141,7 @@ public class RecipePhase1Tests(PostgresFixture postgres) : IntegrationTestBase(p
         var bId = (await building.Content.ReadFromJsonAsync<BuildingDetailDto>())!.Id;
 
         var template = await Client.PostAsJsonAsync("/api/recipes",
-            new CreateRecipeDto("Šablona", item.Id, RecipeCategory.Artefakt));
+            new CreateRecipeDto("Šablona", item.Id));
         var templateRecipe = (await template.Content.ReadFromJsonAsync<RecipeDetailDto>())!;
 
         // Wire ingredients + a building requirement onto the template via the
@@ -159,7 +160,7 @@ public class RecipePhase1Tests(PostgresFixture postgres) : IntegrationTestBase(p
         var fork = (await copyResponse.Content.ReadFromJsonAsync<RecipeDetailDto>())!;
         Assert.Equal(game.Id, fork.GameId);
         Assert.Equal(templateRecipe.Id, fork.TemplateRecipeId);
-        Assert.Equal(RecipeCategory.Artefakt, fork.Category);
+        Assert.Equal(ItemType.Potion, fork.Category);
         // Children deep-copied:
         Assert.Single(fork.Ingredients);
         Assert.Equal(brickItem.Id, fork.Ingredients[0].ItemId);
@@ -200,19 +201,13 @@ public class RecipePhase1Tests(PostgresFixture postgres) : IntegrationTestBase(p
     }
 
     [Fact]
-    public async Task Update_InvalidCategoryEnum_ReturnsBadRequest()
+    public async Task Create_NonCraftableOutput_ReturnsBadRequest()
     {
-        var item = await CreateItemAsync();
-        var create = await Client.PostAsJsonAsync("/api/recipes",
-            new CreateRecipeDto("R", item.Id));
-        var created = (await create.Content.ReadFromJsonAsync<RecipeDetailDto>())!;
+        var item = await CreateItemAsync("Dekorace", ItemType.Miscellaneous, isCraftable: false);
 
-        // Cast a stray int to RecipeCategory to bypass JSON's enum-string check.
-        var updateDto = new UpdateRecipeDto(
-            Name: "R",
-            OutputItemId: item.Id,
-            Category: (RecipeCategory)9999);
-        var response = await Client.PutAsJsonAsync($"/api/recipes/{created.Id}", updateDto);
+        var response = await Client.PostAsJsonAsync("/api/recipes",
+            new CreateRecipeDto("R", item.Id));
+
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 }

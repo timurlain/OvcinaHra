@@ -3,9 +3,9 @@
 @using OvcinaHra.Shared.Extensions
 @inject ApiClient Api
 
-@* Issue #218 — shared edit popup for /recipes catalog, /games/{gid}/recipes
+@* Issue #218/#324 — shared edit popup for /recipes catalog, /games/{gid}/recipes
    per-game grid, and (eventually) the Item Tvorba tab. Three sections:
-   Identita (Name + Output item + Category) · Suroviny (ingredient picker
+   Identita (Output item + derived category + Name) · Suroviny (ingredient picker
    + sacred banner over the notes memo) · Vyžaduje (building + skill
    pickers). Reuses the existing leaf pickers from #142 (RecipeIngredient
    Picker / RecipeBuildingPicker / RecipeSkillPicker / RecipeNotesEditor)
@@ -29,18 +29,17 @@
         {
             <DxFormLayout>
                 <DxFormLayoutGroup Caption="Identita" ColSpanMd="12">
-                    <DxFormLayoutItem Caption="Název" ColSpanMd="8">
-                        <DxTextBox @bind-Text="@editName" NullText="(volitelné — výchozí podle výstupu)" />
+                    <DxFormLayoutItem Caption="Výstupní předmět" ColSpanMd="8">
+                        <DxComboBox Data="@craftableItems" @bind-Value="@editOutputItemId"
+                                    TextFieldName="Name" ValueFieldName="Id"
+                                    NullText="(vyberte vyráběný předmět)"
+                                    SearchMode="ListSearchMode.AutoSearch" />
                     </DxFormLayoutItem>
                     <DxFormLayoutItem Caption="Kategorie" ColSpanMd="4">
-                        <DxComboBox Data="@categoryValues" @bind-Value="@editCategory"
-                                    TextFieldName="Display" ValueFieldName="Value" />
+                        <DxTextBox Text="@SelectedEditCategoryDisplay" ReadOnly="true" />
                     </DxFormLayoutItem>
-                    <DxFormLayoutItem Caption="Výstupní předmět" ColSpanMd="8">
-                        <DxComboBox Data="@allItems" @bind-Value="@editOutputItemId"
-                                    TextFieldName="Name" ValueFieldName="Id"
-                                    NullText="(vyberte předmět)"
-                                    SearchMode="ListSearchMode.AutoSearch" />
+                    <DxFormLayoutItem Caption="Název" ColSpanMd="8">
+                        <DxTextBox @bind-Text="@editName" NullText="(volitelné — výchozí podle výstupu)" />
                     </DxFormLayoutItem>
                     <DxFormLayoutItem Caption="Lokace" ColSpanMd="4">
                         <DxComboBox Data="@allLocations" @bind-Value="@editLocationId"
@@ -127,7 +126,6 @@
     private string? error;
 
     private string? editName;
-    private RecipeCategory editCategory = RecipeCategory.Ostatni;
     private int? editOutputItemId;
     private int? editLocationId;
 
@@ -140,10 +138,9 @@
     private IReadOnlyList<RecipeBuildingPicker.BuildingRow> _buildingRows = [];
     private List<int> _skillIds = [];
 
-    private static readonly List<EnumItem<RecipeCategory>> categoryValues = Enum.GetValues<RecipeCategory>()
-        .Select(v => new EnumItem<RecipeCategory>(v, v.GetDisplayName())).ToList();
-
-    private record EnumItem<T>(T Value, string Display);
+    private List<ItemListDto> craftableItems => allItems.Where(i => i.IsCraftable).ToList();
+    private string SelectedEditCategoryDisplay => allItems
+        .FirstOrDefault(i => i.Id == editOutputItemId)?.ItemTypeDisplay ?? "Podle výstupu";
 
     public override async Task SetParametersAsync(ParameterView parameters)
     {
@@ -177,7 +174,6 @@
                 return;
             }
             editName = detail.Name;
-            editCategory = detail.Category;
             editOutputItemId = detail.OutputItemId;
             editLocationId = detail.LocationId;
             _ingredientRows = detail.Ingredients
@@ -220,7 +216,6 @@
             var dto = new UpdateRecipeDto(
                 Name: string.IsNullOrWhiteSpace(editName) ? null : editName.Trim(),
                 OutputItemId: editOutputItemId.Value,
-                Category: editCategory,
                 LocationId: editLocationId,
                 RequiredSkillIds: _skillIds,
                 IngredientNotes: detail.IngredientNotes);
@@ -317,7 +312,6 @@
             var dto = new UpdateRecipeDto(
                 Name: editName,
                 OutputItemId: editOutputItemId.Value,
-                Category: editCategory,
                 LocationId: editLocationId,
                 RequiredSkillIds: nextIds,
                 IngredientNotes: detail.IngredientNotes);
@@ -338,7 +332,6 @@
             var dto = new UpdateRecipeDto(
                 Name: editName,
                 OutputItemId: editOutputItemId.Value,
-                Category: editCategory,
                 LocationId: editLocationId,
                 RequiredSkillIds: _skillIds,
                 IngredientNotes: normalized);
