@@ -101,9 +101,10 @@ else
     private string? createError;
     private string? createName;
     private int? createOutputItemId;
+    private HashSet<int> catalogRecipeOutputItemIds = [];
 
     private List<ItemListDto> availableCreateOutputItems => allItems
-        .Where(i => i.IsCraftable && !recipes.Any(r => r.GameId is null && r.OutputItemId == i.Id))
+        .Where(i => i.IsCraftable && !catalogRecipeOutputItemIds.Contains(i.Id))
         .ToList();
     private IEnumerable<ItemType> categoryPills => recipes
         .Select(r => r.Category)
@@ -133,6 +134,10 @@ else
             await Task.WhenAll(recipesTask, itemsTask);
             recipes = await recipesTask;
             allItems = await itemsTask;
+            catalogRecipeOutputItemIds = recipes
+                .Where(r => r.GameId is null)
+                .Select(r => r.OutputItemId)
+                .ToHashSet();
         }
         finally { loading = false; }
     }

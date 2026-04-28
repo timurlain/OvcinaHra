@@ -130,10 +130,10 @@
     private int? editLocationId;
 
     private List<ItemListDto> allItems = [];
-    private List<RecipeListDto> allRecipes = [];
     private List<LocationListDto> allLocations = [];
     private List<BuildingListDto> allBuildings = [];
     private List<GameSkillDto> gameSkills = [];
+    private HashSet<int> usedOutputItemIdsInScope = [];
 
     private IReadOnlyList<RecipeIngredientPicker.IngredientRow> _ingredientRows = [];
     private IReadOnlyList<RecipeBuildingPicker.BuildingRow> _buildingRows = [];
@@ -142,10 +142,7 @@
     private List<ItemListDto> craftableItems => allItems
         .Where(i => i.IsCraftable
             && (i.Id == detail?.OutputItemId
-                || !allRecipes.Any(r =>
-                    r.Id != detail?.Id
-                    && r.GameId == detail?.GameId
-                    && r.OutputItemId == i.Id)))
+                || !usedOutputItemIdsInScope.Contains(i.Id)))
         .ToList();
     private string SelectedEditCategoryDisplay => allItems
         .FirstOrDefault(i => i.Id == editOutputItemId)?.ItemTypeDisplay ?? "Podle výstupu";
@@ -194,12 +191,16 @@
 
             // Picker source data — fetch in parallel to avoid serial waterfall.
             var itemsTask = Api.GetListAsync<ItemListDto>("/api/items");
-            var recipesTask = Api.GetListAsync<RecipeListDto>("/api/recipes");
+            var recipesUrl = detail.GameId is int recipeGameId ? $"/api/games/{recipeGameId}/recipes" : "/api/recipes";
+            var recipesTask = Api.GetListAsync<RecipeListDto>(recipesUrl);
             var locationsTask = Api.GetListAsync<LocationListDto>("/api/locations");
             var buildingsTask = Api.GetListAsync<BuildingListDto>("/api/buildings");
             await Task.WhenAll(itemsTask, recipesTask, locationsTask, buildingsTask);
             allItems = await itemsTask;
-            allRecipes = await recipesTask;
+            usedOutputItemIdsInScope = (await recipesTask)
+                .Where(r => r.Id != detail.Id && r.GameId == detail.GameId)
+                .Select(r => r.OutputItemId)
+                .ToHashSet();
             allLocations = await locationsTask;
             allBuildings = await buildingsTask;
 
