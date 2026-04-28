@@ -57,7 +57,7 @@ else
             <DxFormLayout CssClass="mt-3">
                 <DxFormLayoutGroup Caption="Oblast hry na mapě" ColSpanMd="12">
                     <DxFormLayoutItem ColSpanMd="12">
-                        <BoundingBoxPicker Value="@bboxValue" ValueChanged="OnBboxChanged" />
+                        <BoundingBoxPicker GameId="@editingId.Value" Value="@bboxValue" ValueChanged="OnBboxChanged" />
                     </DxFormLayoutItem>
                 </DxFormLayoutGroup>
             </DxFormLayout>

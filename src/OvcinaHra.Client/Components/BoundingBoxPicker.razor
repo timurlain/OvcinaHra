@@ -1,6 +1,7 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 @inject IConfiguration Config
+@inject ApiClient Api
 
 <div class="oh-bbox-picker">
     <div class="oh-bbox-picker-map" id="@_mapId"></div>
@@ -54,9 +55,19 @@
 
     [Parameter] public BboxValue Value { get; set; } = BboxValue.Empty;
     [Parameter] public EventCallback<BboxValue> ValueChanged { get; set; }
+    [Parameter] public int? GameId { get; set; }
 
     private readonly string _mapId = $"oh-bbox-{Guid.NewGuid():N}";
     private bool _mapReady;
+    private int? _locationDotsLoadedForGameId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_mapReady && GameId != _locationDotsLoadedForGameId)
+        {
+            await LoadLocationDotsAsync();
+        }
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -72,6 +83,7 @@
 
         await JS.InvokeVoidAsync("ovcinaBboxMap.init", _mapId, apiKey, centerLat, centerLon, zoom);
         _mapReady = true;
+        await LoadLocationDotsAsync();
 
         if (Value.IsComplete)
         {
@@ -146,6 +158,71 @@
         }
         Value = next;
         await ValueChanged.InvokeAsync(next);
+    }
+
+    private async Task LoadLocationDotsAsync()
+    {
+        if (!_mapReady) return;
+
+        if (GameId is not int gameId)
+        {
+            await JS.InvokeVoidAsync("ovcinaBboxMap.setLocationDots", _mapId, Array.Empty<LocationDotJs>());
+            _locationDotsLoadedForGameId = null;
+            Console.WriteLine("[bbox-author] dots loaded count=0");
+            return;
+        }
+
+        try
+        {
+            var data = await Api.GetAsync<MapDataDto>($"/api/map/data?gameId={gameId}");
+            var dots = data?.Locations
+                .Select(LocationDotJs.From)
+                .ToArray() ?? [];
+            await JS.InvokeVoidAsync("ovcinaBboxMap.setLocationDots", _mapId, dots);
+            _locationDotsLoadedForGameId = gameId;
+            Console.WriteLine($"[bbox-author] dots loaded count={dots.Length}");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[bbox-author] dots load failed: {ex.GetType().Name}: {ex.Message}");
+            await JS.InvokeVoidAsync("ovcinaBboxMap.setLocationDots", _mapId, Array.Empty<LocationDotJs>());
+            _locationDotsLoadedForGameId = gameId;
+            Console.WriteLine("[bbox-author] dots loaded count=0");
+        }
+    }
+
+    private sealed record LocationDotJs(
+        [property: System.Text.Json.Serialization.JsonPropertyName("lat")] double Lat,
+        [property: System.Text.Json.Serialization.JsonPropertyName("lon")] double Lon,
+        [property: System.Text.Json.Serialization.JsonPropertyName("kind")] string Kind,
+        [property: System.Text.Json.Serialization.JsonPropertyName("color")] string Color,
+        [property: System.Text.Json.Serialization.JsonPropertyName("strokeColor")] string StrokeColor)
+    {
+        public static LocationDotJs From(MapLocationDto location)
+        {
+            var kind = location.EffectiveKind;
+            return new LocationDotJs(
+                location.Lat,
+                location.Lon,
+                kind.ToString().ToLowerInvariant(),
+                KindColorFor(kind),
+                StrokeColorFor(kind));
+        }
+
+        private static string KindColorFor(LocationKind kind) => kind switch
+        {
+            LocationKind.Town => "#6D6D6D",
+            LocationKind.Village => "#FF0000",
+            LocationKind.Magical => "#EAF626",
+            LocationKind.Hobbit => "#9400D4",
+            LocationKind.Wilderness => "#FFFFFF",
+            LocationKind.Dungeon => "#000000",
+            LocationKind.PointOfInterest => "#FF6600",
+            _ => "#2D5016"
+        };
+
+        private static string StrokeColorFor(LocationKind kind)
+            => kind == LocationKind.Wilderness ? "#2A2A2A" : "#FFFFFF";
     }
 
     public async ValueTask DisposeAsync()
