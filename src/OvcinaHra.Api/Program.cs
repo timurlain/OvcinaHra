@@ -102,10 +102,18 @@ try
 
     builder.Services.AddAuthorization();
     builder.Services.AddProblemDetails();
+    builder.Services.AddMemoryCache();
     builder.Services.AddHttpClient();
+    builder.Services.AddHttpClient<IMapTileClient, MapTileClient>(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(20);
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("OvcinaHra/1.0 (map export)");
+    });
     builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
     builder.Services.AddSingleton<IThumbnailService, ThumbnailService>();
     builder.Services.AddSingleton<ICipherPdfRenderer, CipherPdfRenderer>();
+    builder.Services.AddScoped<IMapDataService, MapDataService>();
+    builder.Services.AddScoped<IExplorerMapExportService, ExplorerMapExportService>();
     // Walks every image-bearing entity on startup and pre-generates all
     // thumbnail presets so list pages never pay the cold-resize cost at
     // runtime. Runs in the background — does not block startup.
@@ -247,6 +255,7 @@ try
 
     // All CRUD endpoints require authorization
     app.MapGameEndpoints().RequireAuthorization();
+    app.MapExportEndpoints().RequireAuthorization();
     app.MapTagEndpoints().RequireAuthorization();
     app.MapLocationEndpoints().RequireAuthorization();
     app.MapItemEndpoints().RequireAuthorization();
