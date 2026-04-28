@@ -57,16 +57,16 @@ else
 }
 
 @* Minimal create modal. Output first; category is derived from selected item. *@
-<DxPopup AllowResize="true" @bind-Visible="@isCreateVisible" HeaderText="Nový recept (šablona)" Width="560px">
+<DxPopup AllowResize="true" @bind-Visible="@isCreateVisible" HeaderText="Nový recept (šablona)" Width="480px">
     <BodyContentTemplate Context="cCtx">
         <DxFormLayout>
-            <DxFormLayoutItem Caption="Výstupní předmět" ColSpanMd="8">
-                <DxComboBox Data="@craftableItems" @bind-Value="@createOutputItemId"
+            <DxFormLayoutItem Caption="Výstupní předmět" ColSpanMd="12">
+                <DxComboBox Data="@availableCreateOutputItems" @bind-Value="@createOutputItemId"
                             TextFieldName="Name" ValueFieldName="Id"
                             NullText="(vyberte vyráběný předmět)"
                             SearchMode="ListSearchMode.AutoSearch" />
             </DxFormLayoutItem>
-            <DxFormLayoutItem Caption="Kategorie" ColSpanMd="4">
+            <DxFormLayoutItem Caption="Kategorie" ColSpanMd="12">
                 <DxTextBox Text="@SelectedCreateCategoryDisplay" ReadOnly="true" />
             </DxFormLayoutItem>
             <DxFormLayoutItem Caption="Název (volitelně)" ColSpanMd="12">
@@ -101,8 +101,11 @@ else
     private string? createError;
     private string? createName;
     private int? createOutputItemId;
+    private HashSet<int> catalogRecipeOutputItemIds = [];
 
-    private List<ItemListDto> craftableItems => allItems.Where(i => i.IsCraftable).ToList();
+    private List<ItemListDto> availableCreateOutputItems => allItems
+        .Where(i => i.IsCraftable && !catalogRecipeOutputItemIds.Contains(i.Id))
+        .ToList();
     private IEnumerable<ItemType> categoryPills => recipes
         .Select(r => r.Category)
         .Distinct()
@@ -131,6 +134,10 @@ else
             await Task.WhenAll(recipesTask, itemsTask);
             recipes = await recipesTask;
             allItems = await itemsTask;
+            catalogRecipeOutputItemIds = recipes
+                .Where(r => r.GameId is null)
+                .Select(r => r.OutputItemId)
+                .ToHashSet();
         }
         finally { loading = false; }
     }
