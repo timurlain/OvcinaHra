@@ -149,10 +149,30 @@ public class RegistraceImportService(
             .Select(k => new { k.Id, k.Name })
             .ToListAsync(ct);
         var kingdomByName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var ambiguousKingdomKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var kingdom in kingdomRows)
         {
             foreach (var key in GetKingdomLookupKeys(kingdom.Name))
-                kingdomByName.TryAdd(key, kingdom.Id);
+            {
+                if (ambiguousKingdomKeys.Contains(key))
+                    continue;
+
+                if (kingdomByName.TryGetValue(key, out var existingKingdomId))
+                {
+                    if (existingKingdomId != kingdom.Id)
+                    {
+                        kingdomByName.Remove(key);
+                        ambiguousKingdomKeys.Add(key);
+                        errors.Add(
+                            $"Ambiguous kingdom lookup key '{key}' maps to multiple kingdoms "
+                            + $"(Ids {existingKingdomId} and {kingdom.Id}).");
+                    }
+
+                    continue;
+                }
+
+                kingdomByName[key] = kingdom.Id;
+            }
         }
 
         foreach (var record in records)
