@@ -1,6 +1,5 @@
 @implements IAsyncDisposable
 @using System.Globalization
-@using System.Text.Json
 @using OvcinaHra.Shared.Domain.Enums
 @inject ApiClient Api
 
@@ -540,7 +539,7 @@
             return;
         }
 
-        Console.WriteLine($"[map-text-popup] submit text={JsonSerializer.Serialize(text)} length={text.Length}");
+        Console.WriteLine($"[map-text-popup] submit length={text.Length}");
         var shape = new TextShape(
             Guid.NewGuid().ToString("N"),
             _color,

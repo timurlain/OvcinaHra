@@ -704,7 +704,17 @@
                 mapDiag('text.request.no-dotnet', { mapId: inst.mapId });
                 return;
             }
-            inst.dotnetRef.invokeMethodAsync('OnTextPlacementRequested', e.lngLat.lat, e.lngLat.lng);
+            try {
+                inst.dotnetRef
+                    .invokeMethodAsync('OnTextPlacementRequested', e.lngLat.lat, e.lngLat.lng)
+                    .catch(function (err) {
+                        console.warn('Overlay text placement request failed:', err);
+                        mapDiag('text.request.failed', { mapId: inst.mapId });
+                    });
+            } catch (err) {
+                console.warn('Overlay text placement request failed:', err);
+                mapDiag('text.request.failed', { mapId: inst.mapId });
+            }
         });
     }
 
