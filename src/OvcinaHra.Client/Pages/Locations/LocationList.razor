@@ -738,6 +738,7 @@ else
     // Cipher grid state is loaded only after the user opts in with "Ukaž šifry".
     private bool showCiphers;
     private bool ciphersLoaded;
+    private int? ciphersLoadedForGameId;
     private bool ciphersLoading;
     private string? cipherGridError;
     private readonly Dictionary<CipherCellKey, CipherCellState> cipherStates = [];
@@ -1080,6 +1081,14 @@ else
     private async Task LoadDataAsync()
     {
         loading = true;
+        if (ciphersLoadedForGameId != gameId)
+        {
+            ciphersLoaded = false;
+            ciphersLoadedForGameId = null;
+            cipherGridError = null;
+            cipherStates.Clear();
+        }
+
         if (Catalog)
         {
             locations = await Api.GetListAsync<LocationListDto>("/api/locations");
@@ -1100,6 +1109,7 @@ else
         {
             showCiphers = false;
             ciphersLoaded = false;
+            ciphersLoadedForGameId = null;
             cipherStates.Clear();
         }
         else if (showCiphers)
@@ -1127,7 +1137,7 @@ else
 
     private async Task LoadCiphersAsync(bool force = false)
     {
-        if (Catalog || (ciphersLoaded && !force)) return;
+        if (Catalog || (ciphersLoaded && ciphersLoadedForGameId == gameId && !force)) return;
 
         ciphersLoading = true;
         cipherGridError = null;
@@ -1141,12 +1151,14 @@ else
                     new CipherCellState(cipher.MessageRaw);
             }
             ciphersLoaded = true;
+            ciphersLoadedForGameId = gameId;
         }
         catch (Exception ex)
         {
             cipherGridError = ex.Message;
             showCiphers = false;
             ciphersLoaded = false;
+            ciphersLoadedForGameId = null;
         }
         finally
         {
@@ -1275,8 +1287,7 @@ else
     private sealed record CipherColumn(
         CipherSkillKey SkillKey,
         string SkillSlug,
-        string SkillName,
-        int MaxMessageLetters);
+        string SkillName);
 
     private readonly record struct CipherCellKey(int LocationId, CipherSkillKey SkillKey);
 
@@ -1320,7 +1331,6 @@ else
             .Select(skill => new CipherColumn(
                 skill,
                 skill.GetSlug(),
-                skill.GetDisplayName(),
-                skill.GetMaxMessageLetters()))
+                skill.GetDisplayName()))
             .ToList();
 }
