@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -174,7 +175,7 @@ public class ConsultEndpointTests(PostgresFixture postgres)
 
     private sealed class CapturingLoggerProvider : ILoggerProvider
     {
-        public List<LogEntry> Entries { get; } = [];
+        public ConcurrentQueue<LogEntry> Entries { get; } = [];
 
         public ILogger CreateLogger(string categoryName)
             => new CapturingLogger(categoryName, Entries);
@@ -186,7 +187,7 @@ public class ConsultEndpointTests(PostgresFixture postgres)
 
     private sealed class CapturingLogger(
         string categoryName,
-        List<LogEntry> entries) : ILogger
+        ConcurrentQueue<LogEntry> entries) : ILogger
     {
         public IDisposable? BeginScope<TState>(TState state)
             where TState : notnull
@@ -202,7 +203,7 @@ public class ConsultEndpointTests(PostgresFixture postgres)
             Func<TState, Exception?, string> formatter)
         {
             var structuredState = state as IEnumerable<KeyValuePair<string, object?>>;
-            entries.Add(new LogEntry(
+            entries.Enqueue(new LogEntry(
                 logLevel,
                 categoryName,
                 formatter(state, exception),
