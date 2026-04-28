@@ -114,6 +114,7 @@ try
     builder.Services.AddSingleton<ICipherPdfRenderer, CipherPdfRenderer>();
     builder.Services.AddScoped<IMapDataService, MapDataService>();
     builder.Services.AddScoped<IExplorerMapExportService, ExplorerMapExportService>();
+    builder.Services.AddScoped<IMagicBookExportPlanner, MagicBookExportPlanner>();
     // Walks every image-bearing entity on startup and pre-generates all
     // thumbnail presets so list pages never pay the cold-resize cost at
     // runtime. Runs in the background — does not block startup.
