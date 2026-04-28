@@ -128,7 +128,7 @@ public sealed class ExplorerMapExportService(
         var layout = ExportLayout.For(page.Width, page.Height, bounds.AspectRatio);
         var mapImage = await RenderBasemapAsync(style, bounds, layout, ct);
         var overlays = await LoadOverlaysAsync(gameId, kind, ct);
-        var labelOverlay = RenderPinLabelOverlay(page, layout, bounds, locations, ct);
+        var labelOverlay = RenderPinLabelOverlay(page, layout, bounds, locations, kind, ct);
 
         var canvas = new PdfCanvas(page.Height);
         canvas.FillRectangle(0, 0, page.Width, page.Height, "#ffffff");
@@ -138,7 +138,7 @@ public sealed class ExplorerMapExportService(
             canvas.DrawImage("Im1", layout.MapX, layout.MapY, layout.MapWidth, layout.MapHeight);
         foreach (var overlay in overlays)
             RenderOverlay(canvas, layout, bounds, overlay);
-        RenderPins(canvas, layout, bounds, locations);
+        RenderPins(canvas, layout, bounds, locations, kind);
         if (labelOverlay is not null)
             canvas.DrawImage("Labels", 0, 0, page.Width, page.Height);
         canvas.EndClip();
@@ -280,10 +280,11 @@ public sealed class ExplorerMapExportService(
         ExportLayout layout,
         MapBounds bounds,
         IReadOnlyList<MapLocationDto> locations,
+        MapExportKind kind,
         CancellationToken ct)
     {
         var labelLocations = locations
-            .Where(l => l.EffectiveKind is LocationKind.Town or LocationKind.Village)
+            .Where(l => ShouldRenderPinLabel(kind, l.EffectiveKind))
             .ToList();
         if (labelLocations.Count == 0)
             return null;
@@ -376,6 +377,9 @@ public sealed class ExplorerMapExportService(
     }
 
     internal static IReadOnlyList<string> WrapPinLabelForTesting(string text) => WrapPinLabel(text);
+
+    internal static bool ShouldRenderPinLabelForTesting(MapExportKind exportKind, LocationKind locationKind)
+        => ShouldRenderPinLabel(exportKind, locationKind);
 
     internal static MapExportMapArea CalculateMapAreaForTesting(MapExportPageFormat format, double aspectRatio)
     {
@@ -522,16 +526,21 @@ public sealed class ExplorerMapExportService(
         PdfCanvas canvas,
         ExportLayout layout,
         MapBounds bounds,
-        IReadOnlyList<MapLocationDto> locations)
+        IReadOnlyList<MapLocationDto> locations,
+        MapExportKind exportKind)
     {
         foreach (var location in locations)
         {
             var point = layout.Project(bounds, location.Lat, location.Lon);
             var kind = location.EffectiveKind;
-            var showName = kind is LocationKind.Town or LocationKind.Village;
+            var showName = ShouldRenderPinLabel(exportKind, kind);
             DrawPin(canvas, point.X, point.Y, kind, showName ? null : location.Id.ToString(CultureInfo.InvariantCulture));
         }
     }
+
+    private static bool ShouldRenderPinLabel(MapExportKind exportKind, LocationKind locationKind)
+        => exportKind == MapExportKind.Organizer
+            || locationKind is LocationKind.Town or LocationKind.Village;
 
     private static void DrawPin(PdfCanvas canvas, double tipX, double tipY, LocationKind kind, string? innerText)
     {
