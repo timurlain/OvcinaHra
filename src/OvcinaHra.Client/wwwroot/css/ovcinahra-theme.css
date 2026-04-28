@@ -3241,11 +3241,20 @@
     transition:.12s ease;display:flex;flex-direction:column;gap:.25rem}
 .oh-tp-card:hover{background:#F2EBD8;border-color:#2D5016}
 .oh-tp-card.is-focused{border-color:#2D5016;box-shadow:0 0 0 2px rgba(45,80,22,.18)}
+.oh-tp-card.has-pending{border-style:dashed}
+.oh-tp-card.oh-tp-card-dragtarget{border-color:#2D5016;background:var(--oh-primary-surface,#E8F0E4);box-shadow:0 0 0 3px rgba(45,80,22,.18)}
 .oh-tp-card-hdr{display:flex;justify-content:space-between;align-items:center;gap:.4rem;font-size:.75rem;color:var(--oh-text-secondary,#666)}
 .oh-tp-card-kind{text-transform:capitalize;font-family:'JetBrains Mono',monospace}
-.oh-tp-card-count{background:#2D5016;color:#fff;border-radius:999px;padding:.05rem .4rem;font-size:.7rem}
+.oh-tp-card-count{background:#2D5016;color:#fff;border-radius:999px;padding:.05rem .4rem;font-size:.7rem;white-space:nowrap}
 .oh-tp-card-name{font-weight:600;color:var(--oh-text,#2a2a2a);font-size:.95rem}
+.oh-tp-card-name-count{color:var(--oh-text-secondary,#666);font-family:'JetBrains Mono',monospace;font-size:.82rem}
 .oh-tp-card-stash{font-size:.75rem;color:var(--oh-text-secondary,#666);display:flex;align-items:center;gap:.3rem}
+.oh-tp-card-cta{margin-top:.2rem;display:inline-flex;align-items:center;gap:.3rem;color:#2D5016;font-weight:600;font-size:.78rem}
+.oh-tp-location-total{font-family:'JetBrains Mono',monospace;font-size:.85rem;color:var(--oh-text-secondary,#666);margin-left:.35rem}
+.oh-tp-stash-summary{display:flex;flex-wrap:wrap;gap:.35rem;margin:.45rem 0 .7rem}
+.oh-tp-stash-summary.compact{margin:.35rem 0 0}
+.oh-tp-stash-chip{display:inline-flex;align-items:center;gap:.3rem;border:1px solid var(--oh-border,#D9CFB6);border-radius:999px;background:var(--oh-surface,#FAF6EC);padding:.18rem .55rem;font-size:.76rem;color:var(--oh-text-secondary,#666)}
+.oh-tp-stash-chip strong{font-family:'JetBrains Mono',monospace;color:var(--oh-text,#2a2a2a)}
 
 /* ======================================================================
    Issue #158 — Home cockpit (Příprava + Hra běží + Drozd welcome)

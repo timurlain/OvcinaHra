@@ -44,6 +44,14 @@
                             @bind-Value="@stashId"
                             TextFieldName="Name" ValueFieldName="Id"
                             NullText="Vyberte skrýš…" />
+                <div class="oh-tp-stash-summary compact">
+                    @foreach (var stash in Stashes.OrderBy(s => s.Name))
+                    {
+                        <span class="oh-tp-stash-chip">
+                            <i class="bi bi-archive"></i>@stash.Name <strong>@stash.ItemCount</strong>
+                        </span>
+                    }
+                </div>
             </div>
         }
     </div>
