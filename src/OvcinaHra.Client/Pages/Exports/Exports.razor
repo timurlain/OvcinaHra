@@ -36,6 +36,30 @@
         </button>
         <button type="button"
                 class="oh-exports-card oh-exports-card-button"
+                title="Mapa s organizátorskou vrstvou."
+                @onclick='() => OpenMapExport("Export pro organizátory (A4)", "organizer-map.pdf", "organizer")'>
+            <div class="oh-exports-card-icon">
+                <i class="bi bi-map"></i>
+            </div>
+            <div class="oh-exports-card-body">
+                <h3>Export pro organizátory (A4)</h3>
+                <p>Mapa A4 s hráčským i organizátorským překryvem.</p>
+            </div>
+        </button>
+        <button type="button"
+                class="oh-exports-card oh-exports-card-button"
+                title="Velká slepá mapa pro vyvěšení v městě."
+                @onclick='() => OpenMapExport("Export pro království (A3)", "kingdom-map.pdf", "kingdom")'>
+            <div class="oh-exports-card-icon">
+                <i class="bi bi-buildings-fill"></i>
+            </div>
+            <div class="oh-exports-card-body">
+                <h3>Export pro království (A3)</h3>
+                <p>Velká A3 mapa s hráčskou vrstvou pro vyvěšení.</p>
+            </div>
+        </button>
+        <button type="button"
+                class="oh-exports-card oh-exports-card-button"
                 title="Vyexportuje knihu kouzel do A4 PDF, které po rozstřižení dá dvě A6 knížečky."
                 disabled="@isMagicBookDownloading"
                 @onclick="DownloadMagicBookAsync">
@@ -70,7 +94,7 @@
     <div class="oh-exports-modal-backdrop" @onclick="CloseCharacterExport">
         <section class="oh-exports-modal" @onclick:stopPropagation="true">
             <header>
-                <h2>Export pro postavy</h2>
+                <h2>@activeMapExportTitle</h2>
                 <button type="button" class="oh-exports-modal-close" @onclick="CloseCharacterExport" aria-label="Zavřít">
                     <i class="bi bi-x-lg"></i>
                 </button>
@@ -80,7 +104,7 @@
                 {
                     <label class="oh-exports-style-option">
                         <input type="radio"
-                               name="character-export-style"
+                               name="map-export-style"
                                checked="@(selectedBasemap == option.Value)"
                                @onchange="@(() => selectedBasemap = option.Value)" />
                         <span>
@@ -274,10 +298,19 @@
     private bool isDownloading;
     private bool isMagicBookDownloading;
     private string selectedBasemap = TouristBasemap;
+    private string activeMapExportTitle = "Export pro postavy";
+    private string activeMapExportEndpoint = "explorer-map.pdf";
+    private string activeMapExportKind = "explorer";
     private string? downloadError;
 
-    private void OpenCharacterExport()
+    private void OpenCharacterExport() =>
+        OpenMapExport("Export pro postavy", "explorer-map.pdf", "explorer");
+
+    private void OpenMapExport(string title, string endpoint, string kind)
     {
+        activeMapExportTitle = title;
+        activeMapExportEndpoint = endpoint;
+        activeMapExportKind = kind;
         selectedBasemap = TouristBasemap;
         downloadError = null;
         showCharacterExport = true;
@@ -304,7 +337,8 @@
         downloadError = null;
         try
         {
-            var url = $"/api/games/{gameId}/exports/explorer-map.pdf?style={Uri.EscapeDataString(selectedBasemap)}";
+            Console.WriteLine($"[map-export-pr3] map export download init kind={activeMapExportKind} style={selectedBasemap}");
+            var url = $"/api/games/{gameId}/exports/{activeMapExportEndpoint}?style={Uri.EscapeDataString(selectedBasemap)}";
             var (ok, file, problem) = await Api.DownloadWithProblemAsync(url);
             if (!ok || file is null)
             {

@@ -1,4 +1,5 @@
 @implements IAsyncDisposable
+@using OvcinaHra.Shared.Domain.Enums
 @inject ApiClient Api
 
 <div class="oh-map-host-wrap" style="position:relative;width:100%;height:@Height;">
@@ -22,6 +23,22 @@
 
     @if (GameId.HasValue && _editMode)
     {
+        @if (OrganizerOverlayEnabled)
+        {
+            <div class="oh-map-overlay-audience" role="group" aria-label="Vrstva překryvu">
+                <button type="button"
+                        class="btn btn-sm @(_activeAudience == MapOverlayAudience.Player ? "btn-primary" : "btn-outline-primary")"
+                        @onclick="@(() => ChangeAudienceAsync(MapOverlayAudience.Player))">
+                    Hráčská vrstva
+                </button>
+                <button type="button"
+                        class="btn btn-sm @(_activeAudience == MapOverlayAudience.Organizer ? "btn-primary" : "btn-outline-primary")"
+                        @onclick="@(() => ChangeAudienceAsync(MapOverlayAudience.Organizer))">
+                    Organizátorská vrstva
+                </button>
+            </div>
+        }
+
         <MapOverlayToolbar Tool="@_tool" ToolChanged="ChangeToolAsync"
                            Color="@_color" ColorChanged="OnColorChanged"
                            UseFill="@_useFill" UseFillChanged="OnUseFillChanged"
@@ -121,11 +138,18 @@
     /// </summary>
     [Parameter] public bool OverlayVisible { get; set; } = true;
 
+    /// <summary>Organizer-only layer is loaded and editable only for organizer users.</summary>
+    [Parameter] public bool OrganizerOverlayEnabled { get; set; }
+
+    /// <summary>Controls the organizer overlay layer independently from the player overlay.</summary>
+    [Parameter] public bool OrganizerOverlayVisible { get; set; } = true;
+
     private readonly string _elementId = $"map-{Guid.NewGuid():N}";
     private DotNetObjectReference<MapView>? _dotnetRef;
 
     // ---- Overlay editor state ------------------------------------------
-    private List<MapOverlayShape> _committedShapes = new();   // last-saved baseline
+    private List<MapOverlayShape> _committedPlayerShapes = new();     // last-saved player baseline
+    private List<MapOverlayShape> _committedOrganizerShapes = new();  // last-saved organizer baseline
     private List<MapOverlayShape> _stagedShapes = new();      // working copy
     private readonly List<string> _createdShapeIds = new();   // undo stack for this edit session
     private bool _editMode;
@@ -141,8 +165,10 @@
     private bool _deleteConfirmVisible;
     private bool _clearAllConfirmVisible;
     private string? _overlayError;
-    private int? _loadedOverlayForGameId;
+    private string? _loadedOverlayKey;
     private bool? _lastAppliedOverlayVisible;
+    private bool? _lastAppliedOrganizerOverlayVisible;
+    private MapOverlayAudience _activeAudience = MapOverlayAudience.Player;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -158,64 +184,120 @@
             await JS.InvokeVoidAsync("ovcinaMap.init", _elementId, _dotnetRef, CenterLat, CenterLon, Zoom, apiKey, glyphsUrl);
         }
 
-        // Load overlay once per game. Repeat on GameId change. Wrapped in
+        // Load overlay once per game/audience availability. Repeat on GameId
+        // or organizer-role change. Wrapped in
         // try/catch per _review-instincts §11 — a dead overlay fetch mustn't
         // break the rest of the map page. Marker is set only after a
         // successful load so transient failures can retry on the next render.
-        if (GameId.HasValue && _loadedOverlayForGameId != GameId)
+        var overlayKey = GetOverlayLoadKey();
+        if (GameId.HasValue && _loadedOverlayKey != overlayKey)
         {
             try
             {
-                List<MapOverlayShape> shapes;
-                try
-                {
-                    var dto = await Api.GetAsync<MapOverlayDto>($"/api/games/{GameId.Value}/overlay");
-                    shapes = dto?.Shapes ?? new List<MapOverlayShape>();
-                }
-                catch (Exception ex) when (ex is System.Text.Json.JsonException or NotSupportedException)
-                {
-                    // 204 NoContent → empty body can't parse as JSON → JsonException.
-                    // Unknown polymorphic discriminator (server returned a shape
-                    // type a stale client doesn't know yet) → NotSupportedException.
-                    // Either way: treat as no overlay so the editor can still
-                    // open and the user can re-save. Preview layers initialise
-                    // below regardless.
-                    shapes = new List<MapOverlayShape>();
-                }
-                _committedShapes = shapes;
-                _stagedShapes = new List<MapOverlayShape>(shapes);
-                await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _committedShapes);
-                await SetOverlayVisibilityAsync(OverlayVisible);
-                _loadedOverlayForGameId = GameId;
+                _committedPlayerShapes = await LoadOverlayShapesAsync(MapOverlayAudience.Player);
+                _committedOrganizerShapes = OrganizerOverlayEnabled
+                    ? await LoadOverlayShapesAsync(MapOverlayAudience.Organizer)
+                    : [];
+                if (!OrganizerOverlayEnabled)
+                    _activeAudience = MapOverlayAudience.Player;
+                _stagedShapes = new List<MapOverlayShape>(GetCommittedShapes(_activeAudience));
+                await RenderVisibleOverlaysAsync();
+                _loadedOverlayKey = overlayKey;
             }
-            catch { /* network / JS failure — leave _loadedOverlayForGameId unset so a retry is possible */ }
+            catch { /* network / JS failure — leave _loadedOverlayKey unset so a retry is possible */ }
         }
 
-        if (GameId.HasValue && _lastAppliedOverlayVisible != OverlayVisible)
+        if (GameId.HasValue
+            && (_lastAppliedOverlayVisible != OverlayVisible
+                || _lastAppliedOrganizerOverlayVisible != OrganizerOverlayVisible))
         {
-            await SetOverlayVisibilityAsync(OverlayVisible);
+            await RenderVisibleOverlaysAsync();
         }
     }
 
     public async Task SetOverlayVisibilityAsync(bool visible)
     {
+        await RenderVisibleOverlaysAsync(playerVisibleOverride: visible);
+    }
+
+    public async Task SetOrganizerOverlayVisibilityAsync(bool visible)
+    {
+        await RenderVisibleOverlaysAsync(organizerVisibleOverride: visible);
+    }
+
+    private string? GetOverlayLoadKey() =>
+        GameId.HasValue ? $"{GameId.Value}:{OrganizerOverlayEnabled}" : null;
+
+    private async Task<List<MapOverlayShape>> LoadOverlayShapesAsync(MapOverlayAudience audience)
+    {
         try
         {
-            await JS.InvokeVoidAsync("ovcinaOverlay.setVisibility", _elementId, visible);
-            _lastAppliedOverlayVisible = visible;
+            var dto = await Api.GetAsync<MapOverlayDto>(
+                $"/api/games/{GameId!.Value}/overlay?audience={AudienceQueryValue(audience)}");
+            return dto?.Shapes ?? [];
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or NotSupportedException)
+        {
+            // 204 NoContent → empty body can't parse as JSON → JsonException.
+            // Unknown polymorphic discriminator (server returned a shape type a
+            // stale client doesn't know yet) → NotSupportedException. Either way:
+            // treat as no overlay so the editor can still open and re-save.
+            return [];
+        }
+    }
+
+    private async Task RenderVisibleOverlaysAsync(
+        bool? playerVisibleOverride = null,
+        bool? organizerVisibleOverride = null)
+    {
+        if (!GameId.HasValue || _editMode)
+            return;
+
+        var playerVisible = playerVisibleOverride ?? OverlayVisible;
+        var organizerVisible = OrganizerOverlayEnabled && (organizerVisibleOverride ?? OrganizerOverlayVisible);
+        var shapes = new List<MapOverlayShape>();
+        if (playerVisible)
+            shapes.AddRange(_committedPlayerShapes);
+        if (organizerVisible)
+            shapes.AddRange(_committedOrganizerShapes);
+
+        try
+        {
+            await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, shapes);
+            await JS.InvokeVoidAsync("ovcinaOverlay.setVisibility", _elementId, playerVisible || organizerVisible);
+            _lastAppliedOverlayVisible = playerVisible;
+            _lastAppliedOrganizerOverlayVisible = organizerVisibleOverride ?? OrganizerOverlayVisible;
         }
         catch { /* map / JS may not be ready yet; next render reapplies */ }
     }
+
+    private List<MapOverlayShape> GetCommittedShapes(MapOverlayAudience audience) =>
+        audience == MapOverlayAudience.Organizer ? _committedOrganizerShapes : _committedPlayerShapes;
+
+    private void SetCommittedShapes(MapOverlayAudience audience, List<MapOverlayShape> shapes)
+    {
+        if (audience == MapOverlayAudience.Organizer)
+            _committedOrganizerShapes = new List<MapOverlayShape>(shapes);
+        else
+            _committedPlayerShapes = new List<MapOverlayShape>(shapes);
+    }
+
+    private static string AudienceQueryValue(MapOverlayAudience audience) =>
+        audience == MapOverlayAudience.Organizer ? "organizer" : "player";
 
     // ---- Overlay editor handlers --------------------------------------
 
     private async Task EnterEditModeAsync()
     {
+        if (!OrganizerOverlayEnabled)
+            _activeAudience = MapOverlayAudience.Player;
+
         _editMode = true;
-        _stagedShapes = new List<MapOverlayShape>(_committedShapes);
+        _stagedShapes = new List<MapOverlayShape>(GetCommittedShapes(_activeAudience));
         _createdShapeIds.Clear();
         _overlayError = null;
         await PushStyleToJsAsync();
+        await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _stagedShapes);
         await JS.InvokeVoidAsync("ovcinaOverlay.enterEditMode", _elementId, _tool, _dotnetRef);
     }
 
@@ -226,22 +308,24 @@
         _deleteConfirmVisible = false;
         _clearAllConfirmVisible = false;
         _createdShapeIds.Clear();
-        _stagedShapes = new List<MapOverlayShape>(_committedShapes);
+        _stagedShapes = new List<MapOverlayShape>(GetCommittedShapes(_activeAudience));
         await JS.InvokeVoidAsync("ovcinaOverlay.clearSelection", _elementId);
         await JS.InvokeVoidAsync("ovcinaOverlay.exitEditMode", _elementId);
-        await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _committedShapes);
+        await RenderVisibleOverlaysAsync();
     }
 
     private async Task SaveOverlayAsync()
     {
         var dto = new MapOverlayDto(_stagedShapes);
-        var (ok, problem) = await Api.PutWithProblemAsync($"/api/games/{GameId!.Value}/overlay", dto);
+        var (ok, problem) = await Api.PutWithProblemAsync(
+            $"/api/games/{GameId!.Value}/overlay?audience={AudienceQueryValue(_activeAudience)}",
+            dto);
         if (!ok)
         {
             _overlayError = problem ?? "Uložení překryvu selhalo.";
             return;
         }
-        _committedShapes = new List<MapOverlayShape>(_stagedShapes);
+        SetCommittedShapes(_activeAudience, _stagedShapes);
         _editMode = false;
         _selectedShape = null;
         _deleteConfirmVisible = false;
@@ -249,7 +333,23 @@
         _createdShapeIds.Clear();
         await JS.InvokeVoidAsync("ovcinaOverlay.clearSelection", _elementId);
         await JS.InvokeVoidAsync("ovcinaOverlay.exitEditMode", _elementId);
-        await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _committedShapes);
+        await RenderVisibleOverlaysAsync();
+    }
+
+    private async Task ChangeAudienceAsync(MapOverlayAudience audience)
+    {
+        if (!OrganizerOverlayEnabled && audience == MapOverlayAudience.Organizer)
+            return;
+
+        Console.WriteLine($"[map-export-pr3] overlay audience toggle audience={audience}");
+        _activeAudience = audience;
+        _selectedShape = null;
+        _createdShapeIds.Clear();
+        _overlayError = null;
+        _stagedShapes = new List<MapOverlayShape>(GetCommittedShapes(audience));
+        await JS.InvokeVoidAsync("ovcinaOverlay.clearSelection", _elementId);
+        await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _stagedShapes);
+        await PushStyleToJsAsync();
     }
 
     private async Task ChangeToolAsync(string tool)
@@ -562,15 +662,21 @@
         // honour the in-memory staged list (with unsaved edits) and re-apply
         // the active selection highlight — committed-only would silently
         // discard the user's work.
-        if (GameId.HasValue && _loadedOverlayForGameId == GameId)
+        if (GameId.HasValue && _loadedOverlayKey == GetOverlayLoadKey())
         {
-            var shapes = _editMode ? _stagedShapes : _committedShapes;
             try
             {
-                await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, shapes);
-                if (_editMode && _selectedShape is not null)
+                if (_editMode)
                 {
-                    await JS.InvokeVoidAsync("ovcinaOverlay.selectShape", _elementId, _selectedShape);
+                    await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _stagedShapes);
+                    if (_selectedShape is not null)
+                    {
+                        await JS.InvokeVoidAsync("ovcinaOverlay.selectShape", _elementId, _selectedShape);
+                    }
+                }
+                else
+                {
+                    await RenderVisibleOverlaysAsync();
                 }
             }
             catch { /* best-effort */ }

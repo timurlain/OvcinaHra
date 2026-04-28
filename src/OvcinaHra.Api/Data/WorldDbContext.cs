@@ -6,6 +6,7 @@ namespace OvcinaHra.Api.Data;
 public class WorldDbContext(DbContextOptions<WorldDbContext> options) : DbContext(options)
 {
     public DbSet<Game> Games => Set<Game>();
+    public DbSet<GameMapOverlay> GameMapOverlays => Set<GameMapOverlay>();
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<GameLocation> GameLocations => Set<GameLocation>();
     public DbSet<Tag> Tags => Set<Tag>();

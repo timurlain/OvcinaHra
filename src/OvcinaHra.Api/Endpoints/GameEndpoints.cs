@@ -9,6 +9,7 @@ using Npgsql;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Domain.Entities;
+using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Endpoints;
@@ -346,14 +347,51 @@ public static class GameEndpoints
     /// </summary>
     private static readonly JsonSerializerOptions OverlayJsonOptions = new() { WriteIndented = false };
 
-    private static async Task<Results<Ok<MapOverlayDto>, NoContent, NotFound>> GetOverlay(int id, WorldDbContext db)
+    private static async Task<IResult> GetOverlay(
+        int id,
+        string? audience,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
     {
-        var game = await db.Games.FindAsync(id);
-        if (game is null)
-            return TypedResults.NotFound();
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.GameEndpoints");
+        logger.LogInformation(
+            "[map-export-pr3] overlay get entry gameId={GameId} audienceRaw={AudienceRaw}",
+            id,
+            audience);
 
-        if (string.IsNullOrWhiteSpace(game.OverlayJson))
+        if (!await db.Games.AnyAsync(g => g.Id == id, ct))
+        {
+            logger.LogInformation("[map-export-pr3] overlay get exit gameId={GameId} status=not-found", id);
+            return TypedResults.NotFound();
+        }
+
+        if (!TryParseOverlayAudience(audience, out var parsedAudience))
+            return InvalidOverlayAudienceProblem();
+
+        if (parsedAudience == MapOverlayAudience.Organizer && !IsOrganizer(http.User))
+        {
+            logger.LogWarning(
+                "[map-export-pr3] overlay auth-gate denial gameId={GameId} audience={Audience}",
+                id,
+                parsedAudience);
+            return OverlayAuthorizationProblem();
+        }
+
+        var overlayJson = await db.GameMapOverlays
+            .AsNoTracking()
+            .Where(o => o.GameId == id && o.Audience == parsedAudience)
+            .Select(o => o.OverlayJson)
+            .FirstOrDefaultAsync(ct);
+        if (string.IsNullOrWhiteSpace(overlayJson))
+        {
+            logger.LogInformation(
+                "[map-export-pr3] overlay get exit gameId={GameId} audience={Audience} status=no-content",
+                id,
+                parsedAudience);
             return TypedResults.NoContent();
+        }
 
         // Best-effort deserialize: if a stored overlay is corrupt (e.g. schema
         // drift from a future shape type, or a hand-edited row), treat as
@@ -363,22 +401,68 @@ public static class GameEndpoints
         // both must be caught here.
         try
         {
-            var dto = JsonSerializer.Deserialize<MapOverlayDto>(game.OverlayJson, OverlayJsonOptions);
-            return dto is null ? TypedResults.NoContent() : TypedResults.Ok(dto);
+            var dto = JsonSerializer.Deserialize<MapOverlayDto>(overlayJson, OverlayJsonOptions);
+            if (dto is null)
+            {
+                logger.LogInformation(
+                    "[map-export-pr3] overlay get exit gameId={GameId} audience={Audience} status=no-content",
+                    id,
+                    parsedAudience);
+                return TypedResults.NoContent();
+            }
+
+            logger.LogInformation(
+                "[map-export-pr3] overlay get exit gameId={GameId} audience={Audience} status=ok shapes={ShapeCount}",
+                id,
+                parsedAudience,
+                dto.Shapes.Count);
+            return TypedResults.Ok(dto);
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
+            logger.LogWarning(
+                ex,
+                "[map-export-pr3] overlay get exit gameId={GameId} audience={Audience} status=corrupt",
+                id,
+                parsedAudience);
             return TypedResults.NoContent();
         }
     }
 
-    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> UpdateOverlay(
-        int id, MapOverlayDto dto, WorldDbContext db)
+    private static async Task<IResult> UpdateOverlay(
+        int id,
+        string? audience,
+        MapOverlayDto dto,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
     {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.GameEndpoints");
+        logger.LogInformation(
+            "[map-export-pr3] overlay put entry gameId={GameId} audienceRaw={AudienceRaw} shapes={ShapeCount}",
+            id,
+            audience,
+            dto.Shapes.Count);
+
         // § _review-instincts #1: resource lookup BEFORE validation.
-        var game = await db.Games.FindAsync(id);
-        if (game is null)
+        if (!await db.Games.AnyAsync(g => g.Id == id, ct))
+        {
+            logger.LogInformation("[map-export-pr3] overlay put exit gameId={GameId} status=not-found", id);
             return TypedResults.NotFound();
+        }
+
+        if (!TryParseOverlayAudience(audience, out var parsedAudience))
+            return InvalidOverlayAudienceProblem();
+
+        if (parsedAudience == MapOverlayAudience.Organizer && !IsOrganizer(http.User))
+        {
+            logger.LogWarning(
+                "[map-export-pr3] overlay auth-gate denial gameId={GameId} audience={Audience}",
+                id,
+                parsedAudience);
+            return OverlayAuthorizationProblem();
+        }
 
         var serialized = JsonSerializer.Serialize(dto, OverlayJsonOptions);
         var byteCount = Encoding.UTF8.GetByteCount(serialized);
@@ -407,9 +491,62 @@ public static class GameEndpoints
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
-        game.OverlayJson = serialized;
-        await db.SaveChangesAsync();
+        var overlay = await db.GameMapOverlays
+            .SingleOrDefaultAsync(o => o.GameId == id && o.Audience == parsedAudience, ct);
+        if (overlay is null)
+        {
+            db.GameMapOverlays.Add(new GameMapOverlay
+            {
+                GameId = id,
+                Audience = parsedAudience,
+                OverlayJson = serialized
+            });
+        }
+        else
+        {
+            overlay.OverlayJson = serialized;
+        }
+
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation(
+            "[map-export-pr3] overlay put exit gameId={GameId} audience={Audience} status=no-content bytes={ByteCount}",
+            id,
+            parsedAudience,
+            byteCount);
         return TypedResults.NoContent();
+    }
+
+    private static bool TryParseOverlayAudience(string? value, out MapOverlayAudience audience)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            audience = MapOverlayAudience.Player;
+            return true;
+        }
+
+        return Enum.TryParse(value, ignoreCase: true, out audience)
+            && Enum.IsDefined(audience);
+    }
+
+    private static IResult InvalidOverlayAudienceProblem() =>
+        TypedResults.Problem(
+            title: "Neznámá vrstva překryvu",
+            detail: "Překryv může být jen pro hráče nebo pro organizátory.",
+            statusCode: StatusCodes.Status400BadRequest);
+
+    private static IResult OverlayAuthorizationProblem() =>
+        TypedResults.Problem(
+            title: "Přístup odepřen",
+            detail: "Pouze organizátoři mohou pracovat s organizátorským překryvem.",
+            statusCode: StatusCodes.Status403Forbidden);
+
+    private static bool IsOrganizer(ClaimsPrincipal user)
+    {
+        var roles = user.FindAll(ClaimTypes.Role)
+            .Concat(user.FindAll("role"))
+            .Select(c => c.Value);
+
+        return roles.Any(role => role is "Organizer" or "Organizator" or "Organizátor" or "Admin");
     }
 
     private static async Task<Results<Ok<List<GameStampDto>>, NotFound>> GetGameStamps(

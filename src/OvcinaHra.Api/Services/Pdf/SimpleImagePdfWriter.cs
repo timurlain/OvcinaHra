@@ -1,9 +1,21 @@
 using System.Globalization;
+using System.IO.Compression;
 using System.Text;
 
 namespace OvcinaHra.Api.Services.Pdf;
 
-public sealed record PdfImage(int Width, int Height, byte[] JpegBytes);
+public sealed record PdfImage(
+    int Width,
+    int Height,
+    byte[] JpegBytes,
+    PdfImageEncoding Encoding = PdfImageEncoding.Jpeg,
+    byte[]? AlphaBytes = null);
+
+public enum PdfImageEncoding
+{
+    Jpeg,
+    RgbFlate
+}
 
 public sealed record PdfImagePage(
     double Width,
@@ -42,8 +54,15 @@ public static class SimpleImagePdfWriter
             var imageObjectNumbers = new Dictionary<string, int>();
             foreach (var (name, image) in page.Images)
             {
+                int? alphaObjectNumber = null;
+                if (image.AlphaBytes is not null)
+                {
+                    alphaObjectNumber = objects.Count + 1;
+                    objects.Add(BuildAlphaMaskObject(image));
+                }
+
                 imageObjectNumbers[name] = objects.Count + 1;
-                objects.Add(BuildImageObject(image));
+                objects.Add(BuildImageObject(image, alphaObjectNumber));
             }
 
             var pageObjectNumber = objects.Count + 1;
@@ -77,11 +96,30 @@ public static class SimpleImagePdfWriter
         return $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {Pt(page.Width)} {Pt(page.Height)}] {resources} /Contents {contentObjectNumber} 0 R >>";
     }
 
-    private static byte[] BuildImageObject(PdfImage image)
+    public static PdfImage BuildRgbaImage(int width, int height, byte[] rgbBytes, byte[] alphaBytes) =>
+        new(width, height, Compress(rgbBytes), PdfImageEncoding.RgbFlate, Compress(alphaBytes));
+
+    private static byte[] BuildImageObject(PdfImage image, int? alphaObjectNumber)
     {
-        var header = Ascii($"<< /Type /XObject /Subtype /Image /Width {image.Width} /Height {image.Height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {image.JpegBytes.Length} >>\nstream\n");
+        if (image.Encoding == PdfImageEncoding.RgbFlate)
+        {
+            var smask = alphaObjectNumber is null ? "" : $" /SMask {alphaObjectNumber.Value} 0 R";
+            var header = Ascii($"<< /Type /XObject /Subtype /Image /Width {image.Width} /Height {image.Height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length {image.JpegBytes.Length}{smask} >>\nstream\n");
+            var footer = Ascii("\nendstream");
+            return Concat(header, image.JpegBytes, footer);
+        }
+
+        var jpegHeader = Ascii($"<< /Type /XObject /Subtype /Image /Width {image.Width} /Height {image.Height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {image.JpegBytes.Length} >>\nstream\n");
+        var jpegFooter = Ascii("\nendstream");
+        return Concat(jpegHeader, image.JpegBytes, jpegFooter);
+    }
+
+    private static byte[] BuildAlphaMaskObject(PdfImage image)
+    {
+        var alpha = image.AlphaBytes ?? [];
+        var header = Ascii($"<< /Type /XObject /Subtype /Image /Width {image.Width} /Height {image.Height} /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode /Length {alpha.Length} >>\nstream\n");
         var footer = Ascii("\nendstream");
-        return Concat(header, image.JpegBytes, footer);
+        return Concat(header, alpha, footer);
     }
 
     private static byte[] BuildStreamObject(byte[] stream)
@@ -131,4 +169,14 @@ public static class SimpleImagePdfWriter
     private static void WriteAscii(Stream stream, string value) => stream.Write(Ascii(value));
     private static byte[] Ascii(string value) => Encoding.ASCII.GetBytes(value);
     private static string Pt(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
+
+    private static byte[] Compress(byte[] bytes)
+    {
+        using var output = new MemoryStream();
+        using (var zlib = new ZLibStream(output, CompressionLevel.SmallestSize, leaveOpen: true))
+        {
+            zlib.Write(bytes);
+        }
+        return output.ToArray();
+    }
 }

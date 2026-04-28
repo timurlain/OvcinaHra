@@ -4,7 +4,7 @@ namespace OvcinaHra.Shared.Dtos;
 
 /// <summary>
 /// Vector overlay drawn on top of a game's map — issue #96. Persisted as a
-/// JSON string on <c>Game.OverlayJson</c>. Phase 1+2 ships 6 primitives
+/// JSON string on <c>GameMapOverlay.OverlayJson</c>. Phase 1+2 ships 6 primitives
 /// (text, freehand, polyline, rectangle, circle, polygon); icons + arrows
 /// are deferred to Phase 3.
 /// </summary>
