@@ -1581,11 +1581,9 @@
 .oh-lg-stash-cell.oh-lg-none{align-items:center !important}
 .oh-lg-stash-cell.oh-lg-none span{color:var(--oh-text-secondary);font-style:italic;font-size:.75rem}
 
-/* Location primary-image tile — sibling of .oh-lg-stash-tile for the
-   Obrázek column in /locations. Same aspect-ratio (5/7) so rows with a
-   location image line up in height with rows that only show stash tiles. */
+/* Location primary-image tile for the Obrázek column in /locations. */
 .oh-lg-loc-tile{
-  aspect-ratio:5/7;width:100%;max-width:100px;
+  aspect-ratio:1/1;width:100%;max-width:100px;
   border:1px solid #7a5a3d;border-radius:5px;
   box-shadow:0 1px 3px rgba(45,80,22,.18), inset 0 0 0 1px rgba(255,248,230,.15);
   transition:.18s;position:relative;overflow:hidden;min-width:0;
@@ -1596,6 +1594,18 @@
   position:absolute;inset:0;width:100%;height:100%;
   object-fit:cover;z-index:1;display:block;
 }
+
+.oh-lg-cipher-cell{display:flex;flex-direction:column;gap:4px;min-width:0}
+.oh-lg-cipher-editor{display:flex;align-items:center;gap:4px;min-width:0}
+.oh-lg-cipher-input{flex:1 1 auto;min-width:0}
+.oh-lg-cipher-save{
+  flex:0 0 30px;width:30px;height:30px;border:1px solid rgba(45,80,22,.28);
+  border-radius:5px;background:#fff8e6;color:var(--oh-primary);display:inline-flex;
+  align-items:center;justify-content:center;padding:0
+}
+.oh-lg-cipher-save:hover:not(:disabled){background:#f0e0b8}
+.oh-lg-cipher-save:disabled{opacity:.45;cursor:not-allowed}
+.oh-lg-cipher-error{font-size:.75rem;line-height:1.2;color:#9f1d1d}
 .oh-lg-loc-tile > .oh-lg-loc-tile-img-veil{
   position:absolute;inset:0;pointer-events:none;z-index:2;
   background:

@@ -18,7 +18,7 @@
     </div>
 </div>
 
-@* Toolbar: Hledat, Druh, Oblast, jen s poklady, jen s questy, (catalog) jen nepřiřazené *@
+@* Toolbar: Hledat, Druh, Oblast, grid toggles *@
 <div class="oh-lg-toolbar mb-2">
     <DxTextBox Text="@searchText"
                TextChanged="@(v => { searchText = v; StateHasChanged(); })"
@@ -51,6 +51,20 @@
             @onclick="() => { filterOnlyWithQuests = !filterOnlyWithQuests; StateHasChanged(); }">
         <span class="oh-lg-sw"></span>jen s questy
     </button>
+    <button type="button"
+            class="oh-lg-tb-toggle @(filterOnlyWithoutGps ? "oh-lg-on" : "")"
+            @onclick="() => { filterOnlyWithoutGps = !filterOnlyWithoutGps; StateHasChanged(); }">
+        <span class="oh-lg-sw"></span>Bez umístění
+    </button>
+    @if (!Catalog)
+    {
+        <button type="button"
+                class="oh-lg-tb-toggle @(showCiphers ? "oh-lg-on" : "")"
+                disabled="@ciphersLoading"
+                @onclick="ToggleCiphersAsync">
+            <span class="oh-lg-sw"></span>@(showCiphers ? "Skrýt šifry" : "Ukaž šifry")
+        </button>
+    }
     @if (Catalog)
     {
         <button type="button"
@@ -60,6 +74,11 @@
         </button>
     }
 </div>
+
+@if (!string.IsNullOrWhiteSpace(cipherGridError))
+{
+    <div class="alert alert-danger py-2 mb-2">@cipherGridError</div>
+}
 
 @if (loading)
 {
@@ -94,7 +113,9 @@ else
 {
     <OvcinaGrid Data="@visibleRows"
                 KeyFieldName="Id"
-                LayoutKey="grid-layout-locations-v6"
+                LayoutKey="grid-layout-locations-v7"
+                TextWrapEnabled="false"
+                ShowColumnChooserButton="true"
                 RowClick="@OnGridRowClick">
         <Columns>
             @* Actions — moved to first column per issue #94. Destructive
@@ -163,8 +184,9 @@ else
                 </CellDisplayTemplate>
             </DxGridDataColumn>
 
-            @* Marker dot — 40px, fixed left *@
-            <DxGridDataColumn FieldName="LocationKind" Caption="" Width="40px"
+            @* Marker dot — hidden by default, still available via column chooser. *@
+            <DxGridDataColumn FieldName="LocationKind" Caption="Druh (značka)" Width="40px"
+                              Visible="false"
                               AllowSort="false" AllowGroup="false"
                               FixedPosition="GridColumnFixedPosition.Left">
                 <CellDisplayTemplate>
@@ -220,7 +242,7 @@ else
             </DxGridDataColumn>
 
             @* Kind chip *@
-            <DxGridDataColumn FieldName="LocationKindDisplay" Caption="Druh" Width="140px">
+            <DxGridDataColumn FieldName="LocationKindDisplay" Caption="Druh" Width="140px" Visible="false">
                 <CellDisplayTemplate>
                     @{
                         var loc = (LocationListDto)context.DataItem;
@@ -360,6 +382,49 @@ else
                         </span>
                     </CellDisplayTemplate>
                 </DxGridDataColumn>
+            }
+
+            @if (!Catalog && showCiphers)
+            {
+                @foreach (var cipherColumn in CipherColumns)
+                {
+                    <DxGridDataColumn Caption="@cipherColumn.SkillName" Width="260px"
+                                      AllowSort="false" AllowGroup="false">
+                        <CellDisplayTemplate>
+                            @{
+                                var loc = (LocationListDto)context.DataItem;
+                                var cipherState = GetCipherState(loc.Id, cipherColumn);
+                            }
+                            <div class="oh-lg-cipher-cell" @onclick:stopPropagation="true">
+                                <div class="oh-lg-cipher-editor">
+                                    <DxTextBox Text="@cipherState.MessageRaw"
+                                               TextExpression="@(() => cipherState.MessageRaw)"
+                                               TextChanged="@((string? v) => OnCipherTextChanged(cipherState, v))"
+                                               NullText="(bez šifry)"
+                                               CssClass="oh-lg-cipher-input" />
+                                    <button type="button"
+                                            class="oh-lg-cipher-save"
+                                            title="@GetCipherSaveTitle(cipherState)"
+                                            disabled="@(!CanSaveCipher(cipherState))"
+                                            @onclick="() => SaveCipherAsync(loc.Id, cipherColumn)">
+                                        @if (cipherState.IsSaving)
+                                        {
+                                            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi @(ShouldDeleteCipher(cipherState) ? "bi-trash3" : "bi-check2")"></i>
+                                        }
+                                    </button>
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(cipherState.Error))
+                                {
+                                    <div class="oh-lg-cipher-error">@cipherState.Error</div>
+                                }
+                            </div>
+                        </CellDisplayTemplate>
+                    </DxGridDataColumn>
+                }
             }
 
             @if (Catalog)
@@ -574,6 +639,7 @@ else
 
     private LocationEditPopup locationPopup = null!;
     private List<LocationListDto> locations = [];
+    private List<LocationListDto> visibleRows = [];
     private HashSet<int> assignedLocationIds = [];
     private bool loading = true;
     private bool drozdFailed;   // flips true if /img/drozd/drozd-knocking.svg 404s
@@ -584,12 +650,97 @@ else
     private bool isSaving;
 
     // Toolbar filter state
-    private string? searchText;
-    private LocationKind? filterKind;
-    private string? filterRegion;
-    private bool filterOnlyWithStashes;
-    private bool filterOnlyWithQuests;
-    private bool filterOnlyUnassigned;
+    private string? searchText
+    {
+        get => searchTextValue;
+        set
+        {
+            if (searchTextValue == value) return;
+            searchTextValue = value;
+            RefreshVisibleRows();
+        }
+    }
+
+    private LocationKind? filterKind
+    {
+        get => filterKindValue;
+        set
+        {
+            if (filterKindValue == value) return;
+            filterKindValue = value;
+            RefreshVisibleRows();
+        }
+    }
+
+    private string? filterRegion
+    {
+        get => filterRegionValue;
+        set
+        {
+            if (filterRegionValue == value) return;
+            filterRegionValue = value;
+            RefreshVisibleRows();
+        }
+    }
+
+    private bool filterOnlyWithStashes
+    {
+        get => filterOnlyWithStashesValue;
+        set
+        {
+            if (filterOnlyWithStashesValue == value) return;
+            filterOnlyWithStashesValue = value;
+            RefreshVisibleRows();
+        }
+    }
+
+    private bool filterOnlyWithQuests
+    {
+        get => filterOnlyWithQuestsValue;
+        set
+        {
+            if (filterOnlyWithQuestsValue == value) return;
+            filterOnlyWithQuestsValue = value;
+            RefreshVisibleRows();
+        }
+    }
+
+    private bool filterOnlyWithoutGps
+    {
+        get => filterOnlyWithoutGpsValue;
+        set
+        {
+            if (filterOnlyWithoutGpsValue == value) return;
+            filterOnlyWithoutGpsValue = value;
+            RefreshVisibleRows();
+        }
+    }
+
+    private bool filterOnlyUnassigned
+    {
+        get => filterOnlyUnassignedValue;
+        set
+        {
+            if (filterOnlyUnassignedValue == value) return;
+            filterOnlyUnassignedValue = value;
+            RefreshVisibleRows();
+        }
+    }
+
+    private string? searchTextValue;
+    private LocationKind? filterKindValue;
+    private string? filterRegionValue;
+    private bool filterOnlyWithStashesValue;
+    private bool filterOnlyWithQuestsValue;
+    private bool filterOnlyWithoutGpsValue;
+    private bool filterOnlyUnassignedValue;
+
+    // Cipher grid state is loaded only after the user opts in with "Ukaž šifry".
+    private bool showCiphers;
+    private bool ciphersLoaded;
+    private bool ciphersLoading;
+    private string? cipherGridError;
+    private readonly Dictionary<CipherCellKey, CipherCellState> cipherStates = [];
 
     // Variant expansion
     private readonly HashSet<int> expandedParentIds = [];
@@ -627,61 +778,59 @@ else
                  .OrderBy(r => r)
                  .ToList();
 
-    // Flattened, filtered row set bound to the grid.
-    // Parent rows are always present; variant rows appear only when parent is expanded.
-    private List<LocationListDto> visibleRows
+    private void RefreshVisibleRows()
     {
-        get
+        bool Matches(LocationListDto l)
         {
-            bool Matches(LocationListDto l)
+            if (filterKind.HasValue && l.LocationKind != filterKind.Value) return false;
+            if (!string.IsNullOrWhiteSpace(filterRegion)
+                && !string.Equals(l.Region, filterRegion, StringComparison.OrdinalIgnoreCase)) return false;
+            if (filterOnlyWithoutGps && (l.IsLocated || l.ParentLocationId.HasValue)) return false;
+            // Catalog mode returns LocationListDto with empty Stashes/Quests
+            // arrays, so the "jen s poklady" / "jen s questy" toggles are
+            // per-hra-only. Guard them here in case the toggle is on when
+            // Catalog flips.
+            if (!Catalog && filterOnlyWithStashes && (l.Stashes is null || l.Stashes.Count == 0)) return false;
+            if (!Catalog && filterOnlyWithQuests
+                && (l.Quests is null || l.Quests.Count == 0)
+                && (l.LocationTreasureQuests is null || l.LocationTreasureQuests.Count == 0)) return false;
+            if (Catalog && filterOnlyUnassigned && assignedLocationIds.Contains(l.Id)) return false;
+            if (!string.IsNullOrWhiteSpace(searchText))
             {
-                if (filterKind.HasValue && l.LocationKind != filterKind.Value) return false;
-                if (!string.IsNullOrWhiteSpace(filterRegion)
-                    && !string.Equals(l.Region, filterRegion, StringComparison.OrdinalIgnoreCase)) return false;
-                // Catalog mode returns LocationListDto with empty Stashes/Quests
-                // arrays, so the "jen s poklady" / "jen s questy" toggles are
-                // per-hra-only. Guard them here in case the toggle is on when
-                // Catalog flips.
-                if (!Catalog && filterOnlyWithStashes && (l.Stashes is null || l.Stashes.Count == 0)) return false;
-                if (!Catalog && filterOnlyWithQuests
-                    && (l.Quests is null || l.Quests.Count == 0)
-                    && (l.LocationTreasureQuests is null || l.LocationTreasureQuests.Count == 0)) return false;
-                if (Catalog && filterOnlyUnassigned && assignedLocationIds.Contains(l.Id)) return false;
-                if (!string.IsNullOrWhiteSpace(searchText))
-                {
-                    var needle = searchText.Trim();
-                    var nameMatch = l.Name?.Contains(needle, StringComparison.OrdinalIgnoreCase) == true;
-                    var regionMatch = l.Region?.Contains(needle, StringComparison.OrdinalIgnoreCase) == true;
-                    var questMatch = (l.Quests ?? []).Any(q => q.Name.Contains(needle, StringComparison.OrdinalIgnoreCase));
-                    var tqMatch = (l.LocationTreasureQuests ?? []).Any(t => t.Title.Contains(needle, StringComparison.OrdinalIgnoreCase));
-                    if (!nameMatch && !regionMatch && !questMatch && !tqMatch) return false;
-                }
-                return true;
+                var needle = searchText.Trim();
+                var nameMatch = l.Name?.Contains(needle, StringComparison.OrdinalIgnoreCase) == true;
+                var regionMatch = l.Region?.Contains(needle, StringComparison.OrdinalIgnoreCase) == true;
+                var questMatch = (l.Quests ?? []).Any(q => q.Name.Contains(needle, StringComparison.OrdinalIgnoreCase));
+                var tqMatch = (l.LocationTreasureQuests ?? []).Any(t => t.Title.Contains(needle, StringComparison.OrdinalIgnoreCase));
+                if (!nameMatch && !regionMatch && !questMatch && !tqMatch) return false;
             }
-
-            var result = new List<LocationListDto>(locations.Count);
-            foreach (var l in locations.Where(l => !l.ParentLocationId.HasValue).OrderBy(l => l.Name))
-            {
-                if (!Matches(l)) continue;
-                result.Add(l);
-                if (expandedParentIds.Contains(l.Id))
-                {
-                    foreach (var v in locations
-                        .Where(x => x.ParentLocationId == l.Id)
-                        .OrderBy(x => x.Name))
-                    {
-                        if (Matches(v)) result.Add(v);
-                    }
-                }
-            }
-            return result;
+            return true;
         }
+
+        var result = new List<LocationListDto>(locations.Count);
+        foreach (var l in locations.Where(l => !l.ParentLocationId.HasValue).OrderBy(l => l.Name))
+        {
+            if (!Matches(l)) continue;
+            result.Add(l);
+            if (expandedParentIds.Contains(l.Id) && !filterOnlyWithoutGps)
+            {
+                foreach (var v in locations
+                    .Where(x => x.ParentLocationId == l.Id)
+                    .OrderBy(x => x.Name))
+                {
+                    if (Matches(v)) result.Add(v);
+                }
+            }
+        }
+
+        visibleRows = result;
     }
 
     private void ToggleExpand(int parentId)
     {
         if (!expandedParentIds.Add(parentId))
             expandedParentIds.Remove(parentId);
+        RefreshVisibleRows();
         StateHasChanged();
     }
 
@@ -946,13 +1095,142 @@ else
             .Where(l => l.ParentLocationId.HasValue)
             .GroupBy(l => l.ParentLocationId!.Value)
             .ToDictionary(g => g.Key, g => g.Count());
+        RefreshVisibleRows();
+        if (Catalog)
+        {
+            showCiphers = false;
+            ciphersLoaded = false;
+            cipherStates.Clear();
+        }
+        else if (showCiphers)
+        {
+            await LoadCiphersAsync(force: true);
+        }
         loading = false;
     }
+
+    private async Task ToggleCiphersAsync()
+    {
+        if (showCiphers)
+        {
+            showCiphers = false;
+            cipherGridError = null;
+            return;
+        }
+
+        showCiphers = true;
+        if (!ciphersLoaded)
+        {
+            await LoadCiphersAsync();
+        }
+    }
+
+    private async Task LoadCiphersAsync(bool force = false)
+    {
+        if (Catalog || (ciphersLoaded && !force)) return;
+
+        ciphersLoading = true;
+        cipherGridError = null;
+        try
+        {
+            var ciphers = await Api.GetListAsync<LocationCipherDto>($"/api/location-ciphers/{gameId}");
+            cipherStates.Clear();
+            foreach (var cipher in ciphers)
+            {
+                cipherStates[new CipherCellKey(cipher.LocationId, cipher.SkillKey)] =
+                    new CipherCellState(cipher.MessageRaw);
+            }
+            ciphersLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            cipherGridError = ex.Message;
+            showCiphers = false;
+            ciphersLoaded = false;
+        }
+        finally
+        {
+            ciphersLoading = false;
+        }
+    }
+
+    private CipherCellState GetCipherState(int locationId, CipherColumn column)
+    {
+        var key = new CipherCellKey(locationId, column.SkillKey);
+        if (!cipherStates.TryGetValue(key, out var state))
+        {
+            state = new CipherCellState(null);
+            cipherStates[key] = state;
+        }
+        return state;
+    }
+
+    private static void OnCipherTextChanged(CipherCellState state, string? value)
+    {
+        state.MessageRaw = value ?? "";
+        state.Error = null;
+    }
+
+    private static bool CanSaveCipher(CipherCellState state) =>
+        state.IsDirty && !state.IsSaving;
+
+    private static bool ShouldDeleteCipher(CipherCellState state) =>
+        state.HasExisting && string.IsNullOrWhiteSpace(state.MessageRaw);
+
+    private static string GetCipherSaveTitle(CipherCellState state) =>
+        ShouldDeleteCipher(state) ? "Smazat šifru" : "Uložit šifru";
+
+    private async Task SaveCipherAsync(int locationId, CipherColumn column)
+    {
+        var state = GetCipherState(locationId, column);
+        if (!CanSaveCipher(state)) return;
+
+        state.IsSaving = true;
+        state.Error = null;
+        try
+        {
+            var message = NormalizeCipherInput(state.MessageRaw);
+            if (message.Length == 0)
+            {
+                if (!state.HasExisting) return;
+                var (ok, problem) = await Api.DeleteWithProblemAsync(
+                    $"/api/location-ciphers/{gameId}/{locationId}/{column.SkillSlug}");
+                if (!ok)
+                {
+                    state.Error = problem ?? "Šifru se nepodařilo smazat.";
+                    return;
+                }
+                state.SetSaved(null);
+                return;
+            }
+
+            var (putOk, putProblem) = await Api.PutWithProblemAsync(
+                $"/api/location-ciphers/{gameId}/{locationId}/{column.SkillSlug}",
+                new UpsertLocationCipherDto(message));
+            if (!putOk)
+            {
+                state.Error = putProblem ?? "Šifru se nepodařilo uložit.";
+                return;
+            }
+            state.SetSaved(message);
+        }
+        catch (Exception ex)
+        {
+            state.Error = ex.Message;
+        }
+        finally
+        {
+            state.IsSaving = false;
+        }
+    }
+
+    private static string NormalizeCipherInput(string? value) => value?.Trim() ?? "";
 
     private async Task AssignLocationAsync(int locationId)
     {
         await Api.PostAsync<GameLocationDto, object>("/api/locations/by-game", new GameLocationDto(gameId, locationId));
         assignedLocationIds.Add(locationId);
+        RefreshVisibleRows();
         StateHasChanged();
     }
 
@@ -993,4 +1271,56 @@ else
             StateHasChanged();
         }
     }
+
+    private sealed record CipherColumn(
+        CipherSkillKey SkillKey,
+        string SkillSlug,
+        string SkillName,
+        int MaxMessageLetters);
+
+    private readonly record struct CipherCellKey(int LocationId, CipherSkillKey SkillKey);
+
+    private sealed class CipherCellState
+    {
+        public CipherCellState(string? messageRaw)
+        {
+            OriginalMessageRaw = NormalizeCipherInput(messageRaw);
+            MessageRaw = OriginalMessageRaw;
+            if (OriginalMessageRaw.Length == 0)
+            {
+                OriginalMessageRaw = null;
+            }
+        }
+
+        public string? OriginalMessageRaw { get; private set; }
+        public string MessageRaw { get; set; }
+        public bool IsSaving { get; set; }
+        public string? Error { get; set; }
+        public bool HasExisting => OriginalMessageRaw is not null;
+        public bool IsDirty => !string.Equals(
+            NormalizeCipherInput(MessageRaw),
+            OriginalMessageRaw ?? "",
+            StringComparison.Ordinal);
+
+        public void SetSaved(string? messageRaw)
+        {
+            OriginalMessageRaw = NormalizeCipherInput(messageRaw);
+            MessageRaw = OriginalMessageRaw;
+            Error = null;
+            if (OriginalMessageRaw.Length == 0)
+            {
+                OriginalMessageRaw = null;
+                MessageRaw = "";
+            }
+        }
+    }
+
+    private static readonly IReadOnlyList<CipherColumn> CipherColumns =
+        CipherSkillKeyExtensions.All
+            .Select(skill => new CipherColumn(
+                skill,
+                skill.GetSlug(),
+                skill.GetDisplayName(),
+                skill.GetMaxMessageLetters()))
+            .ToList();
 }
