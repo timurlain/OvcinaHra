@@ -45,20 +45,38 @@ public class TagEndpointTests(PostgresFixture postgres) : IntegrationTestBase(po
     }
 
     [Fact]
-    public async Task Create_DuplicateNameWithinKind_Returns400WithCzechProblemDetails()
+    public async Task Create_DuplicateNameWithinKind_ReturnsExistingTagIgnoringCase()
     {
-        var initialResponse = await Client.PostAsJsonAsync("/api/tags", new CreateTagDto("Plus+Tag", TagKind.Monster));
+        var initialResponse = await Client.PostAsJsonAsync("/api/tags", new CreateTagDto("big", TagKind.Monster));
         // Assert the Arrange step succeeded — without this, a regression in
-        // baseline Create would still pass the test for the wrong reason
-        // (both calls return 400). Per Copilot review on PR #282.
+        // baseline Create would still pass the test for the wrong reason.
         Assert.Equal(HttpStatusCode.Created, initialResponse.StatusCode);
+        var initial = await initialResponse.Content.ReadFromJsonAsync<TagDto>();
 
-        var response = await Client.PostAsJsonAsync("/api/tags", new CreateTagDto("Plus+Tag", TagKind.Monster));
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
-        Assert.NotNull(problem);
-        Assert.Equal("Uložení selhalo", problem!.Title);
-        Assert.Contains("už", problem.Detail, StringComparison.OrdinalIgnoreCase);
+        var response = await Client.PostAsJsonAsync("/api/tags", new CreateTagDto("BiG", TagKind.Monster));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var existing = await response.Content.ReadFromJsonAsync<TagDto>();
+        Assert.Equal(initial!.Id, existing!.Id);
+        Assert.Equal("big", existing.Name);
+
+        var monsterTags = await Client.GetFromJsonAsync<List<TagDto>>("/api/tags?kind=Monster");
+        Assert.Single(monsterTags!);
+    }
+
+    [Fact]
+    public async Task Create_SameNameDifferentKind_CreatesSeparateTag()
+    {
+        var monsterResponse = await Client.PostAsJsonAsync("/api/tags", new CreateTagDto("Shared", TagKind.Monster));
+        Assert.Equal(HttpStatusCode.Created, monsterResponse.StatusCode);
+
+        var questResponse = await Client.PostAsJsonAsync("/api/tags", new CreateTagDto("shared", TagKind.Quest));
+        Assert.Equal(HttpStatusCode.Created, questResponse.StatusCode);
+
+        var monsterTag = await monsterResponse.Content.ReadFromJsonAsync<TagDto>();
+        var questTag = await questResponse.Content.ReadFromJsonAsync<TagDto>();
+        Assert.NotEqual(monsterTag!.Id, questTag!.Id);
+        Assert.Equal(TagKind.Monster, monsterTag.Kind);
+        Assert.Equal(TagKind.Quest, questTag.Kind);
     }
 
     [Fact]
@@ -69,6 +87,16 @@ public class TagEndpointTests(PostgresFixture postgres) : IntegrationTestBase(po
         var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
         Assert.NotNull(problem);
         Assert.Contains("prázd", problem!.Detail, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Create_ControlCharacter_Returns400()
+    {
+        var response = await Client.PostAsJsonAsync("/api/tags", new CreateTagDto("Bad\u0001Tag", TagKind.Monster));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Contains("řídicí", problem!.Detail, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -93,6 +121,22 @@ public class TagEndpointTests(PostgresFixture postgres) : IntegrationTestBase(po
 
         var fetched = await Client.GetFromJsonAsync<TagDto>($"/api/tags/{created.Id}");
         Assert.Equal("Foo+Bar", fetched!.Name);
+    }
+
+    [Fact]
+    public async Task Update_DuplicateNameWithinKind_Returns400IgnoringCase()
+    {
+        var firstResponse = await Client.PostAsJsonAsync("/api/tags", new CreateTagDto("big", TagKind.Monster));
+        Assert.Equal(HttpStatusCode.Created, firstResponse.StatusCode);
+        var secondResponse = await Client.PostAsJsonAsync("/api/tags", new CreateTagDto("small", TagKind.Monster));
+        Assert.Equal(HttpStatusCode.Created, secondResponse.StatusCode);
+        var second = await secondResponse.Content.ReadFromJsonAsync<TagDto>();
+
+        var response = await Client.PutAsJsonAsync($"/api/tags/{second!.Id}", new UpdateTagDto("BiG"));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Contains("už", problem!.Detail, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -15,16 +15,24 @@
 
     @if (showAdd)
     {
-        <DxComboBox Data="@unselectedTags"
-                    @bind-Value="@pendingAddId"
-                    TextFieldName="Name"
-                    ValueFieldName="Id"
-                    NullText="(vyberte tag)"
-                    SearchMode="ListSearchMode.AutoSearch"
-                    SizeMode="SizeMode.Small" />
+        <input class="form-control form-control-sm"
+               style="max-width: 220px"
+               list="@DataListId"
+               placeholder="Název tagu"
+               disabled="@isAdding"
+               @bind="typedTagText"
+               @bind:event="oninput"
+               @onkeyup="HandleKeyUpAsync" />
+        <datalist id="@DataListId">
+            @foreach (var tag in unselectedTags)
+            {
+                <option value="@tag.Name"></option>
+            }
+        </datalist>
         <button type="button" class="btn btn-sm btn-primary"
-                disabled="@(pendingAddId is null)" @onclick="AddAsync">Přidat</button>
-        <button type="button" class="btn btn-sm btn-link" @onclick="() => showAdd = false">Zrušit</button>
+                disabled="@(isAdding || string.IsNullOrWhiteSpace(typedTagText))"
+                @onclick="AddTypedAsync">Přidat</button>
+        <button type="button" class="btn btn-sm btn-link" disabled="@isAdding" @onclick="CancelAdd">Zrušit</button>
     }
     else
     {
@@ -40,7 +48,9 @@
 }
 
 @code {
-    [Parameter, EditorRequired] public int MonsterId { get; set; }
+    [Parameter, EditorRequired] public TagChipPickerTarget Target { get; set; }
+    [Parameter, EditorRequired] public int EntityId { get; set; }
+    [Parameter, EditorRequired] public TagKind Kind { get; set; }
     [Parameter] public List<TagDto> InitialTags { get; set; } = [];
     [Parameter] public EventCallback Changed { get; set; }
 
@@ -48,9 +58,14 @@
     private List<TagDto> allTags = [];
     private List<TagDto> unselectedTags = [];
     private bool showAdd;
-    private int? pendingAddId;
+    private bool isAdding;
+    private string typedTagText = "";
     private string? error;
-    private int _lastMonsterId;
+    private int _lastEntityId;
+    private TagKind _lastKind;
+    private TagChipPickerTarget _lastTarget;
+
+    private string DataListId => $"tag-picker-{Target}-{EntityId}-{Kind}";
 
     protected override async Task OnInitializedAsync()
     {
@@ -59,7 +74,7 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        if (_lastMonsterId != MonsterId)
+        if (_lastEntityId != EntityId || _lastKind != Kind || _lastTarget != Target)
         {
             await SyncFromParamsAsync();
         }
@@ -67,12 +82,13 @@
 
     private async Task SyncFromParamsAsync()
     {
-        _lastMonsterId = MonsterId;
+        _lastEntityId = EntityId;
+        _lastKind = Kind;
+        _lastTarget = Target;
         selectedTags = [..InitialTags];
-        if (allTags.Count == 0)
-        {
-            allTags = await Api.GetListAsync<TagDto>("/api/tags");
-        }
+        allTags = (await Api.GetListAsync<TagDto>("/api/tags"))
+            .Where(t => t.Kind == Kind)
+            .ToList();
         Recompute();
     }
 
@@ -87,29 +103,100 @@
 
     private void OpenAdd()
     {
-        pendingAddId = null;
+        typedTagText = "";
         error = null;
         showAdd = true;
     }
 
-    private async Task AddAsync()
+    private void CancelAdd()
     {
-        if (pendingAddId is null) return;
+        typedTagText = "";
         error = null;
+        showAdd = false;
+    }
+
+    private async Task HandleKeyUpAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+            await AddTypedAsync();
+    }
+
+    private async Task AddTypedAsync()
+    {
+        if (isAdding) return;
+
+        var names = ParseTagNames(typedTagText);
+        if (names.Count == 0)
+        {
+            error = "Zadejte název tagu.";
+            return;
+        }
+
+        if (names.Any(n => n.Any(char.IsControl)))
+        {
+            error = "Název tagu nesmí obsahovat řídicí znaky.";
+            return;
+        }
+
+        error = null;
+        isAdding = true;
+        var changed = false;
+        var completed = false;
         try
         {
-            await Api.PostAsync($"/api/monsters/{MonsterId}/tags/{pendingAddId}");
-            var newTag = allTags.FirstOrDefault(t => t.Id == pendingAddId);
-            if (newTag is not null)
+            foreach (var name in names)
             {
-                selectedTags.Add(newTag);
-                Recompute();
+                var tag = await CreateOrGetTagAsync(name);
+                if (tag is null) return;
+
+                RememberTag(tag);
+                if (selectedTags.Any(t => t.Id == tag.Id))
+                    continue;
+
+                await Api.PostAsync(LinkUrl(tag.Id));
+                selectedTags.Add(tag);
+                changed = true;
             }
-            pendingAddId = null;
-            showAdd = false;
-            if (Changed.HasDelegate) await Changed.InvokeAsync();
+
+            completed = true;
         }
-        catch (Exception ex) { error = ex.Message; }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            isAdding = false;
+            if (completed)
+            {
+                typedTagText = "";
+                showAdd = false;
+            }
+            Recompute();
+            if (changed && Changed.HasDelegate)
+                await Changed.InvokeAsync();
+        }
+    }
+
+    private async Task<TagDto?> CreateOrGetTagAsync(string name)
+    {
+        var (ok, tag, problem) = await Api.PostWithProblemAsync<CreateTagDto, TagDto>(
+            "/api/tags",
+            new CreateTagDto(name, Kind));
+        if (ok && tag is not null)
+            return tag;
+
+        error = problem ?? "Vytvoření tagu se nezdařilo.";
+        return null;
+    }
+
+    private void RememberTag(TagDto tag)
+    {
+        var index = allTags.FindIndex(t => t.Id == tag.Id);
+        if (index >= 0)
+            allTags[index] = tag;
+        else
+            allTags.Add(tag);
     }
 
     private async Task RemoveAsync(TagDto tag)
@@ -117,7 +204,7 @@
         error = null;
         try
         {
-            var ok = await Api.DeleteAsync($"/api/monsters/{MonsterId}/tags/{tag.Id}");
+            var ok = await Api.DeleteAsync(UnlinkUrl(tag.Id));
             if (!ok)
             {
                 error = $"Odebrání tagu „{tag.Name}\u201c selhalo.";
@@ -128,5 +215,28 @@
             if (Changed.HasDelegate) await Changed.InvokeAsync();
         }
         catch (Exception ex) { error = ex.Message; }
+    }
+
+    private string LinkUrl(int tagId) => Target switch
+    {
+        TagChipPickerTarget.Monster => $"/api/monsters/{EntityId}/tags/{tagId}",
+        TagChipPickerTarget.Quest => $"/api/quests/{EntityId}/tags/{tagId}",
+        _ => throw new InvalidOperationException($"Unsupported tag target {Target}.")
+    };
+
+    private string UnlinkUrl(int tagId) => LinkUrl(tagId);
+
+    private static List<string> ParseTagNames(string raw)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var names = new List<string>();
+        foreach (var part in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (part.Length == 0 || !seen.Add(part))
+                continue;
+            names.Add(part);
+        }
+
+        return names;
     }
 }
