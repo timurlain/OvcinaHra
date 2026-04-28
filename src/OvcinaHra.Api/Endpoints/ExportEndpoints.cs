@@ -39,7 +39,7 @@ public static class ExportEndpoints
         }
         catch (MapExportProblemException ex)
         {
-            return TypedResults.BadRequest(ValidationProblem(ex.Message));
+            return TypedResults.BadRequest(ValidationProblem(ex.Title, ex.Detail));
         }
     }
 
@@ -55,9 +55,12 @@ public static class ExportEndpoints
             && Enum.IsDefined(style);
     }
 
-    private static ProblemDetails ValidationProblem(string detail) => new()
+    private static ProblemDetails ValidationProblem(string detail) =>
+        ValidationProblem("Export mapy se nepodařil", detail);
+
+    private static ProblemDetails ValidationProblem(string title, string detail) => new()
     {
-        Title = "Export mapy se nepodařil",
+        Title = title,
         Detail = detail,
         Status = StatusCodes.Status400BadRequest
     };

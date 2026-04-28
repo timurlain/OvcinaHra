@@ -3,8 +3,12 @@ using System.Net.Http.Json;
 using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using OvcinaHra.Api.Data;
+using OvcinaHra.Api.Services;
 using OvcinaHra.Api.Tests.Fixtures;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
@@ -50,6 +54,54 @@ public class ExportEndpointTests(PostgresFixture postgres)
         var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
         Assert.NotNull(problem);
         Assert.Equal("Neznámý podklad mapy.", problem.Detail);
+    }
+
+    [Fact]
+    public async Task ExplorerMap_MapExportProblem_UsesLocalizedTitleAndDetail()
+    {
+        var (customFactory, customClient) = await Postgres.CreateClientAsync(services =>
+        {
+            foreach (var descriptor in services
+                .Where(d => d.ServiceType == typeof(IExplorerMapExportService))
+                .ToList())
+            {
+                services.Remove(descriptor);
+            }
+
+            services.AddScoped<IExplorerMapExportService, MissingMapyKeyExporter>();
+        });
+        await using var factoryLifetime = customFactory;
+        using var clientLifetime = customClient;
+
+        var response = await customClient.GetAsync(
+            "/api/games/30/exports/explorer-map.pdf?style=tourist");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Mapy.cz API klíč není nastaven.", problem.Title);
+        Assert.Equal("Kontaktujte správce systému.", problem.Detail);
+    }
+
+    [Fact]
+    public async Task MapTileClient_MapyStyleWithoutApiKey_ThrowsLocalizedProblem()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["MapyCz:ApiKey"] = "" })
+            .Build();
+        using var httpClient = new HttpClient();
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var client = new MapTileClient(
+            httpClient,
+            config,
+            cache,
+            NullLogger<MapTileClient>.Instance);
+
+        var ex = await Assert.ThrowsAsync<MapExportProblemException>(() =>
+            client.GetTileAsync(MapExportBasemapStyle.Tourist, zoom: 10, x: 1, y: 1));
+
+        Assert.Equal("Mapy.cz API klíč není nastaven.", ex.Title);
+        Assert.Equal("Kontaktujte správce systému.", ex.Detail);
     }
 
     [Fact]
@@ -116,5 +168,16 @@ public class ExportEndpointTests(PostgresFixture postgres)
         Assert.Contains($"({wildernessId})", pdfText);
         Assert.DoesNotContain("Hidden Wild", pdfText);
         Assert.DoesNotContain("Outside Town", pdfText);
+    }
+
+    private sealed class MissingMapyKeyExporter : IExplorerMapExportService
+    {
+        public Task<ExplorerMapExportFile> RenderExplorerMapAsync(
+            int gameId,
+            MapExportBasemapStyle style,
+            CancellationToken ct = default) =>
+            throw new MapExportProblemException(
+                "Mapy.cz API klíč není nastaven.",
+                "Kontaktujte správce systému.");
     }
 }

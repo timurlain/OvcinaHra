@@ -24,7 +24,24 @@ public interface IExplorerMapExportService
 
 public sealed record ExplorerMapExportFile(byte[] Bytes, string FileName);
 
-public sealed class MapExportProblemException(string detail) : Exception(detail);
+public sealed class MapExportProblemException : Exception
+{
+    public MapExportProblemException(string detail)
+        : this("Export mapy se nepodařil", detail)
+    {
+    }
+
+    public MapExportProblemException(string title, string detail)
+        : base(detail)
+    {
+        Title = title;
+        Detail = detail;
+    }
+
+    public string Title { get; }
+
+    public string Detail { get; }
+}
 
 public sealed class ExplorerMapExportService(
     WorldDbContext db,
@@ -36,6 +53,7 @@ public sealed class ExplorerMapExportService(
     private const double A4Height = 841.89;
     private const double PageMargin = 24;
     private const double PixelScale = 2.5;
+    private const int TileFetchConcurrency = 6;
 
     private static readonly JsonSerializerOptions OverlayJsonOptions = new() { WriteIndented = false };
 
@@ -136,25 +154,44 @@ public sealed class ExplorerMapExportService(
         var minTileY = (int)Math.Floor(northPx / 256);
         var maxTileY = (int)Math.Floor((southPx - 1) / 256);
 
-        var tilesToDraw = new List<(Image<Rgba32> Tile, int X, int Y)>();
+        var tileRequests = new List<(int TileX, int TileY, int X, int Y)>();
+        for (var tx = minTileX; tx <= maxTileX; tx++)
+        {
+            for (var ty = minTileY; ty <= maxTileY; ty++)
+            {
+                var x = (int)Math.Round(tx * 256 - westPx);
+                var y = (int)Math.Round(ty * 256 - northPx);
+                tileRequests.Add((tx, ty, x, y));
+            }
+        }
+
+        var tilesToDraw = new (Image<Rgba32>? Tile, int X, int Y)[tileRequests.Count];
+        using var fetchGate = new SemaphoreSlim(TileFetchConcurrency);
         try
         {
-            for (var tx = minTileX; tx <= maxTileX; tx++)
+            var fetchTasks = tileRequests.Select(async (request, index) =>
             {
-                for (var ty = minTileY; ty <= maxTileY; ty++)
+                await fetchGate.WaitAsync(ct);
+                try
                 {
                     ct.ThrowIfCancellationRequested();
-                    var tile = await tileClient.GetTileAsync(style, zoom, tx, ty, ct);
-                    var x = (int)Math.Round(tx * 256 - westPx);
-                    var y = (int)Math.Round(ty * 256 - northPx);
-                    tilesToDraw.Add((tile, x, y));
+                    var tile = await tileClient.GetTileAsync(style, zoom, request.TileX, request.TileY, ct);
+                    tilesToDraw[index] = (tile, request.X, request.Y);
                 }
-            }
+                finally
+                {
+                    fetchGate.Release();
+                }
+            });
+            await Task.WhenAll(fetchTasks);
 
             stitched.Mutate(ctx =>
             {
                 foreach (var (tile, x, y) in tilesToDraw)
-                    ctx.DrawImage(tile, new Point(x, y), 1f);
+                {
+                    if (tile is not null)
+                        ctx.DrawImage(tile, new Point(x, y), 1f);
+                }
 
                 ctx.Resize(width, height);
             });
@@ -162,7 +199,7 @@ public sealed class ExplorerMapExportService(
         finally
         {
             foreach (var (tile, _, _) in tilesToDraw)
-                tile.Dispose();
+                tile?.Dispose();
         }
 
         await using var stream = new MemoryStream();
@@ -765,7 +802,15 @@ public sealed class MapTileClient(
         CancellationToken ct = default)
     {
         var (tileX, tileY) = NormalizeTile(zoom, x, y);
-        var url = BuildUrl(style, zoom, tileX, tileY);
+        var mapyApiKey = config["MapyCz:ApiKey"];
+        if (IsMapyStyle(style) && string.IsNullOrWhiteSpace(mapyApiKey))
+        {
+            throw new MapExportProblemException(
+                "Mapy.cz API klíč není nastaven.",
+                "Kontaktujte správce systému.");
+        }
+
+        var url = BuildUrl(style, zoom, tileX, tileY, mapyApiKey);
         if (url is null)
             return BlankTile();
 
@@ -838,30 +883,24 @@ public sealed class MapTileClient(
         return (((x % max) + max) % max, Math.Clamp(y, 0, max - 1));
     }
 
-    private string? BuildUrl(MapExportBasemapStyle style, int zoom, int x, int y)
+    private static bool IsMapyStyle(MapExportBasemapStyle style) =>
+        style is MapExportBasemapStyle.Tourist or MapExportBasemapStyle.Aerial or MapExportBasemapStyle.Basic;
+
+    private static string? BuildUrl(MapExportBasemapStyle style, int zoom, int x, int y, string? mapyApiKey)
     {
         return style switch
         {
-            MapExportBasemapStyle.Tourist => BuildMapyUrl("outdoor", zoom, x, y),
-            MapExportBasemapStyle.Aerial => BuildMapyUrl("aerial", zoom, x, y),
-            MapExportBasemapStyle.Basic => BuildMapyUrl("basic", zoom, x, y),
+            MapExportBasemapStyle.Tourist => BuildMapyUrl("outdoor", zoom, x, y, mapyApiKey!),
+            MapExportBasemapStyle.Aerial => BuildMapyUrl("aerial", zoom, x, y, mapyApiKey!),
+            MapExportBasemapStyle.Basic => BuildMapyUrl("basic", zoom, x, y, mapyApiKey!),
             MapExportBasemapStyle.Osm => $"https://tile.openstreetmap.org/{zoom}/{x}/{y}.png",
             MapExportBasemapStyle.Blank => null,
             _ => null
         };
     }
 
-    private string? BuildMapyUrl(string style, int zoom, int x, int y)
-    {
-        var apiKey = config["MapyCz:ApiKey"];
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            logger.LogWarning("Mapy.cz tile requested but MapyCz:ApiKey is not configured.");
-            return null;
-        }
-
-        return $"https://api.mapy.cz/v1/maptiles/{style}/256/{zoom}/{x}/{y}?apikey={Uri.EscapeDataString(apiKey)}";
-    }
+    private static string BuildMapyUrl(string style, int zoom, int x, int y, string apiKey) =>
+        $"https://api.mapy.cz/v1/maptiles/{style}/256/{zoom}/{x}/{y}?apikey={Uri.EscapeDataString(apiKey)}";
 
     private static Image<Rgba32> BlankTile() => new(256, 256, Color.White);
 }
