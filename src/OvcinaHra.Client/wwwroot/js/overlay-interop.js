@@ -700,17 +700,11 @@
 
     function attachTextTool(map, inst) {
         onMap(map, inst, 'click', function (e) {
-            // Phase 1 uses window.prompt; Phase 3 replaces with an inline editor.
-            const text = window.prompt('Text:');
-            if (!text) return;
-            emitShape(inst, {
-                id: uuid(),
-                type: 'text',
-                color: currentStyle().color,
-                coord: { lat: e.lngLat.lat, lng: e.lngLat.lng },
-                text: text,
-                fontSize: currentStyle().fontSize || 14
-            });
+            if (!inst.dotnetRef) {
+                mapDiag('text.request.no-dotnet', { mapId: inst.mapId });
+                return;
+            }
+            inst.dotnetRef.invokeMethodAsync('OnTextPlacementRequested', e.lngLat.lat, e.lngLat.lng);
         });
     }
 
@@ -1187,6 +1181,16 @@
         return ICON_ASSETS.slice();
     }
 
+    function focusTextPopup() {
+        window.requestAnimationFrame(function () {
+            const input = document.getElementById('oh-map-text-popup-input')
+                || document.querySelector('.oh-map-text-popup-input input');
+            if (!input) return;
+            input.focus();
+            if (typeof input.select === 'function') input.select();
+        });
+    }
+
     window.ovcinaOverlay = {
         render: render,
         enterEditMode: enterEditMode,
@@ -1198,6 +1202,7 @@
         clearSelection: clearSelection,
         setVisibility: setVisibility,
         getIconAssets: getIconAssets,
+        focusTextPopup: focusTextPopup,
         // Exposed for unit-testability / future tools; not called by Blazor.
         _circleToPolygonRing: circleToPolygonRing,
         _normalizeShape: normalizeShape
