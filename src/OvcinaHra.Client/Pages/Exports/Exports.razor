@@ -1,6 +1,10 @@
 @page "/exports"
 @attribute [Authorize]
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.JSInterop
+@inject ApiClient Api
+@inject GameContextService GameContext
+@inject IJSRuntime JS
 
 <PageTitle>Exporty | Ovčina</PageTitle>
 
@@ -18,8 +22,72 @@
                 <p>Tabulka lokací s názvy skrýší a razítky pro fyzické třídění.</p>
             </div>
         </a>
+        <button type="button"
+                class="oh-exports-card oh-exports-card-button"
+                title="Vyexportuje slepou mapu."
+                @onclick="OpenCharacterExport">
+            <div class="oh-exports-card-icon">
+                <i class="bi bi-map-fill"></i>
+            </div>
+            <div class="oh-exports-card-body">
+                <h3>Export pro postavy</h3>
+                <p>Slepá mapa A4 s vybraným podkladem a číslovanými lokacemi.</p>
+            </div>
+        </button>
     </div>
+
+    @if (downloadError is not null)
+    {
+        <div class="oh-exports-error">
+            <i class="bi bi-exclamation-triangle"></i>
+            <span>@downloadError</span>
+        </div>
+    }
 </div>
+
+@if (showCharacterExport)
+{
+    <div class="oh-exports-modal-backdrop" @onclick="CloseCharacterExport">
+        <section class="oh-exports-modal" @onclick:stopPropagation="true">
+            <header>
+                <h2>Export pro postavy</h2>
+                <button type="button" class="oh-exports-modal-close" @onclick="CloseCharacterExport" aria-label="Zavřít">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </header>
+            <div class="oh-exports-style-list">
+                @foreach (var option in BasemapOptions)
+                {
+                    <label class="oh-exports-style-option">
+                        <input type="radio"
+                               name="character-export-style"
+                               checked="@(selectedBasemap == option.Value)"
+                               @onchange="@(() => selectedBasemap = option.Value)" />
+                        <span>
+                            <strong>@option.Label</strong>
+                        </span>
+                    </label>
+                }
+            </div>
+            <footer>
+                <button type="button" class="btn btn-outline-secondary" @onclick="CloseCharacterExport" disabled="@isDownloading">
+                    Zrušit
+                </button>
+                <button type="button" class="btn btn-primary" @onclick="DownloadCharacterExportAsync" disabled="@isDownloading">
+                    @if (isDownloading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-filetype-pdf me-1"></i>
+                    }
+                    Stáhnout PDF
+                </button>
+            </footer>
+        </section>
+    </div>
+}
 
 <style>
     .oh-exports-page {
@@ -58,6 +126,12 @@
         transition: background 0.15s, border-color 0.15s;
     }
 
+    .oh-exports-card-button {
+        width: 100%;
+        text-align: left;
+        font: inherit;
+    }
+
     .oh-exports-card:hover {
         background: #F2EBD8;
         border-color: #B8A87A;
@@ -80,4 +154,160 @@
         color: var(--oh-text-secondary);
         font-size: 0.9rem;
     }
+
+    .oh-exports-error {
+        margin-top: 1.5rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #8C2423;
+        background: #FFF0EC;
+        border: 1px solid #E4B0A5;
+        border-radius: 6px;
+        padding: 0.65rem 0.85rem;
+    }
+
+    .oh-exports-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 1060;
+        background: rgba(25, 18, 10, 0.48);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+    }
+
+    .oh-exports-modal {
+        width: min(520px, 100%);
+        background: var(--oh-surface, #FAF6EC);
+        border: 1px solid var(--oh-border, #D9CFB6);
+        border-radius: 8px;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+        padding: 1.25rem;
+    }
+
+    .oh-exports-modal header,
+    .oh-exports-modal footer {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .oh-exports-modal header {
+        margin-bottom: 1rem;
+    }
+
+    .oh-exports-modal footer {
+        justify-content: flex-end;
+        margin-top: 1.25rem;
+    }
+
+    .oh-exports-modal h2 {
+        flex: 1;
+        margin: 0;
+        font-family: 'Merriweather', serif;
+        font-size: 1.25rem;
+    }
+
+    .oh-exports-modal-close {
+        border: none;
+        background: transparent;
+        color: inherit;
+        padding: 0.25rem;
+    }
+
+    .oh-exports-style-list {
+        display: grid;
+        gap: 0.5rem;
+    }
+
+    .oh-exports-style-option {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        border: 1px solid var(--oh-border, #D9CFB6);
+        border-radius: 6px;
+        padding: 0.7rem 0.85rem;
+        cursor: pointer;
+        background: rgba(255, 255, 255, 0.35);
+    }
 </style>
+
+@code {
+    private const string TouristBasemap = "tourist";
+    private const string AerialBasemap = "aerial";
+    private const string BasicBasemap = "basic";
+    private const string OsmBasemap = "osm";
+    private const string BlankBasemap = "blank";
+
+    private static readonly IReadOnlyList<BasemapOption> BasemapOptions =
+    [
+        new(TouristBasemap, "Mapy.cz turistická"),
+        new(AerialBasemap, "Mapy.cz letecká"),
+        new(BasicBasemap, "Mapy.cz základní"),
+        new(OsmBasemap, "OpenStreetMap"),
+        new(BlankBasemap, "Slepá mapa (bez podkladu)")
+    ];
+
+    private bool showCharacterExport;
+    private bool isDownloading;
+    private string selectedBasemap = TouristBasemap;
+    private string? downloadError;
+
+    private void OpenCharacterExport()
+    {
+        selectedBasemap = TouristBasemap;
+        downloadError = null;
+        showCharacterExport = true;
+    }
+
+    private void CloseCharacterExport()
+    {
+        if (isDownloading)
+            return;
+
+        showCharacterExport = false;
+    }
+
+    private async Task DownloadCharacterExportAsync()
+    {
+        if (GameContext.SelectedGameId is not int gameId)
+        {
+            downloadError = "Nejdřív vyberte hru.";
+            showCharacterExport = false;
+            return;
+        }
+
+        isDownloading = true;
+        downloadError = null;
+        try
+        {
+            var url = $"/api/games/{gameId}/exports/explorer-map.pdf?style={Uri.EscapeDataString(selectedBasemap)}";
+            var (ok, file, problem) = await Api.DownloadWithProblemAsync(url);
+            if (!ok || file is null)
+            {
+                downloadError = problem ?? "PDF se nepodařilo připravit.";
+                showCharacterExport = false;
+                return;
+            }
+
+            await using var stream = new MemoryStream(file.Bytes);
+            using var streamReference = new DotNetStreamReference(stream);
+            await JS.InvokeVoidAsync("ovcinaDownloadFile", file.FileName, file.ContentType, streamReference);
+            showCharacterExport = false;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            downloadError = "PDF se nepodařilo stáhnout.";
+            showCharacterExport = false;
+        }
+        finally
+        {
+            isDownloading = false;
+        }
+    }
+
+    private sealed record BasemapOption(string Value, string Label);
+}
