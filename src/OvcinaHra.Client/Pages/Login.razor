@@ -1,5 +1,5 @@
 @page "/login"
-@inject HttpClient Http
+@inject ApiClient Api
 @inject JwtAuthStateProvider AuthProvider
 @inject TokenRefreshService RefreshService
 @inject NavigationManager Nav
@@ -207,12 +207,12 @@
 
         try
         {
-            var response = await Http.PostAsJsonAsync("/api/auth/dev-token",
+            var (ok, token, _) = await Api.PostWithProblemAsync<object, OvcinaHra.Client.Auth.TokenResponse>(
+                "/api/auth/dev-token",
                 new { Name = name, Email = email });
 
-            if (response.IsSuccessStatusCode)
+            if (ok)
             {
-                var token = await response.Content.ReadFromJsonAsync<OvcinaHra.Client.Auth.TokenResponse>();
                 if (token is not null)
                 {
                     await AuthProvider.SetTokenAsync(token.Token);

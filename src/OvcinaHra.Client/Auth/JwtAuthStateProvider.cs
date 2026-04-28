@@ -1,8 +1,8 @@
-using System.Net.Http.Json;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
+using OvcinaHra.Client.Services;
 
 namespace OvcinaHra.Client.Auth;
 
@@ -13,12 +13,14 @@ public class JwtAuthStateProvider : AuthenticationStateProvider
 
     private readonly IJSRuntime _js;
     private readonly HttpClient _http;
+    private readonly ApiClient _api;
     private readonly IServiceProvider _services;
 
-    public JwtAuthStateProvider(IJSRuntime js, HttpClient http, IServiceProvider services)
+    public JwtAuthStateProvider(IJSRuntime js, HttpClient http, ApiClient api, IServiceProvider services)
     {
         _js = js;
         _http = http;
+        _api = api;
         _services = services;
     }
 
@@ -38,10 +40,9 @@ public class JwtAuthStateProvider : AuthenticationStateProvider
         // Validate by calling the API — works with both dev JWTs and OIDC encrypted tokens.
         try
         {
-            var response = await _http.GetAsync("/api/auth/me");
-            if (response.IsSuccessStatusCode)
+            var (ok, statusCode, me) = await _api.GetWithStatusAsync<MeResponse>("/api/auth/me");
+            if (ok)
             {
-                var me = await response.Content.ReadFromJsonAsync<MeResponse>();
                 if (me is not null)
                 {
                     var claims = new List<Claim>
@@ -69,7 +70,7 @@ public class JwtAuthStateProvider : AuthenticationStateProvider
             else
             {
                 AuthLog.Event("authstate.me_failed",
-                    ("status", (int)response.StatusCode),
+                    ("status", (int)statusCode),
                     ("action", "clear"));
             }
         }

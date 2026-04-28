@@ -1,7 +1,7 @@
 @page "/auth-callback"
 @attribute [AllowAnonymous]
 @inject IJSRuntime JS
-@inject HttpClient Http
+@inject ApiClient Api
 @inject JwtAuthStateProvider AuthProvider
 @inject TokenRefreshService RefreshService
 @inject NavigationManager Nav
@@ -72,13 +72,12 @@
         try
         {
             var redirectUri = $"{Nav.BaseUri}auth-callback";
-            var response = await Http.PostAsJsonAsync("/api/auth/oidc-exchange",
+            var (ok, token, _) = await Api.PostWithProblemAsync<object, OvcinaHra.Client.Auth.OidcExchangeResponse>(
+                "/api/auth/oidc-exchange",
                 new { Code, RedirectUri = redirectUri, CodeVerifier = codeVerifier });
 
-            if (response.IsSuccessStatusCode)
+            if (ok)
             {
-                var token = await response.Content.ReadFromJsonAsync<OvcinaHra.Client.Auth.OidcExchangeResponse>();
-
                 if (token?.Token is not null)
                 {
                     if (!string.IsNullOrEmpty(token.RefreshToken))
