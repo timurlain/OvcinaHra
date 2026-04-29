@@ -55,6 +55,18 @@
                                    OnKindToggle="OnKindToggle" />
 
                     <div class="oh-map-canvas">
+                        <div class="oh-map-treasure-filter" role="group" aria-label="Filtr pokladů podle fáze">
+                            <span class="oh-map-treasure-filter-lbl">Poklady</span>
+                            @foreach (var phase in TreasureMapPhaseOptions)
+                            {
+                                <button type="button"
+                                        class="oh-map-treasure-chip @(_treasurePhaseFilter == phase.Key ? "is-active" : "")"
+                                        data-stage="@phase.StageKey"
+                                        @onclick="() => SetTreasurePhaseFilterAsync(phase.Key)">
+                                    @phase.Label
+                                </button>
+                            }
+                        </div>
                         <div class="oh-map-style-toolbar">
                             <button class="oh-map-style-btn @(_activeStyle == "tourist" ? "is-active" : "")"
                                     @onclick='() => SetStyleAsync("tourist")'>Turistická</button>
@@ -215,10 +227,22 @@
     // also persists HiddenKinds). Old v1 entries without HiddenKinds
     // continue to deserialize via the record's default value.
     private const string LayerStateKey = "oh-map-layers-v2";
+    private const string TreasurePhaseAll = "all";
+    private const string TreasurePhaseStart = "start";
+    private const string TreasurePhaseMid = "mid";
+    private const string TreasurePhaseEnd = "end";
+    private static readonly IReadOnlyList<TreasureMapPhaseOption> TreasureMapPhaseOptions =
+    [
+        new(TreasurePhaseAll, "Vše", "all"),
+        new(TreasurePhaseStart, "Start", "start"),
+        new(TreasurePhaseMid, "Hra", "mid"),
+        new(TreasurePhaseEnd, "Konec", "end"),
+    ];
 
     private MapView? _mapView;
     private string _mode = "pro-hru";
     private string _activeStyle = "tourist";
+    private string _treasurePhaseFilter = TreasurePhaseAll;
     private bool _locationsVisible = true;
     private bool _stashesVisible = true;
     private bool _overlaysVisible = true;
@@ -427,8 +451,12 @@
                 // counts in the rail still show the underlying total, but
                 // the pins drop out of the painted set.
                 if (_hiddenKinds.Contains(l.EffectiveKind)) continue;
+                var filteredCount = GetTreasureCount(l, _treasurePhaseFilter);
+                var totalCount = l.TreasureCounts?.Total ?? 0;
+                Console.WriteLine($"[treasure-map] count-pin render locationId={l.Id} totalCount={totalCount} filteredCount={filteredCount} phase={TreasurePhaseLogName(_treasurePhaseFilter)}");
                 await JS.InvokeVoidAsync("ovcinaMap.addLocationPin",
-                    l.Id, l.Lat, l.Lon, l.EffectiveName, l.EffectiveKind.ToString());
+                    l.Id, l.Lat, l.Lon, l.EffectiveName, l.EffectiveKind.ToString(),
+                    filteredCount, TreasurePhaseUiName(_treasurePhaseFilter));
             }
         }
         if (_stashesVisible)
@@ -441,6 +469,43 @@
             }
         }
     }
+
+    private async Task SetTreasurePhaseFilterAsync(string phase)
+    {
+        if (_treasurePhaseFilter == phase) return;
+
+        var previous = _treasurePhaseFilter;
+        _treasurePhaseFilter = phase;
+        Console.WriteLine($"[treasure-map] phase-filter changed from={TreasurePhaseLogName(previous)} to={TreasurePhaseLogName(phase)}");
+        await PaintPinsAsync();
+    }
+
+    private static int GetTreasureCount(MapLocationDto location, string phase)
+        => location.TreasureCounts is null
+            ? 0
+            : phase switch
+            {
+                TreasurePhaseStart => location.TreasureCounts.Start,
+                TreasurePhaseMid => location.TreasureCounts.Mid,
+                TreasurePhaseEnd => location.TreasureCounts.End,
+                _ => location.TreasureCounts.Total,
+            };
+
+    private static string TreasurePhaseLogName(string phase) => phase switch
+    {
+        TreasurePhaseStart => "Start",
+        TreasurePhaseMid => "Mid",
+        TreasurePhaseEnd => "End",
+        _ => "All",
+    };
+
+    private static string TreasurePhaseUiName(string phase) => phase switch
+    {
+        TreasurePhaseStart => "Start",
+        TreasurePhaseMid => "Hra",
+        TreasurePhaseEnd => "Konec",
+        _ => "Vše",
+    };
 
     private async Task OnLayerVisibilityChange((string Layer, bool Visible) change)
     {
@@ -863,6 +928,8 @@
     // Persistence schema. HiddenKinds defaults to an empty list so a v1
     // entry without the field deserializes cleanly (System.Text.Json
     // tolerates missing properties on records with default values).
+    private sealed record TreasureMapPhaseOption(string Key, string Label, string StageKey);
+
     private record LayerState(
         bool Locations,
         bool Stashes,

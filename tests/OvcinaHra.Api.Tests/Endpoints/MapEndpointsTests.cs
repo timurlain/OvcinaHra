@@ -168,6 +168,125 @@ public class MapEndpointsTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Data_LocationPinsIncludeTreasureItemCountsByCollapsedPhase()
+    {
+        var game = await CreateGameAsync();
+        int parentId, emptyId;
+
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var parent = new Location
+            {
+                Name = "Pokladová lokace",
+                LocationKind = LocationKind.Village,
+                Coordinates = new GpsCoordinates(49.5m, 17.1m),
+            };
+            var empty = new Location
+            {
+                Name = "Bez pokladů",
+                LocationKind = LocationKind.Wilderness,
+                Coordinates = new GpsCoordinates(49.6m, 17.2m),
+            };
+            db.Locations.AddRange(parent, empty);
+            await db.SaveChangesAsync();
+
+            var child = new Location
+            {
+                Name = "Dětská varianta",
+                LocationKind = LocationKind.Dungeon,
+                ParentLocationId = parent.Id,
+            };
+            var stash = new SecretStash { Name = "Skrýš ve vsi" };
+            var item = new Item
+            {
+                Name = "Testovací mince",
+                ItemType = ItemType.Money,
+                ClassRequirements = new ClassRequirements(0, 0, 0, 0),
+            };
+            db.Locations.Add(child);
+            db.SecretStashes.Add(stash);
+            db.Items.Add(item);
+            await db.SaveChangesAsync();
+
+            db.GameLocations.AddRange(
+                new GameLocation { GameId = game.Id, LocationId = parent.Id },
+                new GameLocation { GameId = game.Id, LocationId = empty.Id });
+            db.GameSecretStashes.Add(new GameSecretStash
+            {
+                GameId = game.Id,
+                SecretStashId = stash.Id,
+                LocationId = parent.Id,
+            });
+            await db.SaveChangesAsync();
+
+            var start = new TreasureQuest
+            {
+                Title = "Start",
+                Difficulty = GameTimePhase.Start,
+                LocationId = parent.Id,
+                GameId = game.Id,
+            };
+            var childEarly = new TreasureQuest
+            {
+                Title = "Child early",
+                Difficulty = GameTimePhase.Early,
+                LocationId = child.Id,
+                GameId = game.Id,
+            };
+            var stashMid = new TreasureQuest
+            {
+                Title = "Stash mid",
+                Difficulty = GameTimePhase.Midgame,
+                SecretStashId = stash.Id,
+                GameId = game.Id,
+            };
+            var late = new TreasureQuest
+            {
+                Title = "Late",
+                Difficulty = GameTimePhase.Lategame,
+                LocationId = parent.Id,
+                GameId = game.Id,
+            };
+            var end = new TreasureQuest
+            {
+                Title = "End",
+                Difficulty = GameTimePhase.EndGame,
+                SecretStashId = stash.Id,
+                GameId = game.Id,
+            };
+            db.TreasureQuests.AddRange(start, childEarly, stashMid, late, end);
+            await db.SaveChangesAsync();
+
+            db.TreasureItems.AddRange(
+                new TreasureItem { GameId = game.Id, ItemId = item.Id, TreasureQuestId = start.Id, Count = 2 },
+                new TreasureItem { GameId = game.Id, ItemId = item.Id, TreasureQuestId = childEarly.Id, Count = 3 },
+                new TreasureItem { GameId = game.Id, ItemId = item.Id, TreasureQuestId = stashMid.Id, Count = 4 },
+                new TreasureItem { GameId = game.Id, ItemId = item.Id, TreasureQuestId = late.Id, Count = 5 },
+                new TreasureItem { GameId = game.Id, ItemId = item.Id, TreasureQuestId = end.Id, Count = 6 });
+            await db.SaveChangesAsync();
+
+            parentId = parent.Id;
+            emptyId = empty.Id;
+        }
+
+        var data = await Client.GetFromJsonAsync<MapDataDto>(
+            $"/api/map/data?gameId={game.Id}");
+
+        Assert.NotNull(data);
+        var parentPin = Assert.Single(data.Locations, l => l.Id == parentId);
+        Assert.NotNull(parentPin.TreasureCounts);
+        Assert.Equal(20, parentPin.TreasureCounts.Total);
+        Assert.Equal(2, parentPin.TreasureCounts.Start);
+        Assert.Equal(7, parentPin.TreasureCounts.Mid);
+        Assert.Equal(11, parentPin.TreasureCounts.End);
+
+        var emptyPin = Assert.Single(data.Locations, l => l.Id == emptyId);
+        Assert.NotNull(emptyPin.TreasureCounts);
+        Assert.Equal(0, emptyPin.TreasureCounts.Total);
+    }
+
+    [Fact]
     public async Task Peek_NonExistentLocation_Returns404()
     {
         var game = await CreateGameAsync();
