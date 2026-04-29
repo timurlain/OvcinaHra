@@ -37,11 +37,9 @@ public record DashboardIssueDto(
 public record DashboardIssuesDto(IReadOnlyList<DashboardIssueDto> Issues);
 
 /// <summary>
-/// One row in the RecentActivityFeed. Pre-MVP audit log doesn't exist —
-/// the endpoint stubs <see cref="OccurredUtc"/> from per-entity
-/// <c>UpdatedAtUtc</c> (or <c>Id DESC</c> as a fallback for entities
-/// without timestamps) and reports <see cref="Verb"/> as the neutral
-/// "upravil" until a real WorldChange table replaces this.
+/// One row in the RecentActivityFeed. WorldActivity rows are real organizer
+/// recordings; legacy rows still come from entity timestamps until more
+/// activity types are wired through the same table.
 /// </summary>
 public record DashboardActivityDto(
     string EntityType,

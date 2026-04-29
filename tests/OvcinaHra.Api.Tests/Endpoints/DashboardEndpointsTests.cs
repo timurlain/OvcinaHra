@@ -189,6 +189,51 @@ public class DashboardEndpointsTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Activity_WorldActivityLocationPlacement_ReturnsActorLocationAndThumbnail()
+    {
+        var game = await CreateGameAsync();
+        int locationId;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var location = new Location
+            {
+                Name = "Starý brod",
+                LocationKind = LocationKind.Village,
+                PlacementPhotoPath = "locationplacements/1/image.png"
+            };
+            db.Locations.Add(location);
+            await db.SaveChangesAsync();
+            location.PlacementPhotoPath = $"locationplacements/{location.Id}/image.png";
+            db.GameLocations.Add(new GameLocation { GameId = game.Id, LocationId = location.Id });
+            db.WorldActivities.Add(new WorldActivity
+            {
+                GameId = game.Id,
+                TimestampUtc = DateTime.UtcNow.AddMinutes(-1),
+                OrganizerUserId = "test-user",
+                OrganizerName = "Test Organizátor",
+                ActivityType = WorldActivityType.LocationPlaced,
+                Description = $"Umístěna lokace: {location.Name}",
+                LocationId = location.Id,
+                DataJson = "{}"
+            });
+            await db.SaveChangesAsync();
+            locationId = location.Id;
+        }
+
+        var rows = await Client.GetFromJsonAsync<List<DashboardActivityDto>>(
+            $"/api/dashboard/activity?gameId={game.Id}");
+
+        var row = Assert.Single(rows!);
+        Assert.Equal("location", row.EntityType);
+        Assert.Equal(locationId, row.EntityId);
+        Assert.Equal("Starý brod", row.EntityName);
+        Assert.Equal("Test Organizátor", row.ActorName);
+        Assert.Equal("umístil", row.Verb);
+        Assert.Contains($"/api/images/locationplacements/{locationId}/thumb", row.ThumbnailUrl!);
+    }
+
+    [Fact]
     public async Task Timeline_PastSlot_IsExcluded()
     {
         var game = await CreateGameAsync();

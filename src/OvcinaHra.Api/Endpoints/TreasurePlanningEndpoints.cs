@@ -587,8 +587,7 @@ public static class TreasurePlanningEndpoints
             .ToDictionaryAsync(i => i.Id);
         var gros = unlimitedItems.FirstOrDefault(ui =>
             itemsById.TryGetValue(ui.ItemId, out var item)
-            && item.ItemType == ItemType.Money
-            && IsGrosItemName(item.Name));
+            && item.ItemType == ItemType.Money);
 
         if (gros is null)
         {
@@ -602,10 +601,6 @@ public static class TreasurePlanningEndpoints
             count = gros.Count
         });
     }
-
-    private static bool IsGrosItemName(string name) =>
-        string.Equals(name.Trim(), "Groše", StringComparison.CurrentCultureIgnoreCase)
-        || name.Contains("groš", StringComparison.CurrentCultureIgnoreCase);
 
     private static async Task<Results<Ok<TreasureItemDto>, ValidationProblem, NotFound>> AdjustTreasureItemCount(
         int id,

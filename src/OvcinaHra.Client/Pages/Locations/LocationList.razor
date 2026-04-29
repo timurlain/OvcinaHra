@@ -1,4 +1,6 @@
 @page "/locations"
+@using System.Globalization
+@using System.Net.Http.Headers
 @attribute [Authorize]
 @inject ApiClient Api
 @inject GameContextService GameContext
@@ -59,6 +61,12 @@
     @if (!Catalog)
     {
         <button type="button"
+                class="btn btn-primary oh-placement-mobile-trigger"
+                data-testid="open-location-placement"
+                @onclick="OpenPlacementWizard">
+            <i class="bi bi-camera me-1"></i>Umístění lokace
+        </button>
+        <button type="button"
                 class="oh-lg-tb-toggle @(showCiphers ? "oh-lg-on" : "")"
                 disabled="@ciphersLoading"
                 @onclick="ToggleCiphersAsync">
@@ -74,6 +82,103 @@
         </button>
     }
 </div>
+
+@if (!string.IsNullOrWhiteSpace(placementToastMessage))
+{
+    <div class="oh-placement-toast" data-testid="location-placement-toast">
+        <i class="bi bi-check-circle"></i>
+        <span>@placementToastMessage</span>
+        <button type="button" title="Zavřít" aria-label="Zavřít" @onclick="() => placementToastMessage = null">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+}
+
+<DxPopup @bind-Visible="@isPlacementVisible" HeaderText="Umístění lokace" Width="min(94vw, 520px)">
+    <BodyContentTemplate Context="popupContext">
+        <div class="oh-placement-wizard" data-testid="location-placement-wizard">
+            <label class="form-label">Lokace</label>
+            <DxComboBox TData="LocationListDto" TValue="int?"
+                        Data="@placementLocationChoices"
+                        @bind-Value="@placementSelectedLocationId"
+                        TextFieldName="PlacementChoiceText"
+                        ValueFieldName="Id"
+                        NullText="Vyber lokaci"
+                        SearchMode="ListSearchMode.AutoSearch"
+                        CssClass="w-100"
+                        data-testid="location-placement-select">
+                <ItemDisplayTemplate Context="choiceContext">
+                    @{ var choice = (LocationListDto)choiceContext.DataItem; }
+                    <div class="oh-placement-choice" title="@(choice.IsPlaced ? "Již umístěno" : "Ještě bez fotky umístění")">
+                        <span>@choice.Name</span>
+                        @if (choice.IsPlaced)
+                        {
+                            <span class="oh-placement-choice-badge">✓ Již umístěno</span>
+                        }
+                    </div>
+                </ItemDisplayTemplate>
+                <EditBoxDisplayTemplate Context="editContext">
+                    @if (SelectedPlacementLocation is not null)
+                    {
+                        @SelectedPlacementLocation.PlacementChoiceText
+                    }
+                </EditBoxDisplayTemplate>
+            </DxComboBox>
+
+            @if (SelectedPlacementLocation?.IsPlaced == true)
+            {
+                <div class="alert alert-warning py-2 my-2" data-testid="location-placement-existing-warning">
+                    Tahle lokace už má fotku umístění. Uložením ji přepíšeš a přidáš nový záznam.
+                </div>
+            }
+
+            <label class="form-label mt-3">Fotka</label>
+            <div class="oh-placement-photo">
+                @if (!string.IsNullOrWhiteSpace(placementPreviewUrl))
+                {
+                    <img src="@placementPreviewUrl" alt="Náhled fotky umístění" />
+                }
+                else
+                {
+                    <div class="oh-placement-photo-empty">
+                        <i class="bi bi-camera"></i>
+                        <span>Vyfoť nebo nahraj fotku</span>
+                    </div>
+                }
+            </div>
+            <label class="btn btn-outline-primary oh-placement-file-btn mt-2">
+                <i class="bi bi-camera me-1"></i>@(placementPhotoFile is null ? "Vybrat fotku" : "Vybrat jinou fotku")
+                <InputFile OnChange="HandlePlacementFileSelected"
+                           accept="image/*"
+                           capture="environment"
+                           disabled="@placementSaving"
+                           data-testid="location-placement-file" />
+            </label>
+
+            <label class="form-label mt-3">Poznámky</label>
+            <DxMemo @bind-Text="@placementNotes"
+                    Rows="3"
+                    NullText="Krátká poznámka pro přípravu..."
+                    data-testid="location-placement-notes" />
+
+            @if (!string.IsNullOrWhiteSpace(placementError))
+            {
+                <div class="alert alert-danger py-2 mt-3" data-testid="location-placement-error">@placementError</div>
+            }
+
+            <div class="d-flex gap-2 justify-content-end mt-3">
+                <button class="btn btn-secondary" @onclick="ClosePlacementWizard" disabled="@placementSaving">Zrušit</button>
+                <button class="btn btn-primary" @onclick="SubmitPlacementAsync" disabled="@placementSaving" data-testid="location-placement-submit">
+                    @if (placementSaving)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    Uložit umístění
+                </button>
+            </div>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
 
 @if (!string.IsNullOrWhiteSpace(cipherGridError))
 {
@@ -648,6 +753,15 @@ else
     private bool isLinkVisible;
     private bool isUnassignVisible;
     private bool isSaving;
+    private bool isPlacementVisible;
+    private bool placementSaving;
+    private int? placementSelectedLocationId;
+    private IBrowserFile? placementPhotoFile;
+    private string? placementPreviewUrl;
+    private string? placementNotes;
+    private string? placementError;
+    private string? placementToastMessage;
+    private const long PlacementMaxFileSize = 5 * 1024 * 1024;
 
     // Toolbar filter state
     private string? searchText
@@ -779,6 +893,14 @@ else
                  .OrderBy(r => r)
                  .ToList();
 
+    private List<LocationListDto> placementLocationChoices =>
+        locations.OrderBy(l => l.Name).ToList();
+
+    private LocationListDto? SelectedPlacementLocation =>
+        placementSelectedLocationId.HasValue
+            ? locations.FirstOrDefault(l => l.Id == placementSelectedLocationId.Value)
+            : null;
+
     private void RefreshVisibleRows()
     {
         bool Matches(LocationListDto l)
@@ -850,6 +972,141 @@ else
     private void OpenOnMap(LocationListDto loc)
     {
         Nav.NavigateTo($"/map?location={loc.Id}");
+    }
+
+    private void OpenPlacementWizard()
+    {
+        placementError = null;
+        placementToastMessage = null;
+        placementSelectedLocationId = locations.FirstOrDefault(l => !l.IsPlaced)?.Id
+            ?? locations.FirstOrDefault()?.Id;
+        placementPhotoFile = null;
+        placementPreviewUrl = null;
+        placementNotes = null;
+        isPlacementVisible = true;
+        Console.WriteLine($"[loc-placement] wizard.open gameId={gameId}");
+    }
+
+    private void ClosePlacementWizard()
+    {
+        if (placementSaving) return;
+        isPlacementVisible = false;
+        placementError = null;
+        placementPhotoFile = null;
+        placementPreviewUrl = null;
+        placementNotes = null;
+        Console.WriteLine($"[loc-placement] wizard.cancel gameId={gameId}");
+    }
+
+    private async Task HandlePlacementFileSelected(InputFileChangeEventArgs e)
+    {
+        placementError = null;
+        placementPhotoFile = e.File;
+        if (placementPhotoFile.Size > PlacementMaxFileSize)
+        {
+            placementPhotoFile = null;
+            placementPreviewUrl = null;
+            placementError = "Soubor je příliš velký (max 5 MB).";
+            Console.WriteLine($"[loc-placement] wizard.photo-selected.failed gameId={gameId} reason=too-large");
+            return;
+        }
+
+        var contentType = string.IsNullOrWhiteSpace(placementPhotoFile.ContentType)
+            ? "image/jpeg"
+            : placementPhotoFile.ContentType;
+        await using var stream = placementPhotoFile.OpenReadStream(maxAllowedSize: PlacementMaxFileSize);
+        using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer);
+        placementPreviewUrl = $"data:{contentType};base64,{Convert.ToBase64String(buffer.ToArray())}";
+        Console.WriteLine($"[loc-placement] wizard.photo-selected gameId={gameId} size={placementPhotoFile.Size}");
+    }
+
+    private async Task SubmitPlacementAsync()
+    {
+        placementError = null;
+        if (SelectedPlacementLocation is null)
+        {
+            placementError = "Vyberte lokaci.";
+            return;
+        }
+        if (placementPhotoFile is null)
+        {
+            placementError = "Nejprve vyfoťte nebo nahrajte fotku umístění.";
+            return;
+        }
+
+        placementSaving = true;
+        var locationId = SelectedPlacementLocation.Id;
+        Console.WriteLine($"[loc-placement] wizard.submit.start gameId={gameId} locationId={locationId}");
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            await using var stream = placementPhotoFile.OpenReadStream(maxAllowedSize: PlacementMaxFileSize);
+            using var fileContent = new StreamContent(stream);
+            fileContent.Headers.ContentType = new MediaTypeHeaderValue(
+                string.IsNullOrWhiteSpace(placementPhotoFile.ContentType) ? "image/jpeg" : placementPhotoFile.ContentType);
+            content.Add(fileContent, "file", placementPhotoFile.Name);
+
+            var (uploadOk, uploadResult, uploadProblem, uploadStatus) =
+                await Api.PostMultipartWithProblemAsync<ImageUploadResult>(
+                    $"/api/images/locationplacements/{locationId}?gameId={gameId}", content);
+            if (!uploadOk || uploadResult is null)
+            {
+                placementError = uploadProblem ?? "Fotku se nepodařilo nahrát.";
+                Console.WriteLine($"[loc-placement] wizard.photo-upload.failed gameId={gameId} locationId={locationId} status={(int)uploadStatus}");
+                return;
+            }
+            Console.WriteLine($"[loc-placement] wizard.photo-uploaded gameId={gameId} locationId={locationId} blobKey={uploadResult.BlobKey}");
+
+            var localTimestamp = DateTime.Now.ToString("dd/MM HH:mm", CultureInfo.InvariantCulture);
+            var offsetMinutes = (int)DateTimeOffset.Now.Offset.TotalMinutes;
+            var request = new LocationPlacementRecordRequest(
+                gameId,
+                placementNotes,
+                localTimestamp,
+                offsetMinutes);
+            var (recordOk, status, recordProblem) =
+                await Api.PostWithProblemAsync<LocationPlacementRecordRequest, LocationPlacementStatusDto>(
+                    $"/api/locations/{locationId}/placement-record", request);
+            if (!recordOk || status is null)
+            {
+                placementError = recordProblem ?? "Záznam o umístění se nepodařilo uložit.";
+                Console.WriteLine($"[loc-placement] wizard.record.failed gameId={gameId} locationId={locationId} detail={placementError}");
+                return;
+            }
+
+            UpdatePlacementRow(status);
+            placementToastMessage = $"Umístění lokace {status.LocationName} uloženo.";
+            isPlacementVisible = false;
+            placementPhotoFile = null;
+            placementPreviewUrl = null;
+            placementNotes = null;
+            Console.WriteLine($"[loc-placement] wizard.submit.success gameId={gameId} locationId={locationId}");
+        }
+        catch (Exception ex)
+        {
+            placementError = ex.Message;
+            Console.WriteLine($"[loc-placement] wizard.submit.failed gameId={gameId} locationId={locationId} detail={placementError}");
+        }
+        finally
+        {
+            placementSaving = false;
+        }
+    }
+
+    private void UpdatePlacementRow(LocationPlacementStatusDto status)
+    {
+        var index = locations.FindIndex(l => l.Id == status.LocationId);
+        if (index >= 0)
+        {
+            locations[index] = locations[index] with
+            {
+                PlacementPhotoPath = status.PlacementPhotoPath,
+                PlacementPhotoUrl = status.PlacementPhotoUrl,
+                SetupNotes = status.SetupNotes
+            };
+        }
+        RefreshVisibleRows();
     }
 
     private void OnStashTileClick(int stashId)
