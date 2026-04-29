@@ -148,14 +148,23 @@
                     </div>
                 }
             </div>
-            <label class="btn btn-outline-primary oh-placement-file-btn mt-2">
-                <i class="bi bi-camera me-1"></i>@(placementPhotoFile is null ? "Vybrat fotku" : "Vybrat jinou fotku")
-                <InputFile OnChange="HandlePlacementFileSelected"
-                           accept="image/*"
-                           capture="environment"
-                           disabled="@placementSaving"
-                           data-testid="location-placement-file" />
-            </label>
+            <div class="d-flex flex-wrap gap-2 mt-2">
+                <label class="btn btn-outline-primary oh-placement-file-btn" @onclick="LogPlacementCameraTap">
+                    <i class="bi bi-camera me-1"></i>Vyfotit
+                    <InputFile OnChange="HandlePlacementCameraFileSelected"
+                               accept="image/*"
+                               capture="environment"
+                               disabled="@placementSaving"
+                               data-testid="location-placement-camera-file" />
+                </label>
+                <label class="btn btn-outline-primary oh-placement-file-btn" @onclick="LogPlacementGalleryTap">
+                    <i class="bi bi-image me-1"></i>Z galerie
+                    <InputFile OnChange="HandlePlacementGalleryFileSelected"
+                               accept="image/*"
+                               disabled="@placementSaving"
+                               data-testid="location-placement-gallery-file" />
+                </label>
+            </div>
 
             <label class="form-label mt-3">Poznámky</label>
             <DxMemo @bind-Text="@placementNotes"
@@ -1012,7 +1021,19 @@ else
         Console.WriteLine($"[loc-placement] wizard.cancel gameId={gameId}");
     }
 
-    private async Task HandlePlacementFileSelected(InputFileChangeEventArgs e)
+    private Task HandlePlacementCameraFileSelected(InputFileChangeEventArgs e)
+        => HandlePlacementFileSelected(e, "camera");
+
+    private Task HandlePlacementGalleryFileSelected(InputFileChangeEventArgs e)
+        => HandlePlacementFileSelected(e, "gallery");
+
+    private void LogPlacementCameraTap()
+        => Console.WriteLine($"[loc-placement] gallery-tap source=camera gameId={gameId}");
+
+    private void LogPlacementGalleryTap()
+        => Console.WriteLine($"[loc-placement] gallery-tap source=gallery gameId={gameId}");
+
+    private async Task HandlePlacementFileSelected(InputFileChangeEventArgs e, string source)
     {
         placementError = null;
         placementPhotoFile = e.File;
@@ -1022,7 +1043,7 @@ else
         {
             placementPhotoFile = null;
             placementError = $"Soubor je příliš velký (max {PlacementMaxIngressFileSize / 1024 / 1024} MB).";
-            Console.WriteLine($"[loc-placement] wizard.photo-selected.failed gameId={gameId} reason=ingress-too-large size={e.File.Size}");
+            Console.WriteLine($"[loc-placement] wizard.photo-selected.failed gameId={gameId} source={source} reason=ingress-too-large size={e.File.Size}");
             return;
         }
 
@@ -1036,13 +1057,13 @@ else
             using var buffer = new MemoryStream();
             await stream.CopyToAsync(buffer);
             originalDataUrl = $"data:{contentType};base64,{Convert.ToBase64String(buffer.ToArray())}";
-            Console.WriteLine($"[loc-placement] wizard.photo-selected gameId={gameId} size={placementPhotoFile.Size}");
+            Console.WriteLine($"[loc-placement] wizard.photo-selected gameId={gameId} source={source} size={placementPhotoFile.Size}");
         }
         catch (Exception ex)
         {
             placementPhotoFile = null;
             placementError = "Fotku se nepodařilo načíst.";
-            Console.WriteLine($"[loc-placement] wizard.photo-selected.failed gameId={gameId} reason=read-failed detail={ex.Message}");
+            Console.WriteLine($"[loc-placement] wizard.photo-selected.failed gameId={gameId} source={source} reason=read-failed detail={ex.Message}");
             return;
         }
 
