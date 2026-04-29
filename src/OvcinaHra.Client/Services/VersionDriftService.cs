@@ -52,6 +52,7 @@ public sealed class VersionDriftService : IDisposable
 
         BaselineCommit = await FetchCommitAsync();   // may be null on transient failure
         LatestCommit = BaselineCommit;
+        Console.WriteLine($"[version-refresh] baseline captured commit={BaselineCommit ?? "(null)"}");
 
         _cts = new CancellationTokenSource();
         _ = PollLoopAsync(_cts.Token);
@@ -74,6 +75,7 @@ public sealed class VersionDriftService : IDisposable
                 {
                     BaselineCommit = current;
                     LatestCommit = current;
+                    Console.WriteLine($"[version-refresh] baseline recovered commit={BaselineCommit}");
                     continue;
                 }
 
@@ -81,6 +83,7 @@ public sealed class VersionDriftService : IDisposable
 
                 LatestCommit = current;
                 IsDrifted = true;
+                Console.WriteLine($"[version-refresh] drift detected baseline={BaselineCommit} latest={LatestCommit}");
                 StateChanged?.Invoke();
                 // Stop polling — drift is sticky until the user reloads.
                 break;
@@ -103,7 +106,14 @@ public sealed class VersionDriftService : IDisposable
         try
         {
             var info = await _api.GetAsync<VersionInfo>("/api/version");
-            return info?.Commit;
+            if (info is null)
+            {
+                Console.WriteLine("[version-refresh] /api/version read commit=(null)");
+                return null;
+            }
+
+            Console.WriteLine($"[version-refresh] /api/version read commit={info.Commit} startedUtc={info.StartedUtc:O}");
+            return info.Commit;
         }
         catch (Exception ex)
         {
