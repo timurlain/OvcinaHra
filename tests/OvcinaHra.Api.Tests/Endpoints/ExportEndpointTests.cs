@@ -378,7 +378,15 @@ public class ExportEndpointTests(PostgresFixture postgres)
         {
             var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
             var items = Enumerable.Range(1, 110)
-                .Select(i => CreateItem($"Předmět {i:000}", (ItemType)(i % Enum.GetValues<ItemType>().Length)))
+                .Select(i => CreateItem(
+                    $"Předmět {i:000}",
+                    (ItemType)(i % Enum.GetValues<ItemType>().Length),
+                    effect: i % 3 == 0 ? "(3/2)" : "žluťoučký efekt",
+                    classRequirements: new ClassRequirements(
+                        i % 5 + 1,
+                        i % 4 == 0 ? 0 : i % 5 + 1,
+                        i % 3 == 0 ? 0 : i % 5 + 1,
+                        i % 2 == 0 ? 0 : i % 5 + 1)))
                 .ToList();
             var unsold = CreateItem("Neprodejný předmět", ItemType.Artifact);
             db.Items.AddRange(items);
@@ -419,13 +427,41 @@ public class ExportEndpointTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public void Cenik_AutoFitLargeCount_UsesMoreColumnsOnOnePage()
+    public void Cenik_AutoFitLargeCount_KeepsSingleA4Table()
     {
         var layout = CenikExportService.CalculateLayoutForTesting(240);
 
-        Assert.Equal(4, layout.Columns);
+        Assert.Equal(8, layout.Columns);
+        Assert.Equal(1, layout.PageCount);
         Assert.True(layout.FontSizePx >= 5);
-        Assert.True(layout.RowsPerColumn <= 60);
+        Assert.True(layout.RowHeightPx > 0);
+    }
+
+    [Theory]
+    [InlineData(1, "1")]
+    [InlineData(4, "4")]
+    [InlineData(100, "100")]
+    public void Cenik_FormatPrice_DropsGrošSuffix(int price, string expected)
+    {
+        Assert.Equal(expected, CenikExportService.FormatPriceForTesting(price));
+    }
+
+    [Fact]
+    public void Cenik_TypeAndClassColors_MatchReferenceTable()
+    {
+        Assert.Equal("#F5DEB3", CenikExportService.TypeRowColorHexForTesting(ItemType.Weapon));
+        Assert.Equal("#E1F4D8", CenikExportService.TypeRowColorHexForTesting(ItemType.Shield));
+        Assert.Equal("#D8E4F0", CenikExportService.TypeRowColorHexForTesting(ItemType.Armor));
+        Assert.Equal("#FFC080", CenikExportService.TypeRowColorHexForTesting(ItemType.Helmet));
+        Assert.Equal("#E0F0F8", CenikExportService.TypeRowColorHexForTesting(ItemType.Firearm));
+        Assert.Equal("#FFFFFF", CenikExportService.TypeRowColorHexForTesting(ItemType.Resource));
+
+        Assert.Equal("#FFFF66", CenikExportService.ClassRequirementColorHexForTesting(1));
+        Assert.Equal("#A0F0A0", CenikExportService.ClassRequirementColorHexForTesting(2));
+        Assert.Equal("#FF6666", CenikExportService.ClassRequirementColorHexForTesting(3));
+        Assert.Equal("#A0C0F0", CenikExportService.ClassRequirementColorHexForTesting(4));
+        Assert.Equal("#C080F0", CenikExportService.ClassRequirementColorHexForTesting(5));
+        Assert.Null(CenikExportService.ClassRequirementColorHexForTesting(0));
     }
 
     [Fact]
@@ -627,12 +663,17 @@ public class ExportEndpointTests(PostgresFixture postgres)
         Description = $"Popis {name}"
     };
 
-    private static Item CreateItem(string name, ItemType itemType) => new()
-    {
-        Name = name,
-        ItemType = itemType,
-        ClassRequirements = new ClassRequirements(0, 0, 0, 0)
-    };
+    private static Item CreateItem(
+        string name,
+        ItemType itemType,
+        string? effect = null,
+        ClassRequirements? classRequirements = null) => new()
+        {
+            Name = name,
+            ItemType = itemType,
+            Effect = effect,
+            ClassRequirements = classRequirements ?? new ClassRequirements(0, 0, 0, 0)
+        };
 
     private static int CountOccurrences(string text, string value)
     {
