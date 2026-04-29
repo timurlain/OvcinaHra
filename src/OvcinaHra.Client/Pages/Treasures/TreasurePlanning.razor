@@ -207,7 +207,7 @@ else
                                             var isFocused = focusedLocationId == loc.LocationId;
                                             <TreasureLocationTargetCard Location="loc"
                                                                         IsFocused="isFocused"
-                                                                        HasSelectedPool="@(selectedPool.Count > 0)"
+                                                                        HasSelectedPool="@HasPendingAllocation"
                                                                         OnClick="HandleLocationTargetClick"
                                                                         OnDrop="HandlePieDrop" />
                                         }
@@ -246,16 +246,116 @@ else
                     @* --- Default: pool grid --- *@
                     <div class="oh-tp-assign-hdr">
                         <h5>Zásobník (@poolItems.Count)</h5>
-                        <span class="oh-tp-focus-quest-meta">@selectedPool.Count vybráno</span>
+                        <span class="oh-tp-focus-quest-meta">@PendingAllocationLabel</span>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-primary"
+                                @onclick="OpenCompositeBundleComposer">
+                            <i class="bi bi-collection me-1"></i>Vytvořit balíček
+                        </button>
                     </div>
                     <div class="oh-tp-assign-body" id="oh-tp-pool-anchor">
+                        @{
+                            var visiblePoolItems = GetVisiblePoolItems().ToList();
+                        }
                         @if (poolRemoveError is not null)
                         {
                             <div class="alert alert-danger py-2 mb-2" role="alert">
                                 <i class="bi bi-exclamation-triangle me-1"></i>@poolRemoveError
                             </div>
                         }
-                        @if (selectedPool.Count > 0)
+                        @if (isCompositeBundleComposerOpen)
+                        {
+                            <div class="oh-tp-bundle-composer">
+                                <div class="oh-tp-bundle-head">
+                                    <div>
+                                        <strong><i class="bi bi-collection me-1"></i>Vytvořit balíček</strong>
+                                        <span>Počty se teď odečítají jen v prohlížeči. Server se mění až při přiřazení na lokaci.</span>
+                                    </div>
+                                    @if (HasCompositeBundle)
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-danger" @onclick="CancelCompositeBundle">
+                                            Zrušit balíček
+                                        </button>
+                                    }
+                                </div>
+                                <div class="oh-tp-bundle-title">
+                                    <label class="oh-tp-form-label">Název</label>
+                                    <DxTextBox @bind-Text="@compositeBundleTitle"
+                                               NullText="@BuildCompositeBundleAutoTitle()" />
+                                </div>
+                                <div class="oh-tp-bundle-add">
+                                    <DxComboBox Data="@GetCompositeBundleChoices()"
+                                                @bind-Value="@compositeBundlePoolItemId"
+                                                TextFieldName="Label"
+                                                ValueFieldName="PoolItemId"
+                                                NullText="Přidat položku ze zásobníku…"
+                                                ListRenderMode="ListRenderMode.Virtual"
+                                                style="flex:1" />
+                                    <DxSpinEdit @bind-Value="@compositeBundleAddCount"
+                                                MinValue="1"
+                                                MaxValue="@CompositeBundleAddMax"
+                                                style="width:84px" />
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-primary"
+                                            @onclick="AddCompositeBundleItem"
+                                            aria-label="Přidat do balíčku"
+                                            disabled="@(!CanAddCompositeBundleItem)">
+                                        <i class="bi bi-plus-circle"></i>
+                                    </button>
+                                </div>
+                                @if (HasCompositeBundle)
+                                {
+                                    <div class="oh-tp-bundle-lines">
+                                        @foreach (var line in GetCompositeBundleDisplayLines())
+                                        {
+                                            <div class="oh-tp-bundle-line" @key="line.ItemId">
+                                                <span class="oh-tp-bundle-line-name">@line.ItemName</span>
+                                                <button type="button"
+                                                        class="oh-tp-stepper-btn"
+                                                        @onclick="() => ChangeCompositeBundleItemCount(line.ItemId, -1)">
+                                                    <i class="bi bi-dash-lg"></i>
+                                                </button>
+                                                <span class="oh-tp-stepper-count">×@line.Count</span>
+                                                <button type="button"
+                                                        class="oh-tp-stepper-btn"
+                                                        disabled="@(!CanIncreaseCompositeBundleItem(line.ItemId))"
+                                                        @onclick="() => ChangeCompositeBundleItemCount(line.ItemId, 1)">
+                                                    <i class="bi bi-plus-lg"></i>
+                                                </button>
+                                                <button type="button"
+                                                        class="remove"
+                                                        aria-label="Odebrat"
+                                                        @onclick="() => RemoveCompositeBundleItem(line.ItemId)">
+                                                    <i class="bi bi-x-circle"></i>
+                                                </button>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                @if (compositeBundleError is not null)
+                                {
+                                    <div class="alert alert-danger py-2 mt-2 mb-0" role="alert">
+                                        <i class="bi bi-exclamation-triangle me-1"></i>@compositeBundleError
+                                    </div>
+                                }
+                            </div>
+                        }
+                        @if (HasCompositeBundle)
+                        {
+                            <button @ref="compositeBundleElement"
+                                    type="button"
+                                    class="oh-tp-composite-tile @(selectedCompositeBundle ? "selected" : "")"
+                                    aria-pressed="@selectedCompositeBundle"
+                                    @onclick="ToggleCompositeBundleSelection">
+                                <div class="oh-tp-composite-icon"><i class="bi bi-collection"></i></div>
+                                <div class="oh-tp-composite-body">
+                                    <strong>@EffectiveCompositeBundleTitle</strong>
+                                    <span>@CompositeBundleSummary</span>
+                                </div>
+                                <div class="oh-tp-composite-count">×@CompositeBundleUnitCount</div>
+                            </button>
+                        }
+                        @if (HasPendingAllocation)
                         {
                             <div class="oh-tp-drag-hint">
                                 <i class="bi bi-arrow-left-right"></i>
@@ -270,10 +370,17 @@ else
                                 <button class="btn btn-sm btn-outline-primary" @onclick="OpenAddToPoolModal">Přidat předmět</button>
                             </div>
                         }
+                        else if (visiblePoolItems.Count == 0)
+                        {
+                            <div class="oh-tp-empty compact">
+                                <i class="bi bi-collection"></i>
+                                <p>Všechny položky ze zásobníku jsou teď v rozpracovaném balíčku.</p>
+                            </div>
+                        }
                         else
                         {
                             <div class="oh-tp-pool-grid">
-                                @foreach (var p in poolItems)
+                                @foreach (var p in visiblePoolItems)
                                 {
                                     <TreasurePoolTile @key="p.Id"
                                                       Item="p"
@@ -318,7 +425,7 @@ else
                                     <span><span class="sw" style="background:var(--oh-stage-midgame)"></span>Střed @loc.MidgameCount</span>
                                     <span><span class="sw" style="background:var(--oh-stage-lategame)"></span>Závěr @loc.LategameCount</span>
                                 </div>
-                                @if (selectedPool.Count > 0)
+                                @if (HasPendingAllocation)
                                 {
                                     <button type="button"
                                             class="btn btn-sm btn-primary"
@@ -723,13 +830,21 @@ else
 
     // ===== Pool selection =====
     private readonly List<TreasurePoolItemDto> selectedPool = [];
+    private bool HasPendingAllocation => selectedPool.Count > 0 || selectedCompositeBundle;
+    private string PendingAllocationLabel => selectedCompositeBundle
+        ? "balíček vybrán"
+        : $"{selectedPool.Count} vybráno";
     private bool IsSelected(TreasurePoolItemDto p) => selectedPool.Any(s => s.Id == p.Id);
 
     private void TogglePoolSelection(TreasurePoolItemDto p)
     {
         var existing = selectedPool.FirstOrDefault(s => s.Id == p.Id);
         if (existing is not null) selectedPool.Remove(existing);
-        else selectedPool.Add(p);
+        else
+        {
+            selectedCompositeBundle = false;
+            selectedPool.Add(p);
+        }
         LogTreasureAlloc("click-treasure", new
         {
             poolItemId = p.Id,
@@ -741,6 +856,316 @@ else
             focusedLocationId
         });
     }
+
+    // ===== Transient composite bundle =====
+    private ElementReference compositeBundleElement;
+    private bool isCompositeBundleComposerOpen;
+    private bool selectedCompositeBundle;
+    private int? compositeBundlePoolItemId;
+    private int compositeBundleAddCount = 1;
+    private string compositeBundleTitle = "";
+    private string lastCompositeBundleAutoTitle = "";
+    private string? compositeBundleError;
+    private string compositeBundleClientId = NewCompositeBundleClientId();
+    private string? wiredCompositeBundlePayload;
+    private readonly List<CompositeBundleLine> compositeBundleItems = [];
+
+    private sealed record CompositeBundleLine(int PoolItemId, int ItemId, string ItemName, bool IsUnique, int Count);
+    private sealed record CompositeBundleDisplayLine(int ItemId, string ItemName, int Count);
+    private sealed record CompositeBundleChoice(int PoolItemId, int ItemId, string ItemName, string Label, int Available, bool IsUnique);
+
+    private bool HasCompositeBundle => compositeBundleItems.Count > 0;
+    private int CompositeBundleUnitCount => compositeBundleItems.Sum(i => i.Count);
+    private string EffectiveCompositeBundleTitle =>
+        string.IsNullOrWhiteSpace(compositeBundleTitle) ? BuildCompositeBundleAutoTitle() : compositeBundleTitle.Trim();
+    private string CompositeBundleSummary => string.Join(" + ", GetCompositeBundleDisplayLines().Select(i => $"{i.ItemName} × {i.Count}"));
+    private int CompositeBundleAddMax => compositeBundlePoolItemId is int id
+        ? Math.Max(1, GetCompositeBundleAvailableCount(id))
+        : 1;
+    private bool CanAddCompositeBundleItem => compositeBundlePoolItemId is int id && GetCompositeBundleAvailableCount(id) > 0;
+
+    private static string NewCompositeBundleClientId() => Guid.NewGuid().ToString("N");
+
+    private IEnumerable<TreasurePoolItemDto> GetVisiblePoolItems()
+    {
+        foreach (var item in poolItems)
+        {
+            var available = item.Count - GetCompositeBundleReservedCount(item.Id);
+            if (available > 0)
+            {
+                yield return item with { Count = available };
+            }
+        }
+    }
+
+    private IEnumerable<CompositeBundleChoice> GetCompositeBundleChoices() =>
+        poolItems
+            .Select(p =>
+            {
+                var available = p.Count - GetCompositeBundleReservedCount(p.Id);
+                var label = p.IsUnique ? p.ItemName : $"{p.ItemName} (zbývá {available})";
+                return new CompositeBundleChoice(p.Id, p.ItemId, p.ItemName, label, available, p.IsUnique);
+            })
+            .Where(c => c.Available > 0)
+            .OrderBy(c => c.ItemName);
+
+    private IEnumerable<CompositeBundleDisplayLine> GetCompositeBundleDisplayLines() =>
+        compositeBundleItems
+            .GroupBy(i => new { i.ItemId, i.ItemName })
+            .OrderBy(g => g.Key.ItemName)
+            .Select(g => new CompositeBundleDisplayLine(g.Key.ItemId, g.Key.ItemName, g.Sum(i => i.Count)));
+
+    private int GetCompositeBundleReservedCount(int poolItemId) =>
+        compositeBundleItems.Where(i => i.PoolItemId == poolItemId).Sum(i => i.Count);
+
+    private int GetCompositeBundleAvailableCount(int poolItemId)
+    {
+        var poolItem = poolItems.FirstOrDefault(p => p.Id == poolItemId);
+        return poolItem is null ? 0 : Math.Max(0, poolItem.Count - GetCompositeBundleReservedCount(poolItemId));
+    }
+
+    private string BuildCompositeBundleAutoTitle()
+    {
+        var summary = CompositeBundleSummary;
+        return string.IsNullOrWhiteSpace(summary) ? "Balíček" : $"Balíček: {summary}";
+    }
+
+    private void RefreshCompositeBundleTitle()
+    {
+        var next = BuildCompositeBundleAutoTitle();
+        if (string.IsNullOrWhiteSpace(compositeBundleTitle) || compositeBundleTitle == lastCompositeBundleAutoTitle)
+        {
+            compositeBundleTitle = next;
+        }
+        lastCompositeBundleAutoTitle = next;
+    }
+
+    private void OpenCompositeBundleComposer()
+    {
+        isCompositeBundleComposerOpen = true;
+        selectedPool.Clear();
+        LogTreasureAlloc("composite-open", new
+        {
+            kind = "composite",
+            clientBundleId = compositeBundleClientId,
+            itemRows = compositeBundleItems.Count,
+            units = CompositeBundleUnitCount
+        });
+    }
+
+    private void AddCompositeBundleItem()
+    {
+        compositeBundleError = null;
+        if (compositeBundlePoolItemId is not int poolItemId) return;
+        var poolItem = poolItems.FirstOrDefault(p => p.Id == poolItemId);
+        if (poolItem is null) return;
+        var available = GetCompositeBundleAvailableCount(poolItemId);
+        if (available <= 0) return;
+        var count = Math.Clamp(compositeBundleAddCount, 1, available);
+        if (poolItem.IsUnique) count = 1;
+        var existing = compositeBundleItems.FirstOrDefault(i => i.PoolItemId == poolItemId);
+        if (existing is not null)
+        {
+            compositeBundleItems.Remove(existing);
+            compositeBundleItems.Add(existing with { Count = existing.Count + count });
+        }
+        else
+        {
+            compositeBundleItems.Add(new CompositeBundleLine(poolItem.Id, poolItem.ItemId, poolItem.ItemName, poolItem.IsUnique, count));
+        }
+        selectedPool.Clear();
+        selectedCompositeBundle = true;
+        compositeBundlePoolItemId = null;
+        compositeBundleAddCount = 1;
+        RefreshCompositeBundleTitle();
+        wiredCompositeBundlePayload = null;
+        LogTreasureAlloc("composite-add", new
+        {
+            kind = "composite",
+            clientBundleId = compositeBundleClientId,
+            poolItemId,
+            poolItem.ItemId,
+            count,
+            reserved = GetCompositeBundleReservedCount(poolItemId)
+        });
+    }
+
+    private bool CanIncreaseCompositeBundleItem(int itemId) =>
+        poolItems.Any(p => p.ItemId == itemId && GetCompositeBundleAvailableCount(p.Id) > 0);
+
+    private void ChangeCompositeBundleItemCount(int itemId, int delta)
+    {
+        compositeBundleError = null;
+        if (delta < 0)
+        {
+            var line = compositeBundleItems.LastOrDefault(i => i.ItemId == itemId);
+            if (line is null) return;
+            compositeBundleItems.Remove(line);
+            if (line.Count > 1)
+            {
+                compositeBundleItems.Add(line with { Count = line.Count - 1 });
+            }
+        }
+        else
+        {
+            var poolItem = poolItems.FirstOrDefault(p => p.ItemId == itemId && GetCompositeBundleAvailableCount(p.Id) > 0);
+            if (poolItem is null) return;
+            var existing = compositeBundleItems.FirstOrDefault(i => i.PoolItemId == poolItem.Id);
+            if (existing is not null)
+            {
+                compositeBundleItems.Remove(existing);
+                compositeBundleItems.Add(existing with { Count = existing.Count + 1 });
+            }
+            else
+            {
+                compositeBundleItems.Add(new CompositeBundleLine(poolItem.Id, poolItem.ItemId, poolItem.ItemName, poolItem.IsUnique, 1));
+            }
+        }
+        if (!HasCompositeBundle)
+        {
+            selectedCompositeBundle = false;
+        }
+        RefreshCompositeBundleTitle();
+        wiredCompositeBundlePayload = null;
+        LogTreasureAlloc("composite-count", new
+        {
+            kind = "composite",
+            clientBundleId = compositeBundleClientId,
+            itemId,
+            delta,
+            units = CompositeBundleUnitCount
+        });
+    }
+
+    private void RemoveCompositeBundleItem(int itemId)
+    {
+        compositeBundleItems.RemoveAll(i => i.ItemId == itemId);
+        selectedCompositeBundle = HasCompositeBundle && selectedCompositeBundle;
+        RefreshCompositeBundleTitle();
+        wiredCompositeBundlePayload = null;
+        LogTreasureAlloc("composite-remove", new
+        {
+            kind = "composite",
+            clientBundleId = compositeBundleClientId,
+            itemId,
+            units = CompositeBundleUnitCount
+        });
+    }
+
+    private void ToggleCompositeBundleSelection()
+    {
+        if (!HasCompositeBundle) return;
+        selectedCompositeBundle = !selectedCompositeBundle;
+        if (selectedCompositeBundle)
+        {
+            selectedPool.Clear();
+        }
+        LogTreasureAlloc("composite-select", new
+        {
+            kind = "composite",
+            clientBundleId = compositeBundleClientId,
+            selectedCompositeBundle,
+            units = CompositeBundleUnitCount
+        });
+    }
+
+    private void CancelCompositeBundle()
+    {
+        LogTreasureAlloc("composite-cancel", new
+        {
+            kind = "composite",
+            clientBundleId = compositeBundleClientId,
+            units = CompositeBundleUnitCount
+        });
+        ClearCompositeBundle();
+    }
+
+    private void ClearCompositeBundle()
+    {
+        compositeBundleItems.Clear();
+        compositeBundleTitle = "";
+        lastCompositeBundleAutoTitle = "";
+        compositeBundlePoolItemId = null;
+        compositeBundleAddCount = 1;
+        compositeBundleError = null;
+        selectedCompositeBundle = false;
+        wiredCompositeBundlePayload = null;
+        compositeBundleClientId = NewCompositeBundleClientId();
+    }
+
+    private void NormalizeCompositeBundleAgainstPool()
+    {
+        var poolById = poolItems.ToDictionary(p => p.Id);
+        var changed = false;
+        foreach (var line in compositeBundleItems.ToList())
+        {
+            if (!poolById.TryGetValue(line.PoolItemId, out var poolItem))
+            {
+                compositeBundleItems.Remove(line);
+                changed = true;
+                continue;
+            }
+            var reservedBeforeLine = compositeBundleItems
+                .TakeWhile(i => !ReferenceEquals(i, line))
+                .Where(i => i.PoolItemId == line.PoolItemId)
+                .Sum(i => i.Count);
+            var max = Math.Max(0, poolItem.Count - reservedBeforeLine);
+            if (line.Count > max)
+            {
+                compositeBundleItems.Remove(line);
+                if (max > 0)
+                {
+                    compositeBundleItems.Add(line with { Count = max });
+                }
+                changed = true;
+            }
+        }
+        if (!HasCompositeBundle)
+        {
+            selectedCompositeBundle = false;
+        }
+        if (changed)
+        {
+            RefreshCompositeBundleTitle();
+            wiredCompositeBundlePayload = null;
+        }
+    }
+
+    private string? GetCompositeBundleValidationError()
+    {
+        if (!HasCompositeBundle) return "Balíček je prázdný.";
+        foreach (var line in compositeBundleItems)
+        {
+            var poolItem = poolItems.FirstOrDefault(p => p.Id == line.PoolItemId);
+            if (poolItem is null) return $"{line.ItemName} už není v zásobníku.";
+            if (line.Count <= 0 || line.Count > poolItem.Count)
+                return $"Počet pro {line.ItemName} musí být mezi 1 a {poolItem.Count}.";
+        }
+        return null;
+    }
+
+    private List<PoolItemAssignDto> BuildCompositeBundleAssignments() =>
+        compositeBundleItems
+            .GroupBy(i => i.PoolItemId)
+            .Select(g => new PoolItemAssignDto(g.Key, g.Sum(i => i.Count)))
+            .ToList();
+
+    private string BuildCompositeBundlePayload() =>
+        JsonSerializer.Serialize(new
+        {
+            Kind = "composite",
+            ClientBundleId = compositeBundleClientId,
+            Title = EffectiveCompositeBundleTitle,
+            Count = CompositeBundleUnitCount,
+            Items = compositeBundleItems.Select(i => new
+            {
+                i.PoolItemId,
+                i.ItemId,
+                i.ItemName,
+                i.Count,
+                i.IsUnique
+            })
+        });
 
     // ===== Stage filter =====
     private HashSet<string>? activeStages;
@@ -908,6 +1333,8 @@ else
         markersPlaced = false;
         focusedLocationId = null;
         selectedPool.Clear();
+        CancelCompositeBundle();
+        isCompositeBundleComposerOpen = false;
         treasuresRegionFilter = null;
         quickAllocation = null;
         allocationError = null;
@@ -946,6 +1373,7 @@ else
         // Prune selection of items that left the pool.
         var poolIds = poolItems.Select(p => p.Id).ToHashSet();
         selectedPool.RemoveAll(s => !poolIds.Contains(s.Id));
+        NormalizeCompositeBundleAgainstPool();
         if (treasuresRegionFilter is not null
             && !GetRegionOptions(locationCards).Contains(treasuresRegionFilter, StringComparer.CurrentCultureIgnoreCase))
             treasuresRegionFilter = null;
@@ -971,6 +1399,27 @@ else
             catch { /* prerender / JS unavailable */ }
         }
         await PlaceMarkersIfReadyAsync();
+        await WireCompositeBundleDragAsync();
+    }
+
+    private async Task WireCompositeBundleDragAsync()
+    {
+        if (!HasCompositeBundle)
+        {
+            wiredCompositeBundlePayload = null;
+            return;
+        }
+
+        var payload = BuildCompositeBundlePayload();
+        if (payload == wiredCompositeBundlePayload) return;
+        wiredCompositeBundlePayload = payload;
+        await JS.InvokeVoidAsync("ovcinaDnd.setDraggable", compositeBundleElement, payload);
+        LogTreasureAlloc("composite-drag-wire", new
+        {
+            kind = "composite",
+            clientBundleId = compositeBundleClientId,
+            units = CompositeBundleUnitCount
+        });
     }
 
     // Issue #200: persist Mapa ↔ Karty selection. Same shape as Timeline's
@@ -1182,8 +1631,15 @@ else
         {
             locationId,
             selectedCount = selectedPool.Count,
+            selectedCompositeBundle,
             view = treasuresView
         });
+
+        if (selectedCompositeBundle && HasCompositeBundle)
+        {
+            await QuickAssignCompositeBundleAsync(locationId, "click-fallback");
+            return;
+        }
 
         if (selectedPool.Count == 1)
         {
@@ -1209,6 +1665,12 @@ else
 
     private async Task StartAddToFocusedLocation(string source)
     {
+        if (focusedLocationId is int compositeLocationId && selectedCompositeBundle && HasCompositeBundle)
+        {
+            await QuickAssignCompositeBundleAsync(compositeLocationId, source);
+            return;
+        }
+
         if (focusedLocationId is int locationId && selectedPool.Count == 1)
         {
             await QuickAssignPoolItemAsync(selectedPool[0], locationId, source);
@@ -1220,7 +1682,8 @@ else
         {
             source,
             focusedLocationId,
-            selectedCount = selectedPool.Count
+            selectedCount = selectedPool.Count,
+            selectedCompositeBundle
         });
     }
 
@@ -1235,6 +1698,17 @@ else
                 args.Payload
             });
             using var doc = JsonDocument.Parse(args.Payload);
+            var payloadKind = doc.RootElement.TryGetProperty("Kind", out var kindElement)
+                ? kindElement.GetString()
+                : doc.RootElement.TryGetProperty("kind", out kindElement)
+                    ? kindElement.GetString()
+                    : null;
+            if (string.Equals(payloadKind, "composite", StringComparison.OrdinalIgnoreCase))
+            {
+                await QuickAssignCompositeBundleAsync(args.LocationId, "drop");
+                return;
+            }
+
             var poolItemId = doc.RootElement.GetProperty("PoolItemId").GetInt32();
             var picked = poolItems.FirstOrDefault(p => p.Id == poolItemId);
             if (picked is null)
@@ -1261,6 +1735,85 @@ else
     {
         focusedLocationId = null;
         focusTab = "prehled";
+    }
+
+    private async Task QuickAssignCompositeBundleAsync(int locationId, string source)
+    {
+        allocationError = null;
+        compositeBundleError = null;
+        var validationError = GetCompositeBundleValidationError();
+        if (validationError is not null)
+        {
+            compositeBundleError = validationError;
+            allocationError = validationError;
+            LogTreasureAlloc("composite-drop-commit-rejected", new
+            {
+                kind = "composite",
+                clientBundleId = compositeBundleClientId,
+                source,
+                locationId,
+                validationError
+            });
+            StateHasChanged();
+            return;
+        }
+
+        focusedLocationId = locationId;
+        focusTab = "prehled";
+        var assignments = BuildCompositeBundleAssignments();
+        var dto = new AssignTreasureDto(
+            Title: EffectiveCompositeBundleTitle,
+            Difficulty: lastUsedDifficulty,
+            GameId: gameId,
+            LocationId: locationId,
+            PoolItems: assignments);
+
+        LogTreasureAlloc("composite-drop-commit", new
+        {
+            kind = "composite",
+            clientBundleId = compositeBundleClientId,
+            source,
+            target = "location",
+            locationId,
+            dto.Title,
+            poolRows = assignments.Count,
+            poolUnits = assignments.Sum(a => a.Count)
+        });
+
+        var result = await Api.PostWithProblemAsync<AssignTreasureDto, TreasureQuestDetailDto>("/api/treasure-planning/assign", dto);
+        if (!result.Ok || result.Value is null)
+        {
+            allocationError = result.ProblemDetail ?? "Přiřazení balíčku se nepodařilo.";
+            compositeBundleError = allocationError;
+            LogTreasureAlloc("composite-drop-commit-rejected", new
+            {
+                kind = "composite",
+                clientBundleId = compositeBundleClientId,
+                source,
+                allocationError
+            });
+            StateHasChanged();
+            return;
+        }
+
+        lastUsedDifficulty = dto.Difficulty;
+        var completedBundleId = compositeBundleClientId;
+        var completedUnits = CompositeBundleUnitCount;
+        ClearCompositeBundle();
+        isCompositeBundleComposerOpen = false;
+        markersPlaced = false;
+        await LoadAllAsync();
+        await PlaceMarkersIfReadyAsync();
+        LogTreasureAlloc("composite-drop-commit-success", new
+        {
+            kind = "composite",
+            clientBundleId = completedBundleId,
+            source,
+            questId = result.Value.Id,
+            locationId,
+            poolUnits = completedUnits
+        });
+        StateHasChanged();
     }
 
     private async Task QuickAssignPoolItemAsync(TreasurePoolItemDto item, int locationId, string source)
@@ -1529,6 +2082,13 @@ else
     private async Task HandlePoolRemoveAsync(TreasurePoolItemDto item)
     {
         poolRemoveError = null;
+        if (GetCompositeBundleReservedCount(item.Id) > 0)
+        {
+            poolRemoveError = $"„{item.ItemName}“ je v rozpracovaném balíčku. Nejdřív položku odeber z balíčku nebo balíček zruš.";
+            StateHasChanged();
+            return;
+        }
+
         var ok = await Api.DeleteAsync($"/api/treasure-planning/pool/{item.Id}");
         if (!ok)
         {

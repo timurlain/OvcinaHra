@@ -238,11 +238,13 @@ public static class TreasurePlanningEndpoints
         var legacyPoolItemIds = dto.TreasureItemIds ?? [];
         var poolCount = poolAssignments.Count + legacyPoolItemIds.Count;
         var unlimitedCount = dto.UnlimitedItems?.Count ?? 0;
+        var isComposite = poolAssignments.Count > 1 || poolAssignments.Sum(p => p.Count) > 1;
         LogTreasureAlloc(logger, LogLevel.Information, "assign-entry", new
         {
             dto.GameId,
             dto.LocationId,
             dto.SecretStashId,
+            kind = isComposite ? "composite" : "single",
             poolCount,
             poolUnits = poolAssignments.Sum(p => p.Count),
             unlimitedCount
@@ -371,7 +373,30 @@ public static class TreasurePlanningEndpoints
 
             foreach (var assignment in poolAssignments)
             {
-                AssignPoolItemToQuest(poolItemsById[assignment.TreasureItemId], assignment.Count, quest.Id, db);
+                var poolItem = poolItemsById[assignment.TreasureItemId];
+                LogTreasureAlloc(logger, LogLevel.Information, "assign-item-before", new
+                {
+                    kind = isComposite ? "composite" : "single",
+                    questId = quest.Id,
+                    poolItemId = poolItem.Id,
+                    poolItem.ItemId,
+                    requestedCount = assignment.Count,
+                    availableCount = poolItem.Count,
+                    dto.LocationId,
+                    dto.SecretStashId
+                });
+                AssignPoolItemToQuest(poolItem, assignment.Count, quest.Id, db);
+                LogTreasureAlloc(logger, LogLevel.Information, "assign-item-after", new
+                {
+                    kind = isComposite ? "composite" : "single",
+                    questId = quest.Id,
+                    poolItemId = poolItem.Id,
+                    poolItem.ItemId,
+                    assignedCount = assignment.Count,
+                    remainingPoolCount = poolItem.TreasureQuestId is null ? poolItem.Count : 0,
+                    dto.LocationId,
+                    dto.SecretStashId
+                });
             }
 
             // Add unlimited items directly
