@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
@@ -66,6 +67,11 @@ public sealed class ExplorerMapExportService(
     private const double LabelRasterScale = 3;
     private const int LabelMaxCharsPerLine = 14;
     private const int LabelMaxLines = 3;
+    private const float LabelCandidateGap = 5f * (float)LabelRasterScale;
+    private const float LabelCollisionPadding = 1.5f * (float)LabelRasterScale;
+    private const float PinRadius = 8f * (float)LabelRasterScale;
+    private const float PinTail = 6f * (float)LabelRasterScale;
+    private const float PinCollisionPadding = 1f * (float)LabelRasterScale;
     private const int TileFetchConcurrency = 6;
 
     private static readonly JsonSerializerOptions OverlayJsonOptions = new() { WriteIndented = false };
@@ -286,8 +292,21 @@ public sealed class ExplorerMapExportService(
         var labelLocations = locations
             .Where(l => ShouldRenderPinLabel(kind, l.EffectiveKind))
             .ToList();
+        var stopwatch = Stopwatch.StartNew();
+        logger.LogInformation(
+            "[label-place] renderer entry kind={Kind} locations={LocationCount} labels={LabelCount}",
+            kind,
+            locations.Count,
+            labelLocations.Count);
         if (labelLocations.Count == 0)
+        {
+            logger.LogInformation(
+                "[label-place] renderer exit kind={Kind} labels={LabelCount} elapsedMs={ElapsedMs}",
+                kind,
+                0,
+                stopwatch.ElapsedMilliseconds);
             return null;
+        }
 
         var width = (int)Math.Ceiling(page.Width * LabelRasterScale);
         var height = (int)Math.Ceiling(page.Height * LabelRasterScale);
@@ -295,13 +314,37 @@ public sealed class ExplorerMapExportService(
         var font = LoadLabelFont(10.5f * (float)LabelRasterScale);
         var ink = Color.ParseHex("#fff8e8");
         var outline = Color.ParseHex("#17120d");
+        var pinBounds = locations
+            .Select(location => BuildPinBounds(layout.Project(bounds, location.Lat, location.Lon)))
+            .ToList();
+        var mapBounds = ToRasterRect(layout.MapX, layout.MapY, layout.MapWidth, layout.MapHeight);
+        var labelInputs = labelLocations
+            .Select(location => new PinLabelInput(
+                location.Id,
+                location.EffectiveName,
+                layout.Project(bounds, location.Lat, location.Lon)))
+            .ToList();
+        var placements = PlacePinLabels(labelInputs, pinBounds, mapBounds, font.Size);
 
         image.Mutate(ctx =>
         {
-            foreach (var location in labelLocations)
+            foreach (var placement in placements)
             {
-                var point = layout.Project(bounds, location.Lat, location.Lon);
-                DrawPinLabel(ctx, point, location.EffectiveName, font, ink, outline);
+                logger.LogDebug(
+                    "[label-place] placed label='{Label}' id={LocationId} at {Position} attempts={Attempts}",
+                    placement.Text,
+                    placement.LocationId,
+                    PlacementName(placement.Position),
+                    placement.Attempts);
+                if (placement.UsedFallback)
+                {
+                    logger.LogInformation(
+                        "[label-place] min-overlap fallback used label='{Label}' overlap={OverlapPx}px",
+                        placement.Text,
+                        (int)MathF.Ceiling(placement.OverlapPx));
+                }
+
+                DrawPinLabel(ctx, placement, font, ink, outline);
             }
         });
 
@@ -325,6 +368,11 @@ public sealed class ExplorerMapExportService(
         });
 
         ct.ThrowIfCancellationRequested();
+        logger.LogInformation(
+            "[label-place] renderer exit kind={Kind} labels={LabelCount} elapsedMs={ElapsedMs}",
+            kind,
+            placements.Count,
+            stopwatch.ElapsedMilliseconds);
         return SimpleImagePdfWriter.BuildRgbaImage(width, height, rgb, alpha);
     }
 
@@ -338,27 +386,18 @@ public sealed class ExplorerMapExportService(
 
     private static void DrawPinLabel(
         IImageProcessingContext ctx,
-        PdfPoint pinTip,
-        string text,
+        PinLabelPlacement placement,
         Font font,
         Color ink,
         Color outline)
     {
-        var lines = WrapPinLabel(text);
-        var lineHeight = font.Size * 0.92f;
-        var totalHeight = lines.Count * lineHeight;
-        var centerX = (float)(pinTip.X * LabelRasterScale);
-        var y = (float)((pinTip.Y + 5) * LabelRasterScale);
-        if (lines.Count > 1)
-            y -= totalHeight * 0.12f;
-
-        for (var i = 0; i < lines.Count; i++)
+        for (var i = 0; i < placement.Lines.Count; i++)
         {
-            var line = lines[i];
+            var line = placement.Lines[i];
             var width = ApproxKalamWidth(line, font.Size);
-            var x = centerX - width / 2f;
-            var baseline = y + i * lineHeight;
-            DrawOutlinedText(ctx, line, font, ink, outline, new PointF(x, baseline));
+            var x = placement.TextOrigin.X + (placement.TextWidth - width) / 2f;
+            var y = placement.TextOrigin.Y + i * placement.LineHeight;
+            DrawOutlinedText(ctx, line, font, ink, outline, new PointF(x, y));
         }
     }
 
@@ -377,6 +416,35 @@ public sealed class ExplorerMapExportService(
     }
 
     internal static IReadOnlyList<string> WrapPinLabelForTesting(string text) => WrapPinLabel(text);
+
+    internal static IReadOnlyList<PinLabelPlacementForTesting> PlacePinLabelsForTesting(
+        IReadOnlyList<(double X, double Y, string Text)> labels,
+        double mapX = 0,
+        double mapY = 0,
+        double mapWidth = A4Width,
+        double mapHeight = A4Height)
+    {
+        var inputs = labels
+            .Select((label, index) => new PinLabelInput(index, label.Text, new PdfPoint(label.X, label.Y)))
+            .ToList();
+        var pinBounds = inputs.Select(input => BuildPinBounds(input.PinTip)).ToList();
+        var placements = PlacePinLabels(
+            inputs,
+            pinBounds,
+            ToRasterRect(mapX, mapY, mapWidth, mapHeight),
+            10.5f * (float)LabelRasterScale);
+        return placements
+            .Select(placement => new PinLabelPlacementForTesting(
+                placement.Text,
+                PlacementName(placement.Position),
+                placement.Bounds.X,
+                placement.Bounds.Y,
+                placement.Bounds.Width,
+                placement.Bounds.Height,
+                placement.UsedFallback,
+                placement.Attempts))
+            .ToList();
+    }
 
     internal static bool ShouldRenderPinLabelForTesting(MapExportKind exportKind, LocationKind locationKind)
         => ShouldRenderPinLabel(exportKind, locationKind);
@@ -448,6 +516,156 @@ public sealed class ExplorerMapExportService(
 
     private static float ApproxKalamWidth(string text, float fontSize) =>
         text.Sum(ch => char.IsWhiteSpace(ch) ? 0.28f : 0.54f) * fontSize;
+
+    private static IReadOnlyList<PinLabelPlacement> PlacePinLabels(
+        IReadOnlyList<PinLabelInput> labels,
+        IReadOnlyList<LabelRect> pinBounds,
+        LabelRect mapBounds,
+        float fontSize)
+    {
+        var occupied = new List<LabelRect>(pinBounds);
+        var placements = new List<PinLabelPlacement>(labels.Count);
+        var lineHeight = fontSize * 0.92f;
+
+        foreach (var label in labels)
+        {
+            var lines = WrapPinLabel(label.Text);
+            var textWidth = lines.Max(line => ApproxKalamWidth(line, fontSize));
+            var textHeight = lines.Count * lineHeight;
+            var candidates = BuildLabelCandidates(label.PinTip, textWidth, textHeight);
+            var attempts = 0;
+            LabelCandidate? selected = null;
+            var bestScore = float.PositiveInfinity;
+            var bestOverlapPx = 0f;
+            var usedFallback = true;
+
+            foreach (var candidate in candidates)
+            {
+                attempts++;
+                var overlapArea = SumOverlapArea(candidate.Bounds, occupied);
+                var outsideArea = candidate.Bounds.OutsideArea(mapBounds);
+                var score = overlapArea + outsideArea * 4f;
+                var overlapPx = MaxOverlapDepth(candidate.Bounds, occupied);
+
+                if (score <= 0)
+                {
+                    selected = candidate;
+                    bestOverlapPx = 0;
+                    usedFallback = false;
+                    break;
+                }
+
+                if (score < bestScore)
+                {
+                    selected = candidate;
+                    bestScore = score;
+                    bestOverlapPx = overlapPx;
+                }
+            }
+
+            var chosen = selected ?? candidates[0];
+            occupied.Add(chosen.Bounds);
+            placements.Add(new PinLabelPlacement(
+                label.LocationId,
+                label.Text,
+                lines,
+                chosen.Position,
+                chosen.TextOrigin,
+                chosen.Bounds,
+                textWidth,
+                lineHeight,
+                attempts,
+                usedFallback,
+                bestOverlapPx));
+        }
+
+        return placements;
+    }
+
+    private static IReadOnlyList<LabelCandidate> BuildLabelCandidates(
+        PdfPoint pinTip,
+        float textWidth,
+        float textHeight)
+    {
+        var pin = BuildPinBounds(pinTip);
+        var pinCenterX = (float)(pinTip.X * LabelRasterScale);
+        var pinCenterY = pin.Y + pin.Height / 2f;
+
+        return
+        [
+            CreateCandidate(LabelPlacementPosition.AboveLeft, pinCenterX - textWidth - LabelCandidateGap, pin.Y - textHeight - LabelCandidateGap, textWidth, textHeight),
+            CreateCandidate(LabelPlacementPosition.Above, pinCenterX - textWidth / 2f, pin.Y - textHeight - LabelCandidateGap, textWidth, textHeight),
+            CreateCandidate(LabelPlacementPosition.AboveRight, pinCenterX + LabelCandidateGap, pin.Y - textHeight - LabelCandidateGap, textWidth, textHeight),
+            CreateCandidate(LabelPlacementPosition.Right, pin.Right + LabelCandidateGap, pinCenterY - textHeight / 2f, textWidth, textHeight),
+            CreateCandidate(LabelPlacementPosition.BelowRight, pinCenterX + LabelCandidateGap, pin.Bottom + LabelCandidateGap, textWidth, textHeight),
+            CreateCandidate(LabelPlacementPosition.Below, pinCenterX - textWidth / 2f, pin.Bottom + LabelCandidateGap, textWidth, textHeight),
+            CreateCandidate(LabelPlacementPosition.BelowLeft, pinCenterX - textWidth - LabelCandidateGap, pin.Bottom + LabelCandidateGap, textWidth, textHeight),
+            CreateCandidate(LabelPlacementPosition.Left, pin.X - textWidth - LabelCandidateGap, pinCenterY - textHeight / 2f, textWidth, textHeight)
+        ];
+    }
+
+    private static LabelCandidate CreateCandidate(
+        LabelPlacementPosition position,
+        float x,
+        float y,
+        float textWidth,
+        float textHeight) =>
+        new(position, new PointF(x, y), BuildLabelBounds(x, y, textWidth, textHeight));
+
+    private static LabelRect BuildLabelBounds(float x, float y, float width, float height) =>
+        new(
+            x - LabelCollisionPadding,
+            y - LabelCollisionPadding,
+            width + LabelCollisionPadding * 2f,
+            height + LabelCollisionPadding * 2f);
+
+    private static LabelRect BuildPinBounds(PdfPoint pinTip)
+    {
+        var tipX = (float)(pinTip.X * LabelRasterScale);
+        var tipY = (float)(pinTip.Y * LabelRasterScale);
+        return new LabelRect(
+            tipX - PinRadius - PinCollisionPadding,
+            tipY - PinTail - PinRadius * 2f - PinCollisionPadding,
+            PinRadius * 2f + PinCollisionPadding * 2f,
+            PinTail + PinRadius * 2f + PinCollisionPadding * 2f);
+    }
+
+    private static LabelRect ToRasterRect(double x, double y, double width, double height) =>
+        new(
+            (float)(x * LabelRasterScale),
+            (float)(y * LabelRasterScale),
+            (float)(width * LabelRasterScale),
+            (float)(height * LabelRasterScale));
+
+    private static float SumOverlapArea(LabelRect rect, IEnumerable<LabelRect> others) =>
+        others.Sum(other => rect.OverlapArea(other));
+
+    private static float MaxOverlapDepth(LabelRect rect, IEnumerable<LabelRect> others)
+    {
+        var max = 0f;
+        foreach (var other in others)
+        {
+            var overlapX = MathF.Min(rect.Right, other.Right) - MathF.Max(rect.X, other.X);
+            var overlapY = MathF.Min(rect.Bottom, other.Bottom) - MathF.Max(rect.Y, other.Y);
+            if (overlapX > 0 && overlapY > 0)
+                max = MathF.Max(max, MathF.Min(overlapX, overlapY));
+        }
+
+        return max;
+    }
+
+    private static string PlacementName(LabelPlacementPosition position) => position switch
+    {
+        LabelPlacementPosition.AboveLeft => "above-left",
+        LabelPlacementPosition.Above => "above",
+        LabelPlacementPosition.AboveRight => "above-right",
+        LabelPlacementPosition.Right => "right",
+        LabelPlacementPosition.BelowRight => "below-right",
+        LabelPlacementPosition.Below => "below",
+        LabelPlacementPosition.BelowLeft => "below-left",
+        LabelPlacementPosition.Left => "left",
+        _ => position.ToString()
+    };
 
     private static int ChooseZoom(MapBounds bounds, int targetWidth, int targetHeight)
     {
@@ -741,6 +959,75 @@ public sealed class ExplorerMapExportService(
     }
 
     private sealed record PdfPoint(double X, double Y);
+
+    internal sealed record PinLabelPlacementForTesting(
+        string Text,
+        string Position,
+        float X,
+        float Y,
+        float Width,
+        float Height,
+        bool UsedFallback,
+        int Attempts);
+
+    private sealed record PinLabelInput(int LocationId, string Text, PdfPoint PinTip);
+
+    private sealed record PinLabelPlacement(
+        int LocationId,
+        string Text,
+        IReadOnlyList<string> Lines,
+        LabelPlacementPosition Position,
+        PointF TextOrigin,
+        LabelRect Bounds,
+        float TextWidth,
+        float LineHeight,
+        int Attempts,
+        bool UsedFallback,
+        float OverlapPx);
+
+    private sealed record LabelCandidate(
+        LabelPlacementPosition Position,
+        PointF TextOrigin,
+        LabelRect Bounds);
+
+    private enum LabelPlacementPosition
+    {
+        AboveLeft,
+        Above,
+        AboveRight,
+        Right,
+        BelowRight,
+        Below,
+        BelowLeft,
+        Left
+    }
+
+    private readonly record struct LabelRect(float X, float Y, float Width, float Height)
+    {
+        public float Right => X + Width;
+
+        public float Bottom => Y + Height;
+
+        public float Area => Width * Height;
+
+        public float OverlapArea(LabelRect other)
+        {
+            var overlapX = MathF.Min(Right, other.Right) - MathF.Max(X, other.X);
+            var overlapY = MathF.Min(Bottom, other.Bottom) - MathF.Max(Y, other.Y);
+            return overlapX <= 0 || overlapY <= 0 ? 0 : overlapX * overlapY;
+        }
+
+        public float OutsideArea(LabelRect bounds)
+        {
+            var insideX1 = MathF.Max(X, bounds.X);
+            var insideY1 = MathF.Max(Y, bounds.Y);
+            var insideX2 = MathF.Min(Right, bounds.Right);
+            var insideY2 = MathF.Min(Bottom, bounds.Bottom);
+            var insideWidth = MathF.Max(0, insideX2 - insideX1);
+            var insideHeight = MathF.Max(0, insideY2 - insideY1);
+            return Area - insideWidth * insideHeight;
+        }
+    }
 
     private sealed class PdfCanvas(double pageHeight)
     {
