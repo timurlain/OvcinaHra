@@ -61,6 +61,12 @@ else
                     </div>
                 }
             </div>
+            @if (!string.IsNullOrWhiteSpace(stampImageUrl))
+            {
+                <div class="oh-lc-title-stamp" title="Razítko lokace" aria-label="Razítko lokace">
+                    <img src="@stampImageUrl" alt="Razítko lokace @loc.Name" />
+                </div>
+            }
             <div class="oh-lc-title-actions">
                 @if (activeTab == "upravit")
                 {
@@ -480,6 +486,7 @@ else
     // without re-fetching the catalog on every render.
     private List<LocationListDto> allLocations = [];
     private string? mainImageUrl;
+    private string? stampImageUrl;
 
     private string activeTab = "karta";
     private bool loading = true, isSaving, isDeleteVisible, isRemoveFromGameVisible;
@@ -592,7 +599,10 @@ else
                 detail.ParentLocationId,
                 detail.Description, detail.Details, detail.GamePotential,
                 detail.NpcInfo, detail.SetupNotes,
-                stashes, quests, locationTreasureQuests);
+                stashes, quests, locationTreasureQuests,
+                StampImagePath: detail.StampImagePath,
+                StampImageUrl: detail.StampImageUrl);
+            stampImageUrl = detail.StampImageUrl;
 
             PopulateFormFromDto(detail);
 

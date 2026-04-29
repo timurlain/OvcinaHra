@@ -60,6 +60,13 @@
                 @onkeydown:stopPropagation="true">
             <i class="bi bi-coin"></i> Vytvoř poklad z grošů
         </button>
+        <button type="button"
+                class="oh-tp-card-resource"
+                @onclick="HandleResourceClick"
+                @onclick:stopPropagation="true"
+                @onkeydown:stopPropagation="true">
+            <i class="bi bi-gem"></i> Vytvoř poklad ze suroviny
+        </button>
     </div>
 </div>
 
@@ -69,6 +76,7 @@
     [Parameter] public bool HasSelectedPool { get; set; }
     [Parameter] public EventCallback<int> OnClick { get; set; }
     [Parameter] public EventCallback<int> OnCreateGrosTreasure { get; set; }
+    [Parameter] public EventCallback<int> OnCreateResourceTreasure { get; set; }
     [Parameter] public EventCallback<PiePayloadEventArgs> OnDrop { get; set; }
 
     private ElementReference elementRef;
@@ -99,6 +107,8 @@
     private Task HandleClick() => OnClick.InvokeAsync(Location.LocationId);
 
     private Task HandleGrosClick() => OnCreateGrosTreasure.InvokeAsync(Location.LocationId);
+
+    private Task HandleResourceClick() => OnCreateResourceTreasure.InvokeAsync(Location.LocationId);
 
     [JSInvokable]
     public Task OnTreasurePoolDropped(int locationId, string payload) =>

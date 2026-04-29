@@ -207,10 +207,11 @@ else
                                             var isFocused = focusedLocationId == loc.LocationId;
                                              <TreasureLocationTargetCard Location="loc"
                                                                          IsFocused="isFocused"
-                                                                         HasSelectedPool="@HasPendingAllocation"
-                                                                         OnClick="HandleLocationTargetClick"
-                                                                         OnCreateGrosTreasure="OpenGrosTreasureDialog"
-                                                                         OnDrop="HandlePieDrop" />
+                                                                          HasSelectedPool="@HasPendingAllocation"
+                                                                          OnClick="HandleLocationTargetClick"
+                                                                          OnCreateGrosTreasure="OpenGrosTreasureDialog"
+                                                                          OnCreateResourceTreasure="OpenResourceTreasureDialog"
+                                                                          OnDrop="HandlePieDrop" />
                                         }
                                     </div>
                                 </div>
@@ -647,6 +648,38 @@ else
             <button class="btn btn-secondary" type="button" @onclick="CloseGrosDialog" disabled="@grosSaving">Zrušit</button>
             <button class="btn btn-primary" type="button" @onclick="CreateGrosTreasureAsync" disabled="@(grosSaving || grosLocationId is null)">
                 @if (grosSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Vytvořit
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@* ================== CREATE RESOURCE TREASURE POPUP ================== *@
+<DxPopup @bind-Visible="@isResourceDialogVisible" HeaderText="Vytvoř poklad ze suroviny" Width="440px">
+    <BodyContentTemplate Context="popupContext">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Lokace" ColSpanMd="12">
+                <div class="oh-tp-gros-location">@ResourceDialogLocationName</div>
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Surovina" ColSpanMd="12">
+                <DxComboBox Data="@ResourceItems"
+                            @bind-Value="@resourceItemId"
+                            TextFieldName="ItemName"
+                            ValueFieldName="ItemId"
+                            NullText="Vyberte surovinu…" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Počet" ColSpanMd="12">
+                <DxSpinEdit @bind-Value="@resourceCount" MinValue="1" MaxValue="9999" />
+            </DxFormLayoutItem>
+        </DxFormLayout>
+        @if (resourceError is not null)
+        {
+            <div class="alert alert-danger mt-2">@resourceError</div>
+        }
+        <div class="d-flex gap-2 mt-3 justify-content-end">
+            <button class="btn btn-secondary" type="button" @onclick="CloseResourceDialog" disabled="@resourceSaving">Zrušit</button>
+            <button class="btn btn-primary" type="button" @onclick="CreateResourceTreasureAsync" disabled="@(resourceSaving || resourceLocationId is null || resourceItemId is null)">
+                @if (resourceSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
                 Vytvořit
             </button>
         </div>
@@ -1344,8 +1377,8 @@ else
         placementPhase = next;
         lastUsedDifficulty = next;
         var current = PlacementPhaseUiName(next);
-        Console.WriteLine($"[treasure-alloc] phase-toggle changed from={previous} to={current}");
-        LogTreasureAlloc("phase-toggle", new
+        Console.WriteLine($"[treasure-alloc] phase-changed from={previous} to={current}");
+        LogTreasureAlloc("phase-changed", new
         {
             from = previous,
             to = current,
@@ -1357,15 +1390,19 @@ else
     private static string PlacementPhaseUiName(GameTimePhase phase) => phase switch
     {
         GameTimePhase.Start => "Start",
-        GameTimePhase.Lategame or GameTimePhase.EndGame => "Konec",
-        _ => "Hra"
+        GameTimePhase.Early => "Rozvoj hry",
+        GameTimePhase.Midgame => "Střed hry",
+        GameTimePhase.Lategame or GameTimePhase.EndGame => "Závěr hry",
+        _ => phase.GetDisplayName()
     };
 
     private static GameTimePhase PlacementPhaseBucket(GameTimePhase phase) => phase switch
     {
         GameTimePhase.Start => GameTimePhase.Start,
+        GameTimePhase.Early => GameTimePhase.Early,
+        GameTimePhase.Midgame => GameTimePhase.Midgame,
         GameTimePhase.Lategame or GameTimePhase.EndGame => GameTimePhase.Lategame,
-        _ => GameTimePhase.Midgame
+        _ => phase
     };
 
     private static void LogAssignRequestPhase(GameTimePhase phase, string source, int? locationId, int? secretStashId = null)
@@ -1478,6 +1515,23 @@ else
             ? locationCards.FirstOrDefault(l => l.LocationId == id)?.LocationName ?? $"Lokace #{id}"
             : "";
 
+    // ===== Surovina treasure popup =====
+    private bool isResourceDialogVisible;
+    private bool resourceSaving;
+    private int? resourceLocationId;
+    private int? resourceItemId;
+    private int resourceCount = 1;
+    private string? resourceError;
+    private List<UnlimitedItemDto> ResourceItems =>
+        unlimitedItems
+            .Where(i => i.ItemType == ItemType.Resource)
+            .OrderBy(i => i.ItemName, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+    private string ResourceDialogLocationName =>
+        resourceLocationId is int id
+            ? locationCards.FirstOrDefault(l => l.LocationId == id)?.LocationName ?? $"Lokace #{id}"
+            : "";
+
     // ===== Edit-quest popup =====
     private bool isEditQuestVisible, isDeleteQuestVisible, editSaving;
     private int? editQuestId;
@@ -1507,8 +1561,9 @@ else
     private static readonly List<PlacementPhaseOption> placementPhaseOptions =
     [
         new("start", GameTimePhase.Start, "Start"),
-        new("mid", GameTimePhase.Midgame, "Hra"),
-        new("end", GameTimePhase.Lategame, "Konec"),
+        new("early", GameTimePhase.Early, "Rozvoj hry"),
+        new("mid", GameTimePhase.Midgame, "Střed hry"),
+        new("late", GameTimePhase.Lategame, "Závěr hry"),
     ];
 
     private static readonly List<EnumItem<GameTimePhase>> difficultyValues = Enum.GetValues<GameTimePhase>()
@@ -2289,6 +2344,91 @@ else
         finally
         {
             grosSaving = false;
+        }
+    }
+
+    // ===== Surovina treasure popup =====
+    private void OpenResourceTreasureDialog(int locationId)
+    {
+        resourceLocationId = locationId;
+        resourceCount = 1;
+        resourceError = null;
+        var resources = ResourceItems;
+        resourceItemId = resources.Any(i => i.ItemId == resourceItemId)
+            ? resourceItemId
+            : resources.FirstOrDefault()?.ItemId;
+        isResourceDialogVisible = true;
+        Console.WriteLine($"[treasure-alloc] surovina-dialog open locationId={locationId}");
+        LogTreasureAlloc("surovina-dialog open", new { locationId });
+    }
+
+    private void CloseResourceDialog()
+    {
+        if (resourceSaving) return;
+        isResourceDialogVisible = false;
+        resourceError = null;
+    }
+
+    private UnlimitedItemDto? FindResourceItem()
+    {
+        var resources = ResourceItems;
+        return resources.FirstOrDefault(i => i.ItemId == resourceItemId)
+            ?? resources.FirstOrDefault();
+    }
+
+    private async Task CreateResourceTreasureAsync()
+    {
+        if (resourceLocationId is not int locationId || resourceSaving) return;
+        resourceError = null;
+        var resourceItem = FindResourceItem();
+        if (resourceItem is null)
+        {
+            LogTreasureAlloc("surovina-item-not-found", new { gameId });
+            resourceError = "Hra nemá nastavenu surovinu. Přidejte položku typu Surovina do herního inventáře.";
+            return;
+        }
+
+        resourceSaving = true;
+        try
+        {
+            var count = Math.Max(1, resourceCount);
+            var dto = new AssignTreasureDto(
+                Title: $"{resourceItem.ItemName} × {count}",
+                Difficulty: placementPhase,
+                GameId: gameId,
+                LocationId: locationId,
+                UnlimitedItems: [new UnlimitedItemAssignDto(resourceItem.ItemId, count)]);
+
+            var result = await Api.PostWithProblemAsync<AssignTreasureDto, TreasureQuestDetailDto>(
+                "/api/treasure-planning/assign",
+                dto);
+            LogAssignRequestPhase(dto.Difficulty, "surovina-dialog", locationId);
+            if (!result.Ok || result.Value is null)
+            {
+                resourceError = result.ProblemDetail ?? "Vytvoření pokladu ze suroviny se nepodařilo.";
+                return;
+            }
+
+            lastUsedDifficulty = dto.Difficulty;
+            placementPhase = PlacementPhaseBucket(dto.Difficulty);
+            isResourceDialogVisible = false;
+            markersPlaced = false;
+            await LoadAllAsync();
+            await PlaceMarkersIfReadyAsync();
+            Console.WriteLine(
+                $"[treasure-alloc] surovina-treasure-create locationId={locationId} stashId={result.Value.SecretStashId?.ToString() ?? "null"} itemId={resourceItem.ItemId} count={count}");
+            LogTreasureAlloc("surovina-treasure-create", new
+            {
+                locationId,
+                stashId = result.Value.SecretStashId,
+                itemId = resourceItem.ItemId,
+                count
+            });
+            StateHasChanged();
+        }
+        finally
+        {
+            resourceSaving = false;
         }
     }
 
