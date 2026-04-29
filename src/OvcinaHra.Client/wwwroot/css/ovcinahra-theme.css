@@ -795,7 +795,23 @@
     font-weight: 700;
     color: var(--oh-text);
 }
+.oh-lc-title-stamp {
+    width: 64px;
+    height: 64px;
+    flex: 0 0 64px;
+    margin-left: auto;
+    border: 1px solid rgba(107, 90, 58, .28);
+    border-radius: 6px;
+    background: #fff8ec;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    box-shadow: 0 2px 8px rgba(58, 46, 30, .12);
+}
+.oh-lc-title-stamp img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .oh-lc-title-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.oh-lc-title-stamp + .oh-lc-title-actions { margin-left: 0; }
 
 .oh-lc-tabs {
     display: flex;
@@ -2496,8 +2512,9 @@
 .oh-tp-placement-phase-lbl{font:800 .82rem var(--oh-font-body);color:var(--oh-primary);white-space:nowrap}
 .oh-tp-placement-phase .oh-tl-seg{background:rgba(255,255,255,.72)}
 .oh-tp-placement-phase .oh-tl-seg-btn[data-stage="start"].on{background:var(--oh-stage-start)}
+.oh-tp-placement-phase .oh-tl-seg-btn[data-stage="early"].on{background:var(--oh-stage-early);color:#3a2612}
 .oh-tp-placement-phase .oh-tl-seg-btn[data-stage="mid"].on{background:var(--oh-stage-midgame)}
-.oh-tp-placement-phase .oh-tl-seg-btn[data-stage="end"].on{background:var(--oh-stage-lategame)}
+.oh-tp-placement-phase .oh-tl-seg-btn[data-stage="late"].on{background:var(--oh-stage-lategame)}
 .oh-tp-assign-hdr{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--oh-border);background:var(--oh-surface-alt)}
 .oh-tp-assign-hdr h5{margin:0;font:700 1rem var(--oh-font-heading);color:var(--oh-primary);flex:1}
 .oh-tp-assign-hdr .oh-tp-close{background:none;border:none;font-size:1.1rem;cursor:pointer;color:var(--oh-text-secondary);padding:2px 6px;line-height:1}
@@ -2511,14 +2528,16 @@
 /* Pool grid (5:7 MTG tiles) -------------------------------- */
 .oh-tp-pool-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}
 .oh-tp-pool-grid.oh-tp-pool-compact{grid-template-columns:repeat(auto-fill,minmax(84px,1fr))}
-.oh-tp-pool-tile{position:relative;aspect-ratio:5/7;border-radius:8px;border:1px solid var(--oh-card-border,var(--oh-border));background:var(--oh-surface-alt);cursor:grab;user-select:none;overflow:hidden;box-shadow:var(--oh-shadow);transition:transform .15s,box-shadow .15s}
+.oh-tp-pool-tile{position:relative;aspect-ratio:5/7;border-radius:8px;border:1px solid var(--oh-card-border,var(--oh-border));background:#fff8ec;cursor:grab;user-select:none;overflow:hidden;box-shadow:var(--oh-shadow);transition:transform .15s,box-shadow .15s}
 .oh-tp-pool-tile:hover{transform:translateY(-2px);box-shadow:0 6px 14px rgba(45,80,22,.25);z-index:3}
 .oh-tp-pool-tile:active{cursor:grabbing}
 .oh-tp-pool-tile.selected{border-color:var(--oh-primary);box-shadow:0 0 0 2px var(--oh-primary-light) inset,var(--oh-shadow-lg)}
 .oh-tp-pool-tile-dragging{opacity:.5;transform:rotate(-3deg) scale(.98)}
-.oh-tp-pool-tile-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.oh-tp-pool-tile-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:var(--oh-primary-light);background:var(--oh-surface-alt)}
-.oh-tp-pool-tile-name{position:absolute;left:4px;right:4px;bottom:4px;font:600 .75rem var(--oh-font-body);color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8);line-height:1.15;max-height:2.3em;overflow:hidden}
+.oh-tp-pool-tile-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:6px;background:#fff8ec}
+.oh-tp-pool-tile-fallback{position:absolute;left:50%;bottom:9px;z-index:1;width:34px;height:34px;transform:translateX(-50%);display:flex;align-items:center;justify-content:center;border-radius:50%;font-size:1.1rem;color:var(--oh-primary-light);background:rgba(45,80,22,.12);border:1px solid rgba(45,80,22,.2)}
+.oh-tp-pool-tile-name{position:absolute;left:4px;right:4px;bottom:4px;z-index:2;padding:2px 4px;border-radius:5px;background:rgba(255,248,236,.84);font:700 .75rem var(--oh-font-body);color:#1f1a14;text-shadow:0 1px 0 rgba(255,255,255,.95),0 0 4px rgba(255,255,255,.85);line-height:1.15;max-height:2.45em;overflow:hidden}
+.oh-tp-pool-tile.no-image .oh-tp-pool-tile-name{top:10px;bottom:50px;display:flex;align-items:center;justify-content:center;text-align:center;padding:8px;font-size:1.05rem;line-height:1.18;max-height:none;background:transparent}
+.oh-tp-pool-tile.no-image .oh-tp-pool-tile-badge{top:5px;right:5px}
 .oh-tp-pool-tile-badge{position:absolute;top:4px;right:4px;z-index:3;background:rgba(45,80,22,.92);color:#fff;border-radius:99px;padding:2px 7px;font:700 .75rem var(--oh-font-mono);letter-spacing:0;text-align:center;white-space:nowrap;max-width:calc(100% - 32px);overflow:hidden;text-overflow:ellipsis}
 /* Remove affordance — sits at top-left so it doesn't collide with the count
    badge. Always visible but low-opacity; hover bumps to full opacity. Sized
@@ -2538,7 +2557,7 @@
 .oh-tp-bundle-line-name{flex:1;font-weight:700;font-size:.82rem;color:var(--oh-text)}
 .oh-tp-bundle-line .remove{background:none;border:none;color:var(--oh-error);padding:0 2px}
 .oh-tp-item-thumb-img,.oh-tp-item-thumb{width:34px;height:34px;border-radius:6px;flex:0 0 34px;border:1px solid rgba(45,80,22,.2)}
-.oh-tp-item-thumb-img{object-fit:cover;background:var(--oh-surface-alt)}
+.oh-tp-item-thumb-img{object-fit:contain;background:#fff8ec}
 .oh-tp-item-thumb{display:inline-flex;align-items:center;justify-content:center;background:var(--oh-primary-surface);color:var(--oh-primary-light);font-size:.95rem}
 .oh-tp-bundle-money{display:grid;grid-template-columns:minmax(5.5rem,1fr) 42px minmax(7rem,9rem) 42px;gap:8px;align-items:center;padding:7px;border:1px solid rgba(45,80,22,.2);border-radius:7px;background:rgba(255,255,255,.8)}
 .oh-tp-bundle-money-name{font-weight:800;font-size:.86rem;color:var(--oh-text)}
@@ -3305,9 +3324,9 @@
 .oh-tp-card-treasure-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 .78rem var(--oh-font-body);color:var(--oh-text,#2a2a2a)}
 .oh-tp-card-treasure-count{font:800 .75rem 'JetBrains Mono',monospace;color:#2D5016}
 .oh-tp-card-treasure-more{font:.72rem 'JetBrains Mono',monospace;color:var(--oh-text-secondary,#666);padding-left:2px}
-.oh-tp-card-actions{display:flex;margin-top:.2rem}
-.oh-tp-card-gros{display:inline-flex;align-items:center;gap:.3rem;border:1px solid var(--oh-border,#D9CFB6);border-radius:999px;background:#fff8ec;color:#2D5016;padding:.2rem .55rem;font:700 .75rem var(--oh-font-body);cursor:pointer}
-.oh-tp-card-gros:hover{background:#F2EBD8;border-color:#B8A87A}
+.oh-tp-card-actions{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.2rem}
+.oh-tp-card-gros,.oh-tp-card-resource{display:inline-flex;align-items:center;gap:.3rem;border:1px solid var(--oh-border,#D9CFB6);border-radius:999px;background:#fff8ec;color:#2D5016;padding:.2rem .55rem;font:700 .75rem var(--oh-font-body);cursor:pointer}
+.oh-tp-card-gros:hover,.oh-tp-card-resource:hover{background:#F2EBD8;border-color:#B8A87A}
 .oh-tp-card-cta{margin-top:.2rem;display:inline-flex;align-items:center;gap:.3rem;color:#2D5016;font-weight:600;font-size:.78rem}
 .oh-tp-location-total{font-family:'JetBrains Mono',monospace;font-size:.85rem;color:var(--oh-text-secondary,#666);margin-left:.35rem}
 .oh-tp-stash-summary{display:flex;flex-wrap:wrap;gap:.35rem;margin:.45rem 0 .7rem}
@@ -3813,8 +3832,9 @@
 .oh-map-treasure-chip.is-active{background:var(--c,#2D5016);color:#fff}
 .oh-map-treasure-chip[data-stage="all"]{--c:#2D5016}
 .oh-map-treasure-chip[data-stage="start"]{--c:var(--oh-stage-start)}
-.oh-map-treasure-chip[data-stage="mid"]{--c:var(--oh-stage-midgame)}
-.oh-map-treasure-chip[data-stage="end"]{--c:var(--oh-stage-endgame)}
+.oh-map-treasure-chip[data-stage="early"]{--c:var(--oh-stage-early);color:#3a2612}
+.oh-map-treasure-chip[data-stage="midgame"]{--c:var(--oh-stage-midgame)}
+.oh-map-treasure-chip[data-stage="lategame"]{--c:var(--oh-stage-lategame)}
 @media (max-width: 900px){
     .oh-map-treasure-filter{top:48px;right:8px;max-width:calc(100% - 16px)}
 }

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Services.Pdf;
 using OvcinaHra.Shared.Domain.Enums;
+using OvcinaHra.Shared.Domain.ValueObjects;
 using OvcinaHra.Shared.Extensions;
 using SixLabors.Fonts;
 using SixLabors.ImageSharp;
@@ -38,20 +39,41 @@ public sealed class CenikExportService(
     private const double A4HeightPt = 841.89;
     private const int A4WidthPx = 2480;
     private const int A4HeightPx = 3508;
-    private const int MarginPx = 96;
-    private const int HeaderHeightPx = 255;
-    private const int FooterHeightPx = 58;
-    private const int ColumnGapPx = 44;
+    private const int MarginPx = 60;
+    private const int HeaderHeightPx = 210;
+    private const int TableHeaderHeightPx = 72;
+    private const int FooterHeightPx = 70;
     private const int MinFontPx = 5;
-    private const int MaxFontPx = 38;
-    private const int MaxColumns = 4;
+    private const int MaxFontPx = 30;
+    private const int ColumnCount = 8;
+    private const float BorderPx = 1.6f;
 
-    private static readonly Color Paper = Color.ParseHex("#fff8e8");
-    private static readonly Color Ink = Color.ParseHex("#24170f");
-    private static readonly Color MutedInk = Color.ParseHex("#6d5b44");
-    private static readonly Color Border = Color.ParseHex("#5a3b1d");
-    private static readonly Color Green = Color.ParseHex("#2d5016");
-    private static readonly Color Gold = Color.ParseHex("#c79b34");
+    private static readonly Color Paper = Color.White;
+    private static readonly Color Ink = Color.Black;
+    private static readonly Color MutedInk = Color.ParseHex("#333333");
+    private static readonly Color HeaderFill = Color.ParseHex("#D9D9D9");
+    private static readonly string[] Headers =
+    [
+        "Název",
+        "Typ",
+        "Efekt",
+        "Cena",
+        "Válečník",
+        "Střelec",
+        "Kouzelník",
+        "Zloděj"
+    ];
+    private static readonly float[] ColumnWeights =
+    [
+        0.25f,
+        0.12f,
+        0.17f,
+        0.07f,
+        0.0975f,
+        0.0975f,
+        0.0975f,
+        0.0975f
+    ];
     private static readonly StringComparer CzechComparer =
         StringComparer.Create(CultureInfo.GetCultureInfo("cs-CZ"), ignoreCase: false);
 
@@ -68,19 +90,34 @@ public sealed class CenikExportService(
             throw new KeyNotFoundException($"Game {gameId} was not found.");
 
         var queryStopwatch = Stopwatch.StartNew();
-        var items = await db.GameItems
+        var rows = await db.GameItems
             .AsNoTracking()
             .Where(gi => gi.GameId == gameId
                 && gi.IsSold
                 && gi.Price.HasValue
                 && gi.Price.Value > 0)
-            .Select(gi => new CenikItem(
+            .Select(gi => new
+            {
                 gi.Item.Name,
                 gi.Item.ItemType,
-                gi.Price!.Value))
+                gi.Item.Effect,
+                Price = gi.Price!.Value,
+                ReqWarrior = gi.Item.ClassRequirements.Warrior,
+                ReqArcher = gi.Item.ClassRequirements.Archer,
+                ReqMage = gi.Item.ClassRequirements.Mage,
+                ReqThief = gi.Item.ClassRequirements.Thief
+            })
             .ToListAsync(ct);
-        items = items
-            .OrderBy(i => i.TypeDisplay, CzechComparer)
+
+        var items = rows
+            .Select(r => new CenikItem(
+                r.Name,
+                r.ItemType,
+                r.Effect,
+                r.Price,
+                new ClassRequirements(r.ReqWarrior, r.ReqArcher, r.ReqMage, r.ReqThief)))
+            .OrderBy(i => TypeOrder(i.Type))
+            .ThenBy(i => i.TypeDisplay, CzechComparer)
             .ThenBy(i => i.Name, CzechComparer)
             .ToList();
 
@@ -93,9 +130,13 @@ public sealed class CenikExportService(
             throw new CenikExportProblemException("Vybraná hra nemá žádné prodejné předměty.");
 
         var renderStopwatch = Stopwatch.StartNew();
-        var entries = BuildEntries(items);
-        var layout = CalculateLayout(entries.Count);
-        var pdfImage = await RenderPageAsync(game.Name, entries, layout, ct);
+        var layout = CalculateLayout(items.Count);
+        var pdfImage = await RenderPageAsync(game.Name, items, layout, ct);
+        logger.LogInformation(
+            "[export-server] cenik.row-count items={ItemCount} pages={Pages} elapsedMs={ElapsedMs}",
+            items.Count,
+            layout.PageCount,
+            renderStopwatch.ElapsedMilliseconds);
         var pdf = SimpleImagePdfWriter.Build([
             new PdfImagePage(
                 A4WidthPt,
@@ -117,36 +158,30 @@ public sealed class CenikExportService(
         return new CenikExportFile(pdf, fileName);
     }
 
-    internal static CenikLayoutForTesting CalculateLayoutForTesting(int entryCount)
+    internal static CenikLayoutForTesting CalculateLayoutForTesting(int itemCount)
     {
-        var layout = CalculateLayout(entryCount);
-        return new CenikLayoutForTesting(layout.Columns, layout.FontSizePx, layout.RowsPerColumn);
+        var layout = CalculateLayout(itemCount);
+        return new CenikLayoutForTesting(layout.Columns, layout.FontSizePx, layout.RowHeightPx, layout.PageCount);
     }
 
-    private static CenikLayout CalculateLayout(int entryCount)
-    {
-        var contentHeight = A4HeightPx - MarginPx - HeaderHeightPx - FooterHeightPx;
-        CenikLayout? best = null;
-        for (var columns = 1; columns <= MaxColumns; columns++)
-        {
-            var rowsPerColumn = Math.Max(1, (int)Math.Ceiling(entryCount / (double)columns));
-            var fontByHeight = (int)Math.Floor(contentHeight / (rowsPerColumn * 1.35));
-            var fontSize = Math.Clamp(fontByHeight, MinFontPx, MaxFontPx);
-            var candidate = new CenikLayout(columns, fontSize, rowsPerColumn);
-            if (best is null
-                || candidate.FontSizePx > best.FontSizePx
-                || (Math.Abs(candidate.FontSizePx - best.FontSizePx) < 0.01f && candidate.Columns < best.Columns))
-            {
-                best = candidate;
-            }
-        }
+    internal static string FormatPriceForTesting(int price) => FormatPrice(price);
 
-        return best ?? new CenikLayout(MaxColumns, MinFontPx, Math.Max(1, entryCount));
+    internal static string TypeRowColorHexForTesting(ItemType type) => TypeRowColorHex(type);
+
+    internal static string? ClassRequirementColorHexForTesting(int requirement) =>
+        ClassRequirementColorHex(requirement);
+
+    private static CenikLayout CalculateLayout(int itemCount)
+    {
+        var tableHeight = A4HeightPx - MarginPx * 2 - HeaderHeightPx - TableHeaderHeightPx - FooterHeightPx;
+        var rowHeight = tableHeight / (float)Math.Max(1, itemCount);
+        var fontSize = Math.Clamp((int)Math.Floor(rowHeight * 0.44f), MinFontPx, MaxFontPx);
+        return new CenikLayout(ColumnCount, fontSize, rowHeight, PageCount: 1);
     }
 
     private async Task<PdfImage> RenderPageAsync(
         string gameName,
-        IReadOnlyList<CenikEntry> entries,
+        IReadOnlyList<CenikItem> items,
         CenikLayout layout,
         CancellationToken ct)
     {
@@ -154,106 +189,201 @@ public sealed class CenikExportService(
         using var image = new Image<Rgba32>(A4WidthPx, A4HeightPx, Paper);
         image.Mutate(ctx =>
         {
-            DrawPageFrame(ctx);
             DrawHeader(ctx, gameName, fonts);
-            DrawEntries(ctx, entries, layout, fonts);
+            DrawTable(ctx, items, layout, fonts);
             DrawFooter(ctx, fonts);
         });
 
         await using var stream = new MemoryStream();
-        await image.SaveAsJpegAsync(stream, new JpegEncoder { Quality = 94 }, ct);
+        await image.SaveAsJpegAsync(stream, new JpegEncoder { Quality = 95 }, ct);
         return new PdfImage(A4WidthPx, A4HeightPx, stream.ToArray());
-    }
-
-    private void DrawPageFrame(IImageProcessingContext ctx)
-    {
-        ctx.Draw(Border, 5, new RectangularPolygon(36, 36, A4WidthPx - 72, A4HeightPx - 72));
-        ctx.Draw(Gold, 3, new RectangularPolygon(54, 54, A4WidthPx - 108, A4HeightPx - 108));
     }
 
     private void DrawHeader(IImageProcessingContext ctx, string gameName, CenikFonts fonts)
     {
-        DrawCenteredText(ctx, "Ceník", fonts.Title, Green, MarginPx, 74, A4WidthPx - MarginPx * 2);
-        DrawCenteredText(ctx, gameName, fonts.Subtitle, Ink, MarginPx, 168, A4WidthPx - MarginPx * 2);
-        ctx.Draw(Border, 3, new RectangularPolygon(MarginPx, 232, A4WidthPx - MarginPx * 2, 1));
+        DrawCenteredText(ctx, "Ceník", fonts.Title, Ink, MarginPx, 42, A4WidthPx - MarginPx * 2);
+        DrawCenteredText(ctx, gameName, fonts.Subtitle, MutedInk, MarginPx, 114, A4WidthPx - MarginPx * 2);
+        ctx.Draw(Ink, 3, new RectangularPolygon(MarginPx, 182, A4WidthPx - MarginPx * 2, 1));
     }
 
-    private static void DrawEntries(
+    private static void DrawTable(
         IImageProcessingContext ctx,
-        IReadOnlyList<CenikEntry> entries,
+        IReadOnlyList<CenikItem> items,
         CenikLayout layout,
         CenikFonts fonts)
     {
-        var contentTop = MarginPx + HeaderHeightPx;
-        var contentHeight = A4HeightPx - contentTop - FooterHeightPx;
-        var columnWidth = (A4WidthPx - MarginPx * 2 - (layout.Columns - 1) * ColumnGapPx) / layout.Columns;
-        var rowHeight = contentHeight / (float)layout.RowsPerColumn;
+        var tableX = MarginPx;
+        var tableY = MarginPx + HeaderHeightPx;
+        var tableWidth = A4WidthPx - MarginPx * 2;
+        var columnWidths = CalculateColumnWidths(tableWidth);
+        DrawHeaderRow(ctx, tableX, tableY, columnWidths, fonts);
 
-        for (var i = 0; i < entries.Count; i++)
+        var y = (float)(tableY + TableHeaderHeightPx);
+        foreach (var item in items)
         {
-            var column = i / layout.RowsPerColumn;
-            var row = i % layout.RowsPerColumn;
-            var x = MarginPx + column * (columnWidth + ColumnGapPx);
-            var y = contentTop + row * rowHeight;
-
-            if (entries[i] is CenikHeading heading)
-            {
-                var headingBox = new RectangularPolygon(x, y + 3, columnWidth, rowHeight - 6);
-                ctx.Fill(Green, headingBox);
-                ctx.Draw(Border, 1.5f, headingBox);
-                DrawText(ctx, FitText(heading.Text, fonts.Category, columnWidth - 18), fonts.Category, Color.White, x + 9, y + 6);
-                continue;
-            }
-
-            var item = (CenikItemEntry)entries[i];
-            var price = FormatPrice(item.Price);
-            var priceWidth = TextMeasurer.MeasureSize(price, new TextOptions(fonts.Price)).Width;
-            var nameWidth = columnWidth - priceWidth - 26;
-            var name = FitText(item.Name, fonts.ItemName, nameWidth);
-            DrawText(ctx, name, fonts.ItemName, Ink, x + 4, y + 4);
-            DrawText(ctx, price, fonts.Price, Ink, x + columnWidth - priceWidth - 4, y + 4);
-            ctx.Draw(Color.ParseHex("#dbcaa4"), 1, new RectangularPolygon(x, y + rowHeight - 3, columnWidth, 1));
+            DrawItemRow(ctx, item, tableX, y, columnWidths, layout.RowHeightPx, fonts);
+            y += layout.RowHeightPx;
         }
+    }
+
+    private static void DrawHeaderRow(
+        IImageProcessingContext ctx,
+        float x,
+        float y,
+        IReadOnlyList<float> columnWidths,
+        CenikFonts fonts)
+    {
+        var cellX = x;
+        for (var i = 0; i < Headers.Length; i++)
+        {
+            DrawCell(
+                ctx,
+                Headers[i],
+                fonts.Header,
+                HeaderFill,
+                cellX,
+                y,
+                columnWidths[i],
+                TableHeaderHeightPx,
+                Align.Center);
+            cellX += columnWidths[i];
+        }
+    }
+
+    private static void DrawItemRow(
+        IImageProcessingContext ctx,
+        CenikItem item,
+        float x,
+        float y,
+        IReadOnlyList<float> columnWidths,
+        float rowHeight,
+        CenikFonts fonts)
+    {
+        var rowFill = Color.ParseHex(TypeRowColorHex(item.Type));
+        var cells = new[]
+        {
+            new CenikCell(item.Name, rowFill, Align.Left),
+            new CenikCell(item.TypeDisplay, rowFill, Align.Left),
+            new CenikCell(item.EffectText, rowFill, Align.Left),
+            new CenikCell(FormatPrice(item.Price), rowFill, Align.Center),
+            ClassRequirementCell(item.Requirements.Warrior),
+            ClassRequirementCell(item.Requirements.Archer),
+            ClassRequirementCell(item.Requirements.Mage),
+            ClassRequirementCell(item.Requirements.Thief)
+        };
+
+        var cellX = x;
+        for (var i = 0; i < cells.Length; i++)
+        {
+            DrawCell(
+                ctx,
+                cells[i].Text,
+                i == 3 || i >= 4 ? fonts.BodyBold : fonts.Body,
+                cells[i].Fill,
+                cellX,
+                y,
+                columnWidths[i],
+                rowHeight,
+                cells[i].Align);
+            cellX += columnWidths[i];
+        }
+    }
+
+    private static CenikCell ClassRequirementCell(int requirement)
+    {
+        var colorHex = ClassRequirementColorHex(requirement);
+        return new CenikCell(
+            colorHex is null ? string.Empty : requirement.ToString(CultureInfo.InvariantCulture),
+            colorHex is null ? Paper : Color.ParseHex(colorHex),
+            Align.Center);
+    }
+
+    private static void DrawCell(
+        IImageProcessingContext ctx,
+        string text,
+        Font font,
+        Color fill,
+        float x,
+        float y,
+        float width,
+        float height,
+        Align align)
+    {
+        var rect = new RectangularPolygon(x, y, width, height);
+        ctx.Fill(fill, rect);
+        ctx.Draw(Ink, BorderPx, rect);
+
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        var fitted = FitText(text, font, width - 14);
+        var size = TextMeasurer.MeasureSize(fitted, new TextOptions(font));
+        var textX = align switch
+        {
+            Align.Center => x + Math.Max(0, (width - size.Width) / 2),
+            Align.Right => x + width - size.Width - 7,
+            _ => x + 7
+        };
+        var textY = y + Math.Max(1, (height - size.Height) / 2);
+        ctx.DrawText(fitted, font, Ink, new PointF(textX, textY));
     }
 
     private static void DrawFooter(IImageProcessingContext ctx, CenikFonts fonts)
     {
         DrawCenteredText(
             ctx,
-            "Všechny ceny jsou uvedené v groších.",
+            "Všechny ceny v groších",
             fonts.Footer,
             MutedInk,
             MarginPx,
-            A4HeightPx - 92,
+            A4HeightPx - 58,
             A4WidthPx - MarginPx * 2);
     }
 
     private CenikFonts LoadFonts(float itemFontSize)
     {
-        var fonts = new FontCollection();
-        var fontRoot = System.IO.Path.Combine(environment.ContentRootPath, "Fonts", "Kalam");
-        var regular = fonts.Add(System.IO.Path.Combine(fontRoot, "Kalam-Regular.ttf"));
-        var bold = fonts.Add(System.IO.Path.Combine(fontRoot, "Kalam-Bold.ttf"));
+        var stopwatch = Stopwatch.StartNew();
+        var fontRoot = System.IO.Path.Combine(environment.ContentRootPath, "Fonts", "Inter");
+        var regularPath = System.IO.Path.Combine(fontRoot, "Inter-Regular.ttf");
+        var boldPath = System.IO.Path.Combine(fontRoot, "Inter-Bold.ttf");
+        try
+        {
+            var fonts = new FontCollection();
+            var regular = fonts.Add(regularPath);
+            var bold = fonts.Add(boldPath);
+            logger.LogInformation(
+                "[export-server] cenik.font-loaded path={Path} family={Family} elapsedMs={ElapsedMs}",
+                regularPath,
+                regular.Name,
+                stopwatch.ElapsedMilliseconds);
 
-        return new CenikFonts(
-            Title: bold.CreateFont(92),
-            Subtitle: regular.CreateFont(38),
-            Category: bold.CreateFont(Math.Max(12, itemFontSize * 0.9f)),
-            ItemName: bold.CreateFont(itemFontSize),
-            Price: bold.CreateFont(itemFontSize),
-            Footer: regular.CreateFont(26));
+            return new CenikFonts(
+                Title: bold.CreateFont(56),
+                Subtitle: regular.CreateFont(30),
+                Header: bold.CreateFont(Math.Max(6, itemFontSize * 0.82f)),
+                Body: regular.CreateFont(itemFontSize),
+                BodyBold: bold.CreateFont(itemFontSize),
+                Footer: regular.CreateFont(24));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[export-server] cenik.font-load-failed path={Path}", fontRoot);
+            throw new CenikExportProblemException("Čitelný font pro export ceníku není dostupný.");
+        }
     }
 
-    private static List<CenikEntry> BuildEntries(IReadOnlyList<CenikItem> items)
+    private static IReadOnlyList<float> CalculateColumnWidths(float tableWidth)
     {
-        var entries = new List<CenikEntry>();
-        foreach (var group in items.GroupBy(i => i.TypeDisplay))
+        var widths = new float[ColumnWeights.Length];
+        var used = 0f;
+        for (var i = 0; i < ColumnWeights.Length - 1; i++)
         {
-            entries.Add(new CenikHeading(group.Key));
-            entries.AddRange(group.Select(item => new CenikItemEntry(item.Name, item.Price)));
+            widths[i] = MathF.Round(tableWidth * ColumnWeights[i]);
+            used += widths[i];
         }
 
-        return entries;
+        widths[^1] = tableWidth - used;
+        return widths;
     }
 
     private static string FitText(string text, Font font, float maxWidth)
@@ -277,21 +407,38 @@ public sealed class CenikExportService(
         return lo <= 0 ? ellipsis : text[..lo].TrimEnd() + ellipsis;
     }
 
-    private static string FormatPrice(int price) => price switch
+    private static int TypeOrder(ItemType type) => type switch
     {
-        1 => "1 groš",
-        >= 2 and <= 4 => $"{price.ToString(CultureInfo.InvariantCulture)} groše",
-        _ => $"{price.ToString(CultureInfo.InvariantCulture)} grošů",
+        ItemType.Weapon => 0,
+        ItemType.Shield => 1,
+        ItemType.Armor => 2,
+        ItemType.Helmet => 3,
+        ItemType.Firearm => 4,
+        ItemType.Resource => 5,
+        _ => 50
     };
 
-    private static void DrawText(
-        IImageProcessingContext ctx,
-        string text,
-        Font font,
-        Color color,
-        float x,
-        float y) =>
-        ctx.DrawText(text, font, color, new PointF(x, y));
+    private static string TypeRowColorHex(ItemType type) => type switch
+    {
+        ItemType.Weapon => "#F5DEB3",
+        ItemType.Shield => "#E1F4D8",
+        ItemType.Armor => "#D8E4F0",
+        ItemType.Helmet => "#FFC080",
+        ItemType.Firearm => "#E0F0F8",
+        _ => "#FFFFFF"
+    };
+
+    private static string? ClassRequirementColorHex(int requirement) => requirement switch
+    {
+        1 => "#FFFF66",
+        2 => "#A0F0A0",
+        3 => "#FF6666",
+        4 => "#A0C0F0",
+        5 => "#C080F0",
+        _ => null
+    };
+
+    private static string FormatPrice(int price) => price.ToString(CultureInfo.InvariantCulture);
 
     private static void DrawCenteredText(
         IImageProcessingContext ctx,
@@ -303,31 +450,40 @@ public sealed class CenikExportService(
         float width)
     {
         var size = TextMeasurer.MeasureSize(text, new TextOptions(font));
-        DrawText(ctx, text, font, color, x + (width - size.Width) / 2, y);
+        ctx.DrawText(text, font, color, new PointF(x + (width - size.Width) / 2, y));
     }
 
     private static string Pt(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
 
-    private sealed record CenikItem(string Name, ItemType Type, int Price)
+    private enum Align
     {
-        public string TypeDisplay => Type.GetDisplayName();
+        Left,
+        Center,
+        Right
     }
 
-    private abstract record CenikEntry;
+    private sealed record CenikCell(string Text, Color Fill, Align Align);
 
-    private sealed record CenikHeading(string Text) : CenikEntry;
+    private sealed record CenikItem(
+        string Name,
+        ItemType Type,
+        string? Effect,
+        int Price,
+        ClassRequirements Requirements)
+    {
+        public string TypeDisplay => Type == ItemType.Resource ? "Magická energie" : Type.GetDisplayName();
+        public string EffectText => string.IsNullOrWhiteSpace(Effect) ? string.Empty : Effect.Trim();
+    }
 
-    private sealed record CenikItemEntry(string Name, int Price) : CenikEntry;
-
-    private sealed record CenikLayout(int Columns, float FontSizePx, int RowsPerColumn);
+    private sealed record CenikLayout(int Columns, float FontSizePx, float RowHeightPx, int PageCount);
 
     private sealed record CenikFonts(
         Font Title,
         Font Subtitle,
-        Font Category,
-        Font ItemName,
-        Font Price,
+        Font Header,
+        Font Body,
+        Font BodyBold,
         Font Footer);
 }
 
-internal sealed record CenikLayoutForTesting(int Columns, float FontSizePx, int RowsPerColumn);
+internal sealed record CenikLayoutForTesting(int Columns, float FontSizePx, float RowHeightPx, int PageCount);

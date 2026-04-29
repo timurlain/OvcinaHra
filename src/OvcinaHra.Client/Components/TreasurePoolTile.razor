@@ -4,7 +4,7 @@
 
 <div @ref="elementRef"
      id="@tileTargetId"
-     class="oh-tp-pool-tile @(Selected ? "selected" : "") @(Item.IsUnique ? "is-unique" : "is-aggregate")"
+     class="oh-tp-pool-tile @(Selected ? "selected" : "") @(Item.IsUnique ? "is-unique" : "is-aggregate") @(HasThumbnail ? "has-image" : "no-image")"
      role="button"
      tabindex="0"
      aria-label="@TileLabel"
@@ -93,6 +93,7 @@
     private bool isRemoveVisible;
     private bool isNameFlyoutOpen;
     private bool removing;
+    private bool HasThumbnail => !string.IsNullOrWhiteSpace(Item.ItemThumbnailUrl);
     private string tileTargetId => $"oh-tp-pool-tile-{Item.Id}";
     private string TileLabel => Item.IsUnique ? Item.ItemName : $"{Item.ItemName} × {Item.Count}";
 

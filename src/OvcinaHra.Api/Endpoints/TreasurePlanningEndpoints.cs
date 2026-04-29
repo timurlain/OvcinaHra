@@ -50,7 +50,8 @@ public static class TreasurePlanningEndpoints
         var rows = await db.TreasureItems
             .Where(ti => ti.GameId == gameId
                 && ti.TreasureQuestId == null
-                && ti.Item.ItemType != ItemType.Money)
+                && ti.Item.ItemType != ItemType.Money
+                && ti.Item.ItemType != ItemType.Resource)
             .OrderBy(ti => ti.Item.ItemType).ThenBy(ti => ti.Item.Name)
             .Select(ti => new
             {
@@ -90,11 +91,14 @@ public static class TreasurePlanningEndpoints
                 ["ItemId"] = ["Předmět není přiřazen k této hře."]
             });
         }
-        if (gameItem.Item.ItemType == ItemType.Money)
+        if (IsTreasureShortcutItemType(gameItem.Item.ItemType))
         {
+            var message = gameItem.Item.ItemType == ItemType.Money
+                ? "Peníze se do zásobníku nepřidávají. Použijte vytvoření pokladu z grošů na lokaci."
+                : "Suroviny se do zásobníku nepřidávají. Použijte vytvoření pokladu ze suroviny na lokaci.";
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
-                ["ItemId"] = ["Peníze se do zásobníku nepřidávají. Použijte vytvoření pokladu z grošů na lokaci."]
+                ["ItemId"] = [message]
             });
         }
 
@@ -151,7 +155,11 @@ public static class TreasurePlanningEndpoints
     private static async Task<Ok<List<UnlimitedItemDto>>> GetUnlimitedItems(int gameId, WorldDbContext db)
     {
         var items = await db.GameItems
-            .Where(gi => gi.GameId == gameId && gi.IsFindable && gi.StockCount == null)
+            .Where(gi => gi.GameId == gameId
+                && gi.IsFindable
+                && (gi.StockCount == null
+                    || gi.Item.ItemType == ItemType.Money
+                    || gi.Item.ItemType == ItemType.Resource))
             .Include(gi => gi.Item)
             .OrderBy(gi => gi.Item.ItemType).ThenBy(gi => gi.Item.Name)
             .Select(gi => new UnlimitedItemDto(gi.ItemId, gi.Item.Name, gi.Item.ItemType))
@@ -166,7 +174,8 @@ public static class TreasurePlanningEndpoints
             .Where(gi => gi.GameId == gameId
                 && gi.IsFindable
                 && gi.StockCount != null
-                && gi.Item.ItemType != ItemType.Money)
+                && gi.Item.ItemType != ItemType.Money
+                && gi.Item.ItemType != ItemType.Resource)
             .Include(gi => gi.Item)
             .ToListAsync();
 
@@ -317,7 +326,8 @@ public static class TreasurePlanningEndpoints
         var poolRemaining = await db.TreasureItems
             .Where(ti => ti.GameId == gameId
                 && ti.TreasureQuestId == null
-                && ti.Item.ItemType != ItemType.Money)
+                && ti.Item.ItemType != ItemType.Money
+                && ti.Item.ItemType != ItemType.Resource)
             .SumAsync(ti => ti.Count);
 
         var quests = await db.TreasureQuests
@@ -506,7 +516,7 @@ public static class TreasurePlanningEndpoints
             }
         }
 
-        await LogGrosTreasureCreateIfNeededAsync(
+        await LogShortcutTreasureCreateIfNeededAsync(
             db,
             logger,
             dto,
@@ -692,7 +702,7 @@ public static class TreasurePlanningEndpoints
         return new DefaultStashPick(selected.SecretStashId, reason);
     }
 
-    private static async Task LogGrosTreasureCreateIfNeededAsync(
+    private static async Task LogShortcutTreasureCreateIfNeededAsync(
         WorldDbContext db,
         ILogger logger,
         AssignTreasureDto dto,
@@ -708,21 +718,23 @@ public static class TreasurePlanningEndpoints
         var itemsById = await db.Items
             .Where(i => itemIds.Contains(i.Id))
             .ToDictionaryAsync(i => i.Id);
-        var gros = unlimitedItems.FirstOrDefault(ui =>
-            itemsById.TryGetValue(ui.ItemId, out var item)
-            && item.ItemType == ItemType.Money);
-
-        if (gros is null)
+        foreach (var unlimitedItem in unlimitedItems)
         {
-            return;
+            if (!itemsById.TryGetValue(unlimitedItem.ItemId, out var item) || !IsTreasureShortcutItemType(item.ItemType))
+            {
+                continue;
+            }
+
+            LogTreasureAlloc(logger, LogLevel.Information,
+                item.ItemType == ItemType.Money ? "gros-treasure-create" : "surovina-treasure-create",
+                new
+                {
+                    locationId = sourceLocationId,
+                    stashId = targetSecretStashId,
+                    itemId = unlimitedItem.ItemId,
+                    count = unlimitedItem.Count
+                });
         }
-
-        LogTreasureAlloc(logger, LogLevel.Information, "gros-treasure-create", new
-        {
-            locationId = sourceLocationId,
-            stashId = targetSecretStashId,
-            count = gros.Count
-        });
     }
 
     private static async Task<Results<Ok<TreasureItemDto>, ValidationProblem, NotFound>> AdjustTreasureItemCount(
@@ -956,6 +968,9 @@ public static class TreasurePlanningEndpoints
             ? null
             : ImageEndpoints.ThumbUrl(http, "items", itemId, "small");
 
+    private static bool IsTreasureShortcutItemType(ItemType itemType) =>
+        itemType is ItemType.Money or ItemType.Resource;
+
     private static void LogTreasureAlloc(ILogger logger, LogLevel level, string eventName, object payload, Exception? exception = null)
     {
         var json = JsonSerializer.Serialize(new { Event = eventName, Payload = payload }, TreasureAllocLogJsonOptions);
@@ -1035,7 +1050,8 @@ public static class TreasurePlanningEndpoints
             .Where(gi => gi.GameId == gameId
                 && gi.IsFindable
                 && gi.StockCount != null
-                && gi.Item.ItemType != ItemType.Money)
+                && gi.Item.ItemType != ItemType.Money
+                && gi.Item.ItemType != ItemType.Resource)
             .Include(gi => gi.Item)
             .ToListAsync();
 

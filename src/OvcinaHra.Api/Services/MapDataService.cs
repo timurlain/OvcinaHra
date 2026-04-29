@@ -182,8 +182,9 @@ public sealed class MapDataService(
 
         private int Total { get; set; }
         private int Start { get; set; }
-        private int Mid { get; set; }
-        private int End { get; set; }
+        private int Early { get; set; }
+        private int Midgame { get; set; }
+        private int Lategame { get; set; }
 
         public void Add(GameTimePhase phase, int count)
         {
@@ -196,16 +197,18 @@ public sealed class MapDataService(
                     Start += count;
                     break;
                 case GameTimePhase.Early:
+                    Early += count;
+                    break;
                 case GameTimePhase.Midgame:
-                    Mid += count;
+                    Midgame += count;
                     break;
                 case GameTimePhase.Lategame:
                 case GameTimePhase.EndGame:
-                    End += count;
+                    Lategame += count;
                     break;
             }
         }
 
-        public TreasureCountByPhaseDto ToDto() => new(Total, Start, Mid, End);
+        public TreasureCountByPhaseDto ToDto() => new(Total, Start, Early, Midgame, Lategame);
     }
 }

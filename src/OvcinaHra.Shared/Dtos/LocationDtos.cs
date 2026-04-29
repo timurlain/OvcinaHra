@@ -103,7 +103,8 @@ public record LocationDetailDto(
     string? NpcInfo,
     string? SetupNotes,
     int? ParentLocationId,
-    List<LocationVariantDto> Variants);
+    List<LocationVariantDto> Variants,
+    string? StampImageUrl = null);
 
 public record LocationVariantDto(int Id, string Name, LocationKind LocationKind);
 

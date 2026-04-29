@@ -168,7 +168,7 @@ public class MapEndpointsTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task Data_LocationPinsIncludeTreasureItemCountsByCollapsedPhase()
+    public async Task Data_LocationPinsIncludeTreasureItemCountsByCanonicalPhase()
     {
         var game = await CreateGameAsync();
         int parentId, emptyId;
@@ -278,8 +278,9 @@ public class MapEndpointsTests(PostgresFixture postgres)
         Assert.NotNull(parentPin.TreasureCounts);
         Assert.Equal(20, parentPin.TreasureCounts.Total);
         Assert.Equal(2, parentPin.TreasureCounts.Start);
-        Assert.Equal(7, parentPin.TreasureCounts.Mid);
-        Assert.Equal(11, parentPin.TreasureCounts.End);
+        Assert.Equal(3, parentPin.TreasureCounts.Early);
+        Assert.Equal(4, parentPin.TreasureCounts.Midgame);
+        Assert.Equal(11, parentPin.TreasureCounts.Lategame);
 
         var emptyPin = Assert.Single(data.Locations, l => l.Id == emptyId);
         Assert.NotNull(emptyPin.TreasureCounts);
