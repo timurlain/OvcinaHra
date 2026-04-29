@@ -1,11 +1,9 @@
 @* Persistent strip rendered at the top of MainLayout when the server's
    /api/version commit no longer matches what we recorded at app boot.
-   Click "Obnovit" → location.reload(). The PWA service worker may need a
-   second refresh to actually swap shells; that's an inherent SW lifecycle
-   quirk, not a banner bug. *@
+   Click "Obnovit" → hard browser refresh through NavigationManager.Refresh. *@
 @implements IDisposable
 @inject VersionDriftService Drift
-@inject IJSRuntime JS
+@inject NavigationManager Nav
 
 @if (Drift.IsDrifted)
 {
@@ -28,6 +26,7 @@
 @code {
     private bool _started;
     private bool reloading;
+    private string? _lastLoggedRenderState;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -37,23 +36,33 @@
             Drift.StateChanged += OnStateChanged;
             await Drift.StartAsync();
         }
+
+        LogRenderState();
     }
 
-    private void OnStateChanged() => InvokeAsync(StateHasChanged);
-
-    private async Task ReloadAsync()
+    private void OnStateChanged()
     {
-        if (reloading) return;
+        Console.WriteLine($"[version-refresh] banner state changed drifted={Drift.IsDrifted} baseline={Drift.BaselineCommit ?? "(null)"} latest={Drift.LatestCommit ?? "(null)"}");
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private Task ReloadAsync()
+    {
+        if (reloading) return Task.CompletedTask;
         reloading = true;
-        try
-        {
-            await JS.InvokeVoidAsync("location.reload");
-        }
-        catch
-        {
-            // location.reload throws if the page is mid-unload — at which
-            // point the user is already heading toward the new bundle.
-        }
+        Console.WriteLine($"[version-refresh] refresh clicked url={Nav.Uri} baseline={Drift.BaselineCommit ?? "(null)"} latest={Drift.LatestCommit ?? "(null)"}");
+        Console.WriteLine("[version-refresh] reload requested method=NavigationManager.Refresh forceReload=True");
+        Nav.Refresh(forceReload: true);
+        return Task.CompletedTask;
+    }
+
+    private void LogRenderState()
+    {
+        var renderState = $"{Drift.IsDrifted}|{Drift.BaselineCommit}|{Drift.LatestCommit}";
+        if (_lastLoggedRenderState == renderState) return;
+
+        _lastLoggedRenderState = renderState;
+        Console.WriteLine($"[version-refresh] banner render drifted={Drift.IsDrifted} baseline={Drift.BaselineCommit ?? "(null)"} latest={Drift.LatestCommit ?? "(null)"}");
     }
 
     public void Dispose() => Drift.StateChanged -= OnStateChanged;
