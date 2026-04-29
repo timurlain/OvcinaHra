@@ -15,6 +15,7 @@ public static class ExportEndpoints
 
         group.MapGet("/{gameId:int}/exports/explorer-map.pdf", DownloadExplorerMapPdf);
         group.MapGet("/{gameId:int}/exports/magic-book.pdf", DownloadMagicBookPdf);
+        group.MapGet("/{gameId:int}/exports/cenik.pdf", DownloadCenikPdf);
         group.MapGet("/{gameId:int}/exports/organizer-map.pdf", DownloadOrganizerMapPdf);
         group.MapGet("/{gameId:int}/exports/kingdom-map.pdf", DownloadKingdomMapPdf);
 
@@ -276,6 +277,42 @@ public static class ExportEndpoints
                 "MagicBook",
                 timer.ElapsedMilliseconds,
                 ex.Message);
+            throw;
+        }
+    }
+
+    private static async Task<Results<FileContentHttpResult, NotFound, BadRequest<ProblemDetails>>> DownloadCenikPdf(
+        int gameId,
+        ICenikExportService exporter,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.ExportEndpoints");
+        logger.LogInformation("[export-server] cenik.entry gameId={GameId}", gameId);
+        try
+        {
+            var pdf = await exporter.RenderCenikAsync(gameId, ct);
+            return TypedResults.File(
+                pdf.Bytes,
+                contentType: "application/pdf",
+                fileDownloadName: pdf.FileName);
+        }
+        catch (KeyNotFoundException)
+        {
+            logger.LogInformation("[export-server] cenik.exit status=404 gameId={GameId}", gameId);
+            return TypedResults.NotFound();
+        }
+        catch (CenikExportProblemException ex)
+        {
+            logger.LogInformation(
+                "[export-server] cenik.exit status=400 gameId={GameId} detail={Detail}",
+                gameId,
+                ex.Detail);
+            return TypedResults.BadRequest(ValidationProblem(ex.Title, ex.Detail));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[export-server] cenik.exception detail={Detail}", ex.Message);
             throw;
         }
     }
