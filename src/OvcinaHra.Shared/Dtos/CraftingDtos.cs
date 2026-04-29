@@ -51,7 +51,7 @@ public record AddCraftingBuildingReqDto(int BuildingId);
 // /api/recipes surface. Tile/card/hero rendering powered by these.
 // ────────────────────────────────────────────────────────────────────────
 
-public record RecipeIngredientChipDto(int ItemId, string Name, string? ThumbnailUrl, int Quantity);
+public record RecipeIngredientChipDto(int ItemId, string Name, string? ThumbnailUrl, int Quantity, string? Effect = null);
 public record RecipeBuildingChipDto(int BuildingId, string Name);
 public record RecipeSkillChipDto(int SkillId, string Name);
 
@@ -67,6 +67,7 @@ public record RecipeListDto(
     int OutputItemId,
     string OutputItemName,
     string? OutputItemThumbnailUrl,
+    string? OutputItemEffect,
     int OutputQuantity,
     int? LocationId,
     string? LocationName,
@@ -92,6 +93,7 @@ public record RecipeDetailDto(
     int OutputItemId,
     string OutputItemName,
     string? OutputItemThumbnailUrl,
+    string? OutputItemEffect,
     int OutputQuantity,
     int? LocationId,
     string? LocationName,
