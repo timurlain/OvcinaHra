@@ -1,12 +1,10 @@
-@* Issue #158 — 8 square 1:1 tiles, 4×2 desktop / 2×4 tablet / 1-col
-   phone (flow handled in CSS via grid auto-fit). Each `<a href>` to
-   its catalog so Blazor enhanced nav handles routing. *@
+@* Issue #432 — keep the cockpit quick action focused on field placement. *@
 
 <section class="oh-home-qlaunch" aria-labelledby="oh-home-q-title">
     <header class="oh-home-qlaunch-head">
         <h2 id="oh-home-q-title">Rychlý přístup</h2>
     </header>
-    <div class="oh-home-qlaunch-grid">
+    <div class="oh-home-qlaunch-grid oh-home-qlaunch-grid--single">
         @foreach (var tile in Tiles)
         {
             <a class="oh-home-tile oh-home-k-@tile.Key" href="@tile.Href">
@@ -22,17 +20,6 @@
 
     private static readonly Tile[] Tiles =
     {
-        new("loc",   "Lokace",     "bi-geo-alt-fill",   "/locations"),
-        new("itm",   "Předměty",   "bi-box-seam",       "/items"),
-        new("mon",   "Příšery",    "bi-bug",            "/monsters"),
-        new("qst",   "Questy",      "bi-list-check",     "/quests"),
-        new("skl",   "Dovednosti", "bi-mortarboard",    "/skills"),
-        new("spl",   "Kouzla",     "bi-magic",          "/spells"),
-        new("stash", "Skrýše",     "bi-archive",        "/secret-stashes"),
-        new("tre",   "Poklady",    "bi-gem",            "/treasures"),
-        // Issue #383 follow-up: one-tap entry from cockpit straight into
-        // the placement wizard. Query string is parsed by /locations and
-        // auto-opens the wizard.
         new("place", "Umístění lokace", "bi-camera-fill", "/locations?placement=1"),
     };
 }

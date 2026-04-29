@@ -191,6 +191,59 @@ public class OrganizerRoleEndpointTests(PostgresFixture postgres) : IntegrationT
         Assert.Contains("200", problem.Detail ?? "");
     }
 
+    [Fact]
+    public async Task GetMine_ReturnsPrimaryRoleAndTimetableForCurrentUserEmail()
+    {
+        var game = await CreateGameAsync();
+        var firstSlot = await CreateSlotAsync(game.Id, hour: 10);
+        var secondSlot = await CreateSlotAsync(game.Id, hour: 11);
+        var merchant = await CreateNpcAsync("Kupec Pavel", NpcRole.Merchant);
+        var monster = await CreateNpcAsync("Vlkodlak", NpcRole.Monster);
+        await AssignNpcAsync(game.Id, merchant.Id);
+        await AssignNpcAsync(game.Id, monster.Id);
+
+        await Client.PutAsJsonAsync(
+            $"/api/games/{game.Id}/organizer-role-assignments/slots/{firstSlot.Id}/npcs/{merchant.Id}",
+            new UpsertOrganizerRoleAssignmentDto(501, "Test Player", "TEST@OVCINA.CZ", "stánek"));
+        await Client.PutAsJsonAsync(
+            $"/api/games/{game.Id}/organizer-role-assignments/slots/{secondSlot.Id}/npcs/{merchant.Id}",
+            new UpsertOrganizerRoleAssignmentDto(501, "Test Player", "test@ovcina.cz"));
+        await Client.PutAsJsonAsync(
+            $"/api/games/{game.Id}/organizer-role-assignments/slots/{firstSlot.Id}/npcs/{monster.Id}",
+            new UpsertOrganizerRoleAssignmentDto(501, "Test Player", "test@ovcina.cz"));
+
+        var mine = await LoadMineAsync(game.Id);
+
+        Assert.Equal("test@ovcina.cz", mine.UserEmail);
+        Assert.Equal(501, mine.PersonId);
+        Assert.NotNull(mine.PrimaryRole);
+        Assert.Equal(merchant.Id, mine.PrimaryRole.NpcId);
+        Assert.Equal(2, mine.PrimaryRole.AssignmentCount);
+        Assert.Equal(2, mine.TimeSlots.Count);
+        Assert.Equal(2, mine.TimeSlots.Single(s => s.SlotId == firstSlot.Id).Assignments.Count);
+        Assert.Single(mine.TimeSlots.Single(s => s.SlotId == secondSlot.Id).Assignments);
+    }
+
+    [Fact]
+    public async Task GetMine_LeavesSlotsVisibleWhenUserHasNoAssignments()
+    {
+        var game = await CreateGameAsync();
+        var slot = await CreateSlotAsync(game.Id, hour: 10);
+        var npc = await CreateNpcAsync("Kupec bez hráče", NpcRole.Merchant);
+        await AssignNpcAsync(game.Id, npc.Id);
+        await Client.PutAsJsonAsync(
+            $"/api/games/{game.Id}/organizer-role-assignments/slots/{slot.Id}/npcs/{npc.Id}",
+            new UpsertOrganizerRoleAssignmentDto(777, "Někdo jiný", "other@example.test"));
+
+        var mine = await LoadMineAsync(game.Id);
+
+        Assert.Null(mine.PrimaryRole);
+        Assert.Null(mine.PersonId);
+        var visibleSlot = Assert.Single(mine.TimeSlots);
+        Assert.Equal(slot.Id, visibleSlot.SlotId);
+        Assert.Empty(visibleSlot.Assignments);
+    }
+
     private async Task<(GameDetailDto Game, NpcDetailDto Npc, List<GameTimeSlotDto> Slots)> CreateGameWithNpcAndSlotsAsync(int slotCount)
     {
         var game = await CreateGameAsync();
@@ -248,5 +301,12 @@ public class OrganizerRoleEndpointTests(PostgresFixture postgres) : IntegrationT
         var matrix = await Client.GetFromJsonAsync<OrganizerRoleMatrixDto>(
             $"/api/games/{gameId}/organizer-role-assignments");
         return matrix!;
+    }
+
+    private async Task<OrganizerRoleMeDto> LoadMineAsync(int gameId)
+    {
+        var response = await Client.GetAsync($"/api/organizer-roles/me?gameId={gameId}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        return (await response.Content.ReadFromJsonAsync<OrganizerRoleMeDto>())!;
     }
 }

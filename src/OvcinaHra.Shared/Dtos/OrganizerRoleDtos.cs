@@ -33,6 +33,38 @@ public record OrganizerRoleAssignmentDto(
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);
 
+public record OrganizerRoleMeDto(
+    int GameId,
+    string UserId,
+    string? UserEmail,
+    int? PersonId,
+    string? PersonName,
+    int? CurrentSlotId,
+    OrganizerRoleMePrimaryRoleDto? PrimaryRole,
+    List<OrganizerRoleMeSlotDto> TimeSlots);
+
+public record OrganizerRoleMePrimaryRoleDto(
+    int NpcId,
+    string NpcName,
+    NpcRole Role,
+    string? Description,
+    int AssignmentCount);
+
+public record OrganizerRoleMeSlotDto(
+    int SlotId,
+    DateTime StartTime,
+    decimal DurationHours,
+    int? InGameYear,
+    GameTimePhase Stage,
+    List<OrganizerRoleMeSlotAssignmentDto> Assignments);
+
+public record OrganizerRoleMeSlotAssignmentDto(
+    int NpcId,
+    string NpcName,
+    NpcRole Role,
+    string? Description,
+    string? Notes);
+
 public record UpsertOrganizerRoleAssignmentDto(
     int PersonId,
     string PersonName,
