@@ -1,6 +1,7 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG DEVEXPRESS_NUGET_SOURCE
 ARG DEVEXPRESS_LICENSE_CONTENT
+ARG GIT_SHA=unknown
 WORKDIR /src
 
 COPY ["global.json", "."]
@@ -22,7 +23,7 @@ RUN if [ -n "${DEVEXPRESS_NUGET_SOURCE}" ]; then \
 
 COPY src/ src/
 
-RUN dotnet publish src/OvcinaHra.Client/OvcinaHra.Client.csproj -c Release -o /app/publish --no-restore
+RUN dotnet publish src/OvcinaHra.Client/OvcinaHra.Client.csproj -c Release -o /app/publish --no-restore /p:SourceRevisionId=${GIT_SHA}
 
 # IMPORTANT: do NOT modify /app/publish/wwwroot/appsettings.json after this point.
 # `dotnet publish` has already emitted service-worker-assets.js with SHA-256

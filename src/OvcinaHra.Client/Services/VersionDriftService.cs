@@ -2,6 +2,12 @@ using Microsoft.Extensions.Logging;
 
 namespace OvcinaHra.Client.Services;
 
+public enum VersionDriftReason
+{
+    Boot,
+    Poll
+}
+
 /// <summary>
 /// Polls <c>GET /api/version</c> every <see cref="PollInterval"/> and raises
 /// <see cref="StateChanged"/> the first time the server-reported commit
@@ -28,6 +34,7 @@ public sealed class VersionDriftService : IDisposable
     public bool IsDrifted { get; private set; }
     public string? BaselineCommit { get; private set; }
     public string? LatestCommit { get; private set; }
+    public VersionDriftReason? DriftReason { get; private set; }
 
     public VersionDriftService(ApiClient api, ILogger<VersionDriftService> logger)
     {
@@ -50,10 +57,43 @@ public sealed class VersionDriftService : IDisposable
         if (_started) return;
         _started = true;
 
-        BaselineCommit = await FetchCommitAsync();   // may be null on transient failure
-        LatestCommit = BaselineCommit;
-        Console.WriteLine($"[version-refresh] baseline captured commit={BaselineCommit ?? "(null)"}");
+        var clientCommit = ClientBuildInfo.Commit;
+        Console.WriteLine($"[version-refresh] client build identity version={ClientBuildInfo.DisplayVersion} informational={ClientBuildInfo.RawInformationalVersion} commit={clientCommit ?? "(null)"}");
 
+        var latest = await FetchCommitAsync();
+        if (clientCommit is not null)
+        {
+            BaselineCommit = clientCommit;
+            LatestCommit = latest;
+            Console.WriteLine($"[version-refresh] baseline captured source=client commit={BaselineCommit}");
+
+            if (latest is null)
+            {
+                Console.WriteLine($"[version-refresh] boot compare skipped reason=latest-null baseline={BaselineCommit}");
+                StartPollLoop();
+                return;
+            }
+
+            if (!CommitEquals(latest, clientCommit))
+            {
+                MarkDrift(VersionDriftReason.Boot, latest);
+                return;
+            }
+
+            Console.WriteLine($"[version-refresh] boot compare drifted=false baseline={BaselineCommit} latest={latest}");
+            StartPollLoop();
+            return;
+        }
+
+        BaselineCommit = latest;
+        LatestCommit = latest;
+        Console.WriteLine($"[version-refresh] baseline captured source=server-fallback commit={BaselineCommit ?? "(null)"}");
+
+        StartPollLoop();
+    }
+
+    private void StartPollLoop()
+    {
         _cts = new CancellationTokenSource();
         _ = PollLoopAsync(_cts.Token);
     }
@@ -79,12 +119,9 @@ public sealed class VersionDriftService : IDisposable
                     continue;
                 }
 
-                if (current == BaselineCommit) continue;
+                if (CommitEquals(current, BaselineCommit)) continue;
 
-                LatestCommit = current;
-                IsDrifted = true;
-                Console.WriteLine($"[version-refresh] drift detected baseline={BaselineCommit} latest={LatestCommit}");
-                StateChanged?.Invoke();
+                MarkDrift(VersionDriftReason.Poll, current);
                 // Stop polling — drift is sticky until the user reloads.
                 break;
             }
@@ -101,6 +138,15 @@ public sealed class VersionDriftService : IDisposable
         }
     }
 
+    private void MarkDrift(VersionDriftReason reason, string latest)
+    {
+        LatestCommit = latest;
+        DriftReason = reason;
+        IsDrifted = true;
+        Console.WriteLine($"[version-refresh] drift detected baseline={BaselineCommit ?? "(null)"} latest={LatestCommit} reason={reason.ToString().ToLowerInvariant()}");
+        StateChanged?.Invoke();
+    }
+
     private async Task<string?> FetchCommitAsync()
     {
         try
@@ -115,7 +161,7 @@ public sealed class VersionDriftService : IDisposable
             _logger.LogDebug("[version-refresh] /api/version read commit={Commit} startedUtc={StartedUtc:O}",
                 info.Commit,
                 info.StartedUtc);
-            return info.Commit;
+            return NormalizeCommit(info.Commit);
         }
         catch (Exception ex)
         {
@@ -125,6 +171,20 @@ public sealed class VersionDriftService : IDisposable
             return null;
         }
     }
+
+    private static string? NormalizeCommit(string? commit)
+    {
+        if (string.IsNullOrWhiteSpace(commit)
+            || string.Equals(commit, "unknown", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return commit.Trim();
+    }
+
+    private static bool CommitEquals(string? left, string? right) =>
+        string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
 
     private sealed record VersionInfo(string Commit, DateTimeOffset StartedUtc);
 
