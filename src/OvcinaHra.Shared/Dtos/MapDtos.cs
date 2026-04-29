@@ -48,7 +48,7 @@ public record MapLocationDto(
     public string EffectiveKindDisplay => EffectiveKind.GetDisplayName();
 }
 
-public record TreasureCountByPhaseDto(int Total, int Start, int Mid, int End);
+public record TreasureCountByPhaseDto(int Total, int Start, int Early, int Midgame, int Lategame);
 
 /// <summary>
 /// One stash pin. Always sits at <see cref="Lat"/>/<see cref="Lon"/> of

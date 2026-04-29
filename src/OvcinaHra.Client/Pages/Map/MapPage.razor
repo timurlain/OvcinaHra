@@ -229,14 +229,16 @@
     private const string LayerStateKey = "oh-map-layers-v2";
     private const string TreasurePhaseAll = "all";
     private const string TreasurePhaseStart = "start";
-    private const string TreasurePhaseMid = "mid";
-    private const string TreasurePhaseEnd = "end";
+    private const string TreasurePhaseEarly = "early";
+    private const string TreasurePhaseMidgame = "midgame";
+    private const string TreasurePhaseLategame = "lategame";
     private static readonly IReadOnlyList<TreasureMapPhaseOption> TreasureMapPhaseOptions =
     [
         new(TreasurePhaseAll, "Vše", "all"),
         new(TreasurePhaseStart, "Start", "start"),
-        new(TreasurePhaseMid, "Hra", "mid"),
-        new(TreasurePhaseEnd, "Konec", "end"),
+        new(TreasurePhaseEarly, "Rozvoj hry", "early"),
+        new(TreasurePhaseMidgame, "Střed hry", "midgame"),
+        new(TreasurePhaseLategame, "Závěr hry", "lategame"),
     ];
 
     private MapView? _mapView;
@@ -486,24 +488,27 @@
             : phase switch
             {
                 TreasurePhaseStart => location.TreasureCounts.Start,
-                TreasurePhaseMid => location.TreasureCounts.Mid,
-                TreasurePhaseEnd => location.TreasureCounts.End,
+                TreasurePhaseEarly => location.TreasureCounts.Early,
+                TreasurePhaseMidgame => location.TreasureCounts.Midgame,
+                TreasurePhaseLategame => location.TreasureCounts.Lategame,
                 _ => location.TreasureCounts.Total,
             };
 
     private static string TreasurePhaseLogName(string phase) => phase switch
     {
         TreasurePhaseStart => "Start",
-        TreasurePhaseMid => "Mid",
-        TreasurePhaseEnd => "End",
+        TreasurePhaseEarly => "Early",
+        TreasurePhaseMidgame => "Midgame",
+        TreasurePhaseLategame => "Lategame",
         _ => "All",
     };
 
     private static string TreasurePhaseUiName(string phase) => phase switch
     {
         TreasurePhaseStart => "Start",
-        TreasurePhaseMid => "Hra",
-        TreasurePhaseEnd => "Konec",
+        TreasurePhaseEarly => "Rozvoj hry",
+        TreasurePhaseMidgame => "Střed hry",
+        TreasurePhaseLategame => "Závěr hry",
         _ => "Vše",
     };
 

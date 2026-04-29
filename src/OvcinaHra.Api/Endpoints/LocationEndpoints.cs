@@ -171,7 +171,7 @@ public static class LocationEndpoints
         return earthKm * c;
     }
 
-    private static async Task<Results<Ok<LocationDetailDto>, NotFound>> GetById(int id, WorldDbContext db)
+    private static async Task<Results<Ok<LocationDetailDto>, NotFound>> GetById(int id, WorldDbContext db, HttpContext http)
     {
         var loc = await db.Locations
             .Include(l => l.Variants)
@@ -187,7 +187,8 @@ public static class LocationEndpoints
             loc.Id, loc.Name, loc.Description, loc.Details, loc.GamePotential, loc.Prompt, loc.Region, loc.LocationKind,
             latitude, longitude,
             loc.ImagePath, loc.PlacementPhotoPath, loc.StampImagePath, loc.NpcInfo, loc.SetupNotes,
-            loc.ParentLocationId, variants));
+            loc.ParentLocationId, variants,
+            StampImageUrl: string.IsNullOrWhiteSpace(loc.StampImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locationstamps", loc.Id, "small")));
     }
 
     private static async Task<Results<Ok<List<LocationQuestSummaryDto>>, NotFound>> GetQuests(

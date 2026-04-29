@@ -296,27 +296,34 @@ public class TreasurePlanningPoolEndpointTests(PostgresFixture postgres) : Integ
     }
 
     [Fact]
-    public async Task MoneyItems_CannotBeAddedToPoolButRemainUnlimitedCurrencyOptions()
+    public async Task MoneyAndResourceItems_CannotBeAddedToPoolButRemainUnlimitedOptions()
     {
         var game = await CreateGameAsync();
         var bronze = await CreateItemAsync("Bronz", ItemType.Money);
         var currency = await CreateItemAsync("Peníze", ItemType.Money);
+        var wood = await CreateItemAsync("Dřevo", ItemType.Resource);
         await AssignItemToGameAsync(game.Id, bronze.Id, stockCount: 50, isFindable: true);
         await AssignItemToGameAsync(game.Id, currency.Id, isFindable: true);
+        await AssignItemToGameAsync(game.Id, wood.Id, stockCount: 50, isFindable: true);
 
         var addResponse = await Client.PostAsJsonAsync("/api/treasure-planning/pool",
             new CreateTreasurePoolItemDto(bronze.Id, game.Id, 10));
         Assert.Equal(HttpStatusCode.BadRequest, addResponse.StatusCode);
+        var addResourceResponse = await Client.PostAsJsonAsync("/api/treasure-planning/pool",
+            new CreateTreasurePoolItemDto(wood.Id, game.Id, 10));
+        Assert.Equal(HttpStatusCode.BadRequest, addResourceResponse.StatusCode);
 
         var available = await Client.GetFromJsonAsync<List<AvailablePoolItemDto>>(
             $"/api/treasure-planning/available-items/{game.Id}");
         Assert.NotNull(available);
         Assert.DoesNotContain(available!, i => i.ItemId == bronze.Id);
+        Assert.DoesNotContain(available!, i => i.ItemId == wood.Id);
 
         var pool = await Client.GetFromJsonAsync<List<TreasurePoolItemDto>>(
             $"/api/treasure-planning/pool/{game.Id}");
         Assert.NotNull(pool);
         Assert.DoesNotContain(pool!, i => i.ItemId == bronze.Id);
+        Assert.DoesNotContain(pool!, i => i.ItemId == wood.Id);
 
         var unlimited = await Client.GetFromJsonAsync<List<UnlimitedItemDto>>(
             $"/api/treasure-planning/unlimited/{game.Id}");
@@ -324,6 +331,34 @@ public class TreasurePlanningPoolEndpointTests(PostgresFixture postgres) : Integ
         var currencyOption = Assert.Single(unlimited!, i => i.ItemId == currency.Id);
         Assert.Equal(ItemType.Money, currencyOption.ItemType);
         Assert.Equal("Peníze", currencyOption.ItemName);
+        var resourceOption = Assert.Single(unlimited!, i => i.ItemId == wood.Id);
+        Assert.Equal(ItemType.Resource, resourceOption.ItemType);
+        Assert.Equal("Dřevo", resourceOption.ItemName);
+    }
+
+    [Fact]
+    public async Task AssignTreasure_WithResourceShortcut_DefaultsToLowestCountStash()
+    {
+        var game = await CreateGameAsync();
+        var location = await CreateLocationAsync();
+        await AssignLocationToGameAsync(game.Id, location.Id);
+        var stash = await CreateSecretStashAsync("Sklad u dubu");
+        await AssignStashToGameAsync(game.Id, stash.Id, location.Id);
+        var wood = await CreateItemAsync("Dřevo", ItemType.Resource);
+        await AssignItemToGameAsync(game.Id, wood.Id, stockCount: 50, isFindable: true);
+
+        var response = await Client.PostAsJsonAsync("/api/treasure-planning/assign",
+            new AssignTreasureDto("Dřevo × 3", GameTimePhase.Midgame, game.Id,
+                LocationId: location.Id,
+                UnlimitedItems: [new UnlimitedItemAssignDto(wood.Id, 3)]));
+        response.EnsureSuccessStatusCode();
+        var quest = (await response.Content.ReadFromJsonAsync<TreasureQuestDetailDto>())!;
+
+        Assert.Null(quest.LocationId);
+        Assert.Equal(stash.Id, quest.SecretStashId);
+        var item = Assert.Single(quest.Items);
+        Assert.Equal(wood.Id, item.ItemId);
+        Assert.Equal(3, item.Count);
     }
 
     [Fact]
