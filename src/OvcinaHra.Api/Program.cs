@@ -111,6 +111,7 @@ try
     });
     builder.Services.AddSingleton<IBlobStorageService, BlobStorageService>();
     builder.Services.AddSingleton<IThumbnailService, ThumbnailService>();
+    builder.Services.AddSingleton<IStampLlmVerifyService, StampLlmVerifyService>();
     builder.Services.AddSingleton<ICipherPdfRenderer, CipherPdfRenderer>();
     builder.Services.AddScoped<IMapDataService, MapDataService>();
     builder.Services.AddScoped<IExplorerMapExportService, ExplorerMapExportService>();
@@ -280,6 +281,7 @@ try
     app.MapTreasureQuestEndpoints().RequireAuthorization();
     app.MapPersonalQuestEndpoints().RequireAuthorization();
     app.MapTreasurePlanningEndpoints().RequireAuthorization();
+    app.MapStampLlmEndpoints();
     app.MapTimelineEndpoints().RequireAuthorization();
     app.MapDashboardEndpoints().RequireAuthorization();
     app.MapOrganizerRoleEndpoints().RequireAuthorization();
