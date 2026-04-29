@@ -82,3 +82,14 @@ public record BulkOrganizerRoleAssignmentResultDto(
     int CreatedCount,
     int UpdatedCount,
     List<OrganizerRoleAssignmentDto> Assignments);
+
+public record BulkFillRemainingOrganizerRoleDto(
+    int GameId,
+    int PersonId,
+    int? RoleNpcId = null);
+
+public record BulkFillRemainingOrganizerRoleResultDto(
+    int InsertedCount,
+    int SkippedCount,
+    int DefaultNpcId,
+    string DefaultNpcName);
