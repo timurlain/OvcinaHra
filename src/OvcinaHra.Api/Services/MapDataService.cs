@@ -48,7 +48,9 @@ public sealed class MapDataService(WorldDbContext db, IBlobStorageService blob) 
             KingdomId: null, KingdomName: null,
             ThumbnailUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : blob.GetSasUrl(r.ImagePath),
             RenderKind: r.HobbitChildName is null ? null : LocationKind.Hobbit,
-            RenderName: r.HobbitChildName)).ToList();
+            RenderName: r.HobbitChildName is null
+                ? null
+                : $"{r.HobbitChildName} ({r.Name})")).ToList();
 
         // Game-scoped stashes. Each pin sits at GameSecretStash.LocationId
         // (which has GPS via Location.Coordinates). Treasure count + highest

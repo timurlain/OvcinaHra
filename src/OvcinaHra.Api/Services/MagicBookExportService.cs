@@ -35,15 +35,18 @@ public sealed class MagicBookExportService(
     private const int A4HeightPx = 3508;
     private const int A6WidthPx = 1240;
     private const int A6HeightPx = 1748;
-    private const int SafeMarginPx = 60;
-    private const int SectionGapPx = 24;
-    private const int SectionPaddingPx = 18;
-    private const int SectionHeaderHeightPx = 48;
-    private const int SpellNameLineHeightPx = 36;
-    private const int BodyLineHeightPx = 30;
-    private const int SpellGapPx = 14;
+    private const int SafeMarginPx = 42;
+    private const int SectionGapPx = 18;
+    private const int SectionPaddingPx = 20;
+    private const int SectionHeaderHeightPx = 56;
+    private const int SpellNameLineHeightPx = 42;
+    private const int BodyLineHeightPx = 34;
+    private const int SpellGapPx = 12;
+    private const int SpellBoxPaddingX = 16;
+    private const int SpellBoxPaddingY = 12;
 
     private static readonly Color Paper = Color.ParseHex("#fff8e8");
+    private static readonly Color SpellBoxFill = Color.ParseHex("#fffaf0");
     private static readonly Color Ink = Color.ParseHex("#26180f");
     private static readonly Color Border = Color.ParseHex("#3b2b18");
 
@@ -87,10 +90,11 @@ public sealed class MagicBookExportService(
         var image = new Image<Rgba32>(A6WidthPx, A6HeightPx, Paper);
         image.Mutate(ctx =>
         {
-            ctx.Draw(Border, 4, new RectangularPolygon(18, 18, A6WidthPx - 36, A6HeightPx - 36));
+            ctx.Draw(Border, 4, new RectangularPolygon(14, 14, A6WidthPx - 28, A6HeightPx - 28));
             var sectionPlans = BuildSectionPlans(page, maxEffectLines: 2);
             if (TotalSectionHeight(sectionPlans) > A6HeightPx - SafeMarginPx * 2)
                 sectionPlans = BuildSectionPlans(page, maxEffectLines: 1);
+            sectionPlans = ExpandSectionsToPageHeight(sectionPlans);
 
             var y = (float)SafeMarginPx;
             foreach (var section in sectionPlans)
@@ -110,20 +114,40 @@ public sealed class MagicBookExportService(
                         var brief = string.IsNullOrWhiteSpace(spell.Effect)
                             ? spell.Description ?? string.Empty
                             : spell.Effect;
-                        var lines = Wrap(brief, 70).Take(maxEffectLines).ToList();
-                        var height = SpellNameLineHeightPx + lines.Count * BodyLineHeightPx + SpellGapPx;
+                        var lines = Wrap(brief, 58).Take(maxEffectLines).ToList();
+                        var height = SpellBoxPaddingY * 2
+                            + SpellNameLineHeightPx
+                            + lines.Count * BodyLineHeightPx;
                         return new MagicBookSpellPlan(spell, lines, height);
                     })
                     .ToList();
                 var height = SectionPaddingPx * 2
                     + SectionHeaderHeightPx
-                    + spells.Sum(spell => spell.Height);
+                    + spells.Sum(spell => spell.Height)
+                    + Math.Max(0, spells.Count - 1) * SpellGapPx;
                 return new MagicBookSectionPlan(section, spells, height);
             })
             .ToList();
 
     private static float TotalSectionHeight(IReadOnlyList<MagicBookSectionPlan> sections) =>
         sections.Sum(section => section.Height) + Math.Max(0, sections.Count - 1) * SectionGapPx;
+
+    private static List<MagicBookSectionPlan> ExpandSectionsToPageHeight(
+        IReadOnlyList<MagicBookSectionPlan> sections)
+    {
+        if (sections.Count == 0)
+            return [];
+
+        var available = A6HeightPx - SafeMarginPx * 2;
+        var total = TotalSectionHeight(sections);
+        if (total >= available)
+            return sections.ToList();
+
+        var extraPerSection = (available - total) / sections.Count;
+        return sections
+            .Select(section => section with { Height = section.Height + extraPerSection })
+            .ToList();
+    }
 
     private static void DrawSection(
         IImageProcessingContext ctx,
@@ -133,7 +157,8 @@ public sealed class MagicBookExportService(
     {
         var color = Color.ParseHex(plan.Section.ColorHex);
         var textColor = plan.Section.Level == 5 ? Color.White : Ink;
-        var box = new RectangularPolygon(SafeMarginPx, y, A6WidthPx - SafeMarginPx * 2, plan.Height);
+        var boxTop = y;
+        var box = new RectangularPolygon(SafeMarginPx, boxTop, A6WidthPx - SafeMarginPx * 2, plan.Height);
         ctx.Fill(color, box);
         ctx.Draw(Border, 3, box);
 
@@ -144,32 +169,39 @@ public sealed class MagicBookExportService(
             fonts.Section,
             textColor,
             SafeMarginPx,
-            y + SectionPaddingPx - 2,
+            boxTop + SectionPaddingPx - 2,
             A6WidthPx - SafeMarginPx * 2);
 
-        y += SectionPaddingPx + SectionHeaderHeightPx;
+        y = boxTop + SectionPaddingPx + SectionHeaderHeightPx;
         foreach (var spell in plan.Spells)
-            DrawSpell(ctx, spell, fonts, textColor, ref y);
+            DrawSpell(ctx, spell, fonts, ref y);
 
-        y += SectionPaddingPx + SectionGapPx;
+        y = boxTop + plan.Height + SectionGapPx;
     }
 
     private static void DrawSpell(
         IImageProcessingContext ctx,
         MagicBookSpellPlan plan,
         MagicBookFonts fonts,
-        Color textColor,
         ref float y)
     {
-        DrawText(ctx, plan.Spell.Name, fonts.SpellName, textColor, SafeMarginPx + SectionPaddingPx, y);
-        y += SpellNameLineHeightPx;
+        var boxX = SafeMarginPx + SectionPaddingPx;
+        var boxWidth = A6WidthPx - SafeMarginPx * 2 - SectionPaddingPx * 2;
+        var box = new RectangularPolygon(boxX, y, boxWidth, plan.Height);
+        ctx.Fill(SpellBoxFill, box);
+        ctx.Draw(Border, 2, box);
+
+        var textX = boxX + SpellBoxPaddingX;
+        var textY = y + SpellBoxPaddingY - 2;
+        DrawText(ctx, plan.Spell.Name, fonts.SpellName, Ink, textX, textY);
+        textY += SpellNameLineHeightPx;
         foreach (var line in plan.EffectLines)
         {
-            DrawText(ctx, line, fonts.Body, textColor, SafeMarginPx + SectionPaddingPx, y);
-            y += BodyLineHeightPx;
+            DrawText(ctx, line, fonts.Body, Ink, textX, textY);
+            textY += BodyLineHeightPx;
         }
 
-        y += SpellGapPx;
+        y += plan.Height + SpellGapPx;
     }
 
     private static async Task<PdfImage> RenderA4SheetAsync(Image<Rgba32> bookPage, CancellationToken ct)
@@ -206,9 +238,9 @@ public sealed class MagicBookExportService(
         var bold = fonts.Add(System.IO.Path.Combine(fontRoot, "Kalam-Bold.ttf"));
 
         return new MagicBookFonts(
-            Section: bold.CreateFont(34),
-            SpellName: bold.CreateFont(30),
-            Body: regular.CreateFont(25));
+            Section: bold.CreateFont(38),
+            SpellName: bold.CreateFont(34),
+            Body: regular.CreateFont(28));
     }
 
     private static void DrawText(

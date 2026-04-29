@@ -156,7 +156,8 @@ try
                 effectiveOrigins.Contains(origin)
                 || IsLocalhostOrigin(origin))
             .AllowAnyHeader()
-            .AllowAnyMethod());
+            .AllowAnyMethod()
+            .WithExposedHeaders(OvcinaCorsPolicy.ExposedHeaders.ToArray()));
     });
 
     static bool IsLocalhostOrigin(string origin)

@@ -161,9 +161,9 @@ public class MapEndpointsTests(PostgresFixture postgres)
         Assert.Equal(parentId, single.Id);
         Assert.Equal("Starý brod", single.Name);
         Assert.Equal(LocationKind.Wilderness, single.Kind);
-        Assert.Equal("Dcera řeky", single.RenderName);
+        Assert.Equal("Dcera řeky (Starý brod)", single.RenderName);
         Assert.Equal(LocationKind.Hobbit, single.RenderKind);
-        Assert.Equal("Dcera řeky", single.EffectiveName);
+        Assert.Equal("Dcera řeky (Starý brod)", single.EffectiveName);
         Assert.Equal(LocationKind.Hobbit, single.EffectiveKind);
     }
 
