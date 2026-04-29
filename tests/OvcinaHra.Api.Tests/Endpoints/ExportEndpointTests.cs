@@ -412,7 +412,7 @@ public class ExportEndpointTests(PostgresFixture postgres)
         var bytes = await response.Content.ReadAsByteArrayAsync();
         Assert.StartsWith("%PDF-1.4", Encoding.ASCII.GetString(bytes, 0, 8));
         var pdfText = Encoding.ASCII.GetString(bytes);
-        Assert.Contains("/Count 1", pdfText);
+        Assert.Matches(@"/Count\s+1\b", pdfText);
         Assert.Contains("/MediaBox [0 0 595.276 841.89]", pdfText);
         Assert.Equal(1, CountOccurrences(pdfText, "/Subtype /Image"));
         WriteCenikSmokeArtifact(bytes);

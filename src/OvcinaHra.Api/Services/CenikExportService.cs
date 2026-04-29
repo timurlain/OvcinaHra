@@ -52,6 +52,8 @@ public sealed class CenikExportService(
     private static readonly Color Border = Color.ParseHex("#5a3b1d");
     private static readonly Color Green = Color.ParseHex("#2d5016");
     private static readonly Color Gold = Color.ParseHex("#c79b34");
+    private static readonly StringComparer CzechComparer =
+        StringComparer.Create(CultureInfo.GetCultureInfo("cs-CZ"), ignoreCase: false);
 
     public async Task<CenikExportFile> RenderCenikAsync(int gameId, CancellationToken ct = default)
     {
@@ -78,8 +80,8 @@ public sealed class CenikExportService(
                 gi.Price!.Value))
             .ToListAsync(ct);
         items = items
-            .OrderBy(i => i.TypeDisplay, StringComparer.CurrentCulture)
-            .ThenBy(i => i.Name, StringComparer.CurrentCulture)
+            .OrderBy(i => i.TypeDisplay, CzechComparer)
+            .ThenBy(i => i.Name, CzechComparer)
             .ToList();
 
         logger.LogInformation(
