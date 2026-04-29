@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Diagnostics;
 using System.Security.Claims;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Services;
@@ -118,9 +119,12 @@ public static class ImageEndpoints
         CancellationToken ct, string? field = null, int? gameId = null)
     {
         var isLocationPlacement = string.Equals(entityType, "locationplacements", StringComparison.Ordinal);
+        var isLegacyLocationPlacement = string.Equals(entityType, "locations", StringComparison.Ordinal)
+            && string.Equals(field, "placement", StringComparison.OrdinalIgnoreCase);
+        var isPlacementUpload = isLocationPlacement || isLegacyLocationPlacement;
         var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.ImageEndpoints");
         var userId = GetUserId(http.User);
-        if (isLocationPlacement)
+        if (isPlacementUpload)
         {
             logger.LogInformation(
                 "[loc-placement] image.upload.entry gameId={GameId} locationId={LocationId} userId={UserId} imageBlobKey={ImageBlobKey} imageBlobUrl={ImageBlobUrl}",
@@ -129,21 +133,42 @@ public static class ImageEndpoints
                 userId,
                 null,
                 null);
+            logger.LogInformation(
+                "[loc-placement-server] image.upload.entry locationId={LocationId} gameId={GameId} userId={UserId} size={Size} contentType={ContentType} entityType={EntityType} field={Field}",
+                entityId,
+                gameId,
+                userId,
+                file.Length,
+                file.ContentType,
+                entityType,
+                field);
         }
 
         try
         {
             if (!ValidEntityTypes.Contains(entityType))
+            {
+                LogPlacementImageExit(logger, isPlacementUpload, entityId, gameId, userId, 400, detail: $"invalid-entity-type:{entityType}");
                 return TypedResults.BadRequest(ImageValidationProblem($"Neplatný typ entity '{entityType}'."));
+            }
 
             if (file.Length > MaxFileSize)
+            {
+                LogPlacementImageExit(logger, isPlacementUpload, entityId, gameId, userId, 400, detail: "file-too-large");
                 return TypedResults.BadRequest(ImageValidationProblem($"Soubor je příliš velký. Maximální velikost je {MaxFileSize / (1024 * 1024)} MB."));
+            }
 
             if (!AllowedContentTypes.Contains(file.ContentType))
+            {
+                LogPlacementImageExit(logger, isPlacementUpload, entityId, gameId, userId, 400, detail: $"invalid-content-type:{file.ContentType}");
                 return TypedResults.BadRequest(ImageValidationProblem($"Neplatný typ souboru '{file.ContentType}'. Povolené typy: {string.Join(", ", AllowedContentTypes)}."));
+            }
 
             if (!await EntityExists(db, entityType, entityId))
+            {
+                LogPlacementImageExit(logger, isPlacementUpload, entityId, gameId, userId, 404, detail: "entity-not-found");
                 return TypedResults.NotFound();
+            }
 
             var isPlacement = string.Equals(field, "placement", StringComparison.OrdinalIgnoreCase);
             var suffix = isPlacement ? "placement" : "image";
@@ -161,12 +186,46 @@ public static class ImageEndpoints
             {
                 var validationProblem = await ValidateLocationStampImageAsync(stream, ct);
                 if (validationProblem is not null)
+                {
+                    LogPlacementImageExit(logger, isPlacementUpload, entityId, gameId, userId, 400, blobKey, detail: "stamp-validation-failed");
                     return TypedResults.BadRequest(validationProblem);
+                }
             }
             if (stream.CanSeek)
                 stream.Position = 0;
 
-            await blobService.UploadAsync(blobKey, stream, file.ContentType, ct);
+            if (isPlacementUpload)
+            {
+                logger.LogInformation(
+                    "[loc-placement-server] image.upload.blob-write.attempt locationId={LocationId} blobKey={BlobKey}",
+                    entityId,
+                    blobKey);
+            }
+            var blobWriteTimer = Stopwatch.StartNew();
+            try
+            {
+                await blobService.UploadAsync(blobKey, stream, file.ContentType, ct);
+                blobWriteTimer.Stop();
+                if (isPlacementUpload)
+                {
+                    logger.LogInformation(
+                        "[loc-placement-server] image.upload.blob-write.ok locationId={LocationId} blobKey={BlobKey} elapsedMs={ElapsedMs}",
+                        entityId,
+                        blobKey,
+                        blobWriteTimer.ElapsedMilliseconds);
+                }
+            }
+            catch (Exception ex) when (isPlacementUpload && ex is not OperationCanceledException)
+            {
+                blobWriteTimer.Stop();
+                logger.LogError(
+                    ex,
+                    "[loc-placement-server] image.upload.blob-write.failed locationId={LocationId} blobKey={BlobKey} detail={Detail}",
+                    entityId,
+                    blobKey,
+                    ex.Message);
+                throw;
+            }
             if (isLocationPlacement)
             {
                 logger.LogInformation(
@@ -197,7 +256,34 @@ public static class ImageEndpoints
                 _ = PreGenerateAllPresetsAsync(thumbnailService, thumbLogger, "locationplacements", entityId, blobKey);
             }
 
-            await UpdateEntityImagePath(db, entityType, entityId, blobKey, isPlacement);
+            if (isPlacementUpload)
+            {
+                logger.LogInformation(
+                    "[loc-placement-server] image.upload.db-update.attempt locationId={LocationId} field={Field}",
+                    entityId,
+                    "PlacementPhotoPath");
+            }
+            int rowsAffected;
+            try
+            {
+                rowsAffected = await UpdateEntityImagePath(db, entityType, entityId, blobKey, isPlacement);
+                if (isPlacementUpload)
+                {
+                    logger.LogInformation(
+                        "[loc-placement-server] image.upload.db-update.ok locationId={LocationId} rowsAffected={RowsAffected}",
+                        entityId,
+                        rowsAffected);
+                }
+            }
+            catch (Exception ex) when (isPlacementUpload && ex is not OperationCanceledException)
+            {
+                logger.LogError(
+                    ex,
+                    "[loc-placement-server] image.upload.db-update.failed locationId={LocationId} detail={Detail}",
+                    entityId,
+                    ex.Message);
+                throw;
+            }
 
             var url = await blobService.GetSasUrlAsync(blobKey);
             if (isLocationPlacement)
@@ -210,9 +296,10 @@ public static class ImageEndpoints
                     blobKey,
                     url);
             }
+            LogPlacementImageExit(logger, isPlacementUpload, entityId, gameId, userId, 200, blobKey, url);
             return TypedResults.Ok(new ImageUploadResult(blobKey, url));
         }
-        catch (Exception ex) when (isLocationPlacement && ex is not OperationCanceledException)
+        catch (Exception ex) when (isPlacementUpload && ex is not OperationCanceledException)
         {
             logger.LogError(
                 ex,
@@ -222,6 +309,12 @@ public static class ImageEndpoints
                 userId,
                 null,
                 null);
+            logger.LogError(
+                ex,
+                "[loc-placement-server] image.upload.exception locationId={LocationId} detail={Detail}",
+                entityId,
+                ex.Message);
+            LogPlacementImageExit(logger, isPlacementUpload, entityId, gameId, userId, 500, detail: ex.Message);
             throw;
         }
     }
@@ -492,7 +585,7 @@ public static class ImageEndpoints
         return TypedResults.NoContent();
     }
 
-    private static async Task UpdateEntityImagePath(WorldDbContext db, string entityType, int entityId, string? blobKey, bool isPlacement)
+    private static async Task<int> UpdateEntityImagePath(WorldDbContext db, string entityType, int entityId, string? blobKey, bool isPlacement)
     {
         switch (entityType)
         {
@@ -556,7 +649,31 @@ public static class ImageEndpoints
                 break;
         }
 
-        await db.SaveChangesAsync();
+        return await db.SaveChangesAsync();
+    }
+
+    private static void LogPlacementImageExit(
+        ILogger logger,
+        bool isPlacementUpload,
+        int locationId,
+        int? gameId,
+        string userId,
+        int status,
+        string? imageBlobKey = null,
+        string? imageBlobUrl = null,
+        string? detail = null)
+    {
+        if (!isPlacementUpload) return;
+
+        logger.LogInformation(
+            "[loc-placement-server] image.upload.exit locationId={LocationId} gameId={GameId} userId={UserId} status={Status} imageBlobKey={ImageBlobKey} imageBlobUrl={ImageBlobUrl} detail={Detail}",
+            locationId,
+            gameId,
+            userId,
+            status,
+            imageBlobKey,
+            imageBlobUrl,
+            detail);
     }
 
     private static async Task<(string? ImagePath, string? PlacementPath, string? StampPath)> GetEntityImagePaths(
