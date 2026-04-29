@@ -17,4 +17,5 @@ public class GameTimeSlot
     public Game Game { get; set; } = null!;
     public ICollection<GameEventTimeSlot> EventTimeSlots { get; set; } = [];
     public ICollection<Quest> Quests { get; set; } = [];
+    public ICollection<OrganizerRoleAssignment> OrganizerRoleAssignments { get; set; } = [];
 }

@@ -42,4 +42,5 @@ public class Game
     public ICollection<BattlefieldBonus> BattlefieldBonuses { get; set; } = [];
     public ICollection<GameNpc> GameNpcs { get; set; } = [];
     public ICollection<GameEvent> GameEvents { get; set; } = [];
+    public ICollection<OrganizerRoleAssignment> OrganizerRoleAssignments { get; set; } = [];
 }
