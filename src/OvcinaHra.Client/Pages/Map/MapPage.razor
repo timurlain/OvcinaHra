@@ -479,6 +479,7 @@
     /// </summary>
     private Task OnPinDraggedAsync((int Id, double Lat, double Lng) e)
     {
+        Console.WriteLine($"[map-diag] MapPage.OnPinDragged entry locationId={e.Id} lat={e.Lat} lng={e.Lng}");
         _pendingDragId = e.Id;
         _pendingDragName = _data?.Locations.FirstOrDefault(l => l.Id == e.Id)?.Name ?? "tato lokace";
         _pendingDragLat = e.Lat;
@@ -486,6 +487,7 @@
         _pendingDragError = null;
         _pendingDragSaving = false;
         _pendingDragVisible = true;
+        Console.WriteLine($"[map-diag] MapPage.OnPinDragged popup-visible locationId={e.Id}");
         return Task.CompletedTask;
     }
 
@@ -496,6 +498,7 @@
         _pendingDragSaving = true;
         try
         {
+            Console.WriteLine($"[map-diag] MapPage.ConfirmDrag location.relocate.dispatch locationId={id} lat={_pendingDragLat} lng={_pendingDragLng}");
             // Issue #252 — PATCH /api/locations/{id}/coordinates writes only
             // Latitude + Longitude, so a concurrent organizer edit on
             // Description / Details / NpcInfo / etc. can't be clobbered.
@@ -517,9 +520,11 @@
             _pendingDragId = null;
             // Reload so the peek + pin position pick up the saved GPS.
             await ReloadDataAndRenderAsync();
+            Console.WriteLine($"[map-diag] MapPage.ConfirmDrag saved locationId={id}");
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"[map-diag] MapPage.ConfirmDrag error locationId={id} type={ex.GetType().Name} message={ex.Message}");
             _pendingDragError = ex.Message;
         }
         finally
@@ -546,6 +551,7 @@
     private async Task OnMapClickAsync(OvcinaMapClickEventArgs e)
     {
         Console.WriteLine($"[map-diag] MapPage.OnMapClick entry lat={e.Latitude} lng={e.Longitude} ctrl={e.CtrlKey} shift={e.ShiftKey} gameId={GameContext.SelectedGameId?.ToString() ?? "null"}");
+        Console.WriteLine($"[map-diag] MapPage.OnMapClick modifier_branch branch={(e.CtrlKey && e.ShiftKey ? "ctrl_shift_relocate" : (e.CtrlKey ? "default" : "none"))}");
         if (!e.CtrlKey)
         {
             Console.WriteLine("[map-diag] MapPage.OnMapClick ignored-no-ctrl");
@@ -639,7 +645,12 @@
 
     private async Task OnPinClickedAsync((string Kind, int Id) click)
     {
-        if (click.Kind != "location") return;
+        Console.WriteLine($"[map-diag] MapPage.OnPinClicked entry kind={click.Kind} id={click.Id}");
+        if (click.Kind != "location")
+        {
+            Console.WriteLine($"[map-diag] MapPage.OnPinClicked ignored-kind kind={click.Kind}");
+            return;
+        }
         await OpenPeekAsync(click.Id);
     }
 

@@ -628,6 +628,7 @@
     [JSInvokable]
     public async Task OnMapPinClicked(string kind, int id)
     {
+        Console.WriteLine($"[map-diag] MapView.OnMapPinClicked entry kind={kind} id={id} hasDelegate={OnMapPagePinClick.HasDelegate}");
         if (OnMapPagePinClick.HasDelegate)
             await OnMapPagePinClick.InvokeAsync((kind, id));
     }
@@ -796,7 +797,10 @@
 
     [JSInvokable]
     public async Task OnLocationPinDragged(int id, double lat, double lng)
-        => await OnMapPagePinDrag.InvokeAsync((id, lat, lng));
+    {
+        Console.WriteLine($"[map-diag] MapView.OnLocationPinDragged entry id={id} lat={lat} lng={lng} hasDelegate={OnMapPagePinDrag.HasDelegate}");
+        await OnMapPagePinDrag.InvokeAsync((id, lat, lng));
+    }
 
     [JSInvokable]
     public async Task OnStyleLoadedCallback()
