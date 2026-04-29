@@ -139,10 +139,13 @@
                     <DxMemo @bind-Text="@model.SetupNotes" Rows="3" data-testid="location-setup" />
                 </DxFormLayoutItem>
                 <DxFormLayoutItem Caption="Rodič" ColSpanMd="12">
-                    <DxComboBox Data="@parentCandidates" Value="@model.ParentLocationId"
-                                ValueChanged="@((int? v) => OnParentChangeRequested(v))"
-                                TextFieldName="Name" ValueFieldName="Id"
-                                NullText="(žádný — tato lokace je kořenová)"
+                    <DxComboBox TData="ParentLocationChoice" TValue="int?"
+                                Data="@parentChoices"
+                                Value="@model.ParentLocationId"
+                                ValueChanged="@OnParentChangeRequested"
+                                TextFieldName="@nameof(ParentLocationChoice.Name)"
+                                ValueFieldName="@nameof(ParentLocationChoice.Id)"
+                                NullText="Bez nadřazené lokace"
                                 ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
                                 SearchMode="ListSearchMode.AutoSearch" />
                 </DxFormLayoutItem>
@@ -329,16 +332,6 @@
     </BodyContentTemplate>
 </DxPopup>
 
-<DxPopup @bind-Visible="@isParentChangeVisible" HeaderText="Změnit rodiče?" Width="400px">
-    <BodyContentTemplate Context="popupContext">
-        <p>Změnit rodičovskou lokaci na <strong>@pendingParentName</strong>?</p>
-        <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" @onclick="CancelParentChange">Zrušit</button>
-            <button class="btn btn-primary" @onclick="ConfirmParentChange">Změnit</button>
-        </div>
-    </BodyContentTemplate>
-</DxPopup>
-
 <DxPopup @bind-Visible="@isRemoveStashVisible" HeaderText="Odebrat skrýš z lokace?" Width="400px">
     <BodyContentTemplate Context="popupContext">
         <p>Opravdu chcete odebrat skrýš <strong>@stashToRemoveName</strong> z této lokace v této hře? Samotná skrýš z katalogu odstraněna nebude.</p>
@@ -359,9 +352,6 @@
 
     private bool isVisible, isDeleteVisible, isSaving;
     private bool isLoreEditable;
-    private bool isParentChangeVisible;
-    private int? pendingParentId;
-    private string pendingParentName = "";
     private int activeTab;
     private string modalTitle = "";
     private string? error;
@@ -371,10 +361,11 @@
     private int? parentId;
     private string? parentName;
     private List<LocationVariantDto> variants = [];
-    private List<LocationListDto> parentCandidates = [];
+    private List<ParentLocationChoice> parentChoices = [];
 
     private static readonly List<KindItem> kindValues = Enum.GetValues<LocationKind>()
         .Select(k => new KindItem(k, k.GetDisplayName())).ToList();
+    private static readonly ParentLocationChoice NoParentChoice = new(null, "Bez nadřazené lokace");
     record KindItem(LocationKind Value, string Display);
 
     /// <summary>Open for editing an existing location.</summary>
@@ -401,10 +392,7 @@
         parentName = parentId.HasValue
             ? AllLocations.FirstOrDefault(l => l.Id == parentId.Value)?.Name ?? $"Lokace #{parentId}"
             : null;
-        parentCandidates = AllLocations
-            .Where(l => l.Id != locationId && l.ParentLocationId != locationId)
-            .OrderBy(l => l.Name)
-            .ToList();
+        SetParentChoices(AllLocations.Where(l => l.Id != locationId && l.ParentLocationId != locationId));
 
         // Reset stash tab state; data loaded on demand by LoadStashesAsync below
         stashCards = [];
@@ -440,7 +428,7 @@
         variants = [];
         parentId = null;
         parentName = null;
-        parentCandidates = AllLocations.OrderBy(l => l.Name).ToList();
+        SetParentChoices(AllLocations);
         isVisible = true;
     }
 
@@ -457,21 +445,22 @@
 
     private void OnParentChangeRequested(int? newParentId)
     {
-        if (newParentId == model.ParentLocationId) return;
-        pendingParentId = newParentId;
-        pendingParentName = newParentId.HasValue
-            ? parentCandidates.FirstOrDefault(l => l.Id == newParentId.Value)?.Name ?? $"#{newParentId}"
-            : "(žádný — kořenová)";
-        isParentChangeVisible = true;
+        model.ParentLocationId = newParentId;
+        parentId = newParentId;
+        parentName = newParentId.HasValue
+            ? AllLocations.FirstOrDefault(l => l.Id == newParentId.Value)?.Name ?? $"Lokace #{newParentId}"
+            : null;
     }
 
-    private void ConfirmParentChange()
+    private void SetParentChoices(IEnumerable<LocationListDto> candidates)
     {
-        model.ParentLocationId = pendingParentId;
-        isParentChangeVisible = false;
+        parentChoices = [NoParentChoice];
+        parentChoices.AddRange(candidates
+            .OrderBy(l => l.Name)
+            .Select(l => new ParentLocationChoice(l.Id, l.Name)));
     }
 
-    private void CancelParentChange() => isParentChangeVisible = false;
+    private sealed record ParentLocationChoice(int? Id, string Name);
 
     private async Task SaveAsync()
     {
