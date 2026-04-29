@@ -30,5 +30,9 @@
         new("spl",   "Kouzla",     "bi-magic",          "/spells"),
         new("stash", "Skrýše",     "bi-archive",        "/secret-stashes"),
         new("tre",   "Poklady",    "bi-gem",            "/treasures"),
+        // Issue #383 follow-up: one-tap entry from cockpit straight into
+        // the placement wizard. Query string is parsed by /locations and
+        // auto-opens the wizard.
+        new("place", "Umístění lokace", "bi-camera-fill", "/locations?placement=1"),
     };
 }

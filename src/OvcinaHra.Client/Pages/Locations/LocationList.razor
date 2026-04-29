@@ -1,10 +1,12 @@
 @page "/locations"
 @using System.Globalization
 @using System.Net.Http.Headers
+@using Microsoft.JSInterop
 @attribute [Authorize]
 @inject ApiClient Api
 @inject GameContextService GameContext
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 @implements IDisposable
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -761,7 +763,17 @@ else
     private string? placementNotes;
     private string? placementError;
     private string? placementToastMessage;
-    private const long PlacementMaxFileSize = 5 * 1024 * 1024;
+    // Camera-side: phone JPEGs frequently land in the 8–20 MB range, so we
+    // accept generously here. Resize happens client-side in JS canvas; the
+    // server still enforces its own multipart limit, but we cap the post-
+    // resize byte count below to stay well clear of it.
+    private const long PlacementMaxIngressFileSize = 30 * 1024 * 1024;
+    private const long PlacementMaxUploadFileSize = 5 * 1024 * 1024;
+    private const int PlacementResizeMaxDim = 1920;
+    private const double PlacementResizeQuality = 0.85;
+    private byte[]? placementPhotoBytes;
+    private string placementPhotoUploadContentType = "image/jpeg";
+    private bool placementAutoOpenHandled;
 
     // Toolbar filter state
     private string? searchText
@@ -981,6 +993,7 @@ else
         placementSelectedLocationId = locations.FirstOrDefault(l => !l.IsPlaced)?.Id
             ?? locations.FirstOrDefault()?.Id;
         placementPhotoFile = null;
+        placementPhotoBytes = null;
         placementPreviewUrl = null;
         placementNotes = null;
         isPlacementVisible = true;
@@ -993,6 +1006,7 @@ else
         isPlacementVisible = false;
         placementError = null;
         placementPhotoFile = null;
+        placementPhotoBytes = null;
         placementPreviewUrl = null;
         placementNotes = null;
         Console.WriteLine($"[loc-placement] wizard.cancel gameId={gameId}");
@@ -1002,23 +1016,79 @@ else
     {
         placementError = null;
         placementPhotoFile = e.File;
-        if (placementPhotoFile.Size > PlacementMaxFileSize)
+        placementPhotoBytes = null;
+        placementPreviewUrl = null;
+        if (placementPhotoFile.Size > PlacementMaxIngressFileSize)
         {
             placementPhotoFile = null;
-            placementPreviewUrl = null;
-            placementError = "Soubor je příliš velký (max 5 MB).";
-            Console.WriteLine($"[loc-placement] wizard.photo-selected.failed gameId={gameId} reason=too-large");
+            placementError = $"Soubor je příliš velký (max {PlacementMaxIngressFileSize / 1024 / 1024} MB).";
+            Console.WriteLine($"[loc-placement] wizard.photo-selected.failed gameId={gameId} reason=ingress-too-large size={e.File.Size}");
             return;
         }
 
         var contentType = string.IsNullOrWhiteSpace(placementPhotoFile.ContentType)
             ? "image/jpeg"
             : placementPhotoFile.ContentType;
-        await using var stream = placementPhotoFile.OpenReadStream(maxAllowedSize: PlacementMaxFileSize);
-        using var buffer = new MemoryStream();
-        await stream.CopyToAsync(buffer);
-        placementPreviewUrl = $"data:{contentType};base64,{Convert.ToBase64String(buffer.ToArray())}";
-        Console.WriteLine($"[loc-placement] wizard.photo-selected gameId={gameId} size={placementPhotoFile.Size}");
+        string originalDataUrl;
+        try
+        {
+            await using var stream = placementPhotoFile.OpenReadStream(maxAllowedSize: PlacementMaxIngressFileSize);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            originalDataUrl = $"data:{contentType};base64,{Convert.ToBase64String(buffer.ToArray())}";
+            Console.WriteLine($"[loc-placement] wizard.photo-selected gameId={gameId} size={placementPhotoFile.Size}");
+        }
+        catch (Exception ex)
+        {
+            placementPhotoFile = null;
+            placementError = "Fotku se nepodařilo načíst.";
+            Console.WriteLine($"[loc-placement] wizard.photo-selected.failed gameId={gameId} reason=read-failed detail={ex.Message}");
+            return;
+        }
+
+        // Client-side canvas resize. Phone cameras emit 10–20 MB JPEGs that
+        // exceed the server's 5 MB multipart limit; resize re-encodes as
+        // JPEG @ q=0.85 with longest side capped at 1920 px. Typical output
+        // lands in the 200–500 KB range.
+        string resizedDataUrl;
+        try
+        {
+            resizedDataUrl = await JS.InvokeAsync<string>(
+                "ovcinaImageResize.fromBase64",
+                originalDataUrl,
+                PlacementResizeMaxDim,
+                PlacementResizeQuality);
+        }
+        catch (Exception ex)
+        {
+            placementPhotoFile = null;
+            placementError = "Fotku se nepodařilo zmenšit.";
+            Console.WriteLine($"[loc-placement] wizard.photo-resize.failed gameId={gameId} detail={ex.Message}");
+            return;
+        }
+
+        var commaIdx = resizedDataUrl.IndexOf(',');
+        if (commaIdx < 0)
+        {
+            placementPhotoFile = null;
+            placementError = "Fotku se nepodařilo zpracovat.";
+            Console.WriteLine($"[loc-placement] wizard.photo-resize.failed gameId={gameId} reason=invalid-data-url");
+            return;
+        }
+
+        var resizedBytes = Convert.FromBase64String(resizedDataUrl[(commaIdx + 1)..]);
+        if (resizedBytes.LongLength > PlacementMaxUploadFileSize)
+        {
+            placementPhotoFile = null;
+            placementError = $"Fotku se nepodařilo zmenšit pod {PlacementMaxUploadFileSize / 1024 / 1024} MB. Zkuste prosím jiný snímek.";
+            Console.WriteLine($"[loc-placement] wizard.photo-resize.too-large-after gameId={gameId} resizedSize={resizedBytes.LongLength}");
+            return;
+        }
+
+        placementPhotoBytes = resizedBytes;
+        placementPhotoUploadContentType = "image/jpeg";
+        placementPreviewUrl = resizedDataUrl;
+        Console.WriteLine($"[loc-placement] wizard.photo-resized gameId={gameId} originalSize={placementPhotoFile.Size} resizedSize={resizedBytes.LongLength}");
     }
 
     private async Task SubmitPlacementAsync()
@@ -1029,7 +1099,7 @@ else
             placementError = "Vyberte lokaci.";
             return;
         }
-        if (placementPhotoFile is null)
+        if (placementPhotoFile is null || placementPhotoBytes is null)
         {
             placementError = "Nejprve vyfoťte nebo nahrajte fotku umístění.";
             return;
@@ -1037,15 +1107,18 @@ else
 
         placementSaving = true;
         var locationId = SelectedPlacementLocation.Id;
-        Console.WriteLine($"[loc-placement] wizard.submit.start gameId={gameId} locationId={locationId}");
+        Console.WriteLine($"[loc-placement] wizard.submit.start gameId={gameId} locationId={locationId} bytes={placementPhotoBytes.LongLength}");
         try
         {
             using var content = new MultipartFormDataContent();
-            await using var stream = placementPhotoFile.OpenReadStream(maxAllowedSize: PlacementMaxFileSize);
-            using var fileContent = new StreamContent(stream);
-            fileContent.Headers.ContentType = new MediaTypeHeaderValue(
-                string.IsNullOrWhiteSpace(placementPhotoFile.ContentType) ? "image/jpeg" : placementPhotoFile.ContentType);
-            content.Add(fileContent, "file", placementPhotoFile.Name);
+            using var fileContent = new ByteArrayContent(placementPhotoBytes);
+            fileContent.Headers.ContentType = new MediaTypeHeaderValue(placementPhotoUploadContentType);
+            // Always send a JPEG filename since the canvas resize re-encodes
+            // to JPEG regardless of the original format.
+            var uploadFilename = Path.ChangeExtension(
+                string.IsNullOrWhiteSpace(placementPhotoFile.Name) ? "placement" : placementPhotoFile.Name,
+                "jpg");
+            content.Add(fileContent, "file", uploadFilename);
 
             var (uploadOk, uploadResult, uploadProblem, uploadStatus) =
                 await Api.PostMultipartWithProblemAsync<ImageUploadResult>(
@@ -1327,6 +1400,27 @@ else
     {
         await GameContext.InitializeAsync();
         GameContext.OnGameChanged += OnGameChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || placementAutoOpenHandled) return;
+        placementAutoOpenHandled = true;
+        // Quick-launch tile on Home (#383 follow-up): /locations?placement=1
+        // auto-opens the placement wizard so an organizer can go from
+        // dashboard to camera in one tap. Fire after first render so the
+        // location list has a chance to load.
+        var query = new Uri(Nav.Uri).Query;
+        if (query.Contains("placement=1", StringComparison.OrdinalIgnoreCase)
+            || query.Contains("placement=true", StringComparison.OrdinalIgnoreCase))
+        {
+            // Make sure locations are loaded before opening the wizard so the
+            // dropdown isn't empty when the user lands.
+            if (locations.Count == 0) await LoadDataAsync();
+            OpenPlacementWizard();
+            Console.WriteLine($"[loc-placement] wizard.auto-open gameId={gameId} via=query-string");
+            StateHasChanged();
+        }
     }
 
     private async void OnGameChanged() { await LoadDataAsync(); StateHasChanged(); }
