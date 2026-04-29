@@ -284,6 +284,9 @@ public static class LocationEndpoints
     {
         var organizer = GetOrganizer(http.User);
         var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.LocationEndpoints");
+        var nowUtc = DateTime.UtcNow;
+        string? imageBlobKey = null;
+        string? imageBlobUrl = null;
         logger.LogInformation(
             "[loc-placement] placement.record.entry gameId={GameId} locationId={LocationId} userId={UserId} imageBlobKey={ImageBlobKey} imageBlobUrl={ImageBlobUrl}",
             dto.GameId,
@@ -291,6 +294,12 @@ public static class LocationEndpoints
             organizer.UserId,
             null,
             null);
+        logger.LogInformation(
+            "[loc-placement-server] placement-record.entry locationId={LocationId} gameId={GameId} userId={UserId} timestamp={Timestamp}",
+            id,
+            dto.GameId,
+            organizer.UserId,
+            nowUtc);
 
         try
         {
@@ -306,6 +315,11 @@ public static class LocationEndpoints
                     organizer.UserId,
                     null,
                     null);
+                logger.LogInformation(
+                    "[loc-placement-server] placement-record.exit locationId={LocationId} status={Status} detail={Detail}",
+                    id,
+                    404,
+                    "location-not-found-or-not-in-game");
                 return TypedResults.NotFound();
             }
 
@@ -318,12 +332,18 @@ public static class LocationEndpoints
                     organizer.UserId,
                     null,
                     null);
+                logger.LogInformation(
+                    "[loc-placement-server] placement-record.exit locationId={LocationId} status={Status} detail={Detail}",
+                    id,
+                    400,
+                    "missing-placement-photo-path");
                 return PlacementProblem("Nejprve nahrajte fotografii umístění.");
             }
 
-            var nowUtc = DateTime.UtcNow;
+            imageBlobKey = location.PlacementPhotoPath;
             var localTimestamp = NormalizeLocalTimestamp(dto.LocalTimestampText, nowUtc);
             var notes = dto.Notes?.Trim();
+            var notesLengthBefore = location.SetupNotes?.Length ?? 0;
             if (!string.IsNullOrWhiteSpace(notes))
             {
                 var noteBlock = $"[{localTimestamp} {organizer.Name}] {notes}";
@@ -331,6 +351,7 @@ public static class LocationEndpoints
                     ? noteBlock
                     : $"{noteBlock}{Environment.NewLine}----{Environment.NewLine}{location.SetupNotes}";
             }
+            var notesLengthAfter = location.SetupNotes?.Length ?? 0;
 
             var activity = new WorldActivity
             {
@@ -350,9 +371,30 @@ public static class LocationEndpoints
                 })
             };
             db.WorldActivities.Add(activity);
-            await db.SaveChangesAsync(ct);
+            logger.LogInformation(
+                "[loc-placement-server] placement-record.db-update.attempt locationId={LocationId}",
+                id);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                logger.LogInformation(
+                    "[loc-placement-server] placement-record.db-update.ok locationId={LocationId} notesLengthBefore={NotesLengthBefore} notesLengthAfter={NotesLengthAfter}",
+                    id,
+                    notesLengthBefore,
+                    notesLengthAfter);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError(
+                    ex,
+                    "[loc-placement-server] placement-record.db-update.failed locationId={LocationId} detail={Detail}",
+                    id,
+                    ex.Message);
+                throw;
+            }
 
             var placementPhotoUrl = ImageEndpoints.ThumbUrl(http, "locationplacements", location.Id, "small");
+            imageBlobUrl = placementPhotoUrl;
             logger.LogInformation(
                 "[loc-placement] placement.record.activity-inserted gameId={GameId} locationId={LocationId} userId={UserId} imageBlobKey={ImageBlobKey} imageBlobUrl={ImageBlobUrl} activityId={ActivityId}",
                 dto.GameId,
@@ -361,6 +403,12 @@ public static class LocationEndpoints
                 location.PlacementPhotoPath,
                 placementPhotoUrl,
                 activity.Id);
+            logger.LogInformation(
+                "[loc-placement-server] placement-record.exit locationId={LocationId} status={Status} imageBlobKey={ImageBlobKey} imageBlobUrl={ImageBlobUrl}",
+                id,
+                200,
+                imageBlobKey,
+                imageBlobUrl);
 
             return TypedResults.Ok(new LocationPlacementStatusDto(
                 location.Id,
@@ -380,8 +428,20 @@ public static class LocationEndpoints
                 dto.GameId,
                 id,
                 organizer.UserId,
-                null,
-                null);
+                imageBlobKey,
+                imageBlobUrl);
+            logger.LogError(
+                ex,
+                "[loc-placement-server] placement-record.exception locationId={LocationId} detail={Detail}",
+                id,
+                ex.Message);
+            logger.LogInformation(
+                "[loc-placement-server] placement-record.exit locationId={LocationId} status={Status} imageBlobKey={ImageBlobKey} imageBlobUrl={ImageBlobUrl} detail={Detail}",
+                id,
+                500,
+                imageBlobKey,
+                imageBlobUrl,
+                ex.Message);
             throw;
         }
     }
