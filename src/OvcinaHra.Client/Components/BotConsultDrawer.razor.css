@@ -186,7 +186,23 @@
 
 .oh-bot-thinking {
     color: var(--oh-text-secondary);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
     font-style: italic;
+}
+
+.oh-bot-thinking-dot {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 999px;
+    background: currentColor;
+    animation: oh-bot-thinking-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes oh-bot-thinking-pulse {
+    0%, 100% { opacity: 0.3; transform: scale(0.85); }
+    50% { opacity: 1; transform: scale(1); }
 }
 
 .oh-bot-input {
@@ -214,6 +230,12 @@
     outline: none;
     border-color: var(--oh-primary-light);
     box-shadow: 0 0 0 0.15rem rgba(74, 124, 52, 0.18);
+}
+
+.oh-bot-input textarea:disabled {
+    background: var(--oh-surface-alt);
+    color: var(--oh-text-secondary);
+    cursor: not-allowed;
 }
 
 .oh-bot-send {
