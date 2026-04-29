@@ -1,9 +1,13 @@
 @* Persistent strip rendered at the top of MainLayout when the server's
    /api/version commit no longer matches what we recorded at app boot.
    Click "Obnovit" → hard browser refresh through NavigationManager.Refresh. *@
+@using System.Globalization
+@using System.Text.Json.Serialization
+@using Microsoft.JSInterop
 @implements IDisposable
 @inject VersionDriftService Drift
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 @if (Drift.IsDrifted)
 {
@@ -26,7 +30,10 @@
 @code {
     private bool _started;
     private bool reloading;
+    private bool _autoReloadAttempted;
     private string? _lastLoggedRenderState;
+    private static readonly TimeSpan AutoReloadCooldown = TimeSpan.FromSeconds(60);
+    private const string AutoReloadStorageKey = "last-force-reload-utc";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -35,6 +42,7 @@
             _started = true;
             Drift.StateChanged += OnStateChanged;
             await Drift.StartAsync();
+            await TryBootAutoReloadAsync();
         }
 
         LogRenderState();
@@ -43,17 +51,112 @@
     private void OnStateChanged()
     {
         Console.WriteLine($"[version-refresh] banner state changed drifted={Drift.IsDrifted} baseline={Drift.BaselineCommit ?? "(null)"} latest={Drift.LatestCommit ?? "(null)"}");
-        _ = InvokeAsync(StateHasChanged);
+        _ = InvokeAsync(async () =>
+        {
+            await TryBootAutoReloadAsync();
+            StateHasChanged();
+        });
     }
 
-    private Task ReloadAsync()
+    private async Task ReloadAsync()
     {
-        if (reloading) return Task.CompletedTask;
+        if (reloading) return;
         reloading = true;
         Console.WriteLine($"[version-refresh] refresh clicked url={Nav.Uri} baseline={Drift.BaselineCommit ?? "(null)"} latest={Drift.LatestCommit ?? "(null)"}");
+        await UnregisterServiceWorkersAsync();
         Console.WriteLine("[version-refresh] reload requested method=NavigationManager.Refresh forceReload=True");
         Nav.Refresh(forceReload: true);
-        return Task.CompletedTask;
+    }
+
+    private async Task TryBootAutoReloadAsync()
+    {
+        if (!Drift.IsDrifted
+            || Drift.DriftReason != VersionDriftReason.Boot
+            || reloading
+            || _autoReloadAttempted)
+        {
+            return;
+        }
+
+        _autoReloadAttempted = true;
+        var now = DateTimeOffset.UtcNow;
+        var lastReload = await ReadLastAutoReloadUtcAsync();
+        var elapsed = lastReload is null ? (TimeSpan?)null : now - lastReload.Value;
+        var withinCooldown = elapsed is not null && elapsed < AutoReloadCooldown;
+        var elapsedLabel = elapsed is null ? "(none)" : $"{Math.Max(0, (int)elapsed.Value.TotalSeconds)}s";
+        Console.WriteLine($"[version-refresh] cooldown check lastReload={lastReload?.ToString("O", CultureInfo.InvariantCulture) ?? "(null)"} elapsed={elapsedLabel} within=60s result={withinCooldown}");
+
+        if (withinCooldown)
+        {
+            Console.WriteLine("[version-refresh] cooldown hit — skipping auto-reload");
+            return;
+        }
+
+        await WriteLastAutoReloadUtcAsync(now);
+        reloading = true;
+        StateHasChanged();
+
+        Console.WriteLine($"[version-refresh] auto-reload triggered drifted=true reason=boot baseline={Drift.BaselineCommit ?? "(null)"} latest={Drift.LatestCommit ?? "(null)"} route={Nav.Uri}");
+        await UnregisterServiceWorkersAsync();
+        Console.WriteLine("[version-refresh] reload requested method=NavigationManager.Refresh forceReload=True");
+        Nav.Refresh(forceReload: true);
+    }
+
+    private async Task<DateTimeOffset?> ReadLastAutoReloadUtcAsync()
+    {
+        try
+        {
+            var raw = await JS.InvokeAsync<string?>("sessionStorage.getItem", AutoReloadStorageKey);
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+
+            if (DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed))
+            {
+                return parsed.ToUniversalTime();
+            }
+
+            Console.WriteLine($"[version-refresh] cooldown read invalid value={raw}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[version-refresh] cooldown read failed detail={SanitizeForLog(ex.Message)}");
+        }
+
+        return null;
+    }
+
+    private async Task WriteLastAutoReloadUtcAsync(DateTimeOffset value)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync(
+                "sessionStorage.setItem",
+                AutoReloadStorageKey,
+                value.ToString("O", CultureInfo.InvariantCulture));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[version-refresh] cooldown write failed detail={SanitizeForLog(ex.Message)}");
+        }
+    }
+
+    private async Task UnregisterServiceWorkersAsync()
+    {
+        try
+        {
+            var result = await JS.InvokeAsync<ServiceWorkerUnregisterResult>("ovcinaSw.unregisterAll");
+            Console.WriteLine($"[version-refresh] sw unregister attempted count={result.Count}");
+            Console.WriteLine($"[version-refresh] sw unregister result count={result.Count} successful={result.Successful} failed={result.Failed}");
+
+            if (result.Failed > 0)
+            {
+                Console.WriteLine($"[version-refresh] sw unregister failed detail={SanitizeForLog(result.Detail)}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("[version-refresh] sw unregister attempted count=unknown");
+            Console.WriteLine($"[version-refresh] sw unregister failed detail={SanitizeForLog(ex.Message)}");
+        }
     }
 
     private void LogRenderState()
@@ -64,6 +167,18 @@
         _lastLoggedRenderState = renderState;
         Console.WriteLine($"[version-refresh] banner render drifted={Drift.IsDrifted} baseline={Drift.BaselineCommit ?? "(null)"} latest={Drift.LatestCommit ?? "(null)"}");
     }
+
+    private static string SanitizeForLog(string? detail) =>
+        string.IsNullOrWhiteSpace(detail)
+            ? "(none)"
+            : detail.ReplaceLineEndings(" ");
+
+    private sealed record ServiceWorkerUnregisterResult(
+        [property: JsonPropertyName("supported")] bool Supported,
+        [property: JsonPropertyName("count")] int Count,
+        [property: JsonPropertyName("successful")] int Successful,
+        [property: JsonPropertyName("failed")] int Failed,
+        [property: JsonPropertyName("detail")] string? Detail);
 
     public void Dispose() => Drift.StateChanged -= OnStateChanged;
 }
