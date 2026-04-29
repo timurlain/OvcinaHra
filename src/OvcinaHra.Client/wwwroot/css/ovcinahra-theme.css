@@ -3805,12 +3805,10 @@
     border:1.5px solid var(--oh-border,#d8d2be);min-width:14px;text-align:center;
     box-shadow:0 1px 2px rgba(0,0,0,.18);z-index:3}
 /* Ctrl/Meta held over the map → crosshair cursor (visual hint that
-   Ctrl+Click will place an ungeocoded location, Ctrl+Shift+Click will
-   move an existing one). Class toggled by map-interop.js keydown/keyup. */
+   Ctrl+Click places an ungeocoded location and Ctrl+Shift+Click opens
+   the relocation picker). Class toggled by map-interop.js keydown/keyup. */
 .oh-map-ctrl-held .maplibregl-canvas-container,
-.oh-map-ctrl-held .maplibregl-canvas,
-.oh-map-move-shortcut-active .maplibregl-canvas-container,
-.oh-map-move-shortcut-active .maplibregl-canvas{cursor:crosshair !important}
+.oh-map-ctrl-held .maplibregl-canvas{cursor:crosshair !important}
 
 /* Issue #273 — graduated location labels. Each pin advertises a
    `data-minzoom` (set in JS from KIND_MIN_ZOOM) and the zoomend handler

@@ -5,7 +5,6 @@ window.ovcinaMap = {
     _dotnetRef: null,
     _elementId: null,
     _apiKey: null,
-    _moveShortcutActive: false,
 
     // Glyph URL — required by MapLibre for any layer with `text-field` in
     // its layout (e.g. the overlay editor's `oh-overlay-preview-text` text
@@ -93,7 +92,6 @@ window.ovcinaMap = {
         this._dotnetRef = dotnetRef;
         this._elementId = elementId;
         this._apiKey = (mapyCzApiKey && mapyCzApiKey.length > 5) ? mapyCzApiKey : null;
-        this._moveShortcutActive = false;
         // Resolved at init so every style construction below picks up the
         // environment-specific URL (#166). Empty/missing/whitespace-only →
         // fall back to the demotiles dev URL so local smoke testing still
@@ -137,6 +135,14 @@ window.ovcinaMap = {
                 shift: shift,
                 target: 'map-canvas'
             });
+            if (ctrl && shift) {
+                if (orig && typeof orig.preventDefault === 'function') orig.preventDefault();
+                this._mapDiag('click.modifier_held', {
+                    ctrl: true,
+                    shift: true,
+                    atLngLat: { lng: e.lngLat.lng, lat: e.lngLat.lat }
+                });
+            }
             this._mapDiag('click', {
                 elementId: this._elementId,
                 lat: e.lngLat.lat,
@@ -148,7 +154,7 @@ window.ovcinaMap = {
             if (this._dotnetRef) {
                 // Forward Ctrl/Meta + Shift state — /map uses
                 //   Ctrl+Click       → place ungeocoded location
-                //   Ctrl+Shift+Click → move existing location (any)
+                //   Ctrl+Shift+Click → choose a location to relocate here
                 this._mapDiag('click.invoke-dotnet', { ctrl: ctrl, shift: shift });
                 this._dotnetRef.invokeMethodAsync('OnMapClicked', e.lngLat.lat, e.lngLat.lng, ctrl, shift);
             }
@@ -202,14 +208,6 @@ window.ovcinaMap = {
         // rest of the time. Listeners cleared in dispose().
         var mapContainer = this._map.getContainer();
         var keyDown = function (e) {
-            if (e.key === 'Escape' && window.ovcinaMap._moveShortcutActive) {
-                e.preventDefault();
-                window.ovcinaMap._mapDiag('location.relocate.cancel', { source: 'escape' });
-                if (window.ovcinaMap._dotnetRef) {
-                    window.ovcinaMap._dotnetRef.invokeMethodAsync('OnLocationMoveShortcutCanceled');
-                }
-                return;
-            }
             if (e.key === 'Control' || e.key === 'Meta') {
                 mapContainer.classList.add('oh-map-ctrl-held');
                 window.ovcinaMap._mapDiag('modifier.down', { key: e.key, ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
@@ -335,17 +333,6 @@ window.ovcinaMap = {
         }
     },
 
-    setMoveShortcutMode: function (active) {
-        this._moveShortcutActive = !!active;
-        if (this._map) {
-            var container = this._map.getContainer();
-            if (container) {
-                container.classList.toggle('oh-map-move-shortcut-active', this._moveShortcutActive);
-            }
-        }
-        this._mapDiag('location.relocate.mode', { active: this._moveShortcutActive });
-    },
-
     addMarker: function (id, lat, lon, name, kind, color) {
         if (!this._map) return;
         this.removeMarker(id);
@@ -443,7 +430,6 @@ window.ovcinaMap = {
     },
 
     dispose: function () {
-        this._moveShortcutActive = false;
         this.clearMarkers();
         if (this._map) {
             this._map.remove();
@@ -1311,7 +1297,6 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
             modifier: modifier,
             target: self._eventTargetName(e && e.target),
             currentTarget: self._eventTargetName(e && e.currentTarget),
-            moveShortcutActive: !!self._moveShortcutActive,
             hasDotNetRef: !!self._dotnetRef,
             defaultPrevented: !!(e && e.defaultPrevented)
         });
@@ -1330,21 +1315,10 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
             target: 'location',
             locationId: id
         });
-        if (self._moveShortcutActive) {
-            self._mapDiag('location.pin.click.move_target_branch_taken', { locationId: id });
-            e.preventDefault();
-            e.stopPropagation();
-            self._mapDiag('location.relocate.target', { source: 'location-pin', locationId: id, lng: lon, lat: lat });
-            if (self._dotnetRef) self._dotnetRef.invokeMethodAsync('OnMapClicked', lat, lon, false, false);
-            return;
-        }
         if (payload.ctrl && payload.shift) {
-            self._mapDiag('location.pin.click.ctrlshift_branch_taken', { locationId: id });
+            self._mapDiag('location.pin.click.ctrlshift_ignored_empty_map_required', { locationId: id });
             e.preventDefault();
             e.stopPropagation();
-            self._mapDiag('location.relocate.start', { locationId: id, from: { lng: lon, lat: lat } });
-            self._mapDiag('location.move_mode.dispatch.attempt', { locationId: id, hasDotNetRef: !!self._dotnetRef });
-            if (self._dotnetRef) self._dotnetRef.invokeMethodAsync('OnLocationMoveShortcutStarted', id, lat, lon);
             return;
         }
         self._mapDiag('location.pin.click.default_branch_taken', { locationId: id });
@@ -1440,18 +1414,14 @@ window.ovcinaMap.addStashPin = function (id, locationId, lat, lon, name, count, 
             target: 'stash-location',
             locationId: locationId
         });
-        if (self._moveShortcutActive) {
-            e.preventDefault();
-            e.stopPropagation();
-            self._mapDiag('location.relocate.target', { source: 'stash-pin', locationId: locationId, stashId: id, lng: lon, lat: lat });
-            if (self._dotnetRef) self._dotnetRef.invokeMethodAsync('OnMapClicked', lat, lon, false, false);
-            return;
-        }
         if (payload.ctrl && payload.shift) {
             e.preventDefault();
             e.stopPropagation();
-            self._mapDiag('location.relocate.start', { source: 'stash-pin', locationId: locationId, stashId: id, from: { lng: lon, lat: lat } });
-            if (self._dotnetRef) self._dotnetRef.invokeMethodAsync('OnLocationMoveShortcutStarted', locationId, lat, lon);
+            self._mapDiag('location.pin.click.ctrlshift_ignored_empty_map_required', {
+                source: 'stash-pin',
+                locationId: locationId,
+                stashId: id
+            });
             return;
         }
         e.stopPropagation();

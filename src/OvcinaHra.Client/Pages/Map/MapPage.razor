@@ -74,30 +74,7 @@
                                  OnStyleLoaded="OnMapReadyAsync"
                                  OnMapPagePinClick="OnPinClickedAsync"
                                  OnMapPagePinDrag="OnPinDraggedAsync"
-                                 OnMapPagePinMoveShortcut="OnPinMoveShortcutStartedAsync"
-                                 OnMapPagePinMoveShortcutCancel="CancelShortcutMoveAsync"
                                  OnMapClick="OnMapClickAsync" />
-                        @if (_shortcutMoveActive)
-                        {
-                            Console.WriteLine("[map-diag] map.location.move_mode.banner.rendered visible=true");
-                            <div class="oh-map-move-hint" role="status" aria-live="polite">
-                                <span><strong>Přesun: @_shortcutMoveName</strong> — klikni na novou pozici.</span>
-                                @if (_shortcutMoveError is not null)
-                                {
-                                    <span class="oh-map-move-hint-error">@_shortcutMoveError</span>
-                                }
-                                @if (_shortcutMoveSaving)
-                                {
-                                    <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
-                                }
-                                <button type="button"
-                                        class="btn btn-sm btn-light"
-                                        @onclick="CancelShortcutMoveAsync"
-                                        disabled="@_shortcutMoveSaving">
-                                    Esc zruší
-                                </button>
-                            </div>
-                        }
                     </div>
 
                     <MapPinPeek Visible="@_peekVisible"
@@ -140,10 +117,13 @@
             @* Ctrl+Click placement picker — Ctrl+Clicking on the map
                opens this popup; the user picks an ungeocoded parent
                location from the active game and the clicked coords
-               become its new GPS. Coarse-pointer users (touch / tablet)
-               can't easily Ctrl+Click; that's by design — placing is a
-               PC-only workflow same as drag-relocate. *@
-            <DxPopup @bind-Visible="@_placeVisible"
+               become its new GPS. Ctrl+Shift+Click on empty map uses
+               the same picker but includes located locations and PATCHes
+               the selected one to the clicked destination. Coarse-pointer
+               users (touch / tablet) can't easily Ctrl+Click; that's by
+               design — placing is a PC-only workflow same as drag-relocate. *@
+            <DxPopup Visible="@_placeVisible"
+                     VisibleChanged="OnPlaceVisibleChanged"
                      HeaderText="@(_placeMode == "move" ? "Přesunout lokaci sem" : "Vyber lokaci k umístění")"
                      Width="540px"
                      CloseOnEscape="true">
@@ -219,7 +199,7 @@
                         <div class="alert alert-danger py-2 mt-2 mb-0">@_placeError</div>
                     }
                     <div class="d-flex justify-content-end mt-3">
-                        <button class="btn btn-secondary" @onclick="() => _placeVisible = false" disabled="@_placeSaving">Zavřít</button>
+                        <button class="btn btn-secondary" @onclick="CancelPlacePickerAsync" disabled="@_placeSaving">Zavřít</button>
                     </div>
                 </BodyContentTemplate>
             </DxPopup>
@@ -262,7 +242,7 @@
     private bool _pendingDragSaving;
     private string? _pendingDragError;
 
-    // Ctrl+Click placement / Ctrl+Shift+Click move state.
+    // Ctrl+Click placement / Ctrl+Shift+Click relocation picker state.
     //   "place" → picker shows only ungeocoded parent locations
     //   "move"  → picker shows all parent locations (current GPS overwritten)
     // Same DxPopup, header + list filter swap based on mode.
@@ -274,15 +254,6 @@
     private string _placeSearch = "";
     private bool _placeSaving;
     private string? _placeError;
-    // Ctrl+Shift+clicking a rendered location pin enters a direct move mode:
-    // the next map click writes that pin's GPS via the coordinates PATCH.
-    private bool _shortcutMoveActive;
-    private int? _shortcutMoveId;
-    private string _shortcutMoveName = "";
-    private double _shortcutMoveFromLat;
-    private double _shortcutMoveFromLng;
-    private bool _shortcutMoveSaving;
-    private string? _shortcutMoveError;
     // Issue #216 — phone-only layer rail toggle. CSS gates the visible
     // surface so on tablet/desktop this flag has no effect.
     private bool _railOpen;
@@ -575,125 +546,30 @@
         await PaintPinsAsync();
     }
 
-    private async Task OnPinMoveShortcutStartedAsync((int Id, double Lat, double Lng) e)
-    {
-        var loc = _data?.Locations.FirstOrDefault(l => l.Id == e.Id);
-        Console.WriteLine($"[map-diag] MapPage.OnPinMoveShortcutStarted locationId={e.Id} from={{lng:{FormatCoord(e.Lng)},lat:{FormatCoord(e.Lat)}}}");
-        _shortcutMoveActive = true;
-        Console.WriteLine($"[map-diag] map.location.move_mode.state_set isActive=true locationId={e.Id}");
-        _shortcutMoveId = e.Id;
-        _shortcutMoveName = loc?.EffectiveName ?? loc?.Name ?? "tato lokace";
-        _shortcutMoveFromLat = e.Lat;
-        _shortcutMoveFromLng = e.Lng;
-        _shortcutMoveSaving = false;
-        _shortcutMoveError = null;
-
-        _pendingDragVisible = false;
-        _placeVisible = false;
-        _peekRequestId++;
-        _peekVisible = false;
-        _peek = null;
-        _selectedLocationId = null;
-        PushUrl();
-
-        await SetShortcutMoveModeAsync(true);
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private async Task CancelShortcutMoveAsync()
-    {
-        if (!_shortcutMoveActive || _shortcutMoveSaving) return;
-        Console.WriteLine($"[map-diag] MapPage.ShortcutMove cancel locationId={_shortcutMoveId?.ToString() ?? "null"}");
-        ClearShortcutMoveState();
-        await SetShortcutMoveModeAsync(false);
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private async Task CompleteShortcutMoveAsync(double lat, double lng)
-    {
-        if (_shortcutMoveId is not int id)
-        {
-            await CancelShortcutMoveAsync();
-            return;
-        }
-
-        _shortcutMoveSaving = true;
-        _shortcutMoveError = null;
-        await InvokeAsync(StateHasChanged);
-
-        try
-        {
-            Console.WriteLine($"[map-diag] map.location.relocate.dispatch locationId={id} from={{lng:{FormatCoord(_shortcutMoveFromLng)},lat:{FormatCoord(_shortcutMoveFromLat)}}} to={{lng:{FormatCoord(lng)},lat:{FormatCoord(lat)}}}");
-            var (ok, problem) = await Api.PatchWithProblemAsync(
-                $"/api/locations/{id}/coordinates",
-                new LocationCoordinatesPatchDto((decimal)lat, (decimal)lng));
-            if (!ok)
-            {
-                _shortcutMoveError = problem ?? "Uložení souřadnic selhalo.";
-                Console.WriteLine($"[map-diag] MapPage.ShortcutMove failed locationId={id} problem={_shortcutMoveError}");
-                return;
-            }
-
-            ClearShortcutMoveState();
-            await SetShortcutMoveModeAsync(false);
-            await ReloadDataAndRenderAsync();
-            Console.WriteLine($"[map-diag] MapPage.ShortcutMove saved locationId={id}");
-        }
-        catch (Exception ex)
-        {
-            _shortcutMoveError = ex.Message;
-            Console.WriteLine($"[map-diag] MapPage.ShortcutMove error locationId={id} type={ex.GetType().Name} message={ex.Message}");
-        }
-        finally
-        {
-            if (_shortcutMoveActive)
-            {
-                _shortcutMoveSaving = false;
-                await InvokeAsync(StateHasChanged);
-            }
-        }
-    }
-
-    private async Task SetShortcutMoveModeAsync(bool active)
-    {
-        try { await JS.InvokeVoidAsync("ovcinaMap.setMoveShortcutMode", active); }
-        catch (Exception ex) { Console.WriteLine($"[map-diag] MapPage.ShortcutMove js-mode-failed active={active} type={ex.GetType().Name} message={ex.Message}"); }
-    }
-
-    private void ClearShortcutMoveState()
-    {
-        _shortcutMoveActive = false;
-        _shortcutMoveId = null;
-        _shortcutMoveName = "";
-        _shortcutMoveFromLat = 0;
-        _shortcutMoveFromLng = 0;
-        _shortcutMoveSaving = false;
-        _shortcutMoveError = null;
-    }
-
     private static string FormatCoord(double value)
         => value.ToString("F6", CultureInfo.InvariantCulture);
+
+    private static string FormatCoord(decimal? value)
+        => value.HasValue ? ((double)value.Value).ToString("F6", CultureInfo.InvariantCulture) : "null";
 
     /// <summary>
     /// Map click handler. Plain click does nothing (peek only opens via
     /// pin clicks). Modifier-clicks open the placement picker:
     ///   Ctrl+Click       → place an ungeocoded parent location
-    ///   Ctrl+Shift+Click → move any parent location (current GPS overwritten)
+    ///   Ctrl+Shift+Click → choose a parent location to relocate here
     /// </summary>
     private async Task OnMapClickAsync(OvcinaMapClickEventArgs e)
     {
         Console.WriteLine($"[map-diag] MapPage.OnMapClick entry lat={e.Latitude} lng={e.Longitude} ctrl={e.CtrlKey} shift={e.ShiftKey} gameId={GameContext.SelectedGameId?.ToString() ?? "null"}");
         Console.WriteLine($"[map-diag] MapPage.OnMapClick modifier_branch branch={(e.CtrlKey && e.ShiftKey ? "ctrl_shift_relocate" : (e.CtrlKey ? "default" : "none"))}");
-        if (_shortcutMoveActive)
-        {
-            Console.WriteLine($"[map-diag] MapPage.OnMapClick shortcut-target lat={e.Latitude} lng={e.Longitude}");
-            await CompleteShortcutMoveAsync(e.Latitude, e.Longitude);
-            return;
-        }
         if (!e.CtrlKey)
         {
             Console.WriteLine("[map-diag] MapPage.OnMapClick ignored-no-ctrl");
             return;
+        }
+        if (e.ShiftKey)
+        {
+            Console.WriteLine($"[map-diag] map.click.modifier_held ctrl=true shift=true atLngLat={{lng:{FormatCoord(e.Longitude)},lat:{FormatCoord(e.Latitude)}}}");
         }
         if (GameContext.SelectedGameId is not int gid)
         {
@@ -718,7 +594,14 @@
             .ToList();
         Console.WriteLine($"[map-diag] MapPage.OnMapClick candidates-filtered mode={_placeMode} count={_placeCandidates.Count}");
         _placeVisible = true;
-        Console.WriteLine("[map-diag] MapPage.OnMapClick popup-visible");
+        if (_placeMode == "move")
+        {
+            Console.WriteLine($"[map-diag] map.click.relocation_picker.opened atLngLat={{lng:{FormatCoord(_placeLng)},lat:{FormatCoord(_placeLat)}}}");
+        }
+        else
+        {
+            Console.WriteLine("[map-diag] MapPage.OnMapClick popup-visible");
+        }
         await InvokeAsync(StateHasChanged);
     }
 
@@ -728,28 +611,70 @@
         _placeSaving = true;
         try
         {
-            // Round-trip GET → PUT so we don't wipe Description / Details /
-            // NpcInfo. Mirrors the OnPinDragged flow.
-            var detail = await Api.GetAsync<LocationDetailDto>($"/api/locations/{loc.Id}");
-            if (detail is null) { _placeError = "Lokace nenalezena."; return; }
-            await Api.PutAsync($"/api/locations/{loc.Id}",
-                new UpdateLocationDto(
-                    detail.Name, detail.LocationKind,
-                    Latitude: (decimal)_placeLat, Longitude: (decimal)_placeLng,
-                    Description: detail.Description,
-                    Details: detail.Details,
-                    GamePotential: detail.GamePotential,
-                    Prompt: detail.Prompt,
-                    Region: detail.Region,
-                    NpcInfo: detail.NpcInfo,
-                    SetupNotes: detail.SetupNotes,
-                    ParentLocationId: detail.ParentLocationId));
-            _placeVisible = false;
-            _placeCandidates = null;
+            if (_placeMode == "move")
+            {
+                Console.WriteLine($"[map-diag] map.click.relocation_picker.picked locationId={loc.Id} atLngLat={{lng:{FormatCoord(_placeLng)},lat:{FormatCoord(_placeLat)}}}");
+                Console.WriteLine($"[map-diag] map.location.relocate.dispatch locationId={loc.Id} from={{lng:{FormatCoord(loc.Longitude)},lat:{FormatCoord(loc.Latitude)}}} to={{lng:{FormatCoord(_placeLng)},lat:{FormatCoord(_placeLat)}}}");
+            }
+
+            // Issue #411 reuses the same coordinates-only PATCH endpoint as
+            // drag relocate. It cannot clobber other location fields edited
+            // concurrently because the body carries only Latitude/Longitude.
+            var (ok, problem) = await Api.PatchWithProblemAsync(
+                $"/api/locations/{loc.Id}/coordinates",
+                new LocationCoordinatesPatchDto((decimal)_placeLat, (decimal)_placeLng));
+            if (!ok)
+            {
+                _placeError = problem ?? "Uložení souřadnic selhalo.";
+                return;
+            }
+
+            ClearPlacePicker();
             await ReloadDataAndRenderAsync();
         }
         catch (Exception ex) { _placeError = ex.Message; }
         finally { _placeSaving = false; }
+    }
+
+    private Task CancelPlacePickerAsync()
+    {
+        if (_placeMode == "move")
+        {
+            Console.WriteLine("[map-diag] map.click.relocation_picker.cancelled");
+        }
+        ClearPlacePicker();
+        return Task.CompletedTask;
+    }
+
+    private Task OnPlaceVisibleChanged(bool visible)
+    {
+        if (_placeVisible == visible)
+            return Task.CompletedTask;
+
+        if (!visible)
+        {
+            if (_placeMode == "move")
+            {
+                Console.WriteLine("[map-diag] map.click.relocation_picker.cancelled");
+            }
+            ClearPlacePicker();
+        }
+        else
+        {
+            _placeVisible = true;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void ClearPlacePicker()
+    {
+        _placeVisible = false;
+        _placeCandidates = null;
+        _placeSearch = "";
+        _placeError = null;
+        _placeSaving = false;
+        _placeMode = "place";
     }
 
     private async Task OnKindToggle(LocationKind kind)
