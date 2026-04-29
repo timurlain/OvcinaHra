@@ -39,6 +39,16 @@ public static class OvcinaCorsPolicy
     ];
 
     /// <summary>
+    /// Response headers the browser client must be allowed to read from
+    /// cross-origin API calls. Export downloads depend on Content-Disposition
+    /// for their server-generated filenames.
+    /// </summary>
+    public static readonly ImmutableArray<string> ExposedHeaders =
+    [
+        "Content-Disposition",
+    ];
+
+    /// <summary>
     /// Returns the union of <see cref="EcosystemOrigins"/> and
     /// <paramref name="configuredOrigins"/> (case-insensitive de-dupe).
     /// Configured origins can ADD to the allowlist but never remove an

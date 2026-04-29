@@ -109,4 +109,10 @@ public class OvcinaCorsPolicyTests
             Assert.Contains(ecosystem, effective);
         }
     }
+
+    [Fact]
+    public void ExportFilenameHeader_IsExposedToBrowserClients()
+    {
+        Assert.Contains("Content-Disposition", OvcinaCorsPolicy.ExposedHeaders);
+    }
 }
