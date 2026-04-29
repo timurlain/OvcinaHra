@@ -215,11 +215,13 @@ public class TreasurePlanningPoolEndpointTests(PostgresFixture postgres) : Integ
     }
 
     [Fact]
-    public async Task MoneyItems_CannotBeAddedToPoolOrAvailableItems()
+    public async Task MoneyItems_CannotBeAddedToPoolButRemainUnlimitedCurrencyOptions()
     {
         var game = await CreateGameAsync();
         var bronze = await CreateItemAsync("Bronz", ItemType.Money);
+        var currency = await CreateItemAsync("Peníze", ItemType.Money);
         await AssignItemToGameAsync(game.Id, bronze.Id, stockCount: 50, isFindable: true);
+        await AssignItemToGameAsync(game.Id, currency.Id, isFindable: true);
 
         var addResponse = await Client.PostAsJsonAsync("/api/treasure-planning/pool",
             new CreateTreasurePoolItemDto(bronze.Id, game.Id, 10));
@@ -234,6 +236,13 @@ public class TreasurePlanningPoolEndpointTests(PostgresFixture postgres) : Integ
             $"/api/treasure-planning/pool/{game.Id}");
         Assert.NotNull(pool);
         Assert.DoesNotContain(pool!, i => i.ItemId == bronze.Id);
+
+        var unlimited = await Client.GetFromJsonAsync<List<UnlimitedItemDto>>(
+            $"/api/treasure-planning/unlimited/{game.Id}");
+        Assert.NotNull(unlimited);
+        var currencyOption = Assert.Single(unlimited!, i => i.ItemId == currency.Id);
+        Assert.Equal(ItemType.Money, currencyOption.ItemType);
+        Assert.Equal("Peníze", currencyOption.ItemName);
     }
 
     [Fact]

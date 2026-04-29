@@ -2049,22 +2049,34 @@ else
         grosError = null;
     }
 
-    private UnlimitedItemDto? FindGrosItem() =>
-        unlimitedItems.FirstOrDefault(i =>
-            i.ItemType == ItemType.Money
-            && (string.Equals(i.ItemName.Trim(), "Groše", StringComparison.CurrentCultureIgnoreCase)
-                || i.ItemName.Contains("groš", StringComparison.CurrentCultureIgnoreCase)));
+    private UnlimitedItemDto? FindCurrencyItem()
+    {
+        var moneyItems = unlimitedItems
+            .Where(i => i.ItemType == ItemType.Money)
+            .ToList();
+
+        return moneyItems.FirstOrDefault(IsGrosCurrencyName)
+            ?? moneyItems
+                .OrderBy(i => i.ItemName, StringComparer.CurrentCultureIgnoreCase)
+                .FirstOrDefault();
+    }
+
+    private static bool IsGrosCurrencyName(UnlimitedItemDto item) =>
+        string.Equals(item.ItemName.Trim(), "Groše", StringComparison.CurrentCultureIgnoreCase)
+        || item.ItemName.Contains("groš", StringComparison.CurrentCultureIgnoreCase);
 
     private async Task CreateGrosTreasureAsync()
     {
         if (grosLocationId is not int locationId || grosSaving) return;
         grosError = null;
-        var grosItem = FindGrosItem();
+        var grosItem = FindCurrencyItem();
         if (grosItem is null)
         {
-            grosError = "Ve hře není nalézatelná položka Groše typu Peníze.";
+            LogTreasureAlloc("currency-item-not-found", new { gameId });
+            grosError = "Hra nemá nastavenu měnu. Přidejte položku typu Peníze do herního inventáře.";
             return;
         }
+        LogTreasureAlloc("currency-item-detected", new { itemId = grosItem.ItemId, kind = nameof(ItemType.Money) });
 
         grosSaving = true;
         try
