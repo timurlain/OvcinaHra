@@ -53,9 +53,6 @@ window.ovcinaImageResize.fromBase64 = async function (dataUrl, maxDim, quality) 
 
 window.ovcinaExif = window.ovcinaExif || {};
 
-const GPS_DRIFT_THRESHOLD_M = 50;
-window.ovcinaExif.gpsDriftThresholdMeters = GPS_DRIFT_THRESHOLD_M;
-
 window.ovcinaExif.haversineMeters = function (lat1, lng1, lat2, lng2) {
     const toRad = value => value * Math.PI / 180;
     const earthRadiusMeters = 6371000;

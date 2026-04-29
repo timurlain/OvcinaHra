@@ -793,7 +793,28 @@ else
     private bool isSaving;
     private bool isPlacementVisible;
     private bool placementSaving;
-    private int? placementSelectedLocationId;
+    private int? placementSelectedLocationId
+    {
+        get => placementSelectedLocationIdValue;
+        set
+        {
+            if (placementSelectedLocationIdValue == value) return;
+            placementSelectedLocationIdValue = value;
+
+            if (isPlacementVisible
+                && (placementPhotoFile is not null
+                    || placementPhotoBytes is not null
+                    || !string.IsNullOrWhiteSpace(placementPreviewUrl)))
+            {
+                placementPhotoFile = null;
+                placementPhotoBytes = null;
+                placementPreviewUrl = null;
+                placementError = "Po změně lokace vyberte fotku znovu.";
+            }
+            ResetPlacementGpsState();
+        }
+    }
+    private int? placementSelectedLocationIdValue;
     private IBrowserFile? placementPhotoFile;
     private string? placementPreviewUrl;
     private string? placementNotes;
@@ -1321,10 +1342,7 @@ else
             return;
         }
         if (placementGpsPromptVisible)
-        {
-            placementError = "Nejprve potvrďte, jestli se má poloha lokace aktualizovat podle GPS z fotky.";
-            return;
-        }
+            RejectPlacementGps();
 
         placementSaving = true;
         var locationId = SelectedPlacementLocation.Id;
