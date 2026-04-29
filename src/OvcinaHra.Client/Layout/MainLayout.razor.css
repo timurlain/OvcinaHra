@@ -12,6 +12,9 @@ main {
 
 .sidebar {
     background: var(--oh-sidebar);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 }
 
 .top-row {
