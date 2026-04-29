@@ -124,7 +124,8 @@ else
                             OnAddLoot="@(() => OpenEditModal(captured))"
                             OnBattle="@(() => Nav.NavigateTo($"/monsters/{captured.Id}"))"
                             OnDelete="@(() => RequestDeleteFromRow(captured))"
-                            OnAssign="@(() => AssignMonsterAsync(captured.Id))" />
+                            OnAssign="@(() => AssignMonsterAsync(captured.Id))"
+                            OnRemoveFromGame="@(() => RequestRemoveFromGame(captured))" />
             }
         </div>
     }
@@ -315,15 +316,34 @@ else
     </BodyContentTemplate>
 </DxPopup>
 
+<DxPopup @bind-Visible="@isRemoveFromGameVisible" HeaderText="Odebrat příšeru z této hry?" Width="440px">
+    <BodyContentTemplate Context="removeCtx">
+        <p>Opravdu chceš odebrat příšeru <strong>@pendingRemoveMonster?.Name</strong> z aktuální hry? Katalogový záznam zůstane zachovaný.</p>
+        @if (error is not null)
+        {
+            <div class="alert alert-danger">@error</div>
+        }
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" @onclick="() => isRemoveFromGameVisible = false" disabled="@isAssociationBusy">Zrušit</button>
+            <button class="btn btn-danger" @onclick="ConfirmRemoveFromGameAsync" disabled="@isAssociationBusy">
+                @if (isAssociationBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Odebrat
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
 @code {
     [SupplyParameterFromQuery]
     public bool Catalog { get; set; }
 
     private List<MonsterListDto> monsters = [];
     private bool loading = true, isModalVisible, isDeleteVisible, isSaving, drozdFailed, confusedFailed;
+    private bool isRemoveFromGameVisible, isAssociationBusy;
     private string modalTitle = "", name = "";
     private string? error, abilities, aiBehavior, rewardNotes, notes;
     private int? editingId;
+    private MonsterListDto? pendingRemoveMonster;
     private MonsterType monsterType = MonsterType.Beast;
     private MonsterCategory category = MonsterCategory.Tier1;
     private int attack = 1, defense = 1, health = 5;
@@ -414,10 +434,11 @@ else
     {
         loading = true;
         var allMonsters = await Api.GetListAsync<MonsterListDto>("/api/monsters");
+        assignedMonsterIds = [];
 
         if (!Catalog && GameContext.SelectedGameId is int gid)
         {
-            var gameMonsters = await Api.GetListAsync<GameMonsterDto>($"/api/monsters/by-game/{gid}");
+            var gameMonsters = await Api.GetListAsync<GameMonsterDto>($"/api/games/{gid}/creatures");
             assignedMonsterIds = gameMonsters.Select(gm => gm.MonsterId).ToHashSet();
             monsters = allMonsters.Where(m => assignedMonsterIds.Contains(m.Id)).ToList();
         }
@@ -426,7 +447,7 @@ else
             monsters = allMonsters;
             if (Catalog && GameContext.SelectedGameId is int catalogGid)
             {
-                var gameMonsters = await Api.GetListAsync<GameMonsterDto>($"/api/monsters/by-game/{catalogGid}");
+                var gameMonsters = await Api.GetListAsync<GameMonsterDto>($"/api/games/{catalogGid}/creatures");
                 assignedMonsterIds = gameMonsters.Select(gm => gm.MonsterId).ToHashSet();
             }
         }
@@ -440,12 +461,47 @@ else
         if (GameContext.SelectedGameId is null) return;
         try
         {
-            await Api.PostAsync<CreateGameMonsterDto, GameMonsterDto>("/api/monsters/game-monster",
-                new CreateGameMonsterDto(GameContext.SelectedGameId.Value, monsterId));
+            var (ok, _, problem) = await Api.PostWithProblemAsync<object, object>(
+                $"/api/games/{GameContext.SelectedGameId.Value}/creatures/{monsterId}",
+                new { });
+            if (!ok)
+            {
+                error = problem ?? "Přiřazení příšery ke hře se nezdařilo.";
+                return;
+            }
             assignedMonsterIds.Add(monsterId);
             StateHasChanged();
         }
         catch (Exception ex) { error = ex.Message; StateHasChanged(); }
+    }
+
+    private void RequestRemoveFromGame(MonsterListDto monster)
+    {
+        pendingRemoveMonster = monster;
+        error = null;
+        isRemoveFromGameVisible = true;
+    }
+
+    private async Task ConfirmRemoveFromGameAsync()
+    {
+        if (pendingRemoveMonster is null || GameContext.SelectedGameId is not int gameId) return;
+        error = null;
+        isAssociationBusy = true;
+        try
+        {
+            var (ok, problem) = await Api.DeleteWithProblemAsync($"/api/games/{gameId}/creatures/{pendingRemoveMonster.Id}");
+            if (!ok)
+            {
+                error = problem ?? "Odebrání příšery ze hry se nezdařilo.";
+                return;
+            }
+
+            isRemoveFromGameVisible = false;
+            pendingRemoveMonster = null;
+            await LoadAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { isAssociationBusy = false; }
     }
 
     private void OpenEditModal(MonsterListDto? m)
