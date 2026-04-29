@@ -242,7 +242,9 @@ public class ExportEndpointTests(PostgresFixture postgres)
         var bytes = await response.Content.ReadAsByteArrayAsync();
         var pdfText = Encoding.ASCII.GetString(bytes);
         Assert.Contains("/MediaBox [0 0 841.89 1190.551]", pdfText);
-        Assert.Contains("edition-30-kralovstvi-A3-", response.Content.Headers.ContentDisposition?.FileName?.Trim('"'));
+        Assert.Equal(
+            $"KralovstviA3_Edition-30_{DateTime.Today:yyyy-MM-dd}.pdf",
+            response.Content.Headers.ContentDisposition?.FileName?.Trim('"'));
         WriteMapSmokeArtifact("kingdom-smoke.pdf", bytes);
     }
 
@@ -347,7 +349,9 @@ public class ExportEndpointTests(PostgresFixture postgres)
 
         response.EnsureSuccessStatusCode();
         Assert.Equal("application/pdf", response.Content.Headers.ContentType?.MediaType);
-        Assert.Contains("edition-30-kniha-magie-", response.Content.Headers.ContentDisposition?.FileName?.Trim('"'));
+        Assert.Equal(
+            $"KnihaMagie_Edition-30_{DateTime.Today:yyyy-MM-dd}.pdf",
+            response.Content.Headers.ContentDisposition?.FileName?.Trim('"'));
         var bytes = await response.Content.ReadAsByteArrayAsync();
         Assert.StartsWith("%PDF-1.4", Encoding.ASCII.GetString(bytes, 0, 8));
         var pdfText = Encoding.ASCII.GetString(bytes);
