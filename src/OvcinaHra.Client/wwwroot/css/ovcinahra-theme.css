@@ -1381,6 +1381,19 @@
 .oh-lg-tb-toggle.oh-lg-on{color:var(--oh-primary);border-color:rgba(74,124,52,.35);background:var(--oh-primary-surface)}
 .oh-lg-tb-toggle.oh-lg-on .oh-lg-sw{background:var(--oh-primary)}
 .oh-lg-tb-toggle.oh-lg-on .oh-lg-sw::before{left:13px}
+.oh-placement-mobile-trigger{display:inline-flex;align-items:center;white-space:nowrap}
+.oh-placement-toast{display:flex;align-items:center;gap:8px;margin:0 28px 12px;padding:9px 12px;border:1px solid rgba(39,174,96,.28);border-radius:var(--oh-radius-sm);background:rgba(39,174,96,.1);color:#1e6b38;font:600 .875rem var(--oh-font-body)}
+.oh-placement-toast button{margin-left:auto;border:0;background:transparent;color:inherit;padding:2px 4px;line-height:1}
+.oh-placement-wizard{display:flex;flex-direction:column}
+.oh-placement-photo{width:100%;aspect-ratio:4/3;border:1px dashed var(--oh-border);border-radius:var(--oh-radius-sm);background:var(--oh-surface-alt);overflow:hidden;display:flex;align-items:center;justify-content:center}
+.oh-placement-photo img{width:100%;height:100%;object-fit:cover;display:block}
+.oh-placement-photo-empty{display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--oh-text-secondary);font-size:.875rem}
+.oh-placement-photo-empty i{font-size:2rem;color:var(--oh-primary-light)}
+.oh-placement-file-btn{position:relative;overflow:hidden;align-self:flex-start}
+.oh-placement-file-btn input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.oh-placement-choice{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}
+.oh-placement-choice-badge{font-size:.75rem;color:var(--oh-primary);background:var(--oh-primary-surface);border:1px solid rgba(74,124,52,.25);border-radius:99px;padding:1px 7px;white-space:nowrap}
+@media (min-width:1025px){.oh-placement-mobile-trigger{display:none!important}}
 
 /* ============================================================
    GRID

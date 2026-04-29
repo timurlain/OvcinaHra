@@ -22,6 +22,8 @@ public record LocationListDto(
     IReadOnlyList<LocationTreasureQuestDto> LocationTreasureQuests,
     string? ImagePath = null,
     string? ImageUrl = null,
+    string? PlacementPhotoPath = null,
+    string? PlacementPhotoUrl = null,
     string? StampImagePath = null,
     string? StampImageUrl = null,
     bool IsLocated = false,
@@ -30,6 +32,12 @@ public record LocationListDto(
 {
     [JsonIgnore]
     public string LocationKindDisplay => LocationKind.GetDisplayName();
+
+    [JsonIgnore]
+    public bool IsPlaced => !string.IsNullOrWhiteSpace(PlacementPhotoPath);
+
+    [JsonIgnore]
+    public string PlacementChoiceText => IsPlaced ? $"{Name} ✓ Již umístěno" : Name;
 }
 
 public record LocationStashDto(
@@ -128,6 +136,22 @@ public record UpdateLocationDto(
     int? ParentLocationId = null);
 
 public record GameLocationDto(int GameId, int LocationId);
+
+public record LocationPlacementRecordRequest(
+    int GameId,
+    string? Notes,
+    string? LocalTimestampText,
+    int? ClientUtcOffsetMinutes);
+
+public record LocationPlacementStatusDto(
+    int LocationId,
+    string LocationName,
+    bool IsPlaced,
+    string? PlacementPhotoPath,
+    string? PlacementPhotoUrl,
+    string? SetupNotes,
+    DateTime RecordedUtc,
+    string OrganizerName);
 
 /// <summary>
 /// Compact projection for the LocationDetail orientation map (issue #110).

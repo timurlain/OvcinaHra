@@ -1,8 +1,12 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
+using System.Security.Claims;
+using System.Text.Json;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Domain.Entities;
+using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Domain.ValueObjects;
 using OvcinaHra.Shared.Dtos;
 
@@ -29,6 +33,7 @@ public static class LocationEndpoints
         group.MapPost("/", Create);
         group.MapPut("/{id:int}", Update);
         group.MapDelete("/{id:int}", Delete);
+        group.MapPost("/{id:int}/placement-record", RecordPlacement);
 
         // GameLocation assignment
         group.MapGet("/by-game/{gameId:int}", GetByGame);
@@ -62,6 +67,7 @@ public static class LocationEndpoints
                 l.NpcInfo,
                 l.SetupNotes,
                 l.ImagePath,
+                l.PlacementPhotoPath,
                 l.StampImagePath
             })
             .ToListAsync();
@@ -85,6 +91,8 @@ public static class LocationEndpoints
                 Array.Empty<LocationTreasureQuestDto>(),
                 ImagePath: r.ImagePath,
                 ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locations", r.Id, "small"),
+                PlacementPhotoPath: r.PlacementPhotoPath,
+                PlacementPhotoUrl: string.IsNullOrWhiteSpace(r.PlacementPhotoPath) ? null : ImageEndpoints.ThumbUrl(http, "locationplacements", r.Id, "small"),
                 StampImagePath: r.StampImagePath,
                 StampImageUrl: string.IsNullOrWhiteSpace(r.StampImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locationstamps", r.Id, "small"),
                 IsLocated: effective.HasValue,
@@ -266,6 +274,112 @@ public static class LocationEndpoints
         return TypedResults.NoContent();
     }
 
+    private static async Task<Results<Ok<LocationPlacementStatusDto>, NotFound, ProblemHttpResult>> RecordPlacement(
+        int id,
+        LocationPlacementRecordRequest dto,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        var organizer = GetOrganizer(http.User);
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.LocationEndpoints");
+        logger.LogInformation(
+            "[loc-placement] placement.record.entry gameId={GameId} locationId={LocationId} userId={UserId} imageBlobUrl={ImageBlobUrl}",
+            dto.GameId,
+            id,
+            organizer.UserId,
+            null);
+
+        try
+        {
+            var location = await db.Locations
+                .Where(l => l.Id == id && l.GameLocations.Any(gl => gl.GameId == dto.GameId))
+                .FirstOrDefaultAsync(ct);
+            if (location is null)
+            {
+                logger.LogInformation(
+                    "[loc-placement] placement.record.not-found gameId={GameId} locationId={LocationId} userId={UserId} imageBlobUrl={ImageBlobUrl}",
+                    dto.GameId,
+                    id,
+                    organizer.UserId,
+                    null);
+                return TypedResults.NotFound();
+            }
+
+            if (string.IsNullOrWhiteSpace(location.PlacementPhotoPath))
+            {
+                logger.LogInformation(
+                    "[loc-placement] placement.record.missing-photo gameId={GameId} locationId={LocationId} userId={UserId} imageBlobUrl={ImageBlobUrl}",
+                    dto.GameId,
+                    id,
+                    organizer.UserId,
+                    null);
+                return PlacementProblem("Nejprve nahrajte fotografii umístění.");
+            }
+
+            var nowUtc = DateTime.UtcNow;
+            var localTimestamp = NormalizeLocalTimestamp(dto.LocalTimestampText, nowUtc);
+            var notes = dto.Notes?.Trim();
+            if (!string.IsNullOrWhiteSpace(notes))
+            {
+                var noteBlock = $"[{localTimestamp} {organizer.Name}] {notes}";
+                location.SetupNotes = string.IsNullOrWhiteSpace(location.SetupNotes)
+                    ? noteBlock
+                    : $"{noteBlock}{Environment.NewLine}----{Environment.NewLine}{location.SetupNotes}";
+            }
+
+            var activity = new WorldActivity
+            {
+                GameId = dto.GameId,
+                TimestampUtc = nowUtc,
+                OrganizerUserId = organizer.UserId,
+                OrganizerName = organizer.Name,
+                ActivityType = WorldActivityType.LocationPlaced,
+                Description = $"Umístěna lokace: {location.Name}",
+                LocationId = location.Id,
+                DataJson = JsonSerializer.Serialize(new
+                {
+                    notes,
+                    photoBlobKey = location.PlacementPhotoPath,
+                    localTimestamp,
+                    dto.ClientUtcOffsetMinutes
+                })
+            };
+            db.WorldActivities.Add(activity);
+            await db.SaveChangesAsync(ct);
+
+            logger.LogInformation(
+                "[loc-placement] placement.record.activity-inserted gameId={GameId} locationId={LocationId} userId={UserId} imageBlobUrl={ImageBlobUrl} activityId={ActivityId}",
+                dto.GameId,
+                id,
+                organizer.UserId,
+                location.PlacementPhotoPath,
+                activity.Id);
+
+            return TypedResults.Ok(new LocationPlacementStatusDto(
+                location.Id,
+                location.Name,
+                true,
+                location.PlacementPhotoPath,
+                ImageEndpoints.ThumbUrl(http, "locationplacements", location.Id, "small"),
+                location.SetupNotes,
+                activity.TimestampUtc,
+                activity.OrganizerName));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(
+                ex,
+                "[loc-placement] placement.record.failed gameId={GameId} locationId={LocationId} userId={UserId} imageBlobUrl={ImageBlobUrl}",
+                dto.GameId,
+                id,
+                organizer.UserId,
+                null);
+            throw;
+        }
+    }
+
     private static async Task<Ok<List<LocationListDto>>> GetByGame(int gameId, WorldDbContext db, HttpContext http)
     {
         var rows = await db.Locations
@@ -286,6 +400,7 @@ public static class LocationEndpoints
                 l.NpcInfo,
                 l.SetupNotes,
                 l.ImagePath,
+                l.PlacementPhotoPath,
                 l.StampImagePath,
                 Stashes = l.GameSecretStashes
                     .Where(gss => gss.GameId == gameId)
@@ -353,6 +468,8 @@ public static class LocationEndpoints
                 LocationTreasureQuests: r.LocationTreasureQuests,
                 ImagePath: r.ImagePath,
                 ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locations", r.Id, "small"),
+                PlacementPhotoPath: r.PlacementPhotoPath,
+                PlacementPhotoUrl: string.IsNullOrWhiteSpace(r.PlacementPhotoPath) ? null : ImageEndpoints.ThumbUrl(http, "locationplacements", r.Id, "small"),
                 StampImagePath: r.StampImagePath,
                 StampImageUrl: string.IsNullOrWhiteSpace(r.StampImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locationstamps", r.Id, "small"),
                 IsLocated: effective.HasValue,
@@ -513,5 +630,30 @@ public static class LocationEndpoints
         await db.SaveChangesAsync();
         logger.LogInformation("[map-diag] location.coordinates.patch.committed locationId={LocationId}", id);
         return TypedResults.NoContent();
+    }
+
+    private static ProblemHttpResult PlacementProblem(string detail) =>
+        TypedResults.Problem(
+            title: "Umístění lokace se nepodařilo uložit",
+            detail: detail,
+            statusCode: StatusCodes.Status400BadRequest);
+
+    private static (string UserId, string Name) GetOrganizer(ClaimsPrincipal user)
+    {
+        var userId = user.FindFirstValue("sub")
+            ?? user.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? "unknown";
+        var name = user.FindFirstValue("name")
+            ?? user.FindFirstValue(ClaimTypes.Name)
+            ?? "Unknown";
+        return (userId, name);
+    }
+
+    private static string NormalizeLocalTimestamp(string? value, DateTime fallbackUtc)
+    {
+        var trimmed = value?.Trim();
+        return string.IsNullOrWhiteSpace(trimmed)
+            ? fallbackUtc.ToLocalTime().ToString("dd/MM HH:mm", CultureInfo.InvariantCulture)
+            : trimmed.Length <= 32 ? trimmed : trimmed[..32];
     }
 }

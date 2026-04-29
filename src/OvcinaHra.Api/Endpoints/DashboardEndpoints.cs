@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
+using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Endpoints;
@@ -107,17 +108,42 @@ public static class DashboardEndpoints
         count == 0 ? "low" : count < 5 ? "low" : count < 15 ? "mid" : "high";
 
     /// <summary>
-    /// Powers RecentActivityFeed — last-N edits across the entities that
-    /// carry a meaningful timestamp. <b>Stub:</b> no WorldChange audit
-    /// log exists yet, so we cherry-pick the entity tables that already
-    /// have <c>UpdatedAtUtc</c> (Character, GameEvent, Npc) and merge.
-    /// Verb is hard-coded to "upravil" — replace with real change tracking
-    /// once the WorldChange table lands. Flagged as follow-up.
+    /// Powers RecentActivityFeed — real WorldActivity recordings first,
+    /// followed by legacy per-entity timestamp rows until every workflow
+    /// records through WorldActivity.
     /// </summary>
     private static async Task<Ok<List<DashboardActivityDto>>> GetActivity(
-        int gameId, WorldDbContext db, int? limit = 10)
+        int gameId, WorldDbContext db, HttpContext http, int? limit = 10)
     {
         var take = Math.Clamp(limit ?? 10, 1, 50);
+
+        var activityRows = await db.WorldActivities
+            .Where(a => a.GameId == gameId)
+            .OrderByDescending(a => a.TimestampUtc)
+            .Take(take)
+            .Select(a => new
+            {
+                a.Id,
+                a.LocationId,
+                a.Description,
+                a.OrganizerName,
+                a.TimestampUtc,
+                a.ActivityType,
+                LocationName = a.Location != null ? a.Location.Name : null,
+                PlacementPhotoPath = a.Location != null ? a.Location.PlacementPhotoPath : null
+            })
+            .ToListAsync();
+
+        var activities = activityRows.Select(a => new DashboardActivityDto(
+            a.LocationId.HasValue ? "location" : "activity",
+            a.LocationId ?? a.Id,
+            a.LocationName ?? a.Description,
+            a.LocationId.HasValue && !string.IsNullOrWhiteSpace(a.PlacementPhotoPath)
+                ? ImageEndpoints.ThumbUrl(http, "locationplacements", a.LocationId.Value, "small")
+                : null,
+            ActivityVerb(a.ActivityType),
+            a.OrganizerName,
+            a.TimestampUtc)).ToList();
 
         // Per-entity slices, each ordered DESC and capped at `take` so the
         // merged result has enough material to slice the global top-N from.
@@ -150,6 +176,7 @@ public static class DashboardEndpoints
             .ToListAsync();
 
         var merged = characters
+            .Concat(activities)
             .Concat(events)
             .Concat(npcs)
             .OrderByDescending(x => x.OccurredUtc)
@@ -158,6 +185,14 @@ public static class DashboardEndpoints
 
         return TypedResults.Ok(merged);
     }
+
+    private static string ActivityVerb(WorldActivityType type) => type switch
+    {
+        WorldActivityType.LocationPlaced => "umístil",
+        WorldActivityType.CharacterLevelUp => "zapsal level",
+        WorldActivityType.QuestCompleted => "dokončil quest",
+        _ => "zapsal"
+    };
 
     /// <summary>
     /// Powers TimelinePreview — upcoming and currently-running GameTimeSlot

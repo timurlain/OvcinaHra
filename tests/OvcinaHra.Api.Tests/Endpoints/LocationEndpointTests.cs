@@ -140,6 +140,74 @@ public class LocationEndpointTests(PostgresFixture postgres) : IntegrationTestBa
     }
 
     [Fact]
+    public async Task RecordPlacement_MissingLocation_ReturnsNotFoundBeforePhotoValidation()
+    {
+        var response = await Client.PostAsJsonAsync("/api/locations/999999/placement-record",
+            new LocationPlacementRecordRequest(123, "Poznámka", "29/04 10:31", 120));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task RecordPlacement_WithoutUploadedPhoto_ReturnsProblemDetails()
+    {
+        var gameResponse = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Placement Missing Photo", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
+        var locResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Bez fotky", LocationKind.Village, 49.5m, 17.1m));
+        var loc = await locResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+        await Client.PostAsJsonAsync("/api/locations/by-game", new GameLocationDto(game!.Id, loc!.Id));
+
+        var response = await Client.PostAsJsonAsync($"/api/locations/{loc.Id}/placement-record",
+            new LocationPlacementRecordRequest(game.Id, "Poznámka", "29/04 10:31", 120));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.Equal("Nejprve nahrajte fotografii umístění.", problem!.Detail);
+    }
+
+    [Fact]
+    public async Task RecordPlacement_WithPhotoAndNotes_PrependsSetupNotesAndCreatesWorldActivity()
+    {
+        var gameResponse = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Placement Success", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
+        var locResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Starý brod", LocationKind.Village, 49.5m, 17.1m,
+                SetupNotes: "Starší poznámka"));
+        var loc = await locResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+        await Client.PostAsJsonAsync("/api/locations/by-game", new GameLocationDto(game!.Id, loc!.Id));
+
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var location = await db.Locations.FindAsync(loc.Id);
+            location!.PlacementPhotoPath = $"locationplacements/{loc.Id}/image.png";
+            await db.SaveChangesAsync();
+        }
+
+        var response = await Client.PostAsJsonAsync($"/api/locations/{loc.Id}/placement-record",
+            new LocationPlacementRecordRequest(game.Id, "Pověsit ceduli", "29/04 10:31", 120));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var status = await response.Content.ReadFromJsonAsync<LocationPlacementStatusDto>();
+        Assert.True(status!.IsPlaced);
+        Assert.StartsWith("[29/04 10:31 Test Organizátor] Pověsit ceduli", status.SetupNotes!);
+        Assert.Contains("----", status.SetupNotes!);
+        Assert.Contains("Starší poznámka", status.SetupNotes!);
+
+        using var verifyScope = Factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        var activity = await verifyDb.WorldActivities.SingleAsync(a => a.GameId == game.Id);
+        Assert.Equal(WorldActivityType.LocationPlaced, activity.ActivityType);
+        Assert.Equal(loc.Id, activity.LocationId);
+        Assert.Equal("Test Organizátor", activity.OrganizerName);
+        Assert.Contains("Pověsit ceduli", activity.DataJson!);
+        Assert.Contains($"locationplacements/{loc.Id}/image.png", activity.DataJson!);
+    }
+
+    [Fact]
     public async Task Update_ChangesCoordinates()
     {
         var createResponse = await Client.PostAsJsonAsync("/api/locations",

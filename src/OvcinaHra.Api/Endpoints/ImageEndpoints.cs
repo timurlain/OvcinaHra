@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Dtos;
@@ -10,13 +11,10 @@ namespace OvcinaHra.Api.Endpoints;
 
 public static class ImageEndpoints
 {
-    // "locationstamps" is a logical alias keyed by Location.Id that reads /
-    // writes Location.StampImagePath. Exposed as its own entity type so that
-    // the thumbnail cache, pre-gen, and backfill pipelines treat the rubber
-    // stamp as an independent image (its cache keys don't collide with the
-    // main location image). See GetEntityImagePaths and the Upload DbContext
-    // switch for the dispatch.
-    private static readonly HashSet<string> ValidEntityTypes = ["locations", "locationstamps", "items", "monsters", "secretstashes", "npcs", "buildings", "characters", "kingdoms", "spells", "quests"];
+    // "locationstamps" and "locationplacements" are logical aliases keyed by
+    // Location.Id. They write Location.StampImagePath / PlacementPhotoPath but
+    // keep independent thumbnail cache keys from the main location image.
+    private static readonly HashSet<string> ValidEntityTypes = ["locations", "locationstamps", "locationplacements", "items", "monsters", "secretstashes", "npcs", "buildings", "characters", "kingdoms", "spells", "quests"];
     private static readonly HashSet<string> AllowedContentTypes = ["image/jpeg", "image/png", "image/webp"];
     private const long MaxFileSize = 5 * 1024 * 1024; // 5 MB
     private const int LocationStampMinimumPixels = 200;
@@ -116,61 +114,98 @@ public static class ImageEndpoints
     private static async Task<Results<Ok<ImageUploadResult>, NotFound, BadRequest<ProblemDetails>>> Upload(
         string entityType, int entityId, IFormFile file, IBlobStorageService blobService,
         IThumbnailService thumbnailService, ILogger<ThumbnailService> thumbLogger,
-        WorldDbContext db, CancellationToken ct, string? field = null)
+        WorldDbContext db, HttpContext http, ILoggerFactory loggerFactory,
+        CancellationToken ct, string? field = null, int? gameId = null)
     {
-        if (!ValidEntityTypes.Contains(entityType))
-            return TypedResults.BadRequest(ImageValidationProblem($"Neplatný typ entity '{entityType}'."));
-
-        if (file.Length > MaxFileSize)
-            return TypedResults.BadRequest(ImageValidationProblem($"Soubor je příliš velký. Maximální velikost je {MaxFileSize / (1024 * 1024)} MB."));
-
-        if (!AllowedContentTypes.Contains(file.ContentType))
-            return TypedResults.BadRequest(ImageValidationProblem($"Neplatný typ souboru '{file.ContentType}'. Povolené typy: {string.Join(", ", AllowedContentTypes)}."));
-
-        if (!await EntityExists(db, entityType, entityId))
-            return TypedResults.NotFound();
-
-        var isPlacement = string.Equals(field, "placement", StringComparison.OrdinalIgnoreCase);
-        var suffix = isPlacement ? "placement" : "image";
-        var ext = file.ContentType switch
+        var isLocationPlacement = string.Equals(entityType, "locationplacements", StringComparison.Ordinal);
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.ImageEndpoints");
+        var userId = GetUserId(http.User);
+        if (isLocationPlacement)
         {
-            "image/jpeg" => "jpg",
-            "image/png" => "png",
-            "image/webp" => "webp",
-            _ => "bin"
-        };
-        var blobKey = $"{entityType}/{entityId}/{suffix}.{ext}";
-
-        await using var stream = file.OpenReadStream();
-        if (entityType == "locationstamps")
-        {
-            var validationProblem = await ValidateLocationStampImageAsync(stream, ct);
-            if (validationProblem is not null)
-                return TypedResults.BadRequest(validationProblem);
-        }
-        if (stream.CanSeek)
-            stream.Position = 0;
-
-        await blobService.UploadAsync(blobKey, stream, file.ContentType, ct);
-
-        // Invalidate any cached thumbnails for this entity — they were resized
-        // from the previous source image and are stale now. Only apply to the
-        // main image path; placement photos are detail-only and not cached.
-        if (!isPlacement)
-        {
-            await blobService.DeletePrefixAsync($"{entityType}-thumbs/{entityId}-");
-            // Fire-and-forget pre-generation of all presets so the first
-            // list-page viewer hits the hot-cache 302-redirect path instead of
-            // paying cold resize cost. Upload response returns immediately;
-            // generation runs on a background task. Discard (_ =) silences
-            // CS4014 without a pragma.
-            _ = PreGenerateAllPresetsAsync(thumbnailService, thumbLogger, entityType, entityId, blobKey);
+            logger.LogInformation(
+                "[loc-placement] image.upload.entry gameId={GameId} locationId={LocationId} userId={UserId} imageBlobUrl={ImageBlobUrl}",
+                gameId,
+                entityId,
+                userId,
+                null);
         }
 
-        await UpdateEntityImagePath(db, entityType, entityId, blobKey, isPlacement);
+        try
+        {
+            if (!ValidEntityTypes.Contains(entityType))
+                return TypedResults.BadRequest(ImageValidationProblem($"Neplatný typ entity '{entityType}'."));
 
-        var url = await blobService.GetSasUrlAsync(blobKey);
-        return TypedResults.Ok(new ImageUploadResult(blobKey, url));
+            if (file.Length > MaxFileSize)
+                return TypedResults.BadRequest(ImageValidationProblem($"Soubor je příliš velký. Maximální velikost je {MaxFileSize / (1024 * 1024)} MB."));
+
+            if (!AllowedContentTypes.Contains(file.ContentType))
+                return TypedResults.BadRequest(ImageValidationProblem($"Neplatný typ souboru '{file.ContentType}'. Povolené typy: {string.Join(", ", AllowedContentTypes)}."));
+
+            if (!await EntityExists(db, entityType, entityId))
+                return TypedResults.NotFound();
+
+            var isPlacement = string.Equals(field, "placement", StringComparison.OrdinalIgnoreCase);
+            var suffix = isPlacement ? "placement" : "image";
+            var ext = file.ContentType switch
+            {
+                "image/jpeg" => "jpg",
+                "image/png" => "png",
+                "image/webp" => "webp",
+                _ => "bin"
+            };
+            var blobKey = $"{entityType}/{entityId}/{suffix}.{ext}";
+
+            await using var stream = file.OpenReadStream();
+            if (entityType == "locationstamps")
+            {
+                var validationProblem = await ValidateLocationStampImageAsync(stream, ct);
+                if (validationProblem is not null)
+                    return TypedResults.BadRequest(validationProblem);
+            }
+            if (stream.CanSeek)
+                stream.Position = 0;
+
+            await blobService.UploadAsync(blobKey, stream, file.ContentType, ct);
+            if (isLocationPlacement)
+            {
+                logger.LogInformation(
+                    "[loc-placement] image.upload.blob-uploaded gameId={GameId} locationId={LocationId} userId={UserId} imageBlobUrl={ImageBlobUrl}",
+                    gameId,
+                    entityId,
+                    userId,
+                    blobKey);
+            }
+
+            // Invalidate cached thumbnails for this logical image entity. Legacy
+            // ?field=placement uploads on "locations" skip this path; the canonical
+            // "locationplacements" alias gets its own cache namespace.
+            if (!isPlacement)
+            {
+                await blobService.DeletePrefixAsync($"{entityType}-thumbs/{entityId}-");
+                // Fire-and-forget pre-generation of all presets so the first
+                // list-page viewer hits the hot-cache 302-redirect path instead of
+                // paying cold resize cost. Upload response returns immediately;
+                // generation runs on a background task. Discard (_ =) silences
+                // CS4014 without a pragma.
+                _ = PreGenerateAllPresetsAsync(thumbnailService, thumbLogger, entityType, entityId, blobKey);
+            }
+
+            await UpdateEntityImagePath(db, entityType, entityId, blobKey, isPlacement);
+
+            var url = await blobService.GetSasUrlAsync(blobKey);
+            return TypedResults.Ok(new ImageUploadResult(blobKey, url));
+        }
+        catch (Exception ex) when (isLocationPlacement && ex is not OperationCanceledException)
+        {
+            logger.LogError(
+                ex,
+                "[loc-placement] image.upload.failed gameId={GameId} locationId={LocationId} userId={UserId} imageBlobUrl={ImageBlobUrl}",
+                gameId,
+                entityId,
+                userId,
+                null);
+            throw;
+        }
     }
 
     /// <summary>
@@ -279,6 +314,12 @@ public static class ImageEndpoints
             .Select(l => new { l.Id, BlobKey = l.StampImagePath! })
             .ToListAsync(ct))
             targets.Add(("locationstamps", row.Id, row.BlobKey));
+
+        foreach (var row in await db.Locations
+            .Where(l => l.PlacementPhotoPath != null && l.PlacementPhotoPath != "")
+            .Select(l => new { l.Id, BlobKey = l.PlacementPhotoPath! })
+            .ToListAsync(ct))
+            targets.Add(("locationplacements", row.Id, row.BlobKey));
 
         foreach (var row in await db.Items
             .Where(i => i.ImagePath != null && i.ImagePath != "")
@@ -450,6 +491,11 @@ public static class ImageEndpoints
                 if (locationForStamp is not null)
                     locationForStamp.StampImagePath = blobKey;
                 break;
+            case "locationplacements":
+                var locationForPlacement = await db.Locations.FindAsync(entityId);
+                if (locationForPlacement is not null)
+                    locationForPlacement.PlacementPhotoPath = blobKey;
+                break;
             case "items":
                 var item = await db.Items.FindAsync(entityId);
                 if (item is not null) item.ImagePath = blobKey;
@@ -501,6 +547,9 @@ public static class ImageEndpoints
                 .FirstOrDefaultAsync(),
             "locationstamps" => await db.Locations.Where(l => l.Id == entityId)
                 .Select(l => new ValueTuple<string?, string?, string?>(l.StampImagePath, null, l.StampImagePath))
+                .FirstOrDefaultAsync(),
+            "locationplacements" => await db.Locations.Where(l => l.Id == entityId)
+                .Select(l => new ValueTuple<string?, string?, string?>(l.PlacementPhotoPath, l.PlacementPhotoPath, null))
                 .FirstOrDefaultAsync(),
             "items" => await db.Items.Where(i => i.Id == entityId)
                 .Select(i => new ValueTuple<string?, string?, string?>(i.ImagePath, null, null))
@@ -573,6 +622,7 @@ public static class ImageEndpoints
         {
             "locations" => await db.Locations.AnyAsync(l => l.Id == entityId),
             "locationstamps" => await db.Locations.AnyAsync(l => l.Id == entityId),
+            "locationplacements" => await db.Locations.AnyAsync(l => l.Id == entityId),
             "items" => await db.Items.AnyAsync(i => i.Id == entityId),
             "monsters" => await db.Monsters.AnyAsync(m => m.Id == entityId),
             "secretstashes" => await db.SecretStashes.AnyAsync(s => s.Id == entityId),
@@ -585,4 +635,9 @@ public static class ImageEndpoints
             _ => false
         };
     }
+
+    private static string GetUserId(ClaimsPrincipal user) =>
+        user.FindFirstValue("sub")
+        ?? user.FindFirstValue(ClaimTypes.NameIdentifier)
+        ?? "unknown";
 }
