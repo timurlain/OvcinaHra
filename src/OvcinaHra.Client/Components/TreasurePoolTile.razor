@@ -3,8 +3,10 @@
 @inject IJSRuntime JS
 
 <div @ref="elementRef"
+     id="@tileTargetId"
      class="oh-tp-pool-tile @(Selected ? "selected" : "") @(Item.IsUnique ? "is-unique" : "is-aggregate")"
-     title="@TileLabel"
+     @onmouseenter="() => isNameFlyoutOpen = true"
+     @onmouseleave="() => isNameFlyoutOpen = false"
      @onclick="OnClickInternal">
     @if (!imageFailed)
     {
@@ -20,7 +22,7 @@
     }
     @if (!Item.IsUnique)
     {
-        <div class="oh-tp-pool-tile-badge">@Item.ItemName × @Item.Count</div>
+        <div class="oh-tp-pool-tile-badge">× @Item.Count</div>
     }
 
     @* Unobtrusive remove affordance — unbundled from the draggable surface:
@@ -34,7 +36,6 @@
     <button type="button"
             class="oh-tp-pool-tile-remove"
             draggable="false"
-            title="Odebrat ze zásobníku"
             aria-label="Odebrat ze zásobníku"
             @onmousedown:stopPropagation="true"
             @onmousedown:preventDefault="true"
@@ -45,6 +46,14 @@
 
     <div class="oh-tp-pool-tile-name">@Item.ItemName</div>
 </div>
+
+<DxFlyout @bind-IsOpen="@isNameFlyoutOpen"
+          PositionTarget="@($"#{tileTargetId}")"
+          Position="FlyoutPosition.Top"
+          BodyText="@TileLabel"
+          HeaderVisible="false"
+          CloseOnOutsideClick="false"
+          Width="220px" />
 
 <DxPopup @bind-Visible="@isRemoveVisible"
          HeaderText="Odebrat ze zásobníku?"
@@ -85,7 +94,9 @@
     private int _wiredForPoolItemId = -1;
 
     private bool isRemoveVisible;
+    private bool isNameFlyoutOpen;
     private bool removing;
+    private string tileTargetId => $"oh-tp-pool-tile-{Item.Id}";
     private string TileLabel => Item.IsUnique ? Item.ItemName : $"{Item.ItemName} × {Item.Count}";
 
     protected override void OnParametersSet()

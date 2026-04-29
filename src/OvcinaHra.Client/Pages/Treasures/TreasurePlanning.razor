@@ -205,11 +205,12 @@ else
                                         @foreach (var loc in grp.OrderBy(l => l.LocationName))
                                         {
                                             var isFocused = focusedLocationId == loc.LocationId;
-                                            <TreasureLocationTargetCard Location="loc"
-                                                                        IsFocused="isFocused"
-                                                                        HasSelectedPool="@HasPendingAllocation"
-                                                                        OnClick="HandleLocationTargetClick"
-                                                                        OnDrop="HandlePieDrop" />
+                                             <TreasureLocationTargetCard Location="loc"
+                                                                         IsFocused="isFocused"
+                                                                         HasSelectedPool="@HasPendingAllocation"
+                                                                         OnClick="HandleLocationTargetClick"
+                                                                         OnCreateGrosTreasure="OpenGrosTreasureDialog"
+                                                                         OnDrop="HandlePieDrop" />
                                         }
                                     </div>
                                 </div>
@@ -433,6 +434,11 @@ else
                                         <i class="bi bi-plus-circle me-1"></i>Přiřadit vybrané sem
                                     </button>
                                 }
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-primary"
+                                        @onclick="() => OpenGrosTreasureDialog(loc.LocationId)">
+                                    <i class="bi bi-coin me-1"></i>Vytvoř poklad z grošů
+                                </button>
                             </div>
                             @if (quickAllocation is { IsUnique: false } qa && qa.LocationId == loc.LocationId)
                             {
@@ -576,6 +582,31 @@ else
             <button class="btn btn-primary" @onclick="AddToPoolAsync" disabled="@(poolSaving || poolItemId is null)">
                 @if (poolSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
                 Přidat
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@* ================== CREATE GROS TREASURE POPUP ================== *@
+<DxPopup @bind-Visible="@isGrosDialogVisible" HeaderText="Vytvoř poklad z grošů" Width="420px">
+    <BodyContentTemplate Context="popupContext">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Lokace" ColSpanMd="12">
+                <div class="oh-tp-gros-location">@GrosDialogLocationName</div>
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Kolik grošů?" ColSpanMd="12">
+                <DxSpinEdit @bind-Value="@grosCount" MinValue="1" MaxValue="9999" />
+            </DxFormLayoutItem>
+        </DxFormLayout>
+        @if (grosError is not null)
+        {
+            <div class="alert alert-danger mt-2">@grosError</div>
+        }
+        <div class="d-flex gap-2 mt-3 justify-content-end">
+            <button class="btn btn-secondary" type="button" @onclick="CloseGrosDialog" disabled="@grosSaving">Zrušit</button>
+            <button class="btn btn-primary" type="button" @onclick="CreateGrosTreasureAsync" disabled="@(grosSaving || grosLocationId is null)">
+                @if (grosSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Vytvořit
             </button>
         </div>
     </BodyContentTemplate>
@@ -1283,6 +1314,17 @@ else
     private string? poolError;
     private List<AvailablePoolItemDto> findableItems = [];
 
+    // ===== Groše treasure popup =====
+    private bool isGrosDialogVisible;
+    private bool grosSaving;
+    private int? grosLocationId;
+    private int grosCount = 1;
+    private string? grosError;
+    private string GrosDialogLocationName =>
+        grosLocationId is int id
+            ? locationCards.FirstOrDefault(l => l.LocationId == id)?.LocationName ?? $"Lokace #{id}"
+            : "";
+
     // ===== Edit-quest popup =====
     private bool isEditQuestVisible, isDeleteQuestVisible, editSaving;
     private int? editQuestId;
@@ -1501,6 +1543,7 @@ else
         // last resort) so games without placements still render somewhere
         // sensible.
         var placed = locations
+            .Where(l => !l.ParentLocationId.HasValue)
             .Select(ToLocatedTreasureLocation)
             .OfType<LocatedTreasureLocation>()
             .ToList();
@@ -1990,6 +2033,79 @@ else
         }
         catch (Exception ex) { poolError = ex.Message; }
         finally { poolSaving = false; }
+    }
+
+    // ===== Groše treasure popup =====
+    private void OpenGrosTreasureDialog(int locationId)
+    {
+        grosLocationId = locationId;
+        grosCount = 1;
+        grosError = null;
+        isGrosDialogVisible = true;
+        LogTreasureAlloc("gros-dialog open", new { locationId });
+    }
+
+    private void CloseGrosDialog()
+    {
+        if (grosSaving) return;
+        isGrosDialogVisible = false;
+        grosError = null;
+    }
+
+    private UnlimitedItemDto? FindGrosItem() =>
+        unlimitedItems.FirstOrDefault(i =>
+            i.ItemType == ItemType.Money
+            && (string.Equals(i.ItemName.Trim(), "Groše", StringComparison.CurrentCultureIgnoreCase)
+                || i.ItemName.Contains("groš", StringComparison.CurrentCultureIgnoreCase)));
+
+    private async Task CreateGrosTreasureAsync()
+    {
+        if (grosLocationId is not int locationId || grosSaving) return;
+        grosError = null;
+        var grosItem = FindGrosItem();
+        if (grosItem is null)
+        {
+            grosError = "Ve hře není nalézatelná položka Groše typu Peníze.";
+            return;
+        }
+
+        grosSaving = true;
+        try
+        {
+            var count = Math.Max(1, grosCount);
+            var dto = new AssignTreasureDto(
+                Title: $"Groše × {count}",
+                Difficulty: lastUsedDifficulty,
+                GameId: gameId,
+                LocationId: locationId,
+                UnlimitedItems: [new UnlimitedItemAssignDto(grosItem.ItemId, count)]);
+
+            var result = await Api.PostWithProblemAsync<AssignTreasureDto, TreasureQuestDetailDto>(
+                "/api/treasure-planning/assign",
+                dto);
+            if (!result.Ok || result.Value is null)
+            {
+                grosError = result.ProblemDetail ?? "Vytvoření pokladu z grošů se nepodařilo.";
+                return;
+            }
+
+            lastUsedDifficulty = dto.Difficulty;
+            isGrosDialogVisible = false;
+            markersPlaced = false;
+            await LoadAllAsync();
+            await PlaceMarkersIfReadyAsync();
+            LogTreasureAlloc("gros-treasure-create", new
+            {
+                locationId,
+                stashId = result.Value.SecretStashId,
+                count
+            });
+            StateHasChanged();
+        }
+        finally
+        {
+            grosSaving = false;
+        }
     }
 
     // ===== Bulk refill (issue #160) =====
