@@ -1,0 +1,187 @@
+@inject ApiClient Api
+@inject ILogger<MyRolesTimetable> Logger
+@implements IDisposable
+
+<div class="oh-home-my-tiles" aria-label="Moje role a rozvrh">
+    <section class="oh-home-my-card oh-home-my-role" aria-labelledby="oh-home-my-role-title">
+        <header class="oh-home-my-head">
+            <i class="bi bi-person-badge"></i>
+            <h2 id="oh-home-my-role-title">Moje role</h2>
+        </header>
+
+        @if (_loading)
+        {
+            <div class="oh-home-my-skel">
+                <span class="oh-home-skel-line-lg"></span>
+                <span class="oh-home-skel-line"></span>
+            </div>
+        }
+        else if (_failed)
+        {
+            <p class="oh-home-my-empty">Role se teď nepodařilo načíst.</p>
+        }
+        else if (_model?.PrimaryRole is null)
+        {
+            <p class="oh-home-my-empty">Zatím nemáš přidělenou žádnou roli.</p>
+        }
+        else
+        {
+            <div class="oh-home-my-role-main">
+                <span class="oh-home-my-role-name">@_model.PrimaryRole.NpcName</span>
+                <span class="oh-home-my-role-kind">@_model.PrimaryRole.Role.GetDisplayName()</span>
+            </div>
+            <p class="oh-home-my-role-desc">
+                @(string.IsNullOrWhiteSpace(_model.PrimaryRole.Description)
+                    ? "Popis role zatím není vyplněný."
+                    : _model.PrimaryRole.Description)
+            </p>
+        }
+    </section>
+
+    <section class="oh-home-my-card oh-home-my-timetable" aria-labelledby="oh-home-my-table-title">
+        <header class="oh-home-my-head">
+            <i class="bi bi-calendar-week"></i>
+            <h2 id="oh-home-my-table-title">Můj rozvrh</h2>
+        </header>
+
+        @if (_loading)
+        {
+            <div class="oh-home-my-slots">
+                @for (var i = 0; i < 3; i++)
+                {
+                    <div class="oh-home-my-slot oh-home-my-slot--skel">
+                        <span class="oh-home-skel-line"></span>
+                        <span class="oh-home-skel-line-lg"></span>
+                    </div>
+                }
+            </div>
+        }
+        else if (_failed)
+        {
+            <p class="oh-home-my-empty">Rozvrh se teď nepodařilo načíst.</p>
+        }
+        else if (_model?.TimeSlots.Count is null or 0)
+        {
+            <p class="oh-home-my-empty">Harmonogram zatím nemá časové sloty.</p>
+        }
+        else
+        {
+            <div class="oh-home-my-slots" role="list">
+                @foreach (var slot in _model.TimeSlots)
+                {
+                    var isCurrent = IsGameRunning && slot.SlotId == _model.CurrentSlotId;
+                    <div class="oh-home-my-slot @(isCurrent ? "oh-home-my-slot--current" : "")" role="listitem">
+                        <div class="oh-home-my-slot-top">
+                            <span class="oh-home-my-slot-time">@FormatSlotTime(slot)</span>
+                            <span class="oh-home-my-slot-stage">@slot.Stage.GetDisplayName()</span>
+                        </div>
+
+                        @if (slot.Assignments.Count == 0)
+                        {
+                            <strong class="oh-home-my-unassigned">Nepřiděleno</strong>
+                        }
+                        else
+                        {
+                            <div class="oh-home-my-slot-roles">
+                                @foreach (var assignment in slot.Assignments)
+                                {
+                                    <span>@assignment.NpcName</span>
+                                    <small>@assignment.Role.GetDisplayName()</small>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private CancellationTokenSource? _loadCts;
+    private OrganizerRoleMeDto? _model;
+    private int? _loadedGameId;
+    private bool _loading;
+    private bool _failed;
+
+    [Parameter] public int? GameId { get; set; }
+    [Parameter] public bool IsGameRunning { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (GameId is null)
+        {
+            Reset();
+            return;
+        }
+
+        if (_loadedGameId == GameId.Value && (_model is not null || _loading))
+        {
+            LogRenderMarker();
+            return;
+        }
+
+        await LoadAsync(GameId.Value);
+    }
+
+    private async Task LoadAsync(int gameId)
+    {
+        _loadCts?.Cancel();
+        _loadCts?.Dispose();
+        _loadCts = new CancellationTokenSource();
+        var token = _loadCts.Token;
+
+        _loadedGameId = gameId;
+        _model = null;
+        _loading = true;
+        _failed = false;
+
+        try
+        {
+            _model = await Api.GetAsync<OrganizerRoleMeDto>($"/api/organizer-roles/me?gameId={gameId}", token);
+            if (token.IsCancellationRequested) return;
+
+            LogRenderMarker();
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            _failed = true;
+            Logger.LogWarning(ex, "[my-roles] load failed gameId={GameId}", gameId);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void Reset()
+    {
+        _loadCts?.Cancel();
+        _loadCts?.Dispose();
+        _loadCts = null;
+        _loadedGameId = null;
+        _model = null;
+        _loading = false;
+        _failed = false;
+    }
+
+    private void LogRenderMarker()
+    {
+        if (_model is null) return;
+
+        var currentSlot = IsGameRunning ? _model.CurrentSlotId?.ToString() ?? "null" : "null";
+        Console.WriteLine($"[my-roles] timetable-render slots={_model.TimeSlots.Count} currentSlot={currentSlot}");
+    }
+
+    private static string FormatSlotTime(OrganizerRoleMeSlotDto slot)
+    {
+        var start = slot.StartTime.ToLocalTime();
+        var end = slot.StartTime.AddHours((double)slot.DurationHours).ToLocalTime();
+        return $"{start:d.M. HH:mm}-{end:HH:mm}";
+    }
+
+    public void Dispose() => Reset();
+}

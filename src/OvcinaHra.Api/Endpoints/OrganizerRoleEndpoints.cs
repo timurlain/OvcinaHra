@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using System.Diagnostics;
+using System.Security.Claims;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Shared.Domain.Entities;
+using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Endpoints;
@@ -23,6 +25,10 @@ public static class OrganizerRoleEndpoints
         group.MapPost("/bulk", BulkAssign);
         group.MapPut("/slots/{slotId:int}/npcs/{npcId:int}", UpsertSlotAssignment);
         group.MapDelete("/slots/{slotId:int}/npcs/{npcId:int}", DeleteSlotAssignment);
+
+        routes.MapGet("/api/organizer-roles/me", GetMine)
+            .WithTags("OrganizerRoles")
+            .RequireAuthorization();
 
         return group;
     }
@@ -90,6 +96,117 @@ public static class OrganizerRoleEndpoints
             assignments.Count);
 
         return TypedResults.Ok(new OrganizerRoleMatrixDto(gameId, slots, npcs, assignments));
+    }
+
+    private static async Task<Results<Ok<OrganizerRoleMeDto>, NotFound, UnauthorizedHttpResult>> GetMine(
+        int gameId,
+        ClaimsPrincipal user,
+        WorldDbContext db,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        var logger = loggerFactory.CreateLogger(LoggerCategory);
+        if (user.Identity?.IsAuthenticated != true)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        if (!await db.Games.AnyAsync(g => g.Id == gameId, ct))
+        {
+            logger.LogInformation("[my-roles] view-load game_not_found gameId={GameId}", gameId);
+            return TypedResults.NotFound();
+        }
+
+        var userId = user.FindFirstValue("sub")
+            ?? user.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? user.Identity.Name
+            ?? "unknown";
+        var userEmail = NullIfWhiteSpace(user.FindFirstValue("email") ?? user.FindFirstValue(ClaimTypes.Email));
+
+        var slots = await db.GameTimeSlots
+            .AsNoTracking()
+            .Where(s => s.GameId == gameId)
+            .OrderBy(s => s.StartTime)
+            .Select(s => new OrganizerRoleTimeSlotDto(
+                s.Id,
+                s.StartTime,
+                (decimal)s.Duration.TotalHours,
+                s.InGameYear,
+                s.Stage))
+            .ToListAsync(ct);
+
+        var assignments = new List<OrganizerRoleMineAssignmentRow>();
+        if (userEmail is not null)
+        {
+            var normalizedEmail = userEmail.ToUpperInvariant();
+            assignments = await db.OrganizerRoleAssignments
+                .AsNoTracking()
+                .Where(a => a.GameId == gameId
+                    && a.PersonEmail != null
+                    && a.PersonEmail.ToUpper() == normalizedEmail)
+                .OrderBy(a => a.TimeSlot.StartTime)
+                .ThenBy(a => a.Npc.Name)
+                .Select(a => new OrganizerRoleMineAssignmentRow(
+                    a.GameTimeSlotId,
+                    a.NpcId,
+                    a.Npc.Name,
+                    a.Npc.Role,
+                    a.Npc.Description,
+                    a.Notes,
+                    a.PersonId,
+                    a.PersonName,
+                    a.PersonEmail))
+                .ToListAsync(ct);
+        }
+
+        var primary = PickPrimaryRole(assignments, out var pickReason);
+        logger.LogInformation(
+            "[my-roles] view-load gameId={GameId} userId={UserId} assignmentsCount={AssignmentCount}",
+            gameId,
+            userId,
+            assignments.Count);
+        logger.LogDebug(
+            "[my-roles] role-pick selected={NpcId} reason={Reason}",
+            primary?.NpcId,
+            pickReason);
+
+        var assignmentsBySlot = assignments
+            .GroupBy(a => a.GameTimeSlotId)
+            .ToDictionary(g => g.Key, g => g
+                .OrderBy(a => a.NpcName, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(a => a.NpcId)
+                .Select(a => new OrganizerRoleMeSlotAssignmentDto(
+                    a.NpcId,
+                    a.NpcName,
+                    a.Role,
+                    a.Description,
+                    a.Notes))
+                .ToList());
+
+        var now = DateTime.UtcNow;
+        var currentSlotId = slots
+            .FirstOrDefault(s => s.StartTime <= now && s.StartTime.AddHours((double)s.DurationHours) > now)
+            ?.Id;
+        var person = assignments.FirstOrDefault();
+
+        var dto = new OrganizerRoleMeDto(
+            gameId,
+            userId,
+            userEmail,
+            person?.PersonId,
+            person?.PersonName,
+            currentSlotId,
+            primary,
+            slots.Select(s => new OrganizerRoleMeSlotDto(
+                s.Id,
+                s.StartTime,
+                s.DurationHours,
+                s.InGameYear,
+                s.Stage,
+                assignmentsBySlot.GetValueOrDefault(s.Id) ?? []))
+            .ToList());
+
+        return TypedResults.Ok(dto);
     }
 
     private static async Task<Results<Ok<BulkOrganizerRoleAssignmentResultDto>, NotFound, ProblemHttpResult>> BulkAssign(
@@ -564,6 +681,56 @@ public static class OrganizerRoleEndpoints
             a.Notes,
             a.CreatedAtUtc,
             a.UpdatedAtUtc);
+
+    private static OrganizerRoleMePrimaryRoleDto? PickPrimaryRole(
+        List<OrganizerRoleMineAssignmentRow> assignments,
+        out string reason)
+    {
+        if (assignments.Count == 0)
+        {
+            reason = "none";
+            return null;
+        }
+
+        var counts = assignments
+            .GroupBy(a => new { a.NpcId, a.NpcName, a.Role, a.Description })
+            .Select(g => new
+            {
+                g.Key.NpcId,
+                g.Key.NpcName,
+                g.Key.Role,
+                g.Key.Description,
+                Count = g.Count()
+            })
+            .ToList();
+
+        var maxCount = counts.Max(c => c.Count);
+        var candidates = counts
+            .Where(c => c.Count == maxCount)
+            .OrderBy(c => c.NpcName, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(c => c.NpcId)
+            .ToList();
+        var selected = candidates[0];
+        reason = candidates.Count > 1 ? "alphabetical" : "count";
+
+        return new OrganizerRoleMePrimaryRoleDto(
+            selected.NpcId,
+            selected.NpcName,
+            selected.Role,
+            selected.Description,
+            selected.Count);
+    }
+
+    private sealed record OrganizerRoleMineAssignmentRow(
+        int GameTimeSlotId,
+        int NpcId,
+        string NpcName,
+        NpcRole Role,
+        string? Description,
+        string? Notes,
+        int PersonId,
+        string PersonName,
+        string? PersonEmail);
 
     private static ProblemHttpResult Problem(string detail, string title, int statusCode) =>
         TypedResults.Problem(detail: detail, title: title, statusCode: statusCode);
