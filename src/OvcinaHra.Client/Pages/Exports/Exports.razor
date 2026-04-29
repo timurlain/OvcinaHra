@@ -98,6 +98,26 @@
                 <p>Jednostránkový přehled prodejných předmětů a jejich cen.</p>
             </div>
         </button>
+        <button type="button"
+                class="oh-exports-card oh-exports-card-button"
+                title="Vyexportuje stříhací proužky pokladů pro knihovníka."
+                disabled="@isLibrarianTreasuresDownloading"
+                @onclick="DownloadLibrarianTreasuresAsync">
+            <div class="oh-exports-card-icon">
+                @if (isLibrarianTreasuresDownloading)
+                {
+                    <span class="spinner-border spinner-border-sm"></span>
+                }
+                else
+                {
+                    <i class="bi bi-scissors"></i>
+                }
+            </div>
+            <div class="oh-exports-card-body">
+                <h3>Knihovník - poklady</h3>
+                <p>Dvousloupcové proužky skrytých pokladů s místem pro razítko.</p>
+            </div>
+        </button>
     </div>
 
     @if (downloadError is not null)
@@ -318,6 +338,7 @@
     private bool isDownloading;
     private bool isMagicBookDownloading;
     private bool isCenikDownloading;
+    private bool isLibrarianTreasuresDownloading;
     private string selectedBasemap = TouristBasemap;
     private string activeMapExportTitle = "Export pro postavy";
     private string activeMapExportEndpoint = "explorer-map.pdf";
@@ -451,6 +472,41 @@
         finally
         {
             isCenikDownloading = false;
+        }
+    }
+
+    private async Task DownloadLibrarianTreasuresAsync()
+    {
+        if (GameContext.SelectedGameId is not int gameId)
+        {
+            downloadError = "Nejdřív vyberte hru.";
+            return;
+        }
+
+        isLibrarianTreasuresDownloading = true;
+        downloadError = null;
+        try
+        {
+            Console.WriteLine($"[export-client] librarian-treasures download init gameId={gameId}");
+            var (ok, file, problem) = await Api.DownloadWithProblemAsync($"/api/games/{gameId}/exports/librarian-treasures.pdf");
+            if (!ok || file is null)
+            {
+                downloadError = problem ?? "PDF se nepodařilo připravit.";
+                return;
+            }
+
+            await using var stream = new MemoryStream(file.Bytes);
+            using var streamReference = new DotNetStreamReference(stream);
+            await JS.InvokeVoidAsync("ovcinaDownloadFile", file.FileName, file.ContentType, streamReference);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            downloadError = "PDF se nepodařilo stáhnout.";
+        }
+        finally
+        {
+            isLibrarianTreasuresDownloading = false;
         }
     }
 
