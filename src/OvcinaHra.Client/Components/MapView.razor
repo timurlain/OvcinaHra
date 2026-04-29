@@ -1,4 +1,5 @@
 @implements IAsyncDisposable
+@using System.Globalization
 @using OvcinaHra.Shared.Domain.Enums
 @inject ApiClient Api
 
@@ -99,6 +100,31 @@
             </div>
         </BodyContentTemplate>
     </DxPopup>
+
+    <DxPopup HeaderText="Text na mapě" Width="400px"
+             CloseOnEscape="true" ShowCloseButton="true"
+             Visible="@_textPopupVisible"
+             VisibleChanged="OnTextPopupVisibleChanged">
+        <BodyContentTemplate>
+            <div class="mb-3">
+                <label class="form-label" for="oh-map-text-popup-input">Popisek</label>
+                <DxTextBox Text="@_textPopupText"
+                           TextChanged="@((string v) => _textPopupText = v)"
+                           BindValueMode="BindValueMode.OnInput"
+                           InputId="oh-map-text-popup-input"
+                           NullText="Napište text..."
+                           CssClass="oh-map-text-popup-input"
+                           @onkeydown="HandleTextPopupKeyDownAsync" />
+            </div>
+            <div class="d-flex gap-2 justify-content-end">
+                <button type="button" class="btn btn-secondary" @onclick="CancelTextPopupAsync">Zrušit</button>
+                <button type="button" class="btn btn-primary" @onclick="SubmitTextPopupAsync"
+                        disabled="@string.IsNullOrWhiteSpace(_textPopupText)">
+                    Uložit
+                </button>
+            </div>
+        </BodyContentTemplate>
+    </DxPopup>
 </div>
 
 @code {
@@ -169,6 +195,10 @@
     private bool? _lastAppliedOverlayVisible;
     private bool? _lastAppliedOrganizerOverlayVisible;
     private MapOverlayAudience _activeAudience = MapOverlayAudience.Player;
+    private bool _textPopupVisible;
+    private bool _focusTextPopupAfterRender;
+    private string _textPopupText = "";
+    private OverlayCoord? _pendingTextCoord;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -212,6 +242,12 @@
                 || _lastAppliedOrganizerOverlayVisible != OrganizerOverlayVisible))
         {
             await RenderVisibleOverlaysAsync();
+        }
+
+        if (_focusTextPopupAfterRender)
+        {
+            _focusTextPopupAfterRender = false;
+            try { await JS.InvokeVoidAsync("ovcinaOverlay.focusTextPopup"); } catch { /* focus is best-effort */ }
         }
     }
 
@@ -470,6 +506,96 @@
         await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _stagedShapes);
         await JS.InvokeVoidAsync("ovcinaOverlay.selectShape", _elementId, moved);
         StateHasChanged();
+    }
+
+    [JSInvokable]
+    public Task OnTextPlacementRequested(double lat, double lng)
+    {
+        _pendingTextCoord = new OverlayCoord(lat, lng);
+        _textPopupText = "";
+        _textPopupVisible = true;
+        _focusTextPopupAfterRender = true;
+        Console.WriteLine($"[map-text-popup] open coords={{\"lat\":{lat.ToString("F6", CultureInfo.InvariantCulture)},\"lng\":{lng.ToString("F6", CultureInfo.InvariantCulture)},\"audience\":\"{_activeAudience}\"}}");
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task SubmitTextPopupAsync()
+    {
+        var text = (_textPopupText ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            Console.WriteLine("[map-text-popup] discard reason=empty");
+            ClearTextPopupState();
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (_pendingTextCoord is null)
+        {
+            Console.WriteLine("[map-text-popup] discard reason=missing-coordinates");
+            ClearTextPopupState();
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        Console.WriteLine($"[map-text-popup] submit length={text.Length}");
+        var shape = new TextShape(
+            Guid.NewGuid().ToString("N"),
+            _color,
+            _pendingTextCoord,
+            text,
+            _fontSize);
+        _stagedShapes.Add(shape);
+        _createdShapeIds.Add(shape.Id);
+        ClearTextPopupState();
+        await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _stagedShapes);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private Task CancelTextPopupAsync()
+    {
+        Console.WriteLine("[map-text-popup] cancel");
+        ClearTextPopupState();
+        return Task.CompletedTask;
+    }
+
+    private Task OnTextPopupVisibleChanged(bool visible)
+    {
+        if (_textPopupVisible == visible)
+            return Task.CompletedTask;
+
+        if (!visible && _pendingTextCoord is not null)
+        {
+            Console.WriteLine("[map-text-popup] cancel");
+            ClearTextPopupState();
+        }
+        else
+        {
+            _textPopupVisible = visible;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleTextPopupKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+        {
+            await SubmitTextPopupAsync();
+        }
+        else if (args.Key == "Escape")
+        {
+            await CancelTextPopupAsync();
+        }
+    }
+
+    private void ClearTextPopupState()
+    {
+        _textPopupVisible = false;
+        _focusTextPopupAfterRender = false;
+        _textPopupText = "";
+        _pendingTextCoord = null;
     }
 
     // ---- Phase 3 — selection / edit / delete --------------------------

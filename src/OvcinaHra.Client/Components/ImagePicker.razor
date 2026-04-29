@@ -131,20 +131,32 @@
             }
 
             var query = Field is not null ? $"?field={Field}" : "";
+            Console.WriteLine($"[image-upload] start entity={EntityType} id={EntityId} field={Field ?? "image"}");
             using var content = new MultipartFormDataContent();
             using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
             var fileContent = new StreamContent(stream);
             fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(file.ContentType);
             content.Add(fileContent, "file", file.Name);
 
-            var result = await Api.PostMultipartAsync<ImageUploadResult>(
+            var (ok, result, problemDetail, statusCode) = await Api.PostMultipartWithProblemAsync<ImageUploadResult>(
                 $"/api/images/{EntityType}/{EntityId}{query}", content);
+            if (!ok)
+            {
+                errorMessage = problemDetail ?? "Nahrání obrázku selhalo.";
+                Console.WriteLine($"[image-upload] failed status={(int)statusCode} detail={errorMessage}");
+                return;
+            }
+
             if (result is not null)
+            {
                 currentUrl = result.Url;
+                Console.WriteLine($"[image-upload] success blobKey={result.BlobKey}");
+            }
         }
         catch (Exception ex)
         {
             errorMessage = ex.Message;
+            Console.WriteLine($"[image-upload] failed status=exception detail={errorMessage}");
         }
         finally
         {
