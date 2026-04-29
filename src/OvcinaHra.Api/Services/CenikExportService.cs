@@ -131,12 +131,12 @@ public sealed class CenikExportService(
 
         var renderStopwatch = Stopwatch.StartNew();
         var layout = CalculateLayout(items.Count);
+        var pdfImage = await RenderPageAsync(game.Name, items, layout, ct);
         logger.LogInformation(
             "[export-server] cenik.row-count items={ItemCount} pages={Pages} elapsedMs={ElapsedMs}",
             items.Count,
             layout.PageCount,
             renderStopwatch.ElapsedMilliseconds);
-        var pdfImage = await RenderPageAsync(game.Name, items, layout, ct);
         var pdf = SimpleImagePdfWriter.Build([
             new PdfImagePage(
                 A4WidthPt,
@@ -343,25 +343,33 @@ public sealed class CenikExportService(
     private CenikFonts LoadFonts(float itemFontSize)
     {
         var stopwatch = Stopwatch.StartNew();
-        var fonts = new FontCollection();
         var fontRoot = System.IO.Path.Combine(environment.ContentRootPath, "Fonts", "Inter");
         var regularPath = System.IO.Path.Combine(fontRoot, "Inter-Regular.ttf");
         var boldPath = System.IO.Path.Combine(fontRoot, "Inter-Bold.ttf");
-        var regular = fonts.Add(regularPath);
-        var bold = fonts.Add(boldPath);
-        logger.LogInformation(
-            "[export-server] cenik.font-loaded path={Path} family={Family} elapsedMs={ElapsedMs}",
-            regularPath,
-            regular.Name,
-            stopwatch.ElapsedMilliseconds);
+        try
+        {
+            var fonts = new FontCollection();
+            var regular = fonts.Add(regularPath);
+            var bold = fonts.Add(boldPath);
+            logger.LogInformation(
+                "[export-server] cenik.font-loaded path={Path} family={Family} elapsedMs={ElapsedMs}",
+                regularPath,
+                regular.Name,
+                stopwatch.ElapsedMilliseconds);
 
-        return new CenikFonts(
-            Title: bold.CreateFont(56),
-            Subtitle: regular.CreateFont(30),
-            Header: bold.CreateFont(Math.Max(6, itemFontSize * 0.82f)),
-            Body: regular.CreateFont(itemFontSize),
-            BodyBold: bold.CreateFont(itemFontSize),
-            Footer: regular.CreateFont(24));
+            return new CenikFonts(
+                Title: bold.CreateFont(56),
+                Subtitle: regular.CreateFont(30),
+                Header: bold.CreateFont(Math.Max(6, itemFontSize * 0.82f)),
+                Body: regular.CreateFont(itemFontSize),
+                BodyBold: bold.CreateFont(itemFontSize),
+                Footer: regular.CreateFont(24));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[export-server] cenik.font-load-failed path={Path}", fontRoot);
+            throw new CenikExportProblemException("Čitelný font pro export ceníku není dostupný.");
+        }
     }
 
     private static IReadOnlyList<float> CalculateColumnWidths(float tableWidth)

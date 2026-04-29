@@ -302,16 +302,24 @@ public sealed class LibrarianTreasureExportService(
     private LibrarianTreasureFonts LoadFonts()
     {
         var fontRoot = System.IO.Path.Combine(environment.ContentRootPath, "Fonts", "Inter");
-        var fontCollection = new FontCollection();
-        var regular = fontCollection.Add(System.IO.Path.Combine(fontRoot, "Inter-Regular.ttf"));
-        var bold = fontCollection.Add(System.IO.Path.Combine(fontRoot, "Inter-Bold.ttf"));
-        return new LibrarianTreasureFonts(
-            Title: bold.CreateFont(52),
-            Subtitle: regular.CreateFont(31),
-            Header: bold.CreateFont(HeaderFontPx),
-            Body: regular.CreateFont(BodyFontPx),
-            Phase: bold.CreateFont(PhaseFontPx),
-            Small: regular.CreateFont(24));
+        try
+        {
+            var fontCollection = new FontCollection();
+            var regular = fontCollection.Add(System.IO.Path.Combine(fontRoot, "Inter-Regular.ttf"));
+            var bold = fontCollection.Add(System.IO.Path.Combine(fontRoot, "Inter-Bold.ttf"));
+            return new LibrarianTreasureFonts(
+                Title: bold.CreateFont(52),
+                Subtitle: regular.CreateFont(31),
+                Header: bold.CreateFont(HeaderFontPx),
+                Body: regular.CreateFont(BodyFontPx),
+                Phase: bold.CreateFont(PhaseFontPx),
+                Small: regular.CreateFont(24));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[export-server] librarian-treasures.font-load-failed path={Path}", fontRoot);
+            throw new LibrarianTreasureExportProblemException("Čitelný font pro export knihovníka není dostupný.");
+        }
     }
 
     private static string FormatContents(IReadOnlyList<LibrarianTreasureItem> items) =>
