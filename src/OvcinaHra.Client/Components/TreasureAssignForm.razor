@@ -66,7 +66,9 @@
                     <div class="oh-tp-chosen-row">
                         <i class="bi bi-check-circle text-success"></i>
                         <span class="flex-grow-1">@p.ItemName</span>
-                        <span class="oh-tp-focus-quest-meta">×@p.Count</span>
+                        <span class="oh-tp-focus-quest-meta">
+                            @(p.IsUnique ? $"×{p.Count}" : $"×1 z {p.Count}")
+                        </span>
                     </div>
                 }
             </div>
@@ -241,8 +243,9 @@
                 string.IsNullOrWhiteSpace(clue) ? null : clue.Trim(),
                 toStash ? null : LocationId,
                 toStash ? stashId : null,
-                SelectedPool.Select(p => p.Id).ToList(),
-                unlimitedItems.Select(u => new UnlimitedItemAssignDto(u.ItemId, u.Count)).ToList());
+                TreasureItemIds: null,
+                UnlimitedItems: unlimitedItems.Select(u => new UnlimitedItemAssignDto(u.ItemId, u.Count)).ToList(),
+                PoolItems: SelectedPool.Select(p => new PoolItemAssignDto(p.Id, p.IsUnique ? p.Count : 1)).ToList());
 
             await OnSave.InvokeAsync(dto);
         }

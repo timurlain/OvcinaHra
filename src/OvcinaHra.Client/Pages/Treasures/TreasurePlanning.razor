@@ -74,7 +74,7 @@ else
         </div>
 
         @* ================== ZONE 2 — Workspace ================== *@
-        <div class="oh-tp-workspace">
+        <div class="oh-tp-workspace" @onclick="CollapseQuickAllocationStepper">
 
             @* LEFT: map *@
             <div class="oh-tp-map-panel">
@@ -327,6 +327,31 @@ else
                                     </button>
                                 }
                             </div>
+                            @if (quickAllocation is { IsUnique: false } qa && qa.LocationId == loc.LocationId)
+                            {
+                                <div class="oh-tp-count-stepper" @onclick:stopPropagation="true">
+                                    <span class="oh-tp-count-stepper-name">@qa.ItemName</span>
+                                    <button type="button"
+                                            class="oh-tp-stepper-btn"
+                                            disabled="@(qa.Count <= 1 || quickAllocationAdjusting)"
+                                            @onclick="() => AdjustQuickAllocationAsync(-1)">
+                                        <i class="bi bi-dash-lg"></i>
+                                    </button>
+                                    <span class="oh-tp-stepper-count">×@qa.Count</span>
+                                    <button type="button"
+                                            class="oh-tp-stepper-btn"
+                                            disabled="@quickAllocationAdjusting"
+                                            @onclick="() => AdjustQuickAllocationAsync(1)">
+                                        <i class="bi bi-plus-lg"></i>
+                                    </button>
+                                </div>
+                            }
+                            @if (allocationError is not null)
+                            {
+                                <div class="alert alert-danger py-2 mb-2" role="alert">
+                                    <i class="bi bi-exclamation-triangle me-1"></i>@allocationError
+                                </div>
+                            }
                             @if (loc.Stashes.Count > 0)
                             {
                                 <div class="oh-tp-stash-summary">
@@ -709,6 +734,8 @@ else
         {
             poolItemId = p.Id,
             p.ItemId,
+            kind = p.IsUnique ? "unique" : "non-unique",
+            p.Count,
             selected = existing is null,
             selectedCount = selectedPool.Count,
             focusedLocationId
@@ -741,9 +768,54 @@ else
         Console.WriteLine($"[treasure-alloc] {json}");
     }
 
+    private void CollapseQuickAllocationStepper()
+    {
+        if (quickAllocation is null) return;
+        quickAllocation = null;
+        quickAllocationCollapseCts?.Cancel();
+        quickAllocationCollapseCts?.Dispose();
+        quickAllocationCollapseCts = null;
+        LogTreasureAlloc("stepper-collapse", new { source = "click-away", focusedLocationId });
+    }
+
+    private void ScheduleQuickAllocationCollapse()
+    {
+        quickAllocationCollapseCts?.Cancel();
+        quickAllocationCollapseCts?.Dispose();
+        quickAllocationCollapseCts = new CancellationTokenSource();
+        _ = CollapseQuickAllocationLaterAsync(quickAllocationCollapseCts.Token);
+    }
+
+    private async Task CollapseQuickAllocationLaterAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+            if (cancellationToken.IsCancellationRequested) return;
+            quickAllocation = null;
+            LogTreasureAlloc("stepper-collapse", new { source = "timeout", focusedLocationId });
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
     // ===== Focus state =====
     private int? focusedLocationId;
     private string focusTab = "prehled";
+    private QuickAllocationState? quickAllocation;
+    private bool quickAllocationAdjusting;
+    private string? allocationError;
+    private CancellationTokenSource? quickAllocationCollapseCts;
+    private sealed record QuickAllocationState(
+        int QuestId,
+        int TreasureItemId,
+        int LocationId,
+        int ItemId,
+        string ItemName,
+        int Count,
+        bool IsUnique);
 
     // Issue #200: Mapa ↔ Karty toggle. Cards view groups by Region with a
     // LocationKind filter — works without GPS coords. Persisted via
@@ -837,12 +909,19 @@ else
         focusedLocationId = null;
         selectedPool.Clear();
         treasuresRegionFilter = null;
+        quickAllocation = null;
+        allocationError = null;
         await LoadAllAsync();
         await PlaceMarkersIfReadyAsync();
         StateHasChanged();
     }
 
-    public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
+    public void Dispose()
+    {
+        GameContext.OnGameChanged -= OnGameChanged;
+        quickAllocationCollapseCts?.Cancel();
+        quickAllocationCollapseCts?.Dispose();
+    }
 
     private async Task LoadAllAsync()
     {
@@ -1096,19 +1175,24 @@ else
     // ===== Handlers from MapView =====
     private Task HandlePieClick(int locationId) => HandleLocationTargetClick(locationId);
 
-    private Task HandleLocationTargetClick(int locationId)
+    private async Task HandleLocationTargetClick(int locationId)
     {
         focusedLocationId = locationId;
-        focusTab = selectedPool.Count > 0 ? "pridat" : "prehled";
         LogTreasureAlloc("click-to-allocate", new
         {
             locationId,
             selectedCount = selectedPool.Count,
-            targetTab = focusTab,
             view = treasuresView
         });
+
+        if (selectedPool.Count == 1)
+        {
+            await QuickAssignPoolItemAsync(selectedPool[0], locationId, "click-fallback");
+            return;
+        }
+
+        focusTab = selectedPool.Count > 0 ? "pridat" : "prehled";
         StateHasChanged();
-        return Task.CompletedTask;
     }
 
     private void SetFocusTab(string tab, string source)
@@ -1123,8 +1207,14 @@ else
         });
     }
 
-    private void StartAddToFocusedLocation(string source)
+    private async Task StartAddToFocusedLocation(string source)
     {
+        if (focusedLocationId is int locationId && selectedPool.Count == 1)
+        {
+            await QuickAssignPoolItemAsync(selectedPool[0], locationId, source);
+            return;
+        }
+
         focusTab = "pridat";
         LogTreasureAlloc("button-allocate", new
         {
@@ -1158,23 +1248,7 @@ else
                 return;
             }
 
-            // Ensure the dragged item is selected; keep any prior selection intact
-            // so the user can batch-drop multiple onto the same pin.
-            if (!IsSelected(picked))
-            {
-                selectedPool.Add(picked);
-            }
-
-            focusedLocationId = args.LocationId;
-            focusTab = "pridat";
-            LogTreasureAlloc("drop-applied", new
-            {
-                args.LocationId,
-                poolItemId,
-                selectedCount = selectedPool.Count
-            });
-            StateHasChanged();
-            await Task.CompletedTask;
+            await QuickAssignPoolItemAsync(picked, args.LocationId, "drop");
         }
         catch (Exception ex)
         {
@@ -1189,6 +1263,122 @@ else
         focusTab = "prehled";
     }
 
+    private async Task QuickAssignPoolItemAsync(TreasurePoolItemDto item, int locationId, string source)
+    {
+        allocationError = null;
+        focusedLocationId = locationId;
+        focusTab = "prehled";
+        var count = item.IsUnique ? item.Count : 1;
+        var dto = new AssignTreasureDto(
+            Title: item.ItemName,
+            Difficulty: lastUsedDifficulty,
+            GameId: gameId,
+            LocationId: locationId,
+            PoolItems: [new PoolItemAssignDto(item.Id, count)]);
+
+        LogTreasureAlloc("drop-commit", new
+        {
+            source,
+            target = "location",
+            locationId,
+            poolItemId = item.Id,
+            item.ItemId,
+            kind = item.IsUnique ? "unique" : "non-unique",
+            availableCount = item.Count,
+            committedCount = count
+        });
+
+        var result = await Api.PostWithProblemAsync<AssignTreasureDto, TreasureQuestDetailDto>("/api/treasure-planning/assign", dto);
+        if (!result.Ok || result.Value is null)
+        {
+            allocationError = result.ProblemDetail ?? "Rychlé přiřazení pokladu se nepodařilo.";
+            LogTreasureAlloc("drop-commit-rejected", new { source, allocationError });
+            StateHasChanged();
+            return;
+        }
+
+        lastUsedDifficulty = dto.Difficulty;
+        selectedPool.RemoveAll(p => p.Id == item.Id);
+        focusedLocationId = locationId;
+        focusTab = "prehled";
+        var assignedItem = result.Value.Items.FirstOrDefault(i => i.ItemId == item.ItemId);
+        if (assignedItem is not null)
+        {
+            quickAllocation = new QuickAllocationState(
+                result.Value.Id,
+                assignedItem.Id,
+                locationId,
+                assignedItem.ItemId,
+                assignedItem.ItemName,
+                assignedItem.Count,
+                item.IsUnique);
+            if (!item.IsUnique)
+            {
+                ScheduleQuickAllocationCollapse();
+            }
+        }
+
+        markersPlaced = false;
+        await LoadAllAsync();
+        await PlaceMarkersIfReadyAsync();
+        LogTreasureAlloc("drop-commit-success", new
+        {
+            source,
+            questId = result.Value.Id,
+            treasureItemId = assignedItem?.Id,
+            locationId,
+            item.ItemId,
+            committedCount = count
+        });
+        StateHasChanged();
+    }
+
+    private async Task AdjustQuickAllocationAsync(int delta)
+    {
+        if (quickAllocation is null || quickAllocationAdjusting) return;
+        allocationError = null;
+        quickAllocationAdjusting = true;
+        LogTreasureAlloc("stepper", new
+        {
+            target = "location",
+            quickAllocation.LocationId,
+            quickAllocation.TreasureItemId,
+            quickAllocation.ItemId,
+            delta
+        });
+
+        try
+        {
+            var result = await Api.PostWithProblemAsync<AdjustTreasureItemCountDto, TreasureItemDto>(
+                $"/api/treasure-planning/treasure-items/{quickAllocation.TreasureItemId}/adjust-count",
+                new AdjustTreasureItemCountDto(delta, "stepper"));
+
+            if (!result.Ok || result.Value is null)
+            {
+                allocationError = result.ProblemDetail ?? "Úprava počtu se nepodařila.";
+                LogTreasureAlloc("stepper-rejected", new { delta, allocationError });
+                return;
+            }
+
+            quickAllocation = quickAllocation with { Count = result.Value.Count };
+            markersPlaced = false;
+            await LoadAllAsync();
+            await PlaceMarkersIfReadyAsync();
+            ScheduleQuickAllocationCollapse();
+            LogTreasureAlloc("stepper-success", new
+            {
+                delta,
+                result.Value.Count,
+                quickAllocation.TreasureItemId
+            });
+        }
+        finally
+        {
+            quickAllocationAdjusting = false;
+            StateHasChanged();
+        }
+    }
+
     // ===== Save assignment =====
     private async Task HandleAssignSaveAsync(AssignTreasureDto dto)
     {
@@ -1197,7 +1387,8 @@ else
             dto.GameId,
             dto.LocationId,
             dto.SecretStashId,
-            poolCount = dto.TreasureItemIds?.Count ?? 0,
+            poolCount = (dto.PoolItems?.Count ?? 0) + (dto.TreasureItemIds?.Count ?? 0),
+            poolUnits = dto.PoolItems?.Sum(p => p.Count) ?? 0,
             unlimitedCount = dto.UnlimitedItems?.Count ?? 0
         });
         var result = await Api.PostWithProblemAsync<AssignTreasureDto, TreasureQuestDetailDto>("/api/treasure-planning/assign", dto);
