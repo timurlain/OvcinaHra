@@ -108,11 +108,13 @@ public sealed class VersionDriftService : IDisposable
             var info = await _api.GetAsync<VersionInfo>("/api/version");
             if (info is null)
             {
-                Console.WriteLine("[version-refresh] /api/version read commit=(null)");
+                _logger.LogDebug("[version-refresh] /api/version returned null payload");
                 return null;
             }
 
-            Console.WriteLine($"[version-refresh] /api/version read commit={info.Commit} startedUtc={info.StartedUtc:O}");
+            _logger.LogDebug("[version-refresh] /api/version read commit={Commit} startedUtc={StartedUtc:O}",
+                info.Commit,
+                info.StartedUtc);
             return info.Commit;
         }
         catch (Exception ex)
