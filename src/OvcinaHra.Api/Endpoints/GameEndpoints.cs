@@ -45,8 +45,185 @@ public static class GameEndpoints
         group.MapDelete("/{gameId:int}/skills/{gameSkillId:int}", DeleteGameSkill);
         group.MapPost("/{gameId:int}/quests/bulk", BulkAddQuests);
         group.MapDelete("/{gameId:int}/locations/{locationId:int}", RemoveLocationFromGame);
+        group.MapGet("/{gameId:int}/buildings", GetGameBuildings);
+        group.MapPost("/{gameId:int}/buildings/{buildingId:int}", AddBuildingToGame);
+        group.MapDelete("/{gameId:int}/buildings/{buildingId:int}", RemoveBuildingFromGame);
 
         return group;
+    }
+
+    private static async Task<Results<Ok<List<BuildingListDto>>, NotFound>> GetGameBuildings(
+        int gameId,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.GameEndpoints");
+        var timer = Stopwatch.StartNew();
+        logger.LogInformation(
+            "[building-game-server] entry method={Method} path={Path} gameId={GameId}",
+            http.Request.Method,
+            http.Request.Path,
+            gameId);
+
+        if (!await db.Games.AnyAsync(g => g.Id == gameId))
+        {
+            LogBuildingGameExit(logger, http, gameId, null, timer, 404, "game-not-found");
+            return TypedResults.NotFound();
+        }
+
+        var rows = await db.GameBuildings
+            .Where(gb => gb.GameId == gameId)
+            .OrderBy(gb => gb.Building.Name)
+            .Select(gb => new
+            {
+                gb.Building.Id,
+                gb.Building.Name,
+                gb.Building.Description,
+                gb.Building.Notes,
+                gb.Building.LocationId,
+                LocationName = gb.Building.Location != null ? gb.Building.Location.Name : null,
+                gb.Building.IsPrebuilt,
+                gb.Building.ImagePath,
+                gb.Building.CostMoney,
+                gb.Building.Effect,
+                CraftingRecipesCount = gb.Building.CraftingRequirements.Count,
+                GamesCount = gb.Building.GameBuildings.Count
+            })
+            .ToListAsync();
+
+        var buildings = rows.Select(r => new BuildingListDto(
+            r.Id,
+            r.Name,
+            r.Description,
+            r.Notes,
+            r.LocationId,
+            r.LocationName,
+            r.IsPrebuilt,
+            ImageEndpoints.ThumbUrl(http, "buildings", r.Id, "card"),
+            CostMoney: r.CostMoney,
+            Effect: r.Effect,
+            CraftingRecipesCount: r.CraftingRecipesCount,
+            GamesCount: r.GamesCount)).ToList();
+
+        LogBuildingGameExit(logger, http, gameId, null, timer, 200, detail: $"count={buildings.Count}");
+        return TypedResults.Ok(buildings);
+    }
+
+    private static async Task<Results<Created, Ok, NotFound>> AddBuildingToGame(
+        int gameId,
+        int buildingId,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.GameEndpoints");
+        var timer = Stopwatch.StartNew();
+        logger.LogInformation(
+            "[building-game-server] entry method={Method} path={Path} gameId={GameId} buildingId={BuildingId}",
+            http.Request.Method,
+            http.Request.Path,
+            gameId,
+            buildingId);
+
+        if (!await db.Games.AnyAsync(g => g.Id == gameId))
+        {
+            LogBuildingGameExit(logger, http, gameId, buildingId, timer, 404, "game-not-found");
+            return TypedResults.NotFound();
+        }
+
+        if (!await db.Buildings.AnyAsync(b => b.Id == buildingId))
+        {
+            LogBuildingGameExit(logger, http, gameId, buildingId, timer, 404, "building-not-found");
+            return TypedResults.NotFound();
+        }
+
+        if (await db.GameBuildings.AnyAsync(gb => gb.GameId == gameId && gb.BuildingId == buildingId))
+        {
+            LogBuildingGameExit(logger, http, gameId, buildingId, timer, 200, "already-linked");
+            return TypedResults.Ok();
+        }
+
+        db.GameBuildings.Add(new GameBuilding { GameId = gameId, BuildingId = buildingId });
+        logger.LogInformation(
+            "[building-game-server] db-write.attempt gameId={GameId} buildingId={BuildingId}",
+            gameId,
+            buildingId);
+        var dbTimer = Stopwatch.StartNew();
+        var rowsAffected = await db.SaveChangesAsync();
+        dbTimer.Stop();
+        logger.LogInformation(
+            "[building-game-server] db-write.ok gameId={GameId} buildingId={BuildingId} rowsAffected={RowsAffected} elapsedMs={ElapsedMs}",
+            gameId,
+            buildingId,
+            rowsAffected,
+            dbTimer.ElapsedMilliseconds);
+
+        LogBuildingGameExit(logger, http, gameId, buildingId, timer, 201, "created");
+        return TypedResults.Created($"/api/games/{gameId}/buildings/{buildingId}");
+    }
+
+    private static async Task<Results<NoContent, NotFound>> RemoveBuildingFromGame(
+        int gameId,
+        int buildingId,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.GameEndpoints");
+        var timer = Stopwatch.StartNew();
+        logger.LogInformation(
+            "[building-game-server] entry method={Method} path={Path} gameId={GameId} buildingId={BuildingId}",
+            http.Request.Method,
+            http.Request.Path,
+            gameId,
+            buildingId);
+
+        var link = await db.GameBuildings.FindAsync(gameId, buildingId);
+        if (link is null)
+        {
+            LogBuildingGameExit(logger, http, gameId, buildingId, timer, 404, "link-not-found");
+            return TypedResults.NotFound();
+        }
+
+        db.GameBuildings.Remove(link);
+        logger.LogInformation(
+            "[building-game-server] db-write.attempt gameId={GameId} buildingId={BuildingId}",
+            gameId,
+            buildingId);
+        var dbTimer = Stopwatch.StartNew();
+        var rowsAffected = await db.SaveChangesAsync();
+        dbTimer.Stop();
+        logger.LogInformation(
+            "[building-game-server] db-write.ok gameId={GameId} buildingId={BuildingId} rowsAffected={RowsAffected} elapsedMs={ElapsedMs}",
+            gameId,
+            buildingId,
+            rowsAffected,
+            dbTimer.ElapsedMilliseconds);
+
+        LogBuildingGameExit(logger, http, gameId, buildingId, timer, 204, "removed");
+        return TypedResults.NoContent();
+    }
+
+    private static void LogBuildingGameExit(
+        ILogger logger,
+        HttpContext http,
+        int gameId,
+        int? buildingId,
+        Stopwatch timer,
+        int status,
+        string? detail = null)
+    {
+        timer.Stop();
+        logger.LogInformation(
+            "[building-game-server] exit method={Method} path={Path} gameId={GameId} buildingId={BuildingId} status={Status} elapsedMs={ElapsedMs} detail={Detail}",
+            http.Request.Method,
+            http.Request.Path,
+            gameId,
+            buildingId,
+            status,
+            timer.ElapsedMilliseconds,
+            detail);
     }
 
     private static async Task<Results<Ok<BulkAddQuestsResponse>, NotFound>> BulkAddQuests(

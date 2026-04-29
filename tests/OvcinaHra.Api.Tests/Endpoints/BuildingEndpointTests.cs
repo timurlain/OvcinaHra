@@ -245,6 +245,60 @@ public class BuildingEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    [Fact]
+    public async Task NestedAddToGame_NewLink_ReturnsCreatedAndByGameReflects()
+    {
+        var game = await CreateGameAsync();
+        var createResp = await Client.PostAsJsonAsync("/api/buildings", new CreateBuildingDto("Tržiště"));
+        var created = await createResp.Content.ReadFromJsonAsync<BuildingDetailDto>();
+
+        var response = await Client.PostAsync($"/api/games/{game.Id}/buildings/{created!.Id}", null);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var buildings = await Client.GetFromJsonAsync<List<BuildingListDto>>($"/api/buildings/by-game/{game.Id}");
+        Assert.Contains(buildings!, b => b.Id == created.Id);
+    }
+
+    [Fact]
+    public async Task NestedAddToGame_Duplicate_ReturnsOkWithoutDuplicate()
+    {
+        var game = await CreateGameAsync();
+        var createResp = await Client.PostAsJsonAsync("/api/buildings", new CreateBuildingDto("Sýpka"));
+        var created = await createResp.Content.ReadFromJsonAsync<BuildingDetailDto>();
+
+        await Client.PostAsync($"/api/games/{game.Id}/buildings/{created!.Id}", null);
+        var duplicate = await Client.PostAsync($"/api/games/{game.Id}/buildings/{created.Id}", null);
+
+        Assert.Equal(HttpStatusCode.OK, duplicate.StatusCode);
+        var buildings = await Client.GetFromJsonAsync<List<BuildingListDto>>($"/api/games/{game.Id}/buildings");
+        Assert.Single(buildings!, b => b.Id == created.Id);
+    }
+
+    [Fact]
+    public async Task NestedRemoveFromGame_RemovesLinkButKeepsCatalogRecord()
+    {
+        var game = await CreateGameAsync();
+        var createResp = await Client.PostAsJsonAsync("/api/buildings", new CreateBuildingDto("Stáje"));
+        var created = await createResp.Content.ReadFromJsonAsync<BuildingDetailDto>();
+        await Client.PostAsync($"/api/games/{game.Id}/buildings/{created!.Id}", null);
+
+        var response = await Client.DeleteAsync($"/api/games/{game.Id}/buildings/{created.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var byGame = await Client.GetFromJsonAsync<List<BuildingListDto>>($"/api/buildings/by-game/{game.Id}");
+        Assert.DoesNotContain(byGame!, b => b.Id == created.Id);
+        var catalog = await Client.GetFromJsonAsync<BuildingDetailDto>($"/api/buildings/{created.Id}");
+        Assert.Equal("Stáje", catalog!.Name);
+    }
+
+    [Fact]
+    public async Task NestedRemoveFromGame_NotAssigned_ReturnsNotFound()
+    {
+        var game = await CreateGameAsync();
+        var response = await Client.DeleteAsync($"/api/games/{game.Id}/buildings/9999");
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
     // ── Location ────────────────────────────────────────────────────────────
 
     [Fact]
