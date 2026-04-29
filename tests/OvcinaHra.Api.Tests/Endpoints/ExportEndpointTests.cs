@@ -349,6 +349,86 @@ public class ExportEndpointTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Cenik_MissingGame_ReturnsNotFound()
+    {
+        var response = await Client.GetAsync("/api/games/999999/exports/cenik.pdf");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Cenik_NoSellableItems_ReturnsCzechProblemDetails()
+    {
+        var game = await CreateGameAsync();
+
+        var response = await Client.GetAsync($"/api/games/{game.Id}/exports/cenik.pdf");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Vybraná hra nemá žádné prodejné předměty.", problem.Detail);
+    }
+
+    [Fact]
+    public async Task Cenik_SellableGameItems_ReturnsSinglePageA4Pdf()
+    {
+        var game = await CreateGameAsync();
+
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var items = Enumerable.Range(1, 110)
+                .Select(i => CreateItem($"Předmět {i:000}", (ItemType)(i % Enum.GetValues<ItemType>().Length)))
+                .ToList();
+            var unsold = CreateItem("Neprodejný předmět", ItemType.Artifact);
+            db.Items.AddRange(items);
+            db.Items.Add(unsold);
+            await db.SaveChangesAsync();
+
+            db.GameItems.AddRange(items.Select((item, index) => new GameItem
+            {
+                GameId = game.Id,
+                ItemId = item.Id,
+                IsSold = true,
+                Price = 5 + index,
+            }));
+            db.GameItems.Add(new GameItem
+            {
+                GameId = game.Id,
+                ItemId = unsold.Id,
+                IsSold = false,
+                Price = null,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var response = await Client.GetAsync($"/api/games/{game.Id}/exports/cenik.pdf");
+
+        response.EnsureSuccessStatusCode();
+        Assert.Equal("application/pdf", response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(
+            $"Cenik_Edition-30_{DateTime.Today:yyyy-MM-dd}.pdf",
+            response.Content.Headers.ContentDisposition?.FileName?.Trim('"'));
+        var bytes = await response.Content.ReadAsByteArrayAsync();
+        Assert.StartsWith("%PDF-1.4", Encoding.ASCII.GetString(bytes, 0, 8));
+        var pdfText = Encoding.ASCII.GetString(bytes);
+        Assert.Matches(@"/Count\s+1\b", pdfText);
+        Assert.Contains("/MediaBox [0 0 595.276 841.89]", pdfText);
+        Assert.Equal(1, CountOccurrences(pdfText, "/Subtype /Image"));
+        WriteCenikSmokeArtifact(bytes);
+    }
+
+    [Fact]
+    public void Cenik_AutoFitLargeCount_UsesMoreColumnsOnOnePage()
+    {
+        var layout = CenikExportService.CalculateLayoutForTesting(240);
+
+        Assert.Equal(4, layout.Columns);
+        Assert.True(layout.FontSizePx >= 5);
+        Assert.True(layout.RowsPerColumn <= 60);
+    }
+
+    [Fact]
     public async Task MagicBook_GameSpellRows_ReturnsTwoPageA4Pdf()
     {
         var game = await CreateGameAsync();
@@ -439,6 +519,13 @@ public class ExportEndpointTests(PostgresFixture postgres)
         Description = $"Popis {name}"
     };
 
+    private static Item CreateItem(string name, ItemType itemType) => new()
+    {
+        Name = name,
+        ItemType = itemType,
+        ClassRequirements = new ClassRequirements(0, 0, 0, 0)
+    };
+
     private static int CountOccurrences(string text, string value)
     {
         var count = 0;
@@ -495,5 +582,22 @@ public class ExportEndpointTests(PostgresFixture postgres)
         var tmp = Path.Combine(directory.FullName, ".tmp");
         Directory.CreateDirectory(tmp);
         File.WriteAllBytes(Path.Combine(tmp, fileName), bytes);
+    }
+
+    private static void WriteCenikSmokeArtifact(byte[] bytes)
+    {
+        if (Environment.GetEnvironmentVariable("OVCINA_WRITE_CENIK_SMOKE") != "1")
+            return;
+
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "OvcinaHra.slnx")))
+            directory = directory.Parent;
+
+        if (directory is null)
+            return;
+
+        var tmp = Path.Combine(directory.FullName, ".tmp");
+        Directory.CreateDirectory(tmp);
+        File.WriteAllBytes(Path.Combine(tmp, "cenik-smoke.pdf"), bytes);
     }
 }
