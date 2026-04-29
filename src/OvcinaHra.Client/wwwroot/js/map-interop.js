@@ -1223,7 +1223,7 @@ window.ovcinaMap._kindIconFor = function (kindRaw) {
     return this._kindIcon[k] || 'bi-geo-alt-fill';
 };
 
-window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
+window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind, treasureCount, treasurePhase) {
     if (!this._map) {
         if (this._pinDiag()) console.warn('[pin-diag] addLocationPin called but no map — id=' + id);
         return;
@@ -1253,6 +1253,10 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
     wrapper.style.cursor = 'pointer';
     var pin = document.createElement('div');
     pin.className = 'oh-map-pin oh-map-pin-loc';
+    var count = Number(treasureCount);
+    if (!isFinite(count)) count = 0;
+    count = Math.max(0, Math.trunc(count));
+    var phaseText = treasurePhase || '';
     var kindKey = (kind || 'wilderness').toLowerCase();
     pin.setAttribute('data-kind', kindKey);
     // Issue #273 — graduated label-visibility-by-zoom. Each pin advertises
@@ -1262,7 +1266,7 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
     var minZoom = this._kindMinZoomFor(kindKey);
     pin.setAttribute('data-minzoom', String(minZoom));
     if (this._map.getZoom() >= minZoom) pin.classList.add('oh-pin-label-on');
-    wrapper.title = name || '';
+    wrapper.title = (name || '') + (count > 0 ? ' · ' + count + ' pokladů' + (phaseText ? ' (' + phaseText + ')' : '') : '');
     // Issue #257 — tear-drop pin chrome. The bubble (oh-map-pin-bg) carries
     // the per-kind background and the downward triangle tail (::after); the
     // glyph (Bootstrap-Icons bi-*) sits inside. Anchor moves to 'bottom' so
@@ -1278,6 +1282,13 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
     glyph.setAttribute('aria-hidden', 'true');
     bg.appendChild(glyph);
     pin.appendChild(bg);
+    if (count > 0) {
+        var countBadge = document.createElement('span');
+        countBadge.className = 'oh-map-pin-count oh-map-pin-treasure-count';
+        countBadge.textContent = String(count);
+        countBadge.title = count + ' pokladů' + (phaseText ? ' (' + phaseText + ')' : '');
+        pin.appendChild(countBadge);
+    }
     if (name) {
         var label = document.createElement('div');
         label.className = 'oh-map-pin-label';

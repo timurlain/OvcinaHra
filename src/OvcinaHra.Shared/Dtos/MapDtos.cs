@@ -32,7 +32,8 @@ public record MapLocationDto(
     string? KingdomName,
     string? ThumbnailUrl,
     LocationKind? RenderKind = null,
-    string? RenderName = null)
+    string? RenderName = null,
+    TreasureCountByPhaseDto? TreasureCounts = null)
 {
     [JsonIgnore]
     public string KindDisplay => Kind.GetDisplayName();
@@ -46,6 +47,8 @@ public record MapLocationDto(
     [JsonIgnore]
     public string EffectiveKindDisplay => EffectiveKind.GetDisplayName();
 }
+
+public record TreasureCountByPhaseDto(int Total, int Start, int Mid, int End);
 
 /// <summary>
 /// One stash pin. Always sits at <see cref="Lat"/>/<see cref="Lon"/> of
