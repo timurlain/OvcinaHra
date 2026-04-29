@@ -169,6 +169,57 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
     }
 
     [Fact]
+    public async Task NestedCreatureAdd_NewLink_ReturnsCreatedAndByGameReflects()
+    {
+        var game = await CreateGameAsync();
+        var monster = await CreateMonsterAsync("Hlídač brány");
+
+        var response = await Client.PostAsync($"/api/games/{game.Id}/creatures/{monster.Id}", null);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var byGame = await Client.GetFromJsonAsync<List<GameMonsterDto>>($"/api/games/{game.Id}/creatures");
+        Assert.Contains(byGame!, m => m.MonsterId == monster.Id);
+    }
+
+    [Fact]
+    public async Task NestedCreatureAdd_Duplicate_ReturnsOkWithoutDuplicate()
+    {
+        var game = await CreateGameAsync();
+        var monster = await CreateMonsterAsync("Hlídač skladu");
+
+        await Client.PostAsync($"/api/games/{game.Id}/creatures/{monster.Id}", null);
+        var duplicate = await Client.PostAsync($"/api/games/{game.Id}/creatures/{monster.Id}", null);
+
+        Assert.Equal(HttpStatusCode.OK, duplicate.StatusCode);
+        var byGame = await Client.GetFromJsonAsync<List<GameMonsterDto>>($"/api/games/{game.Id}/creatures");
+        Assert.Single(byGame!, m => m.MonsterId == monster.Id);
+    }
+
+    [Fact]
+    public async Task NestedCreatureRemove_RemovesLinkButKeepsCatalogRecord()
+    {
+        var game = await CreateGameAsync();
+        var monster = await CreateMonsterAsync("Hlídač mostu");
+        await Client.PostAsync($"/api/games/{game.Id}/creatures/{monster.Id}", null);
+
+        var response = await Client.DeleteAsync($"/api/games/{game.Id}/creatures/{monster.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var byGame = await Client.GetFromJsonAsync<List<GameMonsterDto>>($"/api/games/{game.Id}/creatures");
+        Assert.DoesNotContain(byGame!, m => m.MonsterId == monster.Id);
+        var catalog = await Client.GetFromJsonAsync<MonsterDetailDto>($"/api/monsters/{monster.Id}");
+        Assert.Equal("Hlídač mostu", catalog!.Name);
+    }
+
+    [Fact]
+    public async Task NestedCreatureRemove_NotAssigned_ReturnsNotFound()
+    {
+        var game = await CreateGameAsync();
+        var response = await Client.DeleteAsync($"/api/games/{game.Id}/creatures/9999");
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task AddTag_ReturnsOk()
     {
         var createMonsterResponse = await Client.PostAsJsonAsync("/api/monsters",
@@ -486,5 +537,21 @@ public class MonsterEndpointTests(PostgresFixture postgres) : IntegrationTestBas
         var created = await response.Content.ReadFromJsonAsync<MonsterDetailDto>();
         Assert.NotNull(created);
         Assert.Equal("Unikátní bestie", created!.Name);
+    }
+
+    private async Task<GameDetailDto> CreateGameAsync()
+    {
+        var response = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Test Hra", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<GameDetailDto>())!;
+    }
+
+    private async Task<MonsterDetailDto> CreateMonsterAsync(string name)
+    {
+        var response = await Client.PostAsJsonAsync("/api/monsters",
+            new CreateMonsterDto(name, MonsterCategory.Tier2, MonsterType.Beast, 4, 2, 10));
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<MonsterDetailDto>())!;
     }
 }

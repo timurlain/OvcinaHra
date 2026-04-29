@@ -48,6 +48,10 @@ public static class GameEndpoints
         group.MapGet("/{gameId:int}/buildings", GetGameBuildings);
         group.MapPost("/{gameId:int}/buildings/{buildingId:int}", AddBuildingToGame);
         group.MapDelete("/{gameId:int}/buildings/{buildingId:int}", RemoveBuildingFromGame);
+        group.MapGet("/{gameId:int}/creatures", GetGameCreatures);
+        group.MapPost("/{gameId:int}/creatures/{monsterId:int}", AddCreatureToGame);
+        group.MapDelete("/{gameId:int}/creatures/{monsterId:int}", RemoveCreatureFromGame);
+        group.MapDelete("/{gameId:int}/quests/{questId:int}", RemoveQuestFromGame);
 
         return group;
     }
@@ -221,6 +225,216 @@ public static class GameEndpoints
             http.Request.Path,
             gameId,
             buildingId,
+            status,
+            timer.ElapsedMilliseconds,
+            detail);
+    }
+
+    private static async Task<Results<Ok<List<GameMonsterDto>>, NotFound>> GetGameCreatures(
+        int gameId,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.GameEndpoints");
+        var timer = Stopwatch.StartNew();
+        logger.LogInformation(
+            "[monster-game-server] entry method={Method} path={Path} gameId={GameId}",
+            http.Request.Method,
+            http.Request.Path,
+            gameId);
+
+        if (!await db.Games.AnyAsync(g => g.Id == gameId))
+        {
+            LogMonsterGameExit(logger, http, gameId, null, timer, 404, "game-not-found");
+            return TypedResults.NotFound();
+        }
+
+        var monsters = await db.GameMonsters
+            .Where(gm => gm.GameId == gameId)
+            .OrderBy(gm => gm.Monster.Name)
+            .Select(gm => new GameMonsterDto(gm.GameId, gm.MonsterId, gm.Monster.Name))
+            .ToListAsync();
+
+        LogMonsterGameExit(logger, http, gameId, null, timer, 200, detail: $"count={monsters.Count}");
+        return TypedResults.Ok(monsters);
+    }
+
+    private static async Task<Results<Created, Ok, NotFound>> AddCreatureToGame(
+        int gameId,
+        int monsterId,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.GameEndpoints");
+        var timer = Stopwatch.StartNew();
+        logger.LogInformation(
+            "[monster-game-server] entry method={Method} path={Path} gameId={GameId} monsterId={MonsterId}",
+            http.Request.Method,
+            http.Request.Path,
+            gameId,
+            monsterId);
+
+        if (!await db.Games.AnyAsync(g => g.Id == gameId))
+        {
+            LogMonsterGameExit(logger, http, gameId, monsterId, timer, 404, "game-not-found");
+            return TypedResults.NotFound();
+        }
+
+        if (!await db.Monsters.AnyAsync(m => m.Id == monsterId))
+        {
+            LogMonsterGameExit(logger, http, gameId, monsterId, timer, 404, "monster-not-found");
+            return TypedResults.NotFound();
+        }
+
+        if (await db.GameMonsters.AnyAsync(gm => gm.GameId == gameId && gm.MonsterId == monsterId))
+        {
+            LogMonsterGameExit(logger, http, gameId, monsterId, timer, 200, "already-linked");
+            return TypedResults.Ok();
+        }
+
+        db.GameMonsters.Add(new GameMonster { GameId = gameId, MonsterId = monsterId });
+        logger.LogInformation(
+            "[monster-game-server] db-write.attempt gameId={GameId} monsterId={MonsterId}",
+            gameId,
+            monsterId);
+        var dbTimer = Stopwatch.StartNew();
+        var rowsAffected = await db.SaveChangesAsync();
+        dbTimer.Stop();
+        logger.LogInformation(
+            "[monster-game-server] db-write.ok gameId={GameId} monsterId={MonsterId} rowsAffected={RowsAffected} elapsedMs={ElapsedMs}",
+            gameId,
+            monsterId,
+            rowsAffected,
+            dbTimer.ElapsedMilliseconds);
+
+        LogMonsterGameExit(logger, http, gameId, monsterId, timer, 201, "created");
+        return TypedResults.Created($"/api/games/{gameId}/creatures/{monsterId}");
+    }
+
+    private static async Task<Results<NoContent, NotFound>> RemoveCreatureFromGame(
+        int gameId,
+        int monsterId,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.GameEndpoints");
+        var timer = Stopwatch.StartNew();
+        logger.LogInformation(
+            "[monster-game-server] entry method={Method} path={Path} gameId={GameId} monsterId={MonsterId}",
+            http.Request.Method,
+            http.Request.Path,
+            gameId,
+            monsterId);
+
+        var link = await db.GameMonsters.FindAsync(gameId, monsterId);
+        if (link is null)
+        {
+            LogMonsterGameExit(logger, http, gameId, monsterId, timer, 404, "link-not-found");
+            return TypedResults.NotFound();
+        }
+
+        db.GameMonsters.Remove(link);
+        logger.LogInformation(
+            "[monster-game-server] db-write.attempt gameId={GameId} monsterId={MonsterId}",
+            gameId,
+            monsterId);
+        var dbTimer = Stopwatch.StartNew();
+        var rowsAffected = await db.SaveChangesAsync();
+        dbTimer.Stop();
+        logger.LogInformation(
+            "[monster-game-server] db-write.ok gameId={GameId} monsterId={MonsterId} rowsAffected={RowsAffected} elapsedMs={ElapsedMs}",
+            gameId,
+            monsterId,
+            rowsAffected,
+            dbTimer.ElapsedMilliseconds);
+
+        LogMonsterGameExit(logger, http, gameId, monsterId, timer, 204, "removed");
+        return TypedResults.NoContent();
+    }
+
+    private static void LogMonsterGameExit(
+        ILogger logger,
+        HttpContext http,
+        int gameId,
+        int? monsterId,
+        Stopwatch timer,
+        int status,
+        string? detail = null)
+    {
+        timer.Stop();
+        logger.LogInformation(
+            "[monster-game-server] exit method={Method} path={Path} gameId={GameId} monsterId={MonsterId} status={Status} elapsedMs={ElapsedMs} detail={Detail}",
+            http.Request.Method,
+            http.Request.Path,
+            gameId,
+            monsterId,
+            status,
+            timer.ElapsedMilliseconds,
+            detail);
+    }
+
+    private static async Task<Results<NoContent, NotFound>> RemoveQuestFromGame(
+        int gameId,
+        int questId,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.GameEndpoints");
+        var timer = Stopwatch.StartNew();
+        logger.LogInformation(
+            "[quest-game-server] entry method={Method} path={Path} gameId={GameId} questId={QuestId}",
+            http.Request.Method,
+            http.Request.Path,
+            gameId,
+            questId);
+
+        var quest = await db.Quests.FirstOrDefaultAsync(q => q.Id == questId && q.GameId == gameId);
+        if (quest is null)
+        {
+            LogQuestGameExit(logger, http, gameId, questId, timer, 404, "quest-not-in-game");
+            return TypedResults.NotFound();
+        }
+
+        quest.GameId = null;
+        quest.TimeSlotId = null;
+        logger.LogInformation(
+            "[quest-game-server] db-write.attempt gameId={GameId} questId={QuestId}",
+            gameId,
+            questId);
+        var dbTimer = Stopwatch.StartNew();
+        var rowsAffected = await db.SaveChangesAsync();
+        dbTimer.Stop();
+        logger.LogInformation(
+            "[quest-game-server] db-write.ok gameId={GameId} questId={QuestId} rowsAffected={RowsAffected} elapsedMs={ElapsedMs}",
+            gameId,
+            questId,
+            rowsAffected,
+            dbTimer.ElapsedMilliseconds);
+
+        LogQuestGameExit(logger, http, gameId, questId, timer, 204, "removed");
+        return TypedResults.NoContent();
+    }
+
+    private static void LogQuestGameExit(
+        ILogger logger,
+        HttpContext http,
+        int gameId,
+        int questId,
+        Stopwatch timer,
+        int status,
+        string? detail = null)
+    {
+        timer.Stop();
+        logger.LogInformation(
+            "[quest-game-server] exit method={Method} path={Path} gameId={GameId} questId={QuestId} status={Status} elapsedMs={ElapsedMs} detail={Detail}",
+            http.Request.Method,
+            http.Request.Path,
+            gameId,
+            questId,
             status,
             timer.ElapsedMilliseconds,
             detail);

@@ -239,6 +239,39 @@ public class QuestEndpointTests(PostgresFixture postgres) : IntegrationTestBase(
     }
 
     [Fact]
+    public async Task NestedRemoveQuestFromGame_SoftUnassignsAndKeepsQuest()
+    {
+        var game = await CreateGameAsync();
+        var createResponse = await Client.PostAsJsonAsync("/api/quests",
+            new CreateQuestDto("Odebratelný quest", QuestType.General, game.Id));
+        var created = await createResponse.Content.ReadFromJsonAsync<QuestListDto>();
+
+        var response = await Client.DeleteAsync($"/api/games/{game.Id}/quests/{created!.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var byGame = await Client.GetFromJsonAsync<List<QuestListDto>>($"/api/quests/by-game/{game.Id}");
+        Assert.DoesNotContain(byGame!, q => q.Id == created.Id);
+        var catalogQuest = await Client.GetFromJsonAsync<QuestDetailDto>($"/api/quests/{created.Id}");
+        Assert.Null(catalogQuest!.GameId);
+    }
+
+    [Fact]
+    public async Task NestedRemoveQuestFromGame_WhenQuestBelongsToOtherGame_ReturnsNotFound()
+    {
+        var game = await CreateGameAsync(1);
+        var otherGame = await CreateGameAsync(2);
+        var createResponse = await Client.PostAsJsonAsync("/api/quests",
+            new CreateQuestDto("Cizí quest", QuestType.General, otherGame.Id));
+        var created = await createResponse.Content.ReadFromJsonAsync<QuestListDto>();
+
+        var response = await Client.DeleteAsync($"/api/games/{game.Id}/quests/{created!.Id}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var unchanged = await Client.GetFromJsonAsync<QuestDetailDto>($"/api/quests/{created.Id}");
+        Assert.Equal(otherGame.Id, unchanged!.GameId);
+    }
+
+    [Fact]
     public async Task AddTag_ReturnsOk()
     {
         var gameResponse = await Client.PostAsJsonAsync("/api/games",
