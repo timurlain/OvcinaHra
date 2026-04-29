@@ -3259,10 +3259,12 @@
     border-radius:8px;padding:.6rem .7rem;text-align:left;cursor:pointer;
     transition:.12s ease;display:flex;flex-direction:column;gap:.25rem}
 .oh-tp-card:hover{background:#F2EBD8;border-color:#2D5016}
-.oh-tp-card:focus-visible{outline:2px solid #C19A3A;outline-offset:2px}
+.oh-tp-card:focus-within{outline:2px solid #C19A3A;outline-offset:2px}
 .oh-tp-card.is-focused{border-color:#2D5016;box-shadow:0 0 0 2px rgba(45,80,22,.18)}
 .oh-tp-card.has-pending{border-style:dashed}
 .oh-tp-card.oh-tp-card-dragtarget{border-color:#2D5016;background:var(--oh-primary-surface,#E8F0E4);box-shadow:0 0 0 3px rgba(45,80,22,.18)}
+.oh-tp-card-main{display:flex;flex-direction:column;gap:.25rem;width:100%;padding:0;border:0;background:transparent;text-align:left;font:inherit;color:inherit;cursor:pointer}
+.oh-tp-card-main:focus-visible{outline:none}
 .oh-tp-card-hdr{display:flex;justify-content:space-between;align-items:center;gap:.4rem;font-size:.75rem;color:var(--oh-text-secondary,#666)}
 .oh-tp-card-kind{text-transform:capitalize;font-family:'JetBrains Mono',monospace}
 .oh-tp-card-count{background:#2D5016;color:#fff;border-radius:999px;padding:.05rem .4rem;font-size:.7rem;white-space:nowrap}

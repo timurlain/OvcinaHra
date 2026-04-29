@@ -5,8 +5,14 @@
 <div @ref="elementRef"
      id="@tileTargetId"
      class="oh-tp-pool-tile @(Selected ? "selected" : "") @(Item.IsUnique ? "is-unique" : "is-aggregate")"
+     role="button"
+     tabindex="0"
+     aria-label="@TileLabel"
+     title="@TileLabel"
      @onmouseenter="() => isNameFlyoutOpen = true"
      @onmouseleave="() => isNameFlyoutOpen = false"
+     @onfocus="() => isNameFlyoutOpen = true"
+     @onblur="() => isNameFlyoutOpen = false"
      @onclick="OnClickInternal">
     @if (!imageFailed)
     {
@@ -125,6 +131,7 @@
                 Kind = Item.IsUnique ? "unique" : "non-unique"
             });
             await JS.InvokeVoidAsync("ovcinaDnd.setDraggable", elementRef, payload);
+            await JS.InvokeVoidAsync("ovcinaDnd.setKeyboardButton", elementRef);
         }
     }
 

@@ -4,29 +4,35 @@
 @implements IAsyncDisposable
 
 <div @ref="elementRef"
-     role="button"
-     tabindex="0"
      class="@CssClass"
-     @key="Location.LocationId"
-     @onclick="HandleClick"
-     @onkeydown="HandleKeyDown">
-    <div class="oh-tp-card-hdr">
-        <span class="oh-tp-card-kind">@Location.LocationKind.GetDisplayName()</span>
-        <span class="oh-tp-card-count">@Location.TotalItems pokladů</span>
-    </div>
-    <div class="oh-tp-card-name">
-        @Location.LocationName <span class="oh-tp-card-name-count">(@Location.TotalItems)</span>
-    </div>
-    @if (Location.StashCount > 0)
-    {
-        <div class="oh-tp-card-stash">
-            <i class="bi bi-archive"></i> @Location.StashCount / @Location.MaxStashes skrýší
-            @if (Location.Stashes.Sum(s => s.ItemCount) > 0)
-            {
-                <span>· @Location.Stashes.Sum(s => s.ItemCount) ve skrýších</span>
-            }
+     @key="Location.LocationId">
+    <button type="button"
+            class="oh-tp-card-main"
+            @onclick="HandleClick">
+        <div class="oh-tp-card-hdr">
+            <span class="oh-tp-card-kind">@Location.LocationKind.GetDisplayName()</span>
+            <span class="oh-tp-card-count">@Location.TotalItems pokladů</span>
         </div>
-    }
+        <div class="oh-tp-card-name">
+            @Location.LocationName <span class="oh-tp-card-name-count">(@Location.TotalItems)</span>
+        </div>
+        @if (Location.StashCount > 0)
+        {
+            <div class="oh-tp-card-stash">
+                <i class="bi bi-archive"></i> @Location.StashCount / @Location.MaxStashes skrýší
+                @if (Location.Stashes.Sum(s => s.ItemCount) > 0)
+                {
+                    <span>· @Location.Stashes.Sum(s => s.ItemCount) ve skrýších</span>
+                }
+            </div>
+        }
+        @if (HasSelectedPool)
+        {
+            <div class="oh-tp-card-cta">
+                <i class="bi bi-plus-circle"></i> Přidat vybrané sem
+            </div>
+        }
+    </button>
     <div class="oh-tp-card-actions">
         <button type="button"
                 class="oh-tp-card-gros"
@@ -36,12 +42,6 @@
             <i class="bi bi-coin"></i> Vytvoř poklad z grošů
         </button>
     </div>
-    @if (HasSelectedPool)
-    {
-        <div class="oh-tp-card-cta">
-            <i class="bi bi-plus-circle"></i> Přidat vybrané sem
-        </div>
-    }
 </div>
 
 @code {
@@ -76,16 +76,6 @@
     private Task HandleClick() => OnClick.InvokeAsync(Location.LocationId);
 
     private Task HandleGrosClick() => OnCreateGrosTreasure.InvokeAsync(Location.LocationId);
-
-    private Task HandleKeyDown(KeyboardEventArgs args)
-    {
-        if (args.Key is "Enter" or " ")
-        {
-            return HandleClick();
-        }
-
-        return Task.CompletedTask;
-    }
 
     [JSInvokable]
     public Task OnTreasurePoolDropped(int locationId, string payload) =>
