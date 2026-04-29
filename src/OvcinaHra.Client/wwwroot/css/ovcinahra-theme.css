@@ -3835,6 +3835,12 @@
 .oh-map-treasure-chip[data-stage="early"]{--c:var(--oh-stage-early);color:#3a2612}
 .oh-map-treasure-chip[data-stage="midgame"]{--c:var(--oh-stage-midgame)}
 .oh-map-treasure-chip[data-stage="lategame"]{--c:var(--oh-stage-lategame)}
+.oh-map-region-toggle{display:flex;align-items:center;gap:5px;margin-left:4px;padding:3px 9px;
+    border-radius:99px;color:var(--oh-text,#2a2a2a);font:600 .72rem var(--oh-font-body);
+    cursor:pointer;user-select:none}
+.oh-map-region-toggle input{width:13px;height:13px;margin:0;accent-color:#2D5016}
+.oh-map-region-toggle:hover{background:rgba(45,80,22,.08);color:#2D5016}
+.oh-map-region-toggle.is-active{background:#2D5016;color:#fff}
 @media (max-width: 900px){
     .oh-map-treasure-filter{top:48px;right:8px;max-width:calc(100% - 16px)}
 }
@@ -3903,11 +3909,17 @@
     font:600 .72rem var(--oh-font-body,sans-serif);color:#1a1a2e;
     text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;
     pointer-events:none;user-select:none;z-index:1}
+.oh-map-pin-label-with-region{flex-direction:column;align-items:center;gap:1px;text-align:center;line-height:1.08}
+.oh-map-pin-label-name{display:block;white-space:nowrap}
+.oh-map-pin-label-region{display:block;white-space:nowrap;font-size:.62rem;font-weight:600;color:#5f5a50;
+    text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff}
 .oh-map-pin.oh-pin-label-on .oh-map-pin-label{display:block}
+.oh-map-pin.oh-pin-label-on .oh-map-pin-label.oh-map-pin-label-with-region{display:flex}
 /* Print mode (#259) overrides the zoom gate for the labeled-print body
    class so every parent label paints regardless of map zoom — physical
    handouts can't pinch-zoom. */
 body.oh-map-print-labeled .oh-map-pin .oh-map-pin-label{display:block}
+body.oh-map-print-labeled .oh-map-pin .oh-map-pin-label.oh-map-pin-label-with-region{display:flex}
 
 /* Issue #273 — zoom indicator next to the Scale control. MapLibre's
    own .maplibregl-ctrl styling supplies the rounded-rect chrome; we

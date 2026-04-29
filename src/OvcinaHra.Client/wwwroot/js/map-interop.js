@@ -1223,7 +1223,7 @@ window.ovcinaMap._kindIconFor = function (kindRaw) {
     return this._kindIcon[k] || 'bi-geo-alt-fill';
 };
 
-window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind, treasureCount, treasurePhase) {
+window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind, treasureCount, treasurePhase, region, showRegion) {
     if (!this._map) {
         if (this._pinDiag()) console.warn('[pin-diag] addLocationPin called but no map — id=' + id);
         return;
@@ -1257,6 +1257,7 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind, treasureCo
     if (!isFinite(count)) count = 0;
     count = Math.max(0, Math.trunc(count));
     var phaseText = treasurePhase || '';
+    var regionText = showRegion && region ? String(region).trim() : '';
     var kindKey = (kind || 'wilderness').toLowerCase();
     pin.setAttribute('data-kind', kindKey);
     // Issue #273 — graduated label-visibility-by-zoom. Each pin advertises
@@ -1266,7 +1267,10 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind, treasureCo
     var minZoom = this._kindMinZoomFor(kindKey);
     pin.setAttribute('data-minzoom', String(minZoom));
     if (this._map.getZoom() >= minZoom) pin.classList.add('oh-pin-label-on');
-    wrapper.title = (name || '') + (count > 0 ? ' · ' + count + ' pokladů' + (phaseText ? ' (' + phaseText + ')' : '') : '');
+    var markerTitle = name || '';
+    if (regionText) markerTitle += (markerTitle ? ' · ' : '') + regionText;
+    if (count > 0) markerTitle += (markerTitle ? ' · ' : '') + count + ' pokladů' + (phaseText ? ' (' + phaseText + ')' : '');
+    wrapper.title = markerTitle;
     // Issue #257 — tear-drop pin chrome. The bubble (oh-map-pin-bg) carries
     // the per-kind background and the downward triangle tail (::after); the
     // glyph (Bootstrap-Icons bi-*) sits inside. Anchor moves to 'bottom' so
@@ -1291,8 +1295,17 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind, treasureCo
     }
     if (name) {
         var label = document.createElement('div');
-        label.className = 'oh-map-pin-label';
-        label.textContent = name;
+        label.className = 'oh-map-pin-label' + (regionText ? ' oh-map-pin-label-with-region' : '');
+        var nameLine = document.createElement('span');
+        nameLine.className = 'oh-map-pin-label-name';
+        nameLine.textContent = name;
+        label.appendChild(nameLine);
+        if (regionText) {
+            var regionLine = document.createElement('span');
+            regionLine.className = 'oh-map-pin-label-region';
+            regionLine.textContent = regionText;
+            label.appendChild(regionLine);
+        }
         pin.appendChild(label);
     }
     wrapper.appendChild(pin);

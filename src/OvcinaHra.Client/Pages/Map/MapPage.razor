@@ -66,6 +66,12 @@
                                     @phase.Label
                                 </button>
                             }
+                            <label class="oh-map-region-toggle @(_showRegionsOnMap ? "is-active" : "")">
+                                <input type="checkbox"
+                                       checked="@_showRegionsOnMap"
+                                       @onchange="SetRegionLabelsAsync" />
+                                <span>Zobrazit oblasti</span>
+                            </label>
                         </div>
                         <div class="oh-map-style-toolbar">
                             <button class="oh-map-style-btn @(_activeStyle == "tourist" ? "is-active" : "")"
@@ -227,6 +233,7 @@
     // also persists HiddenKinds). Old v1 entries without HiddenKinds
     // continue to deserialize via the record's default value.
     private const string LayerStateKey = "oh-map-layers-v2";
+    private const string RegionLabelStateKey = "oh-map-region-labels-v1";
     private const string TreasurePhaseAll = "all";
     private const string TreasurePhaseStart = "start";
     private const string TreasurePhaseEarly = "early";
@@ -250,6 +257,7 @@
     private bool _overlaysVisible = true;
     private bool _organizerOverlayVisible = true;
     private bool _isOrganizer;
+    private bool _showRegionsOnMap;
     // Per-LocationKind hide set. Empty (default) = all kinds visible.
     // Persists alongside the layer-visibility flags.
     private HashSet<LocationKind> _hiddenKinds = new();
@@ -354,6 +362,7 @@
         {
             await HydrateLayerStateAsync();
         }
+        await HydrateRegionLabelStateAsync();
         // Apply URL-derived style now that the basemap is ready (default
         // is "tourist", so we only need to switch when URL asked for
         // something else). Calling switchStyle directly here — going
@@ -405,6 +414,25 @@
         catch { /* same fallback */ }
     }
 
+    private async Task HydrateRegionLabelStateAsync()
+    {
+        try
+        {
+            var raw = await JS.InvokeAsync<string?>("localStorage.getItem", RegionLabelStateKey);
+            _showRegionsOnMap = raw is "1" || string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase);
+        }
+        catch { /* localStorage unavailable — keep default off */ }
+    }
+
+    private async Task PersistRegionLabelStateAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", RegionLabelStateKey, _showRegionsOnMap ? "true" : "false");
+        }
+        catch { /* localStorage unavailable — session-only toggle */ }
+    }
+
     private async Task ReloadDataAndRenderAsync()
     {
         var gameId = GameContext.SelectedGameId;
@@ -445,6 +473,8 @@
         if (_data is null) { Console.WriteLine("[map-diag] PaintPinsAsync exit — _data is null"); return; }
         Console.WriteLine($"[map-diag] PaintPinsAsync data — Locations={_data.Locations.Count}, Stashes={_data.Stashes.Count}");
 
+        var locationLabelCount = 0;
+        var regionLabelCount = 0;
         if (_locationsVisible)
         {
             foreach (var l in _data.Locations.OrderBy(l => l.EffectiveKind == LocationKind.Hobbit ? 1 : 0))
@@ -455,12 +485,16 @@
                 if (_hiddenKinds.Contains(l.EffectiveKind)) continue;
                 var filteredCount = GetTreasureCount(l, _treasurePhaseFilter);
                 var totalCount = l.TreasureCounts?.Total ?? 0;
+                locationLabelCount++;
+                if (_showRegionsOnMap && !string.IsNullOrWhiteSpace(l.Region)) regionLabelCount++;
                 Console.WriteLine($"[treasure-map] count-pin render locationId={l.Id} totalCount={totalCount} filteredCount={filteredCount} phase={TreasurePhaseLogName(_treasurePhaseFilter)}");
                 await JS.InvokeVoidAsync("ovcinaMap.addLocationPin",
                     l.Id, l.Lat, l.Lon, l.EffectiveName, l.EffectiveKind.ToString(),
-                    filteredCount, TreasurePhaseUiName(_treasurePhaseFilter));
+                    filteredCount, TreasurePhaseUiName(_treasurePhaseFilter),
+                    l.Region, _showRegionsOnMap);
             }
         }
+        Console.WriteLine($"[map-region-toggle] render labelCount={locationLabelCount} withRegion={_showRegionsOnMap.ToString().ToLowerInvariant()} regionLabelCount={regionLabelCount}");
         if (_stashesVisible)
         {
             foreach (var s in _data.Stashes)
@@ -479,6 +513,17 @@
         var previous = _treasurePhaseFilter;
         _treasurePhaseFilter = phase;
         Console.WriteLine($"[treasure-map] phase-filter changed from={TreasurePhaseLogName(previous)} to={TreasurePhaseLogName(phase)}");
+        await PaintPinsAsync();
+    }
+
+    private async Task SetRegionLabelsAsync(ChangeEventArgs e)
+    {
+        var enabled = e.Value is bool value && value;
+        if (_showRegionsOnMap == enabled) return;
+
+        _showRegionsOnMap = enabled;
+        Console.WriteLine($"[map-region-toggle] state-changed enabled={enabled.ToString().ToLowerInvariant()}");
+        await PersistRegionLabelStateAsync();
         await PaintPinsAsync();
     }
 
