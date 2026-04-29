@@ -2531,6 +2531,11 @@
 .oh-tp-bundle-line{display:flex;align-items:center;gap:7px;padding:5px 7px;border:1px solid rgba(45,80,22,.18);border-radius:7px;background:rgba(255,255,255,.72)}
 .oh-tp-bundle-line-name{flex:1;font-weight:700;font-size:.82rem;color:var(--oh-text)}
 .oh-tp-bundle-line .remove{background:none;border:none;color:var(--oh-error);padding:0 2px}
+.oh-tp-bundle-money{display:grid;grid-template-columns:minmax(5.5rem,1fr) 42px minmax(7rem,9rem) 42px;gap:8px;align-items:center;padding:7px;border:1px solid rgba(45,80,22,.2);border-radius:7px;background:rgba(255,255,255,.8)}
+.oh-tp-bundle-money-name{font-weight:800;font-size:.86rem;color:var(--oh-text)}
+.oh-tp-bundle-money-btn{width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #2D5016;border-radius:8px;background:#fff;color:#2D5016;padding:0}
+.oh-tp-bundle-money-btn:disabled{opacity:.42;cursor:not-allowed}
+.oh-tp-bundle-money-input{width:100%;min-width:0}
 .oh-tp-composite-tile{display:flex;align-items:center;gap:10px;width:100%;margin-bottom:10px;padding:10px;border:1px solid var(--oh-primary);border-radius:8px;background:linear-gradient(135deg,var(--oh-primary-surface),#fff8ec);box-shadow:var(--oh-shadow);cursor:grab;user-select:none;text-align:left;font:inherit;transition:box-shadow .15s,transform .15s}
 .oh-tp-composite-tile:hover{transform:translateY(-1px);box-shadow:var(--oh-shadow-lg)}
 .oh-tp-composite-tile.selected{box-shadow:0 0 0 2px var(--oh-primary-light) inset,var(--oh-shadow-lg)}
