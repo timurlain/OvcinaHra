@@ -151,10 +151,21 @@
     {
         var prevVisible = Visible;
         var prevId = RecipeId;
+        Console.WriteLine($"[recipe-edit] {{\"event\":\"set-parameters.before\",\"prevVisible\":{JsonBool(prevVisible)},\"prevRecipeId\":{JsonInt(prevId)}}}");
         await base.SetParametersAsync(parameters);
+        Console.WriteLine($"[recipe-edit] {{\"event\":\"set-parameters.after\",\"visible\":{JsonBool(Visible)},\"recipeId\":{JsonInt(RecipeId)},\"shouldLoad\":{JsonBool(Visible && (!prevVisible || prevId != RecipeId))}}}");
         if (Visible && (!prevVisible || prevId != RecipeId))
         {
+            Console.WriteLine($"[recipe-edit] {{\"event\":\"set-parameters.load-dispatch\",\"recipeId\":{JsonInt(RecipeId)}}}");
             await LoadAsync();
+        }
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (Visible)
+        {
+            Console.WriteLine($"[recipe-edit] {{\"event\":\"after-render\",\"recipeId\":{JsonInt(RecipeId)},\"loading\":{JsonBool(loading)},\"detailId\":{JsonInt(detail?.Id)},\"outputItemId\":{JsonInt(editOutputItemId)},\"isSaving\":{JsonBool(isSaving)}}}");
         }
     }
 
@@ -167,20 +178,30 @@
 
     private async Task LoadAsync()
     {
-        if (RecipeId is null) return;
+        Console.WriteLine($"[recipe-edit] {{\"event\":\"load.entry\",\"visible\":{JsonBool(Visible)},\"recipeId\":{JsonInt(RecipeId)}}}");
+        if (RecipeId is null)
+        {
+            Console.WriteLine("[recipe-edit] {\"event\":\"load.skip\",\"reason\":\"recipeId-null\"}");
+            return;
+        }
         loading = true;
         error = null;
+        Console.WriteLine($"[recipe-edit] {{\"event\":\"state.loading\",\"recipeId\":{RecipeId.Value},\"loading\":true}}");
         try
         {
+            Console.WriteLine($"[recipe-edit] {{\"event\":\"detail.request.start\",\"recipeId\":{RecipeId.Value},\"url\":\"/api/recipes/{RecipeId.Value}\"}}");
             detail = await Api.GetAsync<RecipeDetailDto>($"/api/recipes/{RecipeId.Value}");
+            Console.WriteLine($"[recipe-edit] {{\"event\":\"detail.request.done\",\"recipeId\":{RecipeId.Value},\"found\":{JsonBool(detail is not null)},\"gameId\":{JsonInt(detail?.GameId)},\"outputItemId\":{JsonInt(detail?.OutputItemId)}}}");
             if (detail is null)
             {
                 error = "Recept nenalezen.";
+                Console.WriteLine($"[recipe-edit] {{\"event\":\"state.error\",\"recipeId\":{RecipeId.Value},\"message\":\"Recept nenalezen.\"}}");
                 return;
             }
             editName = detail.Name;
             editOutputItemId = detail.OutputItemId;
             editLocationId = detail.LocationId;
+            Console.WriteLine($"[recipe-edit] {{\"event\":\"state.identity-set\",\"recipeId\":{detail.Id},\"outputItemId\":{JsonInt(editOutputItemId)},\"locationId\":{JsonInt(editLocationId)}}}");
             _ingredientRows = detail.Ingredients
                 .Select(i => new RecipeIngredientPicker.IngredientRow(i.ItemId, i.Name, i.Quantity))
                 .ToList();
@@ -188,13 +209,18 @@
                 .Select(b => new RecipeBuildingPicker.BuildingRow(b.BuildingId, b.Name))
                 .ToList();
             _skillIds = detail.Skills.Select(s => s.SkillId).ToList();
+            Console.WriteLine($"[recipe-edit] {{\"event\":\"state.children-set\",\"recipeId\":{detail.Id},\"ingredients\":{_ingredientRows.Count},\"buildings\":{_buildingRows.Count},\"skills\":{_skillIds.Count}}}");
 
             // Picker source data — fetch in parallel to avoid serial waterfall.
-            var itemsTask = Api.GetListAsync<ItemListDto>("/api/items");
+            const string itemsUrl = "/api/items";
             var recipesUrl = detail.GameId is int recipeGameId ? $"/api/games/{recipeGameId}/recipes" : "/api/recipes";
-            var recipesTask = Api.GetListAsync<RecipeListDto>(recipesUrl);
-            var locationsTask = Api.GetListAsync<LocationListDto>("/api/locations");
-            var buildingsTask = Api.GetListAsync<BuildingListDto>("/api/buildings");
+            const string locationsUrl = "/api/locations";
+            const string buildingsUrl = "/api/buildings";
+            Console.WriteLine($"[recipe-edit] {{\"event\":\"resources.dispatch\",\"recipeId\":{detail.Id},\"itemsUrl\":\"{itemsUrl}\",\"recipesUrl\":\"{recipesUrl}\",\"locationsUrl\":\"{locationsUrl}\",\"buildingsUrl\":\"{buildingsUrl}\"}}");
+            var itemsTask = TraceResourceAsync("items", itemsUrl, Api.GetListAsync<ItemListDto>(itemsUrl));
+            var recipesTask = TraceResourceAsync("recipes", recipesUrl, Api.GetListAsync<RecipeListDto>(recipesUrl));
+            var locationsTask = TraceResourceAsync("locations", locationsUrl, Api.GetListAsync<LocationListDto>(locationsUrl));
+            var buildingsTask = TraceResourceAsync("buildings", buildingsUrl, Api.GetListAsync<BuildingListDto>(buildingsUrl));
             await Task.WhenAll(itemsTask, recipesTask, locationsTask, buildingsTask);
             allItems = await itemsTask;
             usedOutputItemIdsInScope = (await recipesTask)
@@ -203,22 +229,36 @@
                 .ToHashSet();
             allLocations = await locationsTask;
             allBuildings = await buildingsTask;
+            Console.WriteLine($"[recipe-edit] {{\"event\":\"state.sources-set\",\"recipeId\":{detail.Id},\"items\":{allItems.Count},\"usedOutputs\":{usedOutputItemIdsInScope.Count},\"locations\":{allLocations.Count},\"buildings\":{allBuildings.Count}}}");
 
             if (detail.GameId is int gid)
             {
-                gameSkills = await Api.GetListAsync<GameSkillDto>($"/api/games/{gid}/skills");
+                var skillsUrl = $"/api/games/{gid}/skills";
+                gameSkills = await TraceResourceAsync("skills", skillsUrl, Api.GetListAsync<GameSkillDto>(skillsUrl));
             }
             else
             {
                 gameSkills = [];
+                Console.WriteLine($"[recipe-edit] {{\"event\":\"state.skills-set\",\"recipeId\":{detail.Id},\"skills\":0,\"reason\":\"catalog-recipe\"}}");
             }
         }
-        catch (Exception ex) { error = ex.Message; }
-        finally { loading = false; }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            Console.WriteLine($"[recipe-edit] {{\"event\":\"load.exception\",\"recipeId\":{JsonInt(RecipeId)},\"type\":\"{JsonEscape(ex.GetType().Name)}\",\"message\":\"{JsonEscape(ex.Message)}\"}}");
+        }
+        finally
+        {
+            loading = false;
+            Console.WriteLine($"[recipe-edit] {{\"event\":\"state.loading\",\"recipeId\":{JsonInt(RecipeId)},\"loading\":false,\"hasError\":{JsonBool(error is not null)}}}");
+            await InvokeAsync(StateHasChanged);
+            Console.WriteLine($"[recipe-edit] {{\"event\":\"state.render-requested\",\"recipeId\":{JsonInt(RecipeId)}}}");
+        }
     }
 
     private async Task SaveAsync()
     {
+        Console.WriteLine($"[recipe-edit] {{\"event\":\"save.click\",\"recipeId\":{JsonInt(detail?.Id)},\"outputItemId\":{JsonInt(editOutputItemId)},\"canSave\":{JsonBool(detail is not null && editOutputItemId is not null)}}}");
         if (detail is null || editOutputItemId is null) return;
         error = null;
         isSaving = true;
@@ -230,17 +270,28 @@
                 LocationId: editLocationId,
                 RequiredSkillIds: _skillIds,
                 IngredientNotes: detail.IngredientNotes);
+            Console.WriteLine($"[recipe-edit] {{\"event\":\"save.request.start\",\"recipeId\":{detail.Id},\"outputItemId\":{dto.OutputItemId},\"locationId\":{JsonInt(dto.LocationId)},\"skillIds\":{dto.RequiredSkillIds?.Count ?? 0}}}");
             var (ok, problem) = await Api.PutWithProblemAsync($"/api/recipes/{detail.Id}", dto);
+            Console.WriteLine($"[recipe-edit] {{\"event\":\"save.request.done\",\"recipeId\":{detail.Id},\"ok\":{JsonBool(ok)},\"problem\":\"{JsonEscape(problem)}\"}}");
             if (!ok)
             {
                 error = problem ?? "Uložení se nezdařilo.";
+                Console.WriteLine($"[recipe-edit] {{\"event\":\"state.error\",\"recipeId\":{detail.Id},\"message\":\"{JsonEscape(error)}\"}}");
                 return;
             }
             await OnSaved.InvokeAsync();
             await VisibleChanged.InvokeAsync(false);
         }
-        catch (Exception ex) { error = ex.Message; }
-        finally { isSaving = false; }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            Console.WriteLine($"[recipe-edit] {{\"event\":\"save.exception\",\"recipeId\":{JsonInt(detail?.Id)},\"type\":\"{JsonEscape(ex.GetType().Name)}\",\"message\":\"{JsonEscape(ex.Message)}\"}}");
+        }
+        finally
+        {
+            isSaving = false;
+            Console.WriteLine($"[recipe-edit] {{\"event\":\"state.saving\",\"recipeId\":{JsonInt(detail?.Id)},\"saving\":false,\"hasError\":{JsonBool(error is not null)}}}");
+        }
     }
 
     private async Task Cancel() => await VisibleChanged.InvokeAsync(false);
@@ -356,6 +407,7 @@
     private async Task ReloadDetailAsync()
     {
         if (RecipeId is null) return;
+        Console.WriteLine($"[recipe-edit] {{\"event\":\"reload-detail.start\",\"recipeId\":{RecipeId.Value}}}");
         detail = await Api.GetAsync<RecipeDetailDto>($"/api/recipes/{RecipeId.Value}");
         if (detail is not null)
         {
@@ -366,7 +418,37 @@
                 .Select(b => new RecipeBuildingPicker.BuildingRow(b.BuildingId, b.Name))
                 .ToList();
             _skillIds = detail.Skills.Select(s => s.SkillId).ToList();
+            Console.WriteLine($"[recipe-edit] {{\"event\":\"reload-detail.done\",\"recipeId\":{detail.Id},\"ingredients\":{_ingredientRows.Count},\"buildings\":{_buildingRows.Count},\"skills\":{_skillIds.Count}}}");
+        }
+        else
+        {
+            Console.WriteLine($"[recipe-edit] {{\"event\":\"reload-detail.done\",\"recipeId\":{RecipeId.Value},\"found\":false}}");
         }
         StateHasChanged();
     }
+
+    private static async Task<List<T>> TraceResourceAsync<T>(string name, string url, Task<List<T>> task)
+    {
+        Console.WriteLine($"[recipe-edit] {{\"event\":\"resource.request.start\",\"name\":\"{JsonEscape(name)}\",\"url\":\"{JsonEscape(url)}\"}}");
+        try
+        {
+            var result = await task;
+            Console.WriteLine($"[recipe-edit] {{\"event\":\"resource.request.done\",\"name\":\"{JsonEscape(name)}\",\"url\":\"{JsonEscape(url)}\",\"count\":{result.Count}}}");
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[recipe-edit] {{\"event\":\"resource.request.exception\",\"name\":\"{JsonEscape(name)}\",\"url\":\"{JsonEscape(url)}\",\"type\":\"{JsonEscape(ex.GetType().Name)}\",\"message\":\"{JsonEscape(ex.Message)}\"}}");
+            throw;
+        }
+    }
+
+    private static string JsonBool(bool value) => value ? "true" : "false";
+    private static string JsonInt(int? value) => value?.ToString() ?? "null";
+    private static string JsonEscape(string? value) => value?
+        .Replace("\\", "\\\\", StringComparison.Ordinal)
+        .Replace("\"", "\\\"", StringComparison.Ordinal)
+        .Replace("\r", "\\r", StringComparison.Ordinal)
+        .Replace("\n", "\\n", StringComparison.Ordinal)
+        ?? "";
 }
