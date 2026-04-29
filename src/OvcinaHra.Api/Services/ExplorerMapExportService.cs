@@ -582,41 +582,17 @@ public sealed class ExplorerMapExportService(
         _ => "#2D5016"
     };
 
-    private static string Slugify(string value)
-    {
-        var normalized = NormalizePdfText(value, 80).ToLowerInvariant();
-        var builder = new StringBuilder(normalized.Length);
-        var previousDash = false;
-
-        foreach (var ch in normalized)
-        {
-            if (ch is >= 'a' and <= 'z' or >= '0' and <= '9')
-            {
-                builder.Append(ch);
-                previousDash = false;
-            }
-            else if (!previousDash)
-            {
-                builder.Append('-');
-                previousDash = true;
-            }
-        }
-
-        var result = builder.ToString().Trim('-');
-        return string.IsNullOrWhiteSpace(result) ? "ovcina" : result;
-    }
-
     private static string BuildFileName(string gameName, MapExportKind kind)
     {
-        var suffix = kind switch
+        var exportType = kind switch
         {
-            MapExportKind.Explorer => "postavy",
-            MapExportKind.Organizer => "organizatori",
-            MapExportKind.Kingdom => "kralovstvi-A3",
-            _ => "mapa"
+            MapExportKind.Explorer => "PostavyA4",
+            MapExportKind.Organizer => "OrganizatorA4",
+            MapExportKind.Kingdom => "KralovstviA3",
+            _ => "Mapa"
         };
 
-        return $"{Slugify(gameName)}-{suffix}-{DateTime.Today:yyyy-MM-dd}.pdf";
+        return ExportFilenameBuilder.BuildExportFilename(exportType, gameName, includeDate: true);
     }
 
     private static string NormalizePdfText(string value, int maxLength)

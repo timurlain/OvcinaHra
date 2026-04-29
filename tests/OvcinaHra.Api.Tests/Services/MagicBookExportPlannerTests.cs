@@ -127,7 +127,7 @@ public class MagicBookExportPlannerTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task BuildAsync_CarriesTwoUpA4DuplexPlan()
+    public async Task BuildAsync_CarriesFourUpA4DuplexPlan()
     {
         using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
@@ -150,9 +150,14 @@ public class MagicBookExportPlannerTests(PostgresFixture postgres)
         Assert.Equal(105, document.Imposition.SlotWidthMm);
         Assert.Equal(148, document.Imposition.SlotHeightMm);
         Assert.Equal(2, document.Imposition.Sheets.Count);
-        Assert.All(document.Imposition.Sheets, sheet => Assert.Equal(2, sheet.Slots.Count));
+        Assert.All(document.Imposition.Sheets, sheet => Assert.Equal(4, sheet.Slots.Count));
         Assert.All(document.Imposition.Sheets[0].Slots, slot => Assert.Equal(1, slot.MagicBookPageNumber));
         Assert.All(document.Imposition.Sheets[1].Slots, slot => Assert.Equal(2, slot.MagicBookPageNumber));
+        Assert.Equal(new[] { 1, 2, 3, 4 }, document.Imposition.Sheets[0].Slots.Select(slot => slot.CopyNumber));
+        Assert.Equal(0, document.Imposition.Sheets[0].Slots[0].XMm);
+        Assert.Equal(105, document.Imposition.Sheets[0].Slots[1].XMm);
+        Assert.Equal(0.5, document.Imposition.Sheets[0].Slots[0].YMm, precision: 3);
+        Assert.Equal(148.5, document.Imposition.Sheets[0].Slots[2].YMm, precision: 3);
     }
 
     private static Game CreateGame(string name, int edition) => new()

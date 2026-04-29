@@ -70,7 +70,7 @@ public sealed class MagicBookExportPlanner(WorldDbContext db) : IMagicBookExport
                 BuildPage(1, "Úrovně I-III", LowLevelPage, spells),
                 BuildPage(2, "Úrovně IV-V", HighLevelPage, spells)
             ],
-            MagicBookImpositionPlan.TwoUpA4Duplex());
+            MagicBookImpositionPlan.FourUpA4Duplex());
     }
 
     private static MagicBookPage BuildPage(
@@ -143,7 +143,7 @@ public sealed record MagicBookImpositionPlan(
     double SafeMarginMm,
     IReadOnlyList<MagicBookImpositionSheet> Sheets)
 {
-    public static MagicBookImpositionPlan TwoUpA4Duplex() => new(
+    public static MagicBookImpositionPlan FourUpA4Duplex() => new(
         MagicBookExportPlanner.A4WidthMm,
         MagicBookExportPlanner.A4HeightMm,
         MagicBookExportPlanner.A6WidthMm,
@@ -154,20 +154,27 @@ public sealed record MagicBookImpositionPlan(
                 1,
                 "front",
                 [
-                    new MagicBookImpositionSlot(1, 1, CenteredA6X, 0),
-                    new MagicBookImpositionSlot(2, 1, CenteredA6X, A4HalfY)
+                    new MagicBookImpositionSlot(1, 1, LeftA6X, TopA6Y),
+                    new MagicBookImpositionSlot(2, 1, RightA6X, TopA6Y),
+                    new MagicBookImpositionSlot(3, 1, LeftA6X, BottomA6Y),
+                    new MagicBookImpositionSlot(4, 1, RightA6X, BottomA6Y)
                 ]),
             new MagicBookImpositionSheet(
                 2,
                 "back",
                 [
-                    new MagicBookImpositionSlot(1, 2, CenteredA6X, 0),
-                    new MagicBookImpositionSlot(2, 2, CenteredA6X, A4HalfY)
+                    new MagicBookImpositionSlot(1, 2, LeftA6X, TopA6Y),
+                    new MagicBookImpositionSlot(2, 2, RightA6X, TopA6Y),
+                    new MagicBookImpositionSlot(3, 2, LeftA6X, BottomA6Y),
+                    new MagicBookImpositionSlot(4, 2, RightA6X, BottomA6Y)
                 ])
         ]);
 
-    private const double CenteredA6X = (MagicBookExportPlanner.A4WidthMm - MagicBookExportPlanner.A6WidthMm) / 2;
-    private const double A4HalfY = MagicBookExportPlanner.A4HeightMm / 2;
+    private const double LeftA6X = 0;
+    private const double RightA6X = MagicBookExportPlanner.A6WidthMm;
+    private const double TopA6Y =
+        (MagicBookExportPlanner.A4HeightMm - MagicBookExportPlanner.A6HeightMm * 2) / 2;
+    private const double BottomA6Y = TopA6Y + MagicBookExportPlanner.A6HeightMm;
 }
 
 public sealed record MagicBookImpositionSheet(
