@@ -119,8 +119,8 @@ public static class OrganizerRoleEndpoints
         if (slotIds.Count == 0)
         {
             return Problem(
-                "Hra nemá žádné časové sloty.",
                 "Nejdřív vytvořte časové bloky v harmonogramu.",
+                "Hra nemá časové sloty",
                 StatusCodes.Status400BadRequest);
         }
 
@@ -270,6 +270,14 @@ public static class OrganizerRoleEndpoints
         CancellationToken ct,
         int? slotId = null)
     {
+        if (!await db.Games.AnyAsync(g => g.Id == gameId, ct))
+        {
+            return Problem(
+                "Požadovaná hra nebyla nalezena.",
+                "Hra neexistuje",
+                StatusCodes.Status404NotFound);
+        }
+
         if (personId <= 0 || string.IsNullOrWhiteSpace(personName))
         {
             return Problem(
@@ -300,14 +308,6 @@ public static class OrganizerRoleEndpoints
                 $"Poznámka může mít nejvýše {NotesMaxLength} znaků.",
                 "Poznámka je příliš dlouhá",
                 StatusCodes.Status400BadRequest);
-        }
-
-        if (!await db.Games.AnyAsync(g => g.Id == gameId, ct))
-        {
-            return Problem(
-                "Požadovaná hra nebyla nalezena.",
-                "Hra neexistuje",
-                StatusCodes.Status404NotFound);
         }
 
         if (slotId is int sid && !await db.GameTimeSlots.AnyAsync(s => s.Id == sid && s.GameId == gameId, ct))
