@@ -408,6 +408,10 @@
         position: static;
     }
 
+    .oh-nav ::deep .oh-nav-item {
+        height: 44px;
+    }
+
     /* Reserve safe-area inset for iOS home-bar so the very last item
        isn't tucked under the system gesture region. */
     .oh-nav-foot {
