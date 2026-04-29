@@ -468,26 +468,50 @@ public static class LocationEndpoints
     // Location surface; defer until a broader audit need surfaces. See
     // Phase-0 Q&A on PR #284.
     private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> PatchCoordinates(
-        int id, LocationCoordinatesPatchDto dto, WorldDbContext db)
+        int id, LocationCoordinatesPatchDto dto, WorldDbContext db, ILoggerFactory loggerFactory)
     {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.LocationEndpoints");
+        logger.LogInformation(
+            "[map-diag] location.coordinates.patch.entry locationId={LocationId} lat={Latitude} lng={Longitude}",
+            id,
+            dto.Latitude,
+            dto.Longitude);
+
         var loc = await db.Locations.FindAsync(id);
         if (loc is null)
+        {
+            logger.LogInformation("[map-diag] location.coordinates.patch.not-found locationId={LocationId}", id);
             return TypedResults.NotFound();
+        }
 
         if (dto.Latitude < -90m || dto.Latitude > 90m)
+        {
+            logger.LogInformation(
+                "[map-diag] location.coordinates.patch.invalid-lat locationId={LocationId} lat={Latitude}",
+                id,
+                dto.Latitude);
             return TypedResults.Problem(
                 title: "Neplatná souřadnice",
                 detail: "Zeměpisná šířka musí být v rozsahu -90 až 90 stupňů.",
                 statusCode: StatusCodes.Status400BadRequest);
+        }
 
         if (dto.Longitude < -180m || dto.Longitude > 180m)
+        {
+            logger.LogInformation(
+                "[map-diag] location.coordinates.patch.invalid-lng locationId={LocationId} lng={Longitude}",
+                id,
+                dto.Longitude);
             return TypedResults.Problem(
                 title: "Neplatná souřadnice",
                 detail: "Zeměpisná délka musí být v rozsahu -180 až 180 stupňů.",
                 statusCode: StatusCodes.Status400BadRequest);
+        }
 
         loc.Coordinates = new GpsCoordinates(dto.Latitude, dto.Longitude);
+        logger.LogInformation("[map-diag] location.coordinates.patch.before-commit locationId={LocationId}", id);
         await db.SaveChangesAsync();
+        logger.LogInformation("[map-diag] location.coordinates.patch.committed locationId={LocationId}", id);
         return TypedResults.NoContent();
     }
 }
