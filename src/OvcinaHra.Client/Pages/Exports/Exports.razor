@@ -78,6 +78,26 @@
                 <p>Dvě A6 stránky kouzel aktuální hry, vytištěné čtyřikrát na A4.</p>
             </div>
         </button>
+        <button type="button"
+                class="oh-exports-card oh-exports-card-button"
+                title="Vyexportuje jednostránkový ceník pro tisk."
+                disabled="@isCenikDownloading"
+                @onclick="DownloadCenikAsync">
+            <div class="oh-exports-card-icon">
+                @if (isCenikDownloading)
+                {
+                    <span class="spinner-border spinner-border-sm"></span>
+                }
+                else
+                {
+                    <i class="bi bi-tags-fill"></i>
+                }
+            </div>
+            <div class="oh-exports-card-body">
+                <h3>Ceník</h3>
+                <p>Jednostránkový přehled prodejných předmětů a jejich cen.</p>
+            </div>
+        </button>
     </div>
 
     @if (downloadError is not null)
@@ -297,6 +317,7 @@
     private bool showCharacterExport;
     private bool isDownloading;
     private bool isMagicBookDownloading;
+    private bool isCenikDownloading;
     private string selectedBasemap = TouristBasemap;
     private string activeMapExportTitle = "Export pro postavy";
     private string activeMapExportEndpoint = "explorer-map.pdf";
@@ -395,6 +416,41 @@
         finally
         {
             isMagicBookDownloading = false;
+        }
+    }
+
+    private async Task DownloadCenikAsync()
+    {
+        if (GameContext.SelectedGameId is not int gameId)
+        {
+            downloadError = "Nejdřív vyberte hru.";
+            return;
+        }
+
+        isCenikDownloading = true;
+        downloadError = null;
+        try
+        {
+            Console.WriteLine($"[export-client] cenik download init gameId={gameId}");
+            var (ok, file, problem) = await Api.DownloadWithProblemAsync($"/api/games/{gameId}/exports/cenik.pdf");
+            if (!ok || file is null)
+            {
+                downloadError = problem ?? "PDF se nepodařilo připravit.";
+                return;
+            }
+
+            await using var stream = new MemoryStream(file.Bytes);
+            using var streamReference = new DotNetStreamReference(stream);
+            await JS.InvokeVoidAsync("ovcinaDownloadFile", file.FileName, file.ContentType, streamReference);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            downloadError = "PDF se nepodařilo stáhnout.";
+        }
+        finally
+        {
+            isCenikDownloading = false;
         }
     }
 
