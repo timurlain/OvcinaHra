@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
@@ -24,6 +25,7 @@ public static class ExportEndpoints
         int gameId,
         string? style,
         IExplorerMapExportService exporter,
+        HttpContext http,
         ILoggerFactory loggerFactory,
         CancellationToken ct) =>
         DownloadMapPdf(
@@ -33,7 +35,7 @@ public static class ExportEndpoints
             MapExportPageFormat.A4Portrait,
             organizerOnly: false,
             exporter,
-            null,
+            http,
             loggerFactory,
             ct);
 
@@ -59,6 +61,7 @@ public static class ExportEndpoints
         int gameId,
         string? style,
         IExplorerMapExportService exporter,
+        HttpContext http,
         ILoggerFactory loggerFactory,
         CancellationToken ct) =>
         DownloadMapPdf(
@@ -68,7 +71,7 @@ public static class ExportEndpoints
             MapExportPageFormat.A3Portrait,
             organizerOnly: false,
             exporter,
-            null,
+            http,
             loggerFactory,
             ct);
 
@@ -79,11 +82,20 @@ public static class ExportEndpoints
         MapExportPageFormat pageFormat,
         bool organizerOnly,
         IExplorerMapExportService exporter,
-        HttpContext? http,
+        HttpContext http,
         ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
         var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.ExportEndpoints");
+        var timer = Stopwatch.StartNew();
+        logger.LogInformation(
+            "[export-server] entry method={Method} path={Path} gameId={GameId} kind={Kind} pageFormat={PageFormat} styleRaw={StyleRaw}",
+            http.Request.Method,
+            http.Request.Path,
+            gameId,
+            kind,
+            pageFormat,
+            style);
         logger.LogInformation(
             "[map-export-pr3] export endpoint entry gameId={GameId} kind={Kind} pageFormat={PageFormat} styleRaw={StyleRaw}",
             gameId,
@@ -92,10 +104,29 @@ public static class ExportEndpoints
             style);
 
         if (!TryParseStyle(style, out var parsedStyle))
-            return TypedResults.BadRequest(ValidationProblem("Neznámý podklad mapy."));
-
-        if (organizerOnly && (http?.User is null || !IsOrganizer(http.User)))
         {
+            timer.Stop();
+            logger.LogInformation(
+                "[export-server] exit method={Method} path={Path} gameId={GameId} kind={Kind} status=bad-request elapsedMs={ElapsedMs} detail={Detail}",
+                http.Request.Method,
+                http.Request.Path,
+                gameId,
+                kind,
+                timer.ElapsedMilliseconds,
+                "unknown-style");
+            return TypedResults.BadRequest(ValidationProblem("Neznámý podklad mapy."));
+        }
+
+        if (organizerOnly && !IsOrganizer(http.User))
+        {
+            timer.Stop();
+            logger.LogInformation(
+                "[export-server] exit method={Method} path={Path} gameId={GameId} kind={Kind} status=forbidden elapsedMs={ElapsedMs}",
+                http.Request.Method,
+                http.Request.Path,
+                gameId,
+                kind,
+                timer.ElapsedMilliseconds);
             logger.LogWarning(
                 "[map-export-pr3] export auth-gate denial gameId={GameId} kind={Kind}",
                 gameId,
@@ -109,6 +140,16 @@ public static class ExportEndpoints
         try
         {
             var pdf = await exporter.RenderMapAsync(gameId, parsedStyle, kind, pageFormat, ct);
+            timer.Stop();
+            logger.LogInformation(
+                "[export-server] exit method={Method} path={Path} gameId={GameId} kind={Kind} status=file fileName={FileName} bytes={ByteCount} elapsedMs={ElapsedMs}",
+                http.Request.Method,
+                http.Request.Path,
+                gameId,
+                kind,
+                pdf.FileName,
+                pdf.Bytes.Length,
+                timer.ElapsedMilliseconds);
             logger.LogInformation(
                 "[map-export-pr3] export endpoint exit gameId={GameId} kind={Kind} status=file fileName={FileName} bytes={ByteCount}",
                 gameId,
@@ -122,6 +163,14 @@ public static class ExportEndpoints
         }
         catch (KeyNotFoundException)
         {
+            timer.Stop();
+            logger.LogInformation(
+                "[export-server] exit method={Method} path={Path} gameId={GameId} kind={Kind} status=not-found elapsedMs={ElapsedMs}",
+                http.Request.Method,
+                http.Request.Path,
+                gameId,
+                kind,
+                timer.ElapsedMilliseconds);
             logger.LogInformation(
                 "[map-export-pr3] export endpoint exit gameId={GameId} kind={Kind} status=not-found",
                 gameId,
@@ -130,18 +179,61 @@ public static class ExportEndpoints
         }
         catch (MapExportProblemException ex)
         {
+            timer.Stop();
+            logger.LogInformation(
+                "[export-server] exit method={Method} path={Path} gameId={GameId} kind={Kind} status=bad-request elapsedMs={ElapsedMs} detail={Detail}",
+                http.Request.Method,
+                http.Request.Path,
+                gameId,
+                kind,
+                timer.ElapsedMilliseconds,
+                ex.Detail);
             return TypedResults.BadRequest(ValidationProblem(ex.Title, ex.Detail));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            timer.Stop();
+            logger.LogError(
+                ex,
+                "[export-server] exception method={Method} path={Path} gameId={GameId} kind={Kind} elapsedMs={ElapsedMs} detail={Detail}",
+                http.Request.Method,
+                http.Request.Path,
+                gameId,
+                kind,
+                timer.ElapsedMilliseconds,
+                ex.Message);
+            throw;
         }
     }
 
     private static async Task<Results<FileContentHttpResult, NotFound, BadRequest<ProblemDetails>>> DownloadMagicBookPdf(
         int gameId,
         IMagicBookExportService exporter,
+        HttpContext http,
+        ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.ExportEndpoints");
+        var timer = Stopwatch.StartNew();
+        logger.LogInformation(
+            "[export-server] entry method={Method} path={Path} gameId={GameId} kind={Kind}",
+            http.Request.Method,
+            http.Request.Path,
+            gameId,
+            "MagicBook");
         try
         {
             var pdf = await exporter.RenderMagicBookAsync(gameId, ct);
+            timer.Stop();
+            logger.LogInformation(
+                "[export-server] exit method={Method} path={Path} gameId={GameId} kind={Kind} status=file fileName={FileName} bytes={ByteCount} elapsedMs={ElapsedMs}",
+                http.Request.Method,
+                http.Request.Path,
+                gameId,
+                "MagicBook",
+                pdf.FileName,
+                pdf.Bytes.Length,
+                timer.ElapsedMilliseconds);
             return TypedResults.File(
                 pdf.Bytes,
                 contentType: "application/pdf",
@@ -149,11 +241,42 @@ public static class ExportEndpoints
         }
         catch (KeyNotFoundException)
         {
+            timer.Stop();
+            logger.LogInformation(
+                "[export-server] exit method={Method} path={Path} gameId={GameId} kind={Kind} status=not-found elapsedMs={ElapsedMs}",
+                http.Request.Method,
+                http.Request.Path,
+                gameId,
+                "MagicBook",
+                timer.ElapsedMilliseconds);
             return TypedResults.NotFound();
         }
         catch (MagicBookExportProblemException ex)
         {
+            timer.Stop();
+            logger.LogInformation(
+                "[export-server] exit method={Method} path={Path} gameId={GameId} kind={Kind} status=bad-request elapsedMs={ElapsedMs} detail={Detail}",
+                http.Request.Method,
+                http.Request.Path,
+                gameId,
+                "MagicBook",
+                timer.ElapsedMilliseconds,
+                ex.Detail);
             return TypedResults.BadRequest(ValidationProblem(ex.Title, ex.Detail));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            timer.Stop();
+            logger.LogError(
+                ex,
+                "[export-server] exception method={Method} path={Path} gameId={GameId} kind={Kind} elapsedMs={ElapsedMs} detail={Detail}",
+                http.Request.Method,
+                http.Request.Path,
+                gameId,
+                "MagicBook",
+                timer.ElapsedMilliseconds,
+                ex.Message);
+            throw;
         }
     }
 

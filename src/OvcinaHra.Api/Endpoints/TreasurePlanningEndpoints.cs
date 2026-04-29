@@ -1,4 +1,5 @@
 using System.Data;
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
@@ -282,9 +283,11 @@ public static class TreasurePlanningEndpoints
     private static async Task<Results<Created<TreasureQuestDetailDto>, ValidationProblem>> AssignTreasure(
         AssignTreasureDto dto,
         WorldDbContext db,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        HttpContext http)
     {
         var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.TreasurePlanningEndpoints");
+        var serverTimer = Stopwatch.StartNew();
         var poolAssignments = dto.PoolItems?
             .GroupBy(p => p.TreasureItemId)
             .Select(g => new PoolItemAssignDto(g.Key, g.Sum(p => p.Count)))
@@ -305,6 +308,31 @@ public static class TreasurePlanningEndpoints
             poolUnits = poolAssignments.Sum(p => p.Count),
             unlimitedCount
         });
+        logger.LogInformation(
+            "[treasure-alloc-server] entry method={Method} path={Path} gameId={GameId} targetLocationId={LocationId} targetSecretStashId={SecretStashId} kind={Kind} poolRows={PoolRows} poolUnits={PoolUnits} unlimitedRows={UnlimitedRows}",
+            http.Request.Method,
+            http.Request.Path,
+            dto.GameId,
+            dto.LocationId,
+            dto.SecretStashId,
+            isComposite ? "composite" : "single",
+            poolCount,
+            poolAssignments.Sum(p => p.Count),
+            unlimitedCount);
+
+        void LogAssignExit(string status, string? detail = null, int? questId = null)
+        {
+            serverTimer.Stop();
+            logger.LogInformation(
+                "[treasure-alloc-server] exit method={Method} path={Path} gameId={GameId} status={Status} questId={QuestId} elapsedMs={ElapsedMs} detail={Detail}",
+                http.Request.Method,
+                http.Request.Path,
+                dto.GameId,
+                status,
+                questId,
+                serverTimer.ElapsedMilliseconds,
+                detail);
+        }
 
         // Validate XOR
         if ((dto.LocationId is null) == (dto.SecretStashId is null))
@@ -316,6 +344,7 @@ public static class TreasurePlanningEndpoints
                 dto.LocationId,
                 dto.SecretStashId
             });
+            LogAssignExit("validation", "location-stash-xor");
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["LocationId"] = ["Musí být vyplněna buď lokace, nebo tajná skrýš (ne obojí)."]
@@ -331,6 +360,7 @@ public static class TreasurePlanningEndpoints
                 poolAssignmentRows = poolAssignments.Count,
                 legacyPoolRows = legacyPoolItemIds.Count
             });
+            LogAssignExit("validation", "mixed-pool-contracts");
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["PoolItems"] = ["Použijte buď položky s počtem, nebo starý seznam položek — ne obojí."]
@@ -355,6 +385,7 @@ public static class TreasurePlanningEndpoints
                     dto.GameId,
                     missing
                 });
+                LogAssignExit("validation", "pool-item-missing");
                 return TypedResults.ValidationProblem(new Dictionary<string, string[]>
                 {
                     ["PoolItems"] = ["Některé položky už nejsou v zásobníku."]
@@ -374,6 +405,7 @@ public static class TreasurePlanningEndpoints
                         requested = assignment.Count,
                         available = poolItem.Count
                     });
+                    LogAssignExit("validation", "pool-count-out-of-range");
                     return TypedResults.ValidationProblem(new Dictionary<string, string[]>
                     {
                         ["PoolItems"] = [$"Počet pro {poolItem.Item.Name} musí být mezi 1 a {poolItem.Count}."]
@@ -390,6 +422,7 @@ public static class TreasurePlanningEndpoints
                         requested = assignment.Count,
                         available = poolItem.Count
                     });
+                    LogAssignExit("validation", "unique-partial-count");
                     return TypedResults.ValidationProblem(new Dictionary<string, string[]>
                     {
                         ["PoolItems"] = [$"{poolItem.Item.Name} je unikátní předmět a musí se přiřadit celý."]
@@ -438,7 +471,17 @@ public static class TreasurePlanningEndpoints
                 SecretStashId = targetSecretStashId,
                 poolUnits = poolAssignments.Sum(p => p.Count)
             });
+            logger.LogInformation(
+                "[treasure-alloc-server] db-write.attempt route=assign phase=create-quest gameId={GameId}",
+                dto.GameId);
+            var createQuestSaveTimer = Stopwatch.StartNew();
             await db.SaveChangesAsync(); // get the ID
+            createQuestSaveTimer.Stop();
+            logger.LogInformation(
+                "[treasure-alloc-server] db-write.ok route=assign phase=create-quest gameId={GameId} questId={QuestId} elapsedMs={ElapsedMs}",
+                dto.GameId,
+                quest.Id,
+                createQuestSaveTimer.ElapsedMilliseconds);
 
             // Assign legacy pool items by moving the whole row.
             if (dto.TreasureItemIds is { Count: > 0 })
@@ -499,7 +542,18 @@ public static class TreasurePlanningEndpoints
                 poolUnits = poolAssignments.Sum(p => p.Count),
                 unlimitedCount
             });
+            logger.LogInformation(
+                "[treasure-alloc-server] db-write.attempt route=assign phase=attach-items gameId={GameId} questId={QuestId}",
+                dto.GameId,
+                quest.Id);
+            var attachItemsSaveTimer = Stopwatch.StartNew();
             await db.SaveChangesAsync();
+            attachItemsSaveTimer.Stop();
+            logger.LogInformation(
+                "[treasure-alloc-server] db-write.ok route=assign phase=attach-items gameId={GameId} questId={QuestId} elapsedMs={ElapsedMs}",
+                dto.GameId,
+                quest.Id,
+                attachItemsSaveTimer.ElapsedMilliseconds);
 
             // Reload with includes for response
             var loaded = await db.TreasureQuests
@@ -514,6 +568,7 @@ public static class TreasurePlanningEndpoints
                 dto.GameId,
                 itemCount = loaded.TreasureItems.Sum(ti => ti.Count)
             });
+            LogAssignExit("created", questId: quest.Id);
 
             return TypedResults.Created($"/api/treasure-quests/{quest.Id}",
                 new TreasureQuestDetailDto(
@@ -531,6 +586,15 @@ public static class TreasurePlanningEndpoints
                 poolCount,
                 unlimitedCount
             }, ex);
+            serverTimer.Stop();
+            logger.LogError(
+                ex,
+                "[treasure-alloc-server] exception method={Method} path={Path} gameId={GameId} elapsedMs={ElapsedMs} detail={Detail}",
+                http.Request.Method,
+                http.Request.Path,
+                dto.GameId,
+                serverTimer.ElapsedMilliseconds,
+                ex.Message);
             throw;
         }
     }
@@ -606,9 +670,30 @@ public static class TreasurePlanningEndpoints
         int id,
         AdjustTreasureItemCountDto dto,
         WorldDbContext db,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        HttpContext http)
     {
         var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.TreasurePlanningEndpoints");
+        var serverTimer = Stopwatch.StartNew();
+        logger.LogInformation(
+            "[treasure-alloc-server] entry method={Method} path={Path} route=count-adjust treasureItemId={TreasureItemId} delta={Delta} source={Source}",
+            http.Request.Method,
+            http.Request.Path,
+            id,
+            dto.Delta,
+            dto.Source);
+        void LogCountAdjustExit(string status, string? detail = null)
+        {
+            serverTimer.Stop();
+            logger.LogInformation(
+                "[treasure-alloc-server] exit method={Method} path={Path} route=count-adjust treasureItemId={TreasureItemId} status={Status} elapsedMs={ElapsedMs} detail={Detail}",
+                http.Request.Method,
+                http.Request.Path,
+                id,
+                status,
+                serverTimer.ElapsedMilliseconds,
+                detail);
+        }
         LogTreasureAlloc(logger, LogLevel.Information, "count-adjust-entry", new
         {
             treasureItemId = id,
@@ -622,6 +707,7 @@ public static class TreasurePlanningEndpoints
 
         if (item is null)
         {
+            LogCountAdjustExit("not-found");
             return TypedResults.NotFound();
         }
 
@@ -632,6 +718,7 @@ public static class TreasurePlanningEndpoints
                 reason = "zero-delta",
                 treasureItemId = id
             });
+            LogCountAdjustExit("validation", "zero-delta");
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["Delta"] = ["Změna počtu nesmí být nula."]
@@ -645,6 +732,7 @@ public static class TreasurePlanningEndpoints
                 reason = "pool-row-not-target",
                 treasureItemId = id
             });
+            LogCountAdjustExit("validation", "pool-row-not-target");
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["TreasureItemId"] = ["Počet lze upravovat jen u již umístěného pokladu."]
@@ -659,6 +747,7 @@ public static class TreasurePlanningEndpoints
                 treasureItemId = id,
                 item.ItemId
             });
+            LogCountAdjustExit("validation", "unique-item");
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["TreasureItemId"] = ["Unikátní předmět nelze upravovat po kusech."]
@@ -677,6 +766,7 @@ public static class TreasurePlanningEndpoints
                     item.Count,
                     dto.Delta
                 });
+                LogCountAdjustExit("validation", "below-one");
                 return TypedResults.ValidationProblem(new Dictionary<string, string[]>
                 {
                     ["Delta"] = ["Počet pokladu nesmí klesnout pod 1."]
@@ -703,6 +793,7 @@ public static class TreasurePlanningEndpoints
                     requested = dto.Delta,
                     available
                 });
+                LogCountAdjustExit("validation", "not-enough-pool");
                 return TypedResults.ValidationProblem(new Dictionary<string, string[]>
                 {
                     ["Delta"] = [$"V zásobníku je už jen {available} kusů."]
@@ -732,7 +823,20 @@ public static class TreasurePlanningEndpoints
             item.Count,
             dto.Source
         });
+        logger.LogInformation(
+            "[treasure-alloc-server] db-write.attempt route=count-adjust treasureItemId={TreasureItemId} gameId={GameId} delta={Delta}",
+            id,
+            item.GameId,
+            dto.Delta);
+        var saveTimer = Stopwatch.StartNew();
         await db.SaveChangesAsync();
+        saveTimer.Stop();
+        logger.LogInformation(
+            "[treasure-alloc-server] db-write.ok route=count-adjust treasureItemId={TreasureItemId} gameId={GameId} delta={Delta} elapsedMs={ElapsedMs}",
+            id,
+            item.GameId,
+            dto.Delta,
+            saveTimer.ElapsedMilliseconds);
 
         LogTreasureAlloc(logger, LogLevel.Information, "count-adjust-success", new
         {
@@ -741,6 +845,7 @@ public static class TreasurePlanningEndpoints
             item.GameId,
             item.Count
         });
+        LogCountAdjustExit("ok");
 
         return TypedResults.Ok(new TreasureItemDto(item.Id, item.ItemId, item.Item.Name, item.Count, item.TreasureQuestId));
     }
@@ -815,12 +920,40 @@ public static class TreasurePlanningEndpoints
     /// or a fresh pool row is created. Items where allocations already exceed
     /// stock are skipped and listed in <see cref="RefillPoolResponse.OverAllocated"/>.
     /// </summary>
-    private static async Task<Ok<RefillPoolResponse>> RefillPool(int gameId, bool? dryRun, WorldDbContext db)
+    private static async Task<Ok<RefillPoolResponse>> RefillPool(
+        int gameId,
+        bool? dryRun,
+        WorldDbContext db,
+        ILoggerFactory loggerFactory,
+        HttpContext http)
     {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.TreasurePlanningEndpoints");
+        var serverTimer = Stopwatch.StartNew();
         // Optional preview mode — compute the same response shape without
         // persisting. UI fetches a preview before showing the confirm popup
         // so the user reviews exactly what will be added before committing.
         var preview = dryRun == true;
+        logger.LogInformation(
+            "[treasure-alloc-server] entry method={Method} path={Path} route=refill-pool gameId={GameId} preview={Preview}",
+            http.Request.Method,
+            http.Request.Path,
+            gameId,
+            preview);
+
+        void LogRefillExit(string status, int added, int overAllocated)
+        {
+            serverTimer.Stop();
+            logger.LogInformation(
+                "[treasure-alloc-server] exit method={Method} path={Path} route=refill-pool gameId={GameId} preview={Preview} status={Status} itemsAdded={ItemsAdded} overAllocated={OverAllocated} elapsedMs={ElapsedMs}",
+                http.Request.Method,
+                http.Request.Path,
+                gameId,
+                preview,
+                status,
+                added,
+                overAllocated,
+                serverTimer.ElapsedMilliseconds);
+        }
 
         // Wrap the read-then-write in SERIALIZABLE so two concurrent refills
         // can't both compute `remaining` from the same allocation snapshot
@@ -841,6 +974,7 @@ public static class TreasurePlanningEndpoints
         if (gameItems.Count == 0)
         {
             await tx.CommitAsync();
+            LogRefillExit("no-items", 0, 0);
             return TypedResults.Ok(new RefillPoolResponse(0,
                 Array.Empty<RefillPoolItemDto>(), Array.Empty<RefillPoolOverAllocationDto>()));
         }
@@ -939,11 +1073,24 @@ public static class TreasurePlanningEndpoints
         if (preview)
         {
             await tx.RollbackAsync();
+            LogRefillExit("preview", added.Sum(a => a.Added), overAllocated.Count);
         }
         else
         {
+            logger.LogInformation(
+                "[treasure-alloc-server] db-write.attempt route=refill-pool gameId={GameId} itemRows={ItemRows}",
+                gameId,
+                added.Count);
+            var saveTimer = Stopwatch.StartNew();
             await db.SaveChangesAsync();
             await tx.CommitAsync();
+            saveTimer.Stop();
+            logger.LogInformation(
+                "[treasure-alloc-server] db-write.ok route=refill-pool gameId={GameId} itemRows={ItemRows} elapsedMs={ElapsedMs}",
+                gameId,
+                added.Count,
+                saveTimer.ElapsedMilliseconds);
+            LogRefillExit("ok", added.Sum(a => a.Added), overAllocated.Count);
         }
 
         return TypedResults.Ok(new RefillPoolResponse(
