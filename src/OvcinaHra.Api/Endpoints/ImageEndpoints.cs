@@ -16,6 +16,8 @@ public static class ImageEndpoints
     // Location.Id. They write Location.StampImagePath / PlacementPhotoPath but
     // keep independent thumbnail cache keys from the main location image.
     private static readonly HashSet<string> ValidEntityTypes = ["locations", "locationstamps", "locationplacements", "items", "monsters", "secretstashes", "npcs", "buildings", "characters", "kingdoms", "spells", "quests"];
+    private static readonly HashSet<string> ServerTimedImageUploadEntityTypes =
+        new(StringComparer.Ordinal) { "locations", "locationstamps", "items", "npcs", "kingdoms" };
     private static readonly HashSet<string> AllowedContentTypes = ["image/jpeg", "image/png", "image/webp"];
     private const long MaxFileSize = 5 * 1024 * 1024; // 5 MB
     private const int LocationStampMinimumPixels = 200;
@@ -122,8 +124,23 @@ public static class ImageEndpoints
         var isLegacyLocationPlacement = string.Equals(entityType, "locations", StringComparison.Ordinal)
             && string.Equals(field, "placement", StringComparison.OrdinalIgnoreCase);
         var isPlacementUpload = isLocationPlacement || isLegacyLocationPlacement;
+        var isServerTimedImageUpload = !isPlacementUpload && ServerTimedImageUploadEntityTypes.Contains(entityType);
         var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.ImageEndpoints");
         var userId = GetUserId(http.User);
+        var serverTimer = Stopwatch.StartNew();
+        if (isServerTimedImageUpload)
+        {
+            logger.LogInformation(
+                "[image-upload-server] image.upload.entry method={Method} path={Path} entityType={EntityType} entityId={EntityId} userId={UserId} size={Size} contentType={ContentType} field={Field}",
+                http.Request.Method,
+                http.Request.Path,
+                entityType,
+                entityId,
+                userId,
+                file.Length,
+                file.ContentType,
+                field);
+        }
         if (isPlacementUpload)
         {
             logger.LogInformation(
@@ -149,24 +166,28 @@ public static class ImageEndpoints
             if (!ValidEntityTypes.Contains(entityType))
             {
                 LogPlacementImageExit(logger, isPlacementUpload, entityId, gameId, userId, 400, detail: $"invalid-entity-type:{entityType}");
+                LogImageUploadServerExit(logger, isServerTimedImageUpload, http, entityType, entityId, userId, serverTimer, 400, detail: $"invalid-entity-type:{entityType}");
                 return TypedResults.BadRequest(ImageValidationProblem($"Neplatný typ entity '{entityType}'."));
             }
 
             if (file.Length > MaxFileSize)
             {
                 LogPlacementImageExit(logger, isPlacementUpload, entityId, gameId, userId, 400, detail: "file-too-large");
+                LogImageUploadServerExit(logger, isServerTimedImageUpload, http, entityType, entityId, userId, serverTimer, 400, detail: "file-too-large");
                 return TypedResults.BadRequest(ImageValidationProblem($"Soubor je příliš velký. Maximální velikost je {MaxFileSize / (1024 * 1024)} MB."));
             }
 
             if (!AllowedContentTypes.Contains(file.ContentType))
             {
                 LogPlacementImageExit(logger, isPlacementUpload, entityId, gameId, userId, 400, detail: $"invalid-content-type:{file.ContentType}");
+                LogImageUploadServerExit(logger, isServerTimedImageUpload, http, entityType, entityId, userId, serverTimer, 400, detail: $"invalid-content-type:{file.ContentType}");
                 return TypedResults.BadRequest(ImageValidationProblem($"Neplatný typ souboru '{file.ContentType}'. Povolené typy: {string.Join(", ", AllowedContentTypes)}."));
             }
 
             if (!await EntityExists(db, entityType, entityId))
             {
                 LogPlacementImageExit(logger, isPlacementUpload, entityId, gameId, userId, 404, detail: "entity-not-found");
+                LogImageUploadServerExit(logger, isServerTimedImageUpload, http, entityType, entityId, userId, serverTimer, 404, detail: "entity-not-found");
                 return TypedResults.NotFound();
             }
 
@@ -188,6 +209,7 @@ public static class ImageEndpoints
                 if (validationProblem is not null)
                 {
                     LogPlacementImageExit(logger, isPlacementUpload, entityId, gameId, userId, 400, blobKey, detail: "stamp-validation-failed");
+                    LogImageUploadServerExit(logger, isServerTimedImageUpload, http, entityType, entityId, userId, serverTimer, 400, blobKey, detail: "stamp-validation-failed");
                     return TypedResults.BadRequest(validationProblem);
                 }
             }
@@ -198,6 +220,14 @@ public static class ImageEndpoints
             {
                 logger.LogInformation(
                     "[loc-placement-server] image.upload.blob-write.attempt locationId={LocationId} blobKey={BlobKey}",
+                    entityId,
+                    blobKey);
+            }
+            if (isServerTimedImageUpload)
+            {
+                logger.LogInformation(
+                    "[image-upload-server] image.upload.blob-write.attempt entityType={EntityType} entityId={EntityId} blobKey={BlobKey}",
+                    entityType,
                     entityId,
                     blobKey);
             }
@@ -214,6 +244,15 @@ public static class ImageEndpoints
                         blobKey,
                         blobWriteTimer.ElapsedMilliseconds);
                 }
+                if (isServerTimedImageUpload)
+                {
+                    logger.LogInformation(
+                        "[image-upload-server] image.upload.blob-write.ok entityType={EntityType} entityId={EntityId} blobKey={BlobKey} elapsedMs={ElapsedMs}",
+                        entityType,
+                        entityId,
+                        blobKey,
+                        blobWriteTimer.ElapsedMilliseconds);
+                }
             }
             catch (Exception ex) when (isPlacementUpload && ex is not OperationCanceledException)
             {
@@ -221,6 +260,18 @@ public static class ImageEndpoints
                 logger.LogError(
                     ex,
                     "[loc-placement-server] image.upload.blob-write.failed locationId={LocationId} blobKey={BlobKey} detail={Detail}",
+                    entityId,
+                    blobKey,
+                    ex.Message);
+                throw;
+            }
+            catch (Exception ex) when (isServerTimedImageUpload && ex is not OperationCanceledException)
+            {
+                blobWriteTimer.Stop();
+                logger.LogError(
+                    ex,
+                    "[image-upload-server] image.upload.blob-write.failed entityType={EntityType} entityId={EntityId} blobKey={BlobKey} detail={Detail}",
+                    entityType,
                     entityId,
                     blobKey,
                     ex.Message);
@@ -263,6 +314,15 @@ public static class ImageEndpoints
                     entityId,
                     "PlacementPhotoPath");
             }
+            if (isServerTimedImageUpload)
+            {
+                logger.LogInformation(
+                    "[image-upload-server] image.upload.db-update.attempt entityType={EntityType} entityId={EntityId} field={Field} blobKey={BlobKey}",
+                    entityType,
+                    entityId,
+                    isPlacement ? "PlacementPhotoPath" : "ImagePath",
+                    blobKey);
+            }
             int rowsAffected;
             try
             {
@@ -274,12 +334,30 @@ public static class ImageEndpoints
                         entityId,
                         rowsAffected);
                 }
+                if (isServerTimedImageUpload)
+                {
+                    logger.LogInformation(
+                        "[image-upload-server] image.upload.db-update.ok entityType={EntityType} entityId={EntityId} rowsAffected={RowsAffected}",
+                        entityType,
+                        entityId,
+                        rowsAffected);
+                }
             }
             catch (Exception ex) when (isPlacementUpload && ex is not OperationCanceledException)
             {
                 logger.LogError(
                     ex,
                     "[loc-placement-server] image.upload.db-update.failed locationId={LocationId} detail={Detail}",
+                    entityId,
+                    ex.Message);
+                throw;
+            }
+            catch (Exception ex) when (isServerTimedImageUpload && ex is not OperationCanceledException)
+            {
+                logger.LogError(
+                    ex,
+                    "[image-upload-server] image.upload.db-update.failed entityType={EntityType} entityId={EntityId} detail={Detail}",
+                    entityType,
                     entityId,
                     ex.Message);
                 throw;
@@ -297,6 +375,7 @@ public static class ImageEndpoints
                     url);
             }
             LogPlacementImageExit(logger, isPlacementUpload, entityId, gameId, userId, 200, blobKey, url);
+            LogImageUploadServerExit(logger, isServerTimedImageUpload, http, entityType, entityId, userId, serverTimer, 200, blobKey);
             return TypedResults.Ok(new ImageUploadResult(blobKey, url));
         }
         catch (Exception ex) when (isPlacementUpload && ex is not OperationCanceledException)
@@ -315,6 +394,19 @@ public static class ImageEndpoints
                 entityId,
                 ex.Message);
             LogPlacementImageExit(logger, isPlacementUpload, entityId, gameId, userId, 500, detail: ex.Message);
+            throw;
+        }
+        catch (Exception ex) when (isServerTimedImageUpload && ex is not OperationCanceledException)
+        {
+            logger.LogError(
+                ex,
+                "[image-upload-server] image.upload.exception method={Method} path={Path} entityType={EntityType} entityId={EntityId} detail={Detail}",
+                http.Request.Method,
+                http.Request.Path,
+                entityType,
+                entityId,
+                ex.Message);
+            LogImageUploadServerExit(logger, isServerTimedImageUpload, http, entityType, entityId, userId, serverTimer, 500, detail: ex.Message);
             throw;
         }
     }
@@ -673,6 +765,34 @@ public static class ImageEndpoints
             status,
             imageBlobKey,
             imageBlobUrl,
+            detail);
+    }
+
+    private static void LogImageUploadServerExit(
+        ILogger logger,
+        bool isServerTimedImageUpload,
+        HttpContext http,
+        string entityType,
+        int entityId,
+        string userId,
+        Stopwatch serverTimer,
+        int status,
+        string? imageBlobKey = null,
+        string? detail = null)
+    {
+        if (!isServerTimedImageUpload) return;
+
+        serverTimer.Stop();
+        logger.LogInformation(
+            "[image-upload-server] image.upload.exit method={Method} path={Path} entityType={EntityType} entityId={EntityId} userId={UserId} status={Status} imageBlobKey={ImageBlobKey} elapsedMs={ElapsedMs} detail={Detail}",
+            http.Request.Method,
+            http.Request.Path,
+            entityType,
+            entityId,
+            userId,
+            status,
+            imageBlobKey,
+            serverTimer.ElapsedMilliseconds,
             detail);
     }
 
