@@ -14,18 +14,11 @@
      @onfocus="() => isNameFlyoutOpen = true"
      @onblur="() => isNameFlyoutOpen = false"
      @onclick="OnClickInternal">
-    @if (!imageFailed)
-    {
-        <img class="oh-tp-pool-tile-img"
-             src="@($"/api/images/items/{Item.ItemId}/thumb?size=small")"
-             alt="@Item.ItemName"
-             @onerror="() => imageFailed = true"
-             draggable="false" />
-    }
-    else
-    {
-        <div class="oh-tp-pool-tile-fallback"><i class="bi bi-gem"></i></div>
-    }
+    <TreasureItemThumbnail ItemId="@Item.ItemId"
+                           ItemName="@Item.ItemName"
+                           ThumbnailUrl="@Item.ItemThumbnailUrl"
+                           ImageCssClass="oh-tp-pool-tile-img"
+                           FallbackCssClass="oh-tp-pool-tile-fallback" />
     @if (!Item.IsUnique)
     {
         <div class="oh-tp-pool-tile-badge">× @Item.Count</div>
@@ -95,8 +88,6 @@
     [Parameter] public EventCallback<TreasurePoolItemDto> OnRemove { get; set; }
 
     private ElementReference elementRef;
-    private bool imageFailed;
-    private int _imageStateForItemId = -1;
     private int _wiredForPoolItemId = -1;
 
     private bool isRemoveVisible;
@@ -104,17 +95,6 @@
     private bool removing;
     private string tileTargetId => $"oh-tp-pool-tile-{Item.Id}";
     private string TileLabel => Item.IsUnique ? Item.ItemName : $"{Item.ItemName} × {Item.Count}";
-
-    protected override void OnParametersSet()
-    {
-        // Reset image-failure state only when the underlying catalog item changes
-        // (image URL is keyed by Item.ItemId, not the pool entry's Id).
-        if (_imageStateForItemId != Item.ItemId)
-        {
-            _imageStateForItemId = Item.ItemId;
-            imageFailed = false;
-        }
-    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

@@ -242,6 +242,20 @@ else
 
             @* RIGHT: assignment panel *@
             <div class="oh-tp-assign-panel">
+                <div class="oh-tp-placement-phase">
+                    <span class="oh-tp-placement-phase-lbl">Fáze umístění</span>
+                    <div class="oh-tl-seg" role="group" aria-label="Fáze, do které se ukládají nové poklady">
+                        @foreach (var phase in placementPhaseOptions)
+                        {
+                            <button type="button"
+                                    class="oh-tl-seg-btn @(placementPhase == phase.Value ? "on" : "")"
+                                    data-stage="@phase.StageKey"
+                                    @onclick="() => SetPlacementPhase(phase.Value)">
+                                @phase.Label
+                            </button>
+                        }
+                    </div>
+                </div>
                 @if (focusedLocationId is null)
                 {
                     @* --- Default: pool grid --- *@
@@ -334,6 +348,9 @@ else
                                         @foreach (var line in GetCompositeBundleDisplayLines())
                                         {
                                             <div class="oh-tp-bundle-line" @key="line.ItemId">
+                                                <TreasureItemThumbnail ItemId="@line.ItemId"
+                                                                       ItemName="@line.ItemName"
+                                                                       ThumbnailUrl="@line.ItemThumbnailUrl" />
                                                 <span class="oh-tp-bundle-line-name">@line.ItemName</span>
                                                 <button type="button"
                                                         class="oh-tp-stepper-btn"
@@ -698,7 +715,14 @@ else
                         @foreach (var item in editQuestItems)
                         {
                             <tr>
-                                <td>@item.ItemName</td>
+                                <td>
+                                    <div class="oh-tp-edit-item">
+                                        <TreasureItemThumbnail ItemId="@item.ItemId"
+                                                               ItemName="@item.ItemName"
+                                                               ThumbnailUrl="@item.ItemThumbnailUrl" />
+                                        <span>@item.ItemName</span>
+                                    </div>
+                                </td>
                                 <td>@item.Count</td>
                                 <td>
                                     <button class="btn btn-sm btn-link text-danger p-0"
@@ -926,9 +950,9 @@ else
     private string? wiredCompositeBundlePayload;
     private readonly List<CompositeBundleLine> compositeBundleItems = [];
 
-    private sealed record CompositeBundleLine(int PoolItemId, int ItemId, string ItemName, bool IsUnique, int Count);
-    private sealed record CompositeBundleDisplayLine(int ItemId, string ItemName, int Count);
-    private sealed record CompositeBundleChoice(int PoolItemId, int ItemId, string ItemName, string Label, int Available, bool IsUnique);
+    private sealed record CompositeBundleLine(int PoolItemId, int ItemId, string ItemName, bool IsUnique, int Count, string? ItemThumbnailUrl);
+    private sealed record CompositeBundleDisplayLine(int ItemId, string ItemName, int Count, string? ItemThumbnailUrl);
+    private sealed record CompositeBundleChoice(int PoolItemId, int ItemId, string ItemName, string Label, int Available, bool IsUnique, string? ItemThumbnailUrl);
 
     private int CompositeBundleCurrencyCount => Math.Max(0, compositeBundleCurrencyCount ?? 0);
     private bool HasCompositeBundleCurrency => CompositeBundleCurrencyCount > 0;
@@ -962,16 +986,16 @@ else
             {
                 var available = p.Count - GetCompositeBundleReservedCount(p.Id);
                 var label = p.IsUnique ? p.ItemName : $"{p.ItemName} (zbývá {available})";
-                return new CompositeBundleChoice(p.Id, p.ItemId, p.ItemName, label, available, p.IsUnique);
+                return new CompositeBundleChoice(p.Id, p.ItemId, p.ItemName, label, available, p.IsUnique, p.ItemThumbnailUrl);
             })
             .Where(c => c.Available > 0)
             .OrderBy(c => c.ItemName);
 
     private IEnumerable<CompositeBundleDisplayLine> GetCompositeBundleDisplayLines() =>
         compositeBundleItems
-            .GroupBy(i => new { i.ItemId, i.ItemName })
+            .GroupBy(i => new { i.ItemId, i.ItemName, i.ItemThumbnailUrl })
             .OrderBy(g => g.Key.ItemName)
-            .Select(g => new CompositeBundleDisplayLine(g.Key.ItemId, g.Key.ItemName, g.Sum(i => i.Count)));
+            .Select(g => new CompositeBundleDisplayLine(g.Key.ItemId, g.Key.ItemName, g.Sum(i => i.Count), g.Key.ItemThumbnailUrl));
 
     private IEnumerable<string> GetCompositeBundleSummaryParts()
     {
@@ -1042,7 +1066,7 @@ else
         }
         else
         {
-            compositeBundleItems.Add(new CompositeBundleLine(poolItem.Id, poolItem.ItemId, poolItem.ItemName, poolItem.IsUnique, count));
+            compositeBundleItems.Add(new CompositeBundleLine(poolItem.Id, poolItem.ItemId, poolItem.ItemName, poolItem.IsUnique, count, poolItem.ItemThumbnailUrl));
         }
         selectedPool.Clear();
         selectedCompositeBundle = true;
@@ -1118,7 +1142,7 @@ else
             }
             else
             {
-                compositeBundleItems.Add(new CompositeBundleLine(poolItem.Id, poolItem.ItemId, poolItem.ItemName, poolItem.IsUnique, 1));
+                compositeBundleItems.Add(new CompositeBundleLine(poolItem.Id, poolItem.ItemId, poolItem.ItemName, poolItem.IsUnique, 1, poolItem.ItemThumbnailUrl));
             }
         }
         if (!HasCompositeBundle)
@@ -1313,6 +1337,45 @@ else
         Console.WriteLine($"[treasure-alloc] {json}");
     }
 
+    private void SetPlacementPhase(GameTimePhase next)
+    {
+        if (placementPhase == next && lastUsedDifficulty == next) return;
+        var previous = PlacementPhaseUiName(placementPhase);
+        placementPhase = next;
+        lastUsedDifficulty = next;
+        var current = PlacementPhaseUiName(next);
+        Console.WriteLine($"[treasure-alloc] phase-toggle changed from={previous} to={current}");
+        LogTreasureAlloc("phase-toggle", new
+        {
+            from = previous,
+            to = current,
+            phase = next.ToString(),
+            gameId
+        });
+    }
+
+    private static string PlacementPhaseUiName(GameTimePhase phase) => phase switch
+    {
+        GameTimePhase.Start => "Start",
+        GameTimePhase.Lategame or GameTimePhase.EndGame => "Konec",
+        _ => "Hra"
+    };
+
+    private static GameTimePhase PlacementPhaseBucket(GameTimePhase phase) => phase switch
+    {
+        GameTimePhase.Start => GameTimePhase.Start,
+        GameTimePhase.Lategame or GameTimePhase.EndGame => GameTimePhase.Lategame,
+        _ => GameTimePhase.Midgame
+    };
+
+    private static void LogAssignRequestPhase(GameTimePhase phase, string source, int? locationId, int? secretStashId = null)
+    {
+        Console.WriteLine(
+            $"[treasure-alloc] assign request includes phase={PlacementPhaseUiName(phase)} " +
+            $"source={source} locationId={locationId?.ToString() ?? "null"} " +
+            $"stashId={secretStashId?.ToString() ?? "null"}");
+    }
+
     private void CollapseQuickAllocationStepper()
     {
         if (quickAllocation is null) return;
@@ -1370,6 +1433,7 @@ else
     private OvcinaHra.Shared.Domain.Enums.LocationKind? treasuresKindFilter;
     private string? treasuresRegionFilter;
     private GameTimePhase lastUsedDifficulty = GameTimePhase.Start;
+    private GameTimePhase placementPhase = GameTimePhase.Start;
 
     // ===== Game context =====
     private int gameId => GameContext.SelectedGameId ?? 1;
@@ -1432,12 +1496,19 @@ else
 
     // ===== Stage metadata =====
     private record StageInfo(string Key, string SoftKey, GameTimePhase Value, string Label);
+    private record PlacementPhaseOption(string StageKey, GameTimePhase Value, string Label);
     private static readonly List<StageInfo> stageKeys =
     [
         new("start", "start",    GameTimePhase.Start,    "Start"),
         new("early", "early",    GameTimePhase.Early,    "Rozvoj hry"),
         new("mid",   "midgame",  GameTimePhase.Midgame,  "Střed hry"),
         new("late",  "lategame", GameTimePhase.Lategame, "Závěr hry"),
+    ];
+    private static readonly List<PlacementPhaseOption> placementPhaseOptions =
+    [
+        new("start", GameTimePhase.Start, "Start"),
+        new("mid", GameTimePhase.Midgame, "Hra"),
+        new("end", GameTimePhase.Lategame, "Konec"),
     ];
 
     private static readonly List<EnumItem<GameTimePhase>> difficultyValues = Enum.GetValues<GameTimePhase>()
@@ -1893,7 +1964,7 @@ else
         var unlimitedAssignments = BuildCompositeBundleUnlimitedAssignments();
         var dto = new AssignTreasureDto(
             Title: EffectiveCompositeBundleTitle,
-            Difficulty: lastUsedDifficulty,
+            Difficulty: placementPhase,
             GameId: gameId,
             LocationId: locationId,
             PoolItems: assignments,
@@ -1906,12 +1977,14 @@ else
             source,
             target = "location",
             locationId,
+            phase = PlacementPhaseUiName(dto.Difficulty),
             dto.Title,
             poolRows = assignments.Count,
             poolUnits = assignments.Sum(a => a.Count),
             unlimitedRows = unlimitedAssignments.Count,
             unlimitedUnits = unlimitedAssignments.Sum(a => a.Count)
         });
+        LogAssignRequestPhase(dto.Difficulty, source, locationId);
 
         var result = await Api.PostWithProblemAsync<AssignTreasureDto, TreasureQuestDetailDto>("/api/treasure-planning/assign", dto);
         if (!result.Ok || result.Value is null)
@@ -1930,6 +2003,7 @@ else
         }
 
         lastUsedDifficulty = dto.Difficulty;
+        placementPhase = PlacementPhaseBucket(dto.Difficulty);
         var completedBundleId = compositeBundleClientId;
         var completedUnits = CompositeBundleUnitCount;
         ClearCompositeBundle();
@@ -1957,7 +2031,7 @@ else
         var count = item.IsUnique ? item.Count : 1;
         var dto = new AssignTreasureDto(
             Title: item.ItemName,
-            Difficulty: lastUsedDifficulty,
+            Difficulty: placementPhase,
             GameId: gameId,
             LocationId: locationId,
             PoolItems: [new PoolItemAssignDto(item.Id, count)]);
@@ -1967,12 +2041,14 @@ else
             source,
             target = "location",
             locationId,
+            phase = PlacementPhaseUiName(dto.Difficulty),
             poolItemId = item.Id,
             item.ItemId,
             kind = item.IsUnique ? "unique" : "non-unique",
             availableCount = item.Count,
             committedCount = count
         });
+        LogAssignRequestPhase(dto.Difficulty, source, locationId);
 
         var result = await Api.PostWithProblemAsync<AssignTreasureDto, TreasureQuestDetailDto>("/api/treasure-planning/assign", dto);
         if (!result.Ok || result.Value is null)
@@ -1984,6 +2060,7 @@ else
         }
 
         lastUsedDifficulty = dto.Difficulty;
+        placementPhase = PlacementPhaseBucket(dto.Difficulty);
         selectedPool.RemoveAll(p => p.Id == item.Id);
         focusedLocationId = locationId;
         focusTab = "prehled";
@@ -2075,8 +2152,10 @@ else
             dto.SecretStashId,
             poolCount = (dto.PoolItems?.Count ?? 0) + (dto.TreasureItemIds?.Count ?? 0),
             poolUnits = dto.PoolItems?.Sum(p => p.Count) ?? 0,
-            unlimitedCount = dto.UnlimitedItems?.Count ?? 0
+            unlimitedCount = dto.UnlimitedItems?.Count ?? 0,
+            phase = PlacementPhaseUiName(dto.Difficulty)
         });
+        LogAssignRequestPhase(dto.Difficulty, "form-save", dto.LocationId, dto.SecretStashId);
         var result = await Api.PostWithProblemAsync<AssignTreasureDto, TreasureQuestDetailDto>("/api/treasure-planning/assign", dto);
         if (!result.Ok)
         {
@@ -2085,6 +2164,7 @@ else
         }
 
         lastUsedDifficulty = dto.Difficulty;
+        placementPhase = PlacementPhaseBucket(dto.Difficulty);
         selectedPool.Clear();
         markersPlaced = false;
         await LoadAllAsync();
@@ -2177,7 +2257,7 @@ else
             var count = Math.Max(1, grosCount);
             var dto = new AssignTreasureDto(
                 Title: $"Groše × {count}",
-                Difficulty: lastUsedDifficulty,
+                Difficulty: placementPhase,
                 GameId: gameId,
                 LocationId: locationId,
                 UnlimitedItems: [new UnlimitedItemAssignDto(grosItem.ItemId, count)]);
@@ -2185,6 +2265,7 @@ else
             var result = await Api.PostWithProblemAsync<AssignTreasureDto, TreasureQuestDetailDto>(
                 "/api/treasure-planning/assign",
                 dto);
+            LogAssignRequestPhase(dto.Difficulty, "gros-dialog", locationId);
             if (!result.Ok || result.Value is null)
             {
                 grosError = result.ProblemDetail ?? "Vytvoření pokladu z grošů se nepodařilo.";
@@ -2192,6 +2273,7 @@ else
             }
 
             lastUsedDifficulty = dto.Difficulty;
+            placementPhase = PlacementPhaseBucket(dto.Difficulty);
             isGrosDialogVisible = false;
             markersPlaced = false;
             await LoadAllAsync();

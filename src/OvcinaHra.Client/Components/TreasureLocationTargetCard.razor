@@ -26,6 +26,25 @@
                 }
             </div>
         }
+        @if (Location.AssignedTreasures is { Count: > 0 } assignedTreasures)
+        {
+            <div class="oh-tp-card-treasures">
+                @foreach (var item in assignedTreasures.Take(4))
+                {
+                    <div class="oh-tp-card-treasure" @key="@item.TreasureItemId">
+                        <TreasureItemThumbnail ItemId="@item.ItemId"
+                                               ItemName="@item.ItemName"
+                                               ThumbnailUrl="@item.ItemThumbnailUrl" />
+                        <span class="oh-tp-card-treasure-name">@item.ItemName</span>
+                        <span class="oh-tp-card-treasure-count">×@item.Count</span>
+                    </div>
+                }
+                @if (AssignedTreasureCount > 4)
+                {
+                    <div class="oh-tp-card-treasure-more">+@(AssignedTreasureCount - 4) dalších</div>
+                }
+            </div>
+        }
         @if (HasSelectedPool)
         {
             <div class="oh-tp-card-cta">
@@ -58,6 +77,10 @@
 
     private string CssClass =>
         $"oh-tp-card {(IsFocused ? "is-focused" : "")} {(HasSelectedPool ? "has-pending" : "")}".Trim();
+
+    private int AssignedTreasureCount => Location.AssignedTreasureCount > 0
+        ? Location.AssignedTreasureCount
+        : Location.AssignedTreasures?.Count ?? 0;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

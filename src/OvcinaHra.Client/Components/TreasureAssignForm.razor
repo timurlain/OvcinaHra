@@ -64,7 +64,9 @@
                 @foreach (var p in SelectedPool)
                 {
                     <div class="oh-tp-chosen-row">
-                        <i class="bi bi-check-circle text-success"></i>
+                        <TreasureItemThumbnail ItemId="@p.ItemId"
+                                               ItemName="@p.ItemName"
+                                               ThumbnailUrl="@p.ItemThumbnailUrl" />
                         <span class="flex-grow-1">@p.ItemName</span>
                         <span class="oh-tp-focus-quest-meta">
                             @(p.IsUnique ? $"×{p.Count}" : $"×1 z {p.Count}")

@@ -25,7 +25,7 @@ public record UpdateTreasureQuestDto(
     string Title, string? Clue, GameTimePhase Difficulty,
     int? LocationId, int? SecretStashId);
 
-public record TreasureItemDto(int Id, int ItemId, string ItemName, int Count, int? TreasureQuestId);
+public record TreasureItemDto(int Id, int ItemId, string ItemName, int Count, int? TreasureQuestId, string? ItemThumbnailUrl = null);
 public record AddTreasureItemDto(int ItemId, int Count = 1);
 
 public record PendingTreasureQuestDto(
@@ -46,7 +46,7 @@ public record VerifyTreasureQuestDto(
 
 // --- Treasure Pool DTOs ---
 
-public record TreasurePoolItemDto(int Id, int ItemId, string ItemName, ItemType ItemType, int Count, int GameId, bool IsUnique)
+public record TreasurePoolItemDto(int Id, int ItemId, string ItemName, ItemType ItemType, int Count, int GameId, bool IsUnique, string? ItemThumbnailUrl = null)
 {
     [JsonIgnore]
     public string ItemTypeDisplay => ItemType.GetDisplayName();
@@ -64,7 +64,19 @@ public record TreasurePlanningLocationDto(
     decimal? Latitude = null,
     decimal? Longitude = null,
     decimal? EffectiveLatitude = null,
-    decimal? EffectiveLongitude = null);
+    decimal? EffectiveLongitude = null,
+    List<TreasurePlanningAssignedTreasureDto>? AssignedTreasures = null,
+    int AssignedTreasureCount = 0);
+
+public record TreasurePlanningAssignedTreasureDto(
+    int TreasureItemId,
+    int QuestId,
+    string QuestTitle,
+    GameTimePhase Difficulty,
+    int ItemId,
+    string ItemName,
+    int Count,
+    string? ItemThumbnailUrl = null);
 
 public record StashSummaryDto(int Id, string Name, int ItemCount);
 
