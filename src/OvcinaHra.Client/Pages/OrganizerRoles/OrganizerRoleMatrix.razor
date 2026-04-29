@@ -80,6 +80,20 @@
 {
     <div class="alert alert-warning">@adultsLoadError</div>
 }
+@if (!string.IsNullOrWhiteSpace(bulkFillError))
+{
+    <div class="alert alert-warning">@bulkFillError</div>
+}
+@if (!string.IsNullOrWhiteSpace(bulkFillToastMessage))
+{
+    <div class="oh-orgrole-toast" data-testid="organizer-role-bulk-fill-toast">
+        <i class="bi bi-check-circle"></i>
+        <span>@bulkFillToastMessage</span>
+        <button type="button" title="Zavřít" aria-label="Zavřít" @onclick="() => bulkFillToastMessage = null">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+}
 
 @if (loading)
 {
@@ -201,13 +215,23 @@ else
                 <tbody>
                     @foreach (var adult in FilteredAdults)
                     {
+                        var defaultNpc = GetDefaultNpcForAdult(adult.PersonId);
                         <tr @key="adult.PersonId">
                             <th class="oh-orgrole-role-cell oh-orgrole-adult-cell">
-                                <span>@adult.Name</span>
-                                @if (!string.IsNullOrWhiteSpace(adult.Email))
-                                {
-                                    <small>@adult.Email</small>
-                                }
+                                <div class="oh-orgrole-adult-main">
+                                    <span>@adult.Name</span>
+                                    @if (!string.IsNullOrWhiteSpace(adult.Email))
+                                    {
+                                        <small>@adult.Email</small>
+                                    }
+                                </div>
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-primary oh-orgrole-fill-btn"
+                                        aria-label="@BulkFillButtonLabel(adult, defaultNpc)"
+                                        @onclick="() => OpenBulkFillRemaining(adult)">
+                                    <i class="bi bi-magic"></i>
+                                    Doplnit zbylé sloty
+                                </button>
                             </th>
                             @foreach (var slot in slots)
                             {
@@ -350,6 +374,28 @@ else
     </BodyContentTemplate>
 </DxPopup>
 
+<DxPopup @bind-Visible="@isBulkFillConfirmVisible" HeaderText="Doplnit zbylé sloty" Width="520px">
+    <BodyContentTemplate Context="confirmBulkFillContext">
+        <p>
+            Přidělit dospělému <strong>@bulkFillAdult?.Name</strong> roli
+            <strong>@bulkFillDefaultNpc?.NpcName</strong> na všechny prázdné sloty?
+        </p>
+        <p class="text-muted small">
+            Ručně vyplněné sloty tohoto dospělého zůstanou beze změny.
+        </p>
+        @if (!string.IsNullOrWhiteSpace(bulkFillError))
+        {
+            <div class="alert alert-warning">@bulkFillError</div>
+        }
+        <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-secondary" @onclick="() => isBulkFillConfirmVisible = false" disabled="@isSaving">Zrušit</button>
+            <button type="button" class="btn btn-primary" @onclick="ExecuteBulkFillRemainingAsync" disabled="@(isSaving || bulkFillAdult is null || bulkFillDefaultNpc is null)">
+                Doplnit zbylé sloty
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
 <DxPopup @bind-Visible="@isRemoveConfirmVisible" HeaderText="Potvrdit odebrání" Width="420px">
     <BodyContentTemplate Context="confirmRemoveContext">
         <p>Odebrat dospělého z této NPC role jen pro vybraný časový slot?</p>
@@ -392,6 +438,12 @@ else
     private int? bulkPersonId;
     private string? bulkNotes;
     private string? bulkError;
+
+    private bool isBulkFillConfirmVisible;
+    private AdultOption? bulkFillAdult;
+    private OrganizerRoleNpcDto? bulkFillDefaultNpc;
+    private string? bulkFillError;
+    private string? bulkFillToastMessage;
 
     private bool isCellVisible;
     private bool isRemoveConfirmVisible;
@@ -638,6 +690,11 @@ else
         return $"{action}: {adult.Name}, {FormatSlotTime(slot)}";
     }
 
+    private string BulkFillButtonLabel(AdultOption adult, OrganizerRoleNpcDto? defaultNpc) =>
+        defaultNpc is null
+            ? $"{adult.Name} nemá výchozí roli"
+            : $"Doplnit prázdné sloty: {adult.Name}, výchozí role {defaultNpc.NpcName}";
+
     private string ViewButtonCss(OrganizerRoleViewMode mode) =>
         viewMode == mode ? "oh-orgrole-view-btn is-active" : "oh-orgrole-view-btn";
 
@@ -721,6 +778,58 @@ else
         }
     }
 
+    private void OpenBulkFillRemaining(AdultOption adult)
+    {
+        bulkFillToastMessage = null;
+        bulkFillError = null;
+        bulkFillAdult = adult;
+        bulkFillDefaultNpc = GetDefaultNpcForAdult(adult.PersonId);
+        if (bulkFillDefaultNpc is null)
+        {
+            bulkFillError = $"{adult.Name} nemá výchozí roli.";
+            return;
+        }
+
+        isBulkFillConfirmVisible = true;
+        Console.WriteLine($"[organizer-roles] bulk-fill-remaining popup.open gameId={GameContext.SelectedGameId} personId={adult.PersonId} defaultRole={bulkFillDefaultNpc.NpcId}");
+    }
+
+    private async Task ExecuteBulkFillRemainingAsync()
+    {
+        if (GameContext.SelectedGameId is not int gameId || bulkFillAdult is null || bulkFillDefaultNpc is null)
+            return;
+
+        isSaving = true;
+        bulkFillError = null;
+        try
+        {
+            Console.WriteLine($"[organizer-roles] bulk-fill-remaining save.start gameId={gameId} personId={bulkFillAdult.PersonId} defaultRole={bulkFillDefaultNpc.NpcId}");
+            var dto = new BulkFillRemainingOrganizerRoleDto(gameId, bulkFillAdult.PersonId, bulkFillDefaultNpc.NpcId);
+            var (ok, result, problemDetail) = await Api.PostWithProblemAsync<BulkFillRemainingOrganizerRoleDto, BulkFillRemainingOrganizerRoleResultDto>(
+                "/api/organizer-roles/bulk-fill-remaining",
+                dto);
+            if (!ok || result is null)
+            {
+                bulkFillError = problemDetail ?? "Zbylé sloty se nepodařilo doplnit.";
+                return;
+            }
+
+            isBulkFillConfirmVisible = false;
+            bulkFillToastMessage = $"Přiděleno {result.InsertedCount} slotů.";
+            await LoadMatrixAsync();
+            Console.WriteLine($"[organizer-roles] bulk-fill-remaining ok inserted={result.InsertedCount} skipped={result.SkippedCount}");
+        }
+        catch (Exception ex)
+        {
+            bulkFillError = ex.Message;
+            Console.WriteLine($"[organizer-roles] bulk-fill-remaining failed gameId={gameId} message={ex.Message}");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
     private void OpenCellEditor(
         OrganizerRoleTimeSlotDto slot,
         OrganizerRoleNpcDto npc,
@@ -763,6 +872,31 @@ else
             cellError = "Vybraný typ role nemá žádné NPC.";
 
         Console.WriteLine($"[organizer-roles] adult-cell popup.open gameId={GameContext.SelectedGameId} slotId={slot.Id} personId={adult.PersonId} npcId={editNpcId}");
+    }
+
+    private OrganizerRoleNpcDto? GetDefaultNpcForAdult(int personId)
+    {
+        var counts = assignments
+            .Where(a => a.PersonId == personId)
+            .Select(a => GetNpc(a.NpcId))
+            .Where(npc => npc is not null)
+            .GroupBy(npc => npc!.NpcId)
+            .Select(g => new
+            {
+                Npc = g.First()!,
+                Count = g.Count()
+            })
+            .ToList();
+        if (counts.Count == 0)
+            return null;
+
+        var maxCount = counts.Max(row => row.Count);
+        return counts
+            .Where(row => row.Count == maxCount)
+            .OrderBy(row => row.Npc.NpcName, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(row => row.Npc.NpcId)
+            .First()
+            .Npc;
     }
 
     private async Task SaveCellAsync()

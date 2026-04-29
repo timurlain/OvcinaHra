@@ -29,6 +29,9 @@ public static class OrganizerRoleEndpoints
         routes.MapGet("/api/organizer-roles/me", GetMine)
             .WithTags("OrganizerRoles")
             .RequireAuthorization();
+        routes.MapPost("/api/organizer-roles/bulk-fill-remaining", BulkFillRemaining)
+            .WithTags("OrganizerRoles")
+            .RequireAuthorization();
 
         return group;
     }
@@ -207,6 +210,132 @@ public static class OrganizerRoleEndpoints
             .ToList());
 
         return TypedResults.Ok(dto);
+    }
+
+    private static async Task<Results<Ok<BulkFillRemainingOrganizerRoleResultDto>, ProblemHttpResult>> BulkFillRemaining(
+        BulkFillRemainingOrganizerRoleDto dto,
+        WorldDbContext db,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        var logger = loggerFactory.CreateLogger(LoggerCategory);
+        if (!await db.Games.AnyAsync(g => g.Id == dto.GameId, ct))
+        {
+            return Problem(
+                "Požadovaná hra nebyla nalezena.",
+                "Hra neexistuje",
+                StatusCodes.Status404NotFound);
+        }
+
+        if (dto.PersonId <= 0)
+        {
+            return Problem(
+                "Vyberte dospělého z registrace.",
+                "Chybí dospělý",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var slots = await db.GameTimeSlots
+            .AsNoTracking()
+            .Where(s => s.GameId == dto.GameId)
+            .OrderBy(s => s.StartTime)
+            .Select(s => s.Id)
+            .ToListAsync(ct);
+        if (slots.Count == 0)
+        {
+            return Problem(
+                "Nejdřív vytvořte časové bloky v harmonogramu.",
+                "Hra nemá časové sloty",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var personAssignments = await db.OrganizerRoleAssignments
+            .AsNoTracking()
+            .Where(a => a.GameId == dto.GameId && a.PersonId == dto.PersonId)
+            .OrderBy(a => a.TimeSlot.StartTime)
+            .ThenBy(a => a.Npc.Name)
+            .Select(a => new OrganizerRoleMineAssignmentRow(
+                a.GameTimeSlotId,
+                a.NpcId,
+                a.Npc.Name,
+                a.Npc.Role,
+                a.Npc.Description,
+                a.Notes,
+                a.PersonId,
+                a.PersonName,
+                a.PersonEmail))
+            .ToListAsync(ct);
+        if (personAssignments.Count == 0)
+        {
+            return Problem(
+                "Dospělý zatím nemá žádné obsazení, ze kterého by šla určit výchozí role.",
+                "Chybí výchozí role",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var defaultRole = dto.RoleNpcId is int roleNpcId
+            ? await LoadGameNpcRoleAsync(dto.GameId, roleNpcId, db, ct)
+            : PickPrimaryRole(personAssignments, out _);
+        if (defaultRole is null)
+        {
+            return Problem(
+                "Vybraná NPC role není přiřazená k této hře.",
+                "Neplatná NPC role",
+                StatusCodes.Status400BadRequest);
+        }
+
+        logger.LogInformation(
+            "[organizer-roles] bulk-fill-remaining attempt personId={PersonId} gameId={GameId} defaultRole={DefaultRole}",
+            dto.PersonId,
+            dto.GameId,
+            defaultRole.NpcId);
+
+        var personAssignedSlotIds = personAssignments
+            .Select(a => a.GameTimeSlotId)
+            .ToHashSet();
+        var occupiedDefaultRoleSlotIds = (await db.OrganizerRoleAssignments
+                .AsNoTracking()
+                .Where(a => a.GameId == dto.GameId && a.NpcId == defaultRole.NpcId)
+                .Select(a => a.GameTimeSlotId)
+                .ToListAsync(ct))
+            .ToHashSet();
+        var slotIdsToFill = slots
+            .Where(slotId => !personAssignedSlotIds.Contains(slotId)
+                && !occupiedDefaultRoleSlotIds.Contains(slotId))
+            .ToList();
+        var skipped = slots.Count - slotIdsToFill.Count;
+        var adult = personAssignments[0];
+        var now = DateTime.UtcNow;
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        foreach (var slotId in slotIdsToFill)
+        {
+            db.OrganizerRoleAssignments.Add(new OrganizerRoleAssignment
+            {
+                GameId = dto.GameId,
+                GameTimeSlotId = slotId,
+                NpcId = defaultRole.NpcId,
+                PersonId = dto.PersonId,
+                PersonName = adult.PersonName,
+                PersonEmail = NullIfWhiteSpace(adult.PersonEmail),
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            });
+        }
+
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+
+        logger.LogInformation(
+            "[organizer-roles] bulk-fill-remaining ok inserted={InsertedCount} skipped={SkippedCount}",
+            slotIdsToFill.Count,
+            skipped);
+
+        return TypedResults.Ok(new BulkFillRemainingOrganizerRoleResultDto(
+            slotIdsToFill.Count,
+            skipped,
+            defaultRole.NpcId,
+            defaultRole.NpcName));
     }
 
     private static async Task<Results<Ok<BulkOrganizerRoleAssignmentResultDto>, NotFound, ProblemHttpResult>> BulkAssign(
@@ -719,6 +848,24 @@ public static class OrganizerRoleEndpoints
             selected.Role,
             selected.Description,
             selected.Count);
+    }
+
+    private static async Task<OrganizerRoleMePrimaryRoleDto?> LoadGameNpcRoleAsync(
+        int gameId,
+        int npcId,
+        WorldDbContext db,
+        CancellationToken ct)
+    {
+        return await db.GameNpcs
+            .AsNoTracking()
+            .Where(gn => gn.GameId == gameId && gn.NpcId == npcId)
+            .Select(gn => new OrganizerRoleMePrimaryRoleDto(
+                gn.NpcId,
+                gn.Npc.Name,
+                gn.Npc.Role,
+                gn.Npc.Description,
+                0))
+            .SingleOrDefaultAsync(ct);
     }
 
     private sealed record OrganizerRoleMineAssignmentRow(

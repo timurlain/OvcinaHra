@@ -244,6 +244,64 @@ public class OrganizerRoleEndpointTests(PostgresFixture postgres) : IntegrationT
         Assert.Empty(visibleSlot.Assignments);
     }
 
+    [Fact]
+    public async Task BulkFillRemaining_FillsOnlySlotsWhereAdultHasNoAssignmentUsingDefaultRole()
+    {
+        var game = await CreateGameAsync();
+        var slots = new List<GameTimeSlotDto>();
+        for (var i = 0; i < 5; i++)
+        {
+            slots.Add(await CreateSlotAsync(game.Id, hour: 10 + i));
+        }
+        var eldari = await CreateNpcAsync("Eldari", NpcRole.Story);
+        var goblinChief = await CreateNpcAsync("Goblin chief", NpcRole.Monster);
+        await AssignNpcAsync(game.Id, eldari.Id);
+        await AssignNpcAsync(game.Id, goblinChief.Id);
+        await Client.PutAsJsonAsync(
+            $"/api/games/{game.Id}/organizer-role-assignments/slots/{slots[0].Id}/npcs/{eldari.Id}",
+            new UpsertOrganizerRoleAssignmentDto(501, "Pavel Dospělý", "pavel@example.com"));
+        await Client.PutAsJsonAsync(
+            $"/api/games/{game.Id}/organizer-role-assignments/slots/{slots[2].Id}/npcs/{goblinChief.Id}",
+            new UpsertOrganizerRoleAssignmentDto(501, "Pavel Dospělý", "pavel@example.com"));
+
+        var response = await Client.PostAsJsonAsync(
+            "/api/organizer-roles/bulk-fill-remaining",
+            new BulkFillRemainingOrganizerRoleDto(game.Id, 501));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = (await response.Content.ReadFromJsonAsync<BulkFillRemainingOrganizerRoleResultDto>())!;
+        Assert.Equal(3, result.InsertedCount);
+        Assert.Equal(2, result.SkippedCount);
+        Assert.Equal(eldari.Id, result.DefaultNpcId);
+
+        var matrix = await LoadMatrixAsync(game.Id);
+        var pavelAssignments = matrix.Assignments
+            .Where(a => a.PersonId == 501)
+            .ToDictionary(a => a.GameTimeSlotId);
+        Assert.Equal(5, pavelAssignments.Count);
+        Assert.Equal(eldari.Id, pavelAssignments[slots[0].Id].NpcId);
+        Assert.Equal(goblinChief.Id, pavelAssignments[slots[2].Id].NpcId);
+        Assert.All(
+            new[] { slots[1].Id, slots[3].Id, slots[4].Id },
+            slotId => Assert.Equal(eldari.Id, pavelAssignments[slotId].NpcId));
+    }
+
+    [Fact]
+    public async Task BulkFillRemaining_AdultWithoutAssignmentsReturnsProblemDetails()
+    {
+        var (game, _, _) = await CreateGameWithNpcAndSlotsAsync(slotCount: 2);
+
+        var response = await Client.PostAsJsonAsync(
+            "/api/organizer-roles/bulk-fill-remaining",
+            new BulkFillRemainingOrganizerRoleDto(game.Id, 501));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Chybí výchozí role", problem.Title);
+        Assert.Contains("výchozí role", problem.Detail ?? "");
+    }
+
     private async Task<(GameDetailDto Game, NpcDetailDto Npc, List<GameTimeSlotDto> Slots)> CreateGameWithNpcAndSlotsAsync(int slotCount)
     {
         var game = await CreateGameAsync();

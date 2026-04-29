@@ -193,6 +193,42 @@
     background: color-mix(in srgb, var(--bs-body-bg) 88%, var(--oh-stage-early) 12%);
 }
 
+.oh-orgrole-adult-main {
+    display: grid;
+    gap: 2px;
+}
+
+.oh-orgrole-fill-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 8px;
+    white-space: normal;
+    text-align: left;
+}
+
+.oh-orgrole-toast {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 9px 12px;
+    border: 1px solid rgba(39,174,96,.28);
+    border-radius: 6px;
+    background: rgba(39,174,96,.1);
+    color: #1e6b38;
+    font-weight: 700;
+}
+
+.oh-orgrole-toast button {
+    margin-left: auto;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    padding: 2px 4px;
+    line-height: 1;
+}
+
 .oh-orgrole-role-pill {
     display: block;
     padding: 4px 6px;
