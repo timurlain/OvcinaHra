@@ -18,4 +18,5 @@ public class Npc
 
     public ICollection<GameNpc> GameNpcs { get; set; } = [];
     public ICollection<GameEventNpc> EventNpcs { get; set; } = [];
+    public ICollection<OrganizerRoleAssignment> OrganizerRoleAssignments { get; set; } = [];
 }

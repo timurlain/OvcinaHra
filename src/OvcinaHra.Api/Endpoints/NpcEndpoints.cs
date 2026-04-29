@@ -189,6 +189,9 @@ public static class NpcEndpoints
     {
         var gn = await db.GameNpcs.FindAsync(gameId, npcId);
         if (gn is null) return TypedResults.NotFound();
+        await db.OrganizerRoleAssignments
+            .Where(a => a.GameId == gameId && a.NpcId == npcId)
+            .ExecuteDeleteAsync();
         db.GameNpcs.Remove(gn);
         await db.SaveChangesAsync();
         return TypedResults.NoContent();

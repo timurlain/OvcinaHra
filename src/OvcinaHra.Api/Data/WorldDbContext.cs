@@ -32,6 +32,7 @@ public class WorldDbContext(DbContextOptions<WorldDbContext> options) : DbContex
     public DbSet<Monster> Monsters => Set<Monster>();
     public DbSet<Npc> Npcs => Set<Npc>();
     public DbSet<GameNpc> GameNpcs => Set<GameNpc>();
+    public DbSet<OrganizerRoleAssignment> OrganizerRoleAssignments => Set<OrganizerRoleAssignment>();
     public DbSet<MonsterTagLink> MonsterTagLinks => Set<MonsterTagLink>();
     public DbSet<MonsterLoot> MonsterLoots => Set<MonsterLoot>();
     public DbSet<GameMonster> GameMonsters => Set<GameMonster>();

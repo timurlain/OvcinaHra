@@ -29,3 +29,27 @@ public class GameNpcConfiguration : IEntityTypeConfiguration<GameNpc>
         builder.Property(e => e.PlayedByEmail).HasMaxLength(200);
     }
 }
+
+public class OrganizerRoleAssignmentConfiguration : IEntityTypeConfiguration<OrganizerRoleAssignment>
+{
+    public void Configure(EntityTypeBuilder<OrganizerRoleAssignment> builder)
+    {
+        builder.HasKey(e => e.Id);
+        builder.Property(e => e.PersonName).IsRequired().HasMaxLength(200);
+        builder.Property(e => e.PersonEmail).HasMaxLength(200);
+        builder.Property(e => e.Notes).HasMaxLength(1000);
+
+        builder.HasIndex(e => new { e.GameId, e.GameTimeSlotId, e.NpcId }).IsUnique();
+        builder.HasIndex(e => new { e.GameId, e.PersonId });
+
+        builder.HasOne(e => e.Game)
+            .WithMany(g => g.OrganizerRoleAssignments)
+            .HasForeignKey(e => e.GameId);
+        builder.HasOne(e => e.TimeSlot)
+            .WithMany(ts => ts.OrganizerRoleAssignments)
+            .HasForeignKey(e => e.GameTimeSlotId);
+        builder.HasOne(e => e.Npc)
+            .WithMany(n => n.OrganizerRoleAssignments)
+            .HasForeignKey(e => e.NpcId);
+    }
+}
