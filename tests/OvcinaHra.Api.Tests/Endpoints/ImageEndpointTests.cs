@@ -78,6 +78,56 @@ public class ImageEndpointTests(PostgresFixture postgres) : IntegrationTestBase(
     }
 
     [Fact]
+    public async Task Upload_LocationPlacement_PersistsPlacementPathAndFullSasUrl()
+    {
+        var locResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Umísťovaná lokace", LocationKind.Village, 49.5m, 17.1m));
+        var loc = await locResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+
+        using var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(ValidPng);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        content.Add(fileContent, "file", "placement.png");
+
+        var response = await Client.PostAsync($"/api/images/locationplacements/{loc!.Id}?gameId=77", content);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<ImageUploadResult>();
+        Assert.NotNull(result);
+        Assert.StartsWith($"locationplacements/{loc.Id}/", result.BlobKey);
+
+        var refreshed = await Client.GetFromJsonAsync<LocationDetailDto>($"/api/locations/{loc.Id}");
+        Assert.Equal(result.BlobKey, refreshed!.PlacementPhotoPath);
+
+        var locationUrls = await Client.GetFromJsonAsync<ImageUrlsDto>($"/api/images/locations/{loc.Id}");
+        Assert.Equal($"https://fake/{result.BlobKey}", locationUrls!.PlacementUrl);
+
+        var placementUrls = await Client.GetFromJsonAsync<ImageUrlsDto>($"/api/images/locationplacements/{loc.Id}");
+        Assert.Equal($"https://fake/{result.BlobKey}", placementUrls!.ImageUrl);
+    }
+
+    [Fact]
+    public async Task Upload_LegacyLocationPlacement_InvalidatesPlacementThumbnailCache()
+    {
+        var locResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Legacy umístění", LocationKind.Village, 49.5m, 17.1m));
+        var loc = await locResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+        var blob = (InMemoryBlobService)Factory.Services.GetRequiredService<IBlobStorageService>();
+        var staleThumbKey = $"locationplacements-thumbs/{loc!.Id}-stale.webp";
+        await blob.UploadAsync(staleThumbKey, new MemoryStream(ValidPng), "image/webp");
+
+        using var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(ValidPng);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        content.Add(fileContent, "file", "legacy-placement.png");
+
+        var response = await Client.PostAsync($"/api/images/locations/{loc.Id}?field=placement", content);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.False(blob.Contains(staleThumbKey));
+    }
+
+    [Fact]
     public async Task Upload_LocationStamp_TooSmall_ReturnsProblemDetails()
     {
         var locResponse = await Client.PostAsJsonAsync("/api/locations",

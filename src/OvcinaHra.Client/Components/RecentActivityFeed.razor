@@ -1,6 +1,5 @@
-@* Issue #158 — last-N edits with 1:1 thumbs. Verb is hard-coded
-   "upravil" until the WorldChange audit log lands (flagged as
-   follow-up). Each row navigates to the entity's detail page. *@
+@* Issue #158 + #383 — recent organizer activity. WorldActivity rows use
+   real actor/timestamp data; older entity timestamp rows remain as fallback. *@
 
 <section class="oh-home-act" aria-labelledby="oh-home-act-title">
     <header class="oh-home-act-head">
@@ -38,7 +37,7 @@
                 <span class="oh-home-act-body">
                     <span class="oh-home-act-name">@row.EntityName</span>
                     <span class="oh-home-act-meta text-muted small">
-                        @row.Verb · @TimeAgo(row.OccurredUtc)
+                        @MetaFor(row)
                     </span>
                 </span>
             </a>
@@ -53,6 +52,7 @@
     {
         "character" => $"/characters/{r.EntityId}",
         "event"     => $"/timeline",
+        "location"  => $"/locations/{r.EntityId}",
         "npc"       => $"/npcs/{r.EntityId}",
         _           => "/",
     };
@@ -61,9 +61,20 @@
     {
         "character" => "bi-person",
         "event"     => "bi-calendar-event",
+        "location"  => "bi-geo-alt",
         "npc"       => "bi-person-badge",
         _           => "bi-circle",
     };
+
+    private static string MetaFor(DashboardActivityDto row)
+    {
+        var actor = string.IsNullOrWhiteSpace(row.ActorName) || row.ActorName == "—"
+            ? null
+            : row.ActorName;
+        return actor is null
+            ? $"{row.Verb} · {TimeAgo(row.OccurredUtc)}"
+            : $"{actor} · {row.Verb} · {TimeAgo(row.OccurredUtc)}";
+    }
 
     private static string TimeAgo(DateTime utc)
     {
