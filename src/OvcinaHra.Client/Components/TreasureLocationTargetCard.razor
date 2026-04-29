@@ -3,41 +3,53 @@
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
-<button @ref="elementRef"
-        type="button"
-        class="@CssClass"
-        @key="Location.LocationId"
-        @onclick="HandleClick">
-    <div class="oh-tp-card-hdr">
-        <span class="oh-tp-card-kind">@Location.LocationKind.GetDisplayName()</span>
-        <span class="oh-tp-card-count">@Location.TotalItems pokladů</span>
-    </div>
-    <div class="oh-tp-card-name">
-        @Location.LocationName <span class="oh-tp-card-name-count">(@Location.TotalItems)</span>
-    </div>
-    @if (Location.StashCount > 0)
-    {
-        <div class="oh-tp-card-stash">
-            <i class="bi bi-archive"></i> @Location.StashCount / @Location.MaxStashes skrýší
-            @if (Location.Stashes.Sum(s => s.ItemCount) > 0)
-            {
-                <span>· @Location.Stashes.Sum(s => s.ItemCount) ve skrýších</span>
-            }
+<div @ref="elementRef"
+     class="@CssClass"
+     @key="Location.LocationId">
+    <button type="button"
+            class="oh-tp-card-main"
+            @onclick="HandleClick">
+        <div class="oh-tp-card-hdr">
+            <span class="oh-tp-card-kind">@Location.LocationKind.GetDisplayName()</span>
+            <span class="oh-tp-card-count">@Location.TotalItems pokladů</span>
         </div>
-    }
-    @if (HasSelectedPool)
-    {
-        <div class="oh-tp-card-cta">
-            <i class="bi bi-plus-circle"></i> Přidat vybrané sem
+        <div class="oh-tp-card-name">
+            @Location.LocationName <span class="oh-tp-card-name-count">(@Location.TotalItems)</span>
         </div>
-    }
-</button>
+        @if (Location.StashCount > 0)
+        {
+            <div class="oh-tp-card-stash">
+                <i class="bi bi-archive"></i> @Location.StashCount / @Location.MaxStashes skrýší
+                @if (Location.Stashes.Sum(s => s.ItemCount) > 0)
+                {
+                    <span>· @Location.Stashes.Sum(s => s.ItemCount) ve skrýších</span>
+                }
+            </div>
+        }
+        @if (HasSelectedPool)
+        {
+            <div class="oh-tp-card-cta">
+                <i class="bi bi-plus-circle"></i> Přidat vybrané sem
+            </div>
+        }
+    </button>
+    <div class="oh-tp-card-actions">
+        <button type="button"
+                class="oh-tp-card-gros"
+                @onclick="HandleGrosClick"
+                @onclick:stopPropagation="true"
+                @onkeydown:stopPropagation="true">
+            <i class="bi bi-coin"></i> Vytvoř poklad z grošů
+        </button>
+    </div>
+</div>
 
 @code {
     [Parameter, EditorRequired] public TreasurePlanningLocationDto Location { get; set; } = default!;
     [Parameter] public bool IsFocused { get; set; }
     [Parameter] public bool HasSelectedPool { get; set; }
     [Parameter] public EventCallback<int> OnClick { get; set; }
+    [Parameter] public EventCallback<int> OnCreateGrosTreasure { get; set; }
     [Parameter] public EventCallback<PiePayloadEventArgs> OnDrop { get; set; }
 
     private ElementReference elementRef;
@@ -62,6 +74,8 @@
     }
 
     private Task HandleClick() => OnClick.InvokeAsync(Location.LocationId);
+
+    private Task HandleGrosClick() => OnCreateGrosTreasure.InvokeAsync(Location.LocationId);
 
     [JSInvokable]
     public Task OnTreasurePoolDropped(int locationId, string payload) =>

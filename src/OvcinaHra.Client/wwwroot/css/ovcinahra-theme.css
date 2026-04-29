@@ -2500,8 +2500,7 @@
 .oh-tp-pool-tile-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .oh-tp-pool-tile-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:var(--oh-primary-light);background:var(--oh-surface-alt)}
 .oh-tp-pool-tile-name{position:absolute;left:4px;right:4px;bottom:4px;font:600 .75rem var(--oh-font-body);color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8);line-height:1.15;max-height:2.3em;overflow:hidden}
-.oh-tp-pool-tile-badge{position:absolute;top:4px;right:4px;left:4px;background:rgba(45,80,22,.92);color:#fff;border-radius:99px;padding:2px 7px;font:700 .75rem var(--oh-font-mono);letter-spacing:0;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.oh-tp-pool-tile.is-aggregate .oh-tp-pool-tile-name{padding-top:1.2rem}
+.oh-tp-pool-tile-badge{position:absolute;top:4px;right:4px;z-index:3;background:rgba(45,80,22,.92);color:#fff;border-radius:99px;padding:2px 7px;font:700 .75rem var(--oh-font-mono);letter-spacing:0;text-align:center;white-space:nowrap;max-width:calc(100% - 32px);overflow:hidden;text-overflow:ellipsis}
 /* Remove affordance — sits at top-left so it doesn't collide with the count
    badge. Always visible but low-opacity; hover bumps to full opacity. Sized
    small enough to stay unobtrusive on the 5:7 tile. */
@@ -2569,6 +2568,7 @@
 .oh-tp-chosen-row .remove{background:none;border:none;color:var(--oh-error);cursor:pointer;padding:0 4px}
 .oh-tp-form-footer{display:flex;gap:8px;justify-content:flex-end;align-items:center;padding-top:12px;border-top:1px solid var(--oh-border);margin-top:12px}
 .oh-tp-form-footer .spacer{flex:1}
+.oh-tp-gros-location{font:700 .95rem var(--oh-font-body);color:var(--oh-primary);padding:.35rem .5rem;border:1px solid var(--oh-border);border-radius:6px;background:var(--oh-surface-alt)}
 
 /* Zone 3 — overview ---------------------------------------- */
 .oh-tp-z3{background:var(--oh-surface);border:1px solid var(--oh-card-border,var(--oh-border));border-radius:var(--oh-radius);box-shadow:var(--oh-shadow);overflow:hidden}
@@ -3259,15 +3259,21 @@
     border-radius:8px;padding:.6rem .7rem;text-align:left;cursor:pointer;
     transition:.12s ease;display:flex;flex-direction:column;gap:.25rem}
 .oh-tp-card:hover{background:#F2EBD8;border-color:#2D5016}
+.oh-tp-card:focus-within{outline:2px solid #C19A3A;outline-offset:2px}
 .oh-tp-card.is-focused{border-color:#2D5016;box-shadow:0 0 0 2px rgba(45,80,22,.18)}
 .oh-tp-card.has-pending{border-style:dashed}
 .oh-tp-card.oh-tp-card-dragtarget{border-color:#2D5016;background:var(--oh-primary-surface,#E8F0E4);box-shadow:0 0 0 3px rgba(45,80,22,.18)}
+.oh-tp-card-main{display:flex;flex-direction:column;gap:.25rem;width:100%;padding:0;border:0;background:transparent;text-align:left;font:inherit;color:inherit;cursor:pointer}
+.oh-tp-card-main:focus-visible{outline:none}
 .oh-tp-card-hdr{display:flex;justify-content:space-between;align-items:center;gap:.4rem;font-size:.75rem;color:var(--oh-text-secondary,#666)}
 .oh-tp-card-kind{text-transform:capitalize;font-family:'JetBrains Mono',monospace}
 .oh-tp-card-count{background:#2D5016;color:#fff;border-radius:999px;padding:.05rem .4rem;font-size:.7rem;white-space:nowrap}
 .oh-tp-card-name{font-weight:600;color:var(--oh-text,#2a2a2a);font-size:.95rem}
 .oh-tp-card-name-count{color:var(--oh-text-secondary,#666);font-family:'JetBrains Mono',monospace;font-size:.82rem}
 .oh-tp-card-stash{font-size:.75rem;color:var(--oh-text-secondary,#666);display:flex;align-items:center;gap:.3rem}
+.oh-tp-card-actions{display:flex;margin-top:.2rem}
+.oh-tp-card-gros{display:inline-flex;align-items:center;gap:.3rem;border:1px solid var(--oh-border,#D9CFB6);border-radius:999px;background:#fff8ec;color:#2D5016;padding:.2rem .55rem;font:700 .75rem var(--oh-font-body);cursor:pointer}
+.oh-tp-card-gros:hover{background:#F2EBD8;border-color:#B8A87A}
 .oh-tp-card-cta{margin-top:.2rem;display:inline-flex;align-items:center;gap:.3rem;color:#2D5016;font-weight:600;font-size:.78rem}
 .oh-tp-location-total{font-family:'JetBrains Mono',monospace;font-size:.85rem;color:var(--oh-text-secondary,#666);margin-left:.35rem}
 .oh-tp-stash-summary{display:flex;flex-wrap:wrap;gap:.35rem;margin:.45rem 0 .7rem}

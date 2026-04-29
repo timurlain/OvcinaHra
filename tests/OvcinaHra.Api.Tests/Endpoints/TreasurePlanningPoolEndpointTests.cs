@@ -19,27 +19,50 @@ public class TreasurePlanningPoolEndpointTests(PostgresFixture postgres) : Integ
         return (await response.Content.ReadFromJsonAsync<GameDetailDto>())!;
     }
 
-    private async Task<LocationDetailDto> CreateLocationAsync()
+    private async Task<LocationDetailDto> CreateLocationAsync(string name = "Skála", int? parentLocationId = null)
     {
         var response = await Client.PostAsJsonAsync("/api/locations",
-            new CreateLocationDto("Skála", LocationKind.Wilderness, 49.5m, 17.1m));
+            new CreateLocationDto(name, LocationKind.Wilderness, 49.5m, 17.1m, ParentLocationId: parentLocationId));
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<LocationDetailDto>())!;
     }
 
-    private async Task<ItemDetailDto> CreateItemAsync(string name)
+    private async Task<ItemDetailDto> CreateItemAsync(string name, ItemType itemType = ItemType.Potion)
     {
         var response = await Client.PostAsJsonAsync("/api/items",
-            new CreateItemDto(name, ItemType.Potion));
+            new CreateItemDto(name, itemType));
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<ItemDetailDto>())!;
     }
 
-    private async Task AssignItemToGameAsync(int gameId, int itemId)
+    private async Task AssignItemToGameAsync(int gameId, int itemId, int? stockCount = null, bool isFindable = false)
     {
         var response = await Client.PostAsJsonAsync("/api/items/game-item",
-            new CreateGameItemDto(gameId, itemId));
+            new CreateGameItemDto(gameId, itemId, StockCount: stockCount, IsFindable: isFindable));
         response.EnsureSuccessStatusCode();
+    }
+
+    private async Task AssignLocationToGameAsync(int gameId, int locationId)
+    {
+        var response = await Client.PostAsJsonAsync("/api/locations/by-game",
+            new GameLocationDto(gameId, locationId));
+        response.EnsureSuccessStatusCode();
+    }
+
+    private async Task<SecretStashDetailDto> CreateSecretStashAsync(string name)
+    {
+        var response = await Client.PostAsJsonAsync("/api/secret-stashes",
+            new CreateSecretStashDto(name));
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<SecretStashDetailDto>())!;
+    }
+
+    private async Task<GameSecretStashDto> AssignStashToGameAsync(int gameId, int stashId, int locationId)
+    {
+        var response = await Client.PostAsJsonAsync("/api/secret-stashes/game-stash",
+            new CreateGameSecretStashDto(gameId, stashId, locationId));
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<GameSecretStashDto>())!;
     }
 
     private async Task<TreasurePoolItemDto> AddPoolItemAsync(int gameId, int itemId, int count = 1)
@@ -189,6 +212,105 @@ public class TreasurePlanningPoolEndpointTests(PostgresFixture postgres) : Integ
             $"/api/treasure-planning/pool/{game.Id}");
         Assert.Equal(3, Assert.Single(poolAfterAssign!, p => p.ItemId == silver.Id).Count);
         Assert.Equal(2, Assert.Single(poolAfterAssign!, p => p.ItemId == bronze.Id).Count);
+    }
+
+    [Fact]
+    public async Task MoneyItems_CannotBeAddedToPoolOrAvailableItems()
+    {
+        var game = await CreateGameAsync();
+        var bronze = await CreateItemAsync("Bronz", ItemType.Money);
+        await AssignItemToGameAsync(game.Id, bronze.Id, stockCount: 50, isFindable: true);
+
+        var addResponse = await Client.PostAsJsonAsync("/api/treasure-planning/pool",
+            new CreateTreasurePoolItemDto(bronze.Id, game.Id, 10));
+        Assert.Equal(HttpStatusCode.BadRequest, addResponse.StatusCode);
+
+        var available = await Client.GetFromJsonAsync<List<AvailablePoolItemDto>>(
+            $"/api/treasure-planning/available-items/{game.Id}");
+        Assert.NotNull(available);
+        Assert.DoesNotContain(available!, i => i.ItemId == bronze.Id);
+
+        var pool = await Client.GetFromJsonAsync<List<TreasurePoolItemDto>>(
+            $"/api/treasure-planning/pool/{game.Id}");
+        Assert.NotNull(pool);
+        Assert.DoesNotContain(pool!, i => i.ItemId == bronze.Id);
+    }
+
+    [Fact]
+    public async Task AssignTreasure_ToLocationWithStashes_DefaultsToLowestCountStashThenAlphabeticalTie()
+    {
+        var game = await CreateGameAsync();
+        var location = await CreateLocationAsync();
+        await AssignLocationToGameAsync(game.Id, location.Id);
+        var stashA = await CreateSecretStashAsync("Skrýš A");
+        var stashB = await CreateSecretStashAsync("Skrýš B");
+        var stashC = await CreateSecretStashAsync("Skrýš C");
+        await AssignStashToGameAsync(game.Id, stashA.Id, location.Id);
+        await AssignStashToGameAsync(game.Id, stashB.Id, location.Id);
+        await AssignStashToGameAsync(game.Id, stashC.Id, location.Id);
+        var filler = await CreateItemAsync("Výplň");
+        var bronze = await CreateItemAsync("Bronz");
+        await AssignItemToGameAsync(game.Id, bronze.Id);
+        var pool = await AddPoolItemAsync(game.Id, bronze.Id, count: 2);
+
+        var seedA = await Client.PostAsJsonAsync("/api/treasure-planning/assign",
+            new AssignTreasureDto("A má pět", GameTimePhase.Early, game.Id,
+                SecretStashId: stashA.Id,
+                UnlimitedItems: [new UnlimitedItemAssignDto(filler.Id, 5)]));
+        seedA.EnsureSuccessStatusCode();
+        var seedB = await Client.PostAsJsonAsync("/api/treasure-planning/assign",
+            new AssignTreasureDto("B má čtyři", GameTimePhase.Early, game.Id,
+                SecretStashId: stashB.Id,
+                UnlimitedItems: [new UnlimitedItemAssignDto(filler.Id, 4)]));
+        seedB.EnsureSuccessStatusCode();
+        var seedC = await Client.PostAsJsonAsync("/api/treasure-planning/assign",
+            new AssignTreasureDto("C má pět", GameTimePhase.Early, game.Id,
+                SecretStashId: stashC.Id,
+                UnlimitedItems: [new UnlimitedItemAssignDto(filler.Id, 5)]));
+        seedC.EnsureSuccessStatusCode();
+
+        var firstAssign = await Client.PostAsJsonAsync("/api/treasure-planning/assign",
+            new AssignTreasureDto("První bronz", GameTimePhase.Early, game.Id,
+                LocationId: location.Id,
+                PoolItems: [new PoolItemAssignDto(pool.Id, 1)]));
+        firstAssign.EnsureSuccessStatusCode();
+        var firstQuest = (await firstAssign.Content.ReadFromJsonAsync<TreasureQuestDetailDto>())!;
+        Assert.Null(firstQuest.LocationId);
+        Assert.Equal(stashB.Id, firstQuest.SecretStashId);
+
+        var secondAssign = await Client.PostAsJsonAsync("/api/treasure-planning/assign",
+            new AssignTreasureDto("Druhý bronz", GameTimePhase.Early, game.Id,
+                LocationId: location.Id,
+                PoolItems: [new PoolItemAssignDto(pool.Id, 1)]));
+        secondAssign.EnsureSuccessStatusCode();
+        var secondQuest = (await secondAssign.Content.ReadFromJsonAsync<TreasureQuestDetailDto>())!;
+        Assert.Equal(stashA.Id, secondQuest.SecretStashId);
+    }
+
+    [Fact]
+    public async Task GetLocationCards_ExcludesChildLocationsAndRollsTheirDirectTreasuresIntoParent()
+    {
+        var game = await CreateGameAsync();
+        var parent = await CreateLocationAsync("Starý brod");
+        var child = await CreateLocationAsync("Starý brod - břeh", parent.Id);
+        await AssignLocationToGameAsync(game.Id, child.Id);
+        var gros = await CreateItemAsync("Groše", ItemType.Money);
+
+        var assignResponse = await Client.PostAsJsonAsync("/api/treasure-planning/assign",
+            new AssignTreasureDto("Dětský poklad", GameTimePhase.Early, game.Id,
+                LocationId: child.Id,
+                UnlimitedItems: [new UnlimitedItemAssignDto(gros.Id, 4)]));
+        assignResponse.EnsureSuccessStatusCode();
+
+        var cards = await Client.GetFromJsonAsync<List<TreasurePlanningLocationDto>>(
+            $"/api/treasure-planning/locations/{game.Id}");
+        Assert.NotNull(cards);
+        var card = Assert.Single(cards!);
+        Assert.Equal(parent.Id, card.LocationId);
+        Assert.Equal(49.5m, card.EffectiveLatitude);
+        Assert.Equal(17.1m, card.EffectiveLongitude);
+        Assert.Equal(4, card.TotalItems);
+        Assert.DoesNotContain(cards!, c => c.LocationId == child.Id);
     }
 
     [Fact]

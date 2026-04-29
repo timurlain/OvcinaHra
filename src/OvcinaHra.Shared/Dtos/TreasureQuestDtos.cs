@@ -60,7 +60,11 @@ public record TreasurePlanningLocationDto(
     int StartCount, int EarlyCount, int MidgameCount, int LategameCount,
     int TotalItems, int StashCount, int MaxStashes,
     List<StashSummaryDto> Stashes,
-    string? Region = null);
+    string? Region = null,
+    decimal? Latitude = null,
+    decimal? Longitude = null,
+    decimal? EffectiveLatitude = null,
+    decimal? EffectiveLongitude = null);
 
 public record StashSummaryDto(int Id, string Name, int ItemCount);
 

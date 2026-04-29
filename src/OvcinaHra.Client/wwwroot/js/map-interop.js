@@ -832,6 +832,7 @@ window.ovcinaMap.setStageFilter = function (stages) {
 window.ovcinaDnd = {
     _wired: new WeakMap(),
     _dropTargets: new WeakMap(),
+    _keyboardButtons: new WeakSet(),
 
     parsePayload: function (payload) {
         try {
@@ -862,6 +863,16 @@ window.ovcinaDnd = {
         });
         element.addEventListener('dragend', function () {
             element.classList.remove('oh-tp-pool-tile-dragging');
+        });
+    },
+
+    setKeyboardButton: function (element) {
+        if (!element || this._keyboardButtons.has(element)) return;
+        this._keyboardButtons.add(element);
+        element.addEventListener('keydown', function (e) {
+            if (e.target !== element || (e.key !== ' ' && e.key !== 'Enter')) return;
+            e.preventDefault();
+            element.click();
         });
     },
 
