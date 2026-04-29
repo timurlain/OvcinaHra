@@ -148,14 +148,50 @@
                     </div>
                 }
             </div>
-            <label class="btn btn-outline-primary oh-placement-file-btn mt-2">
-                <i class="bi bi-camera me-1"></i>@(placementPhotoFile is null ? "Vybrat fotku" : "Vybrat jinou fotku")
-                <InputFile OnChange="HandlePlacementFileSelected"
-                           accept="image/*"
-                           capture="environment"
-                           disabled="@placementSaving"
-                           data-testid="location-placement-file" />
-            </label>
+            <div class="d-flex flex-wrap gap-2 mt-2">
+                <label class="btn btn-outline-primary oh-placement-file-btn" @onclick="LogPlacementCameraTap">
+                    <i class="bi bi-camera me-1"></i>Vyfotit
+                    <InputFile OnChange="HandlePlacementCameraFileSelected"
+                               accept="image/*"
+                               capture="environment"
+                               disabled="@placementSaving"
+                               data-testid="location-placement-camera-file" />
+                </label>
+                <label class="btn btn-outline-primary oh-placement-file-btn" @onclick="LogPlacementGalleryTap">
+                    <i class="bi bi-image me-1"></i>Z galerie
+                    <InputFile OnChange="HandlePlacementGalleryFileSelected"
+                               accept="image/*"
+                               disabled="@placementSaving"
+                               data-testid="location-placement-gallery-file" />
+                </label>
+            </div>
+
+            @if (placementGpsPromptVisible && placementPhotoGps is not null)
+            {
+                <div class="alert alert-info py-2 mt-3" data-testid="location-placement-gps-prompt">
+                    <div>@PlacementGpsPromptText</div>
+                    <div class="d-flex flex-wrap gap-2 mt-2">
+                        <button type="button"
+                                class="btn btn-sm btn-primary"
+                                @onclick="AcceptPlacementGpsAsync"
+                                disabled="@(placementSaving || placementGpsUpdating)"
+                                data-testid="location-placement-gps-accept">
+                            @if (placementGpsUpdating)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            Aktualizovat
+                        </button>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary"
+                                @onclick="RejectPlacementGps"
+                                disabled="@(placementSaving || placementGpsUpdating)"
+                                data-testid="location-placement-gps-reject">
+                            Ignorovat
+                        </button>
+                    </div>
+                </div>
+            }
 
             <label class="form-label mt-3">Poznámky</label>
             <DxMemo @bind-Text="@placementNotes"
@@ -757,12 +793,37 @@ else
     private bool isSaving;
     private bool isPlacementVisible;
     private bool placementSaving;
-    private int? placementSelectedLocationId;
+    private int? placementSelectedLocationId
+    {
+        get => placementSelectedLocationIdValue;
+        set
+        {
+            if (placementSelectedLocationIdValue == value) return;
+            placementSelectedLocationIdValue = value;
+
+            if (isPlacementVisible
+                && (placementPhotoFile is not null
+                    || placementPhotoBytes is not null
+                    || !string.IsNullOrWhiteSpace(placementPreviewUrl)))
+            {
+                placementPhotoFile = null;
+                placementPhotoBytes = null;
+                placementPreviewUrl = null;
+                placementError = "Po změně lokace vyberte fotku znovu.";
+            }
+            ResetPlacementGpsState();
+        }
+    }
+    private int? placementSelectedLocationIdValue;
     private IBrowserFile? placementPhotoFile;
     private string? placementPreviewUrl;
     private string? placementNotes;
     private string? placementError;
     private string? placementToastMessage;
+    private PhotoGpsCoordinates? placementPhotoGps;
+    private double? placementPhotoGpsDistanceMeters;
+    private bool placementGpsPromptVisible;
+    private bool placementGpsUpdating;
     // Camera-side: phone JPEGs frequently land in the 8–20 MB range, so we
     // accept generously here. Resize happens client-side in JS canvas; the
     // server still enforces its own multipart limit, but we cap the post-
@@ -771,9 +832,16 @@ else
     private const long PlacementMaxUploadFileSize = 5 * 1024 * 1024;
     private const int PlacementResizeMaxDim = 1920;
     private const double PlacementResizeQuality = 0.85;
+    private const double PlacementGpsDriftThresholdMeters = 50;
     private byte[]? placementPhotoBytes;
     private string placementPhotoUploadContentType = "image/jpeg";
     private bool placementAutoOpenHandled;
+
+    private sealed class PhotoGpsCoordinates
+    {
+        public double Lat { get; set; }
+        public double Lng { get; set; }
+    }
 
     // Toolbar filter state
     private string? searchText
@@ -913,6 +981,10 @@ else
             ? locations.FirstOrDefault(l => l.Id == placementSelectedLocationId.Value)
             : null;
 
+    private string PlacementGpsPromptText => placementPhotoGpsDistanceMeters is double distanceMeters
+        ? $"Fotka má GPS souřadnice, které se liší od aktuálních souřadnic lokace o cca {Math.Max(1, (int)Math.Round(distanceMeters))} m. Aktualizovat polohu lokace?"
+        : "Fotka má GPS souřadnice a lokace zatím nemá aktuální souřadnice. Aktualizovat polohu lokace?";
+
     private void RefreshVisibleRows()
     {
         bool Matches(LocationListDto l)
@@ -996,6 +1068,7 @@ else
         placementPhotoBytes = null;
         placementPreviewUrl = null;
         placementNotes = null;
+        ResetPlacementGpsState();
         isPlacementVisible = true;
         Console.WriteLine($"[loc-placement] wizard.open gameId={gameId}");
     }
@@ -1009,20 +1082,34 @@ else
         placementPhotoBytes = null;
         placementPreviewUrl = null;
         placementNotes = null;
+        ResetPlacementGpsState();
         Console.WriteLine($"[loc-placement] wizard.cancel gameId={gameId}");
     }
 
-    private async Task HandlePlacementFileSelected(InputFileChangeEventArgs e)
+    private Task HandlePlacementCameraFileSelected(InputFileChangeEventArgs e)
+        => HandlePlacementFileSelected(e, "camera");
+
+    private Task HandlePlacementGalleryFileSelected(InputFileChangeEventArgs e)
+        => HandlePlacementFileSelected(e, "gallery");
+
+    private void LogPlacementCameraTap()
+        => Console.WriteLine($"[loc-placement] gallery-tap source=camera gameId={gameId}");
+
+    private void LogPlacementGalleryTap()
+        => Console.WriteLine($"[loc-placement] gallery-tap source=gallery gameId={gameId}");
+
+    private async Task HandlePlacementFileSelected(InputFileChangeEventArgs e, string source)
     {
         placementError = null;
         placementPhotoFile = e.File;
         placementPhotoBytes = null;
         placementPreviewUrl = null;
+        ResetPlacementGpsState();
         if (placementPhotoFile.Size > PlacementMaxIngressFileSize)
         {
             placementPhotoFile = null;
             placementError = $"Soubor je příliš velký (max {PlacementMaxIngressFileSize / 1024 / 1024} MB).";
-            Console.WriteLine($"[loc-placement] wizard.photo-selected.failed gameId={gameId} reason=ingress-too-large size={e.File.Size}");
+            Console.WriteLine($"[loc-placement] wizard.photo-selected.failed gameId={gameId} source={source} reason=ingress-too-large size={e.File.Size}");
             return;
         }
 
@@ -1036,15 +1123,17 @@ else
             using var buffer = new MemoryStream();
             await stream.CopyToAsync(buffer);
             originalDataUrl = $"data:{contentType};base64,{Convert.ToBase64String(buffer.ToArray())}";
-            Console.WriteLine($"[loc-placement] wizard.photo-selected gameId={gameId} size={placementPhotoFile.Size}");
+            Console.WriteLine($"[loc-placement] wizard.photo-selected gameId={gameId} source={source} size={placementPhotoFile.Size}");
         }
         catch (Exception ex)
         {
             placementPhotoFile = null;
             placementError = "Fotku se nepodařilo načíst.";
-            Console.WriteLine($"[loc-placement] wizard.photo-selected.failed gameId={gameId} reason=read-failed detail={ex.Message}");
+            Console.WriteLine($"[loc-placement] wizard.photo-selected.failed gameId={gameId} source={source} reason=read-failed detail={ex.Message}");
             return;
         }
+
+        await EvaluatePlacementPhotoGpsAsync(originalDataUrl);
 
         // Client-side canvas resize. Phone cameras emit 10–20 MB JPEGs that
         // exceed the server's 5 MB multipart limit; resize re-encodes as
@@ -1091,6 +1180,154 @@ else
         Console.WriteLine($"[loc-placement] wizard.photo-resized gameId={gameId} originalSize={placementPhotoFile.Size} resizedSize={resizedBytes.LongLength}");
     }
 
+    private async Task EvaluatePlacementPhotoGpsAsync(string originalDataUrl)
+    {
+        PhotoGpsCoordinates? gps;
+        try
+        {
+            gps = await JS.InvokeAsync<PhotoGpsCoordinates?>("ovcinaExif.readGpsFromDataUrl", originalDataUrl);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[loc-placement] exif read result=parse-failed gameId={gameId} detail={ex.Message}");
+            return;
+        }
+
+        if (gps is null)
+        {
+            Console.WriteLine($"[loc-placement] exif read result=no-gps gameId={gameId}");
+            return;
+        }
+
+        placementPhotoGps = gps;
+        Console.WriteLine($"[loc-placement] exif read result=found-gps gameId={gameId}");
+        Console.WriteLine($"[loc-placement] exif gps-coords lat={FormatPlacementGpsCoord(gps.Lat)} lng={FormatPlacementGpsCoord(gps.Lng)}");
+
+        var selected = SelectedPlacementLocation;
+        if (selected is null)
+        {
+            return;
+        }
+
+        if (selected.Latitude.HasValue && selected.Longitude.HasValue)
+        {
+            var distanceMeters = await JS.InvokeAsync<double>(
+                "ovcinaExif.haversineMeters",
+                (double)selected.Latitude.Value,
+                (double)selected.Longitude.Value,
+                gps.Lat,
+                gps.Lng);
+            placementPhotoGpsDistanceMeters = distanceMeters;
+            if (distanceMeters <= PlacementGpsDriftThresholdMeters)
+            {
+                return;
+            }
+        }
+
+        placementGpsPromptVisible = true;
+        Console.WriteLine(
+            $"[loc-placement] gps-prompt shown distance={FormatPlacementDistanceMeters(placementPhotoGpsDistanceMeters)}m " +
+            $"currentCoords={FormatPlacementGpsCoords(selected.Latitude, selected.Longitude)} " +
+            $"photoCoords={FormatPlacementGpsCoords(gps.Lat, gps.Lng)}");
+    }
+
+    private async Task AcceptPlacementGpsAsync()
+    {
+        if (placementPhotoGps is null || SelectedPlacementLocation is null)
+        {
+            return;
+        }
+
+        placementError = null;
+        placementGpsUpdating = true;
+        var locationId = SelectedPlacementLocation.Id;
+        var latitude = (decimal)placementPhotoGps.Lat;
+        var longitude = (decimal)placementPhotoGps.Lng;
+        Console.WriteLine($"[loc-placement] gps-update accepted locationId={locationId}");
+        Console.WriteLine($"[loc-placement] gps-patch attempt locationId={locationId} coords={FormatPlacementGpsCoords(placementPhotoGps.Lat, placementPhotoGps.Lng)}");
+        try
+        {
+            var (ok, problem) = await Api.PatchWithProblemAsync(
+                $"/api/locations/{locationId}/coordinates",
+                new LocationCoordinatesPatchDto(latitude, longitude));
+            if (!ok)
+            {
+                placementError = problem ?? "Souřadnice z fotky se nepodařilo uložit.";
+                Console.WriteLine($"[loc-placement] gps-patch result=failed locationId={locationId} detail={placementError}");
+                return;
+            }
+
+            UpdatePlacementLocationCoordinates(locationId, latitude, longitude);
+            ClearPlacementGpsPrompt();
+            Console.WriteLine($"[loc-placement] gps-patch result=ok locationId={locationId}");
+        }
+        catch (Exception ex)
+        {
+            placementError = "Souřadnice z fotky se nepodařilo uložit.";
+            Console.WriteLine($"[loc-placement] gps-patch result=failed locationId={locationId} detail={ex.Message}");
+        }
+        finally
+        {
+            placementGpsUpdating = false;
+        }
+    }
+
+    private void RejectPlacementGps()
+    {
+        var locationId = SelectedPlacementLocation?.Id;
+        Console.WriteLine($"[loc-placement] gps-update rejected locationId={locationId}");
+        ClearPlacementGpsPrompt();
+    }
+
+    private void UpdatePlacementLocationCoordinates(int locationId, decimal latitude, decimal longitude)
+    {
+        var index = locations.FindIndex(l => l.Id == locationId);
+        if (index < 0)
+        {
+            return;
+        }
+
+        locations[index] = locations[index] with
+        {
+            Latitude = latitude,
+            Longitude = longitude,
+            EffectiveLatitude = latitude,
+            EffectiveLongitude = longitude,
+            IsLocated = true,
+        };
+        RefreshVisibleRows();
+    }
+
+    private void ResetPlacementGpsState()
+    {
+        placementPhotoGps = null;
+        placementPhotoGpsDistanceMeters = null;
+        placementGpsPromptVisible = false;
+        placementGpsUpdating = false;
+    }
+
+    private void ClearPlacementGpsPrompt()
+    {
+        placementPhotoGpsDistanceMeters = null;
+        placementGpsPromptVisible = false;
+    }
+
+    private static string FormatPlacementGpsCoord(double value)
+        => value.ToString("0.000000", CultureInfo.InvariantCulture);
+
+    private static string FormatPlacementGpsCoords(decimal? latitude, decimal? longitude)
+        => latitude.HasValue && longitude.HasValue
+            ? FormatPlacementGpsCoords((double)latitude.Value, (double)longitude.Value)
+            : "null";
+
+    private static string FormatPlacementGpsCoords(double latitude, double longitude)
+        => $"{{lat:{FormatPlacementGpsCoord(latitude)},lng:{FormatPlacementGpsCoord(longitude)}}}";
+
+    private static string FormatPlacementDistanceMeters(double? distanceMeters)
+        => distanceMeters.HasValue
+            ? Math.Round(distanceMeters.Value).ToString(CultureInfo.InvariantCulture)
+            : "unknown";
+
     private async Task SubmitPlacementAsync()
     {
         placementError = null;
@@ -1104,6 +1341,8 @@ else
             placementError = "Nejprve vyfoťte nebo nahrajte fotku umístění.";
             return;
         }
+        if (placementGpsPromptVisible)
+            RejectPlacementGps();
 
         placementSaving = true;
         var locationId = SelectedPlacementLocation.Id;
@@ -1152,8 +1391,10 @@ else
             placementToastMessage = $"Umístění lokace {status.LocationName} uloženo.";
             isPlacementVisible = false;
             placementPhotoFile = null;
+            placementPhotoBytes = null;
             placementPreviewUrl = null;
             placementNotes = null;
+            ResetPlacementGpsState();
             Console.WriteLine($"[loc-placement] wizard.submit.success gameId={gameId} locationId={locationId}");
         }
         catch (Exception ex)
