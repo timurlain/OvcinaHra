@@ -78,10 +78,13 @@
                     </div>
                 }
 
-                @if (_sending)
+                @if (_isWaiting)
                 {
                     <div class="oh-bot-message oh-bot-message--drozd @PersonaClass">
-                        <div class="oh-bot-message-body oh-bot-thinking">Drozd přemýšlí…</div>
+                        <div class="oh-bot-message-body oh-bot-thinking" role="status">
+                            <span class="oh-bot-thinking-dot" aria-hidden="true"></span>
+                            <span>Drozd přemýšlí…</span>
+                        </div>
                     </div>
                 }
             </div>
@@ -90,7 +93,7 @@
                 <textarea @bind="_draft"
                           @bind:event="oninput"
                           @ref="_draftInput"
-                          disabled="@_sending"
+                          disabled="@_isWaiting"
                           rows="3"
                           maxlength="4000"
                           placeholder="Zeptej se Drozda…"
@@ -116,7 +119,7 @@
     private readonly List<BotMessage> _messages = [];
     private bool _enabled;
     private bool _open;
-    private bool _sending;
+    private bool _isWaiting;
     private bool _drozdIconFailed;
     private bool _draftShortcutAttached;
     private bool _draftShortcutUnavailable;
@@ -127,7 +130,7 @@
     private IJSObjectReference? _keyboardModule;
     private DotNetObjectReference<BotConsultDrawer>? _selfReference;
 
-    private bool CanSend => !_sending && !string.IsNullOrWhiteSpace(_draft);
+    private bool CanSend => !_isWaiting && !string.IsNullOrWhiteSpace(_draft);
     private string PersonaClass => PersonaClassFor(_persona);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -224,7 +227,7 @@
 
     private async Task SendAsync()
     {
-        LogChatInput($"SendAsync entry canSend={Flag(CanSend)} sending={Flag(_sending)}");
+        LogChatInput($"SendAsync entry canSend={Flag(CanSend)} waiting={Flag(_isWaiting)}");
         if (!CanSend)
         {
             LogChatInput("SendAsync exit sent=false");
@@ -235,7 +238,9 @@
         var text = _draft.Trim();
         _draft = string.Empty;
         _messages.Add(new BotMessage(true, text, persona));
-        _sending = true;
+        _isWaiting = true;
+        LogChatInput("await-start");
+        await InvokeAsync(StateHasChanged);
 
         try
         {
@@ -258,8 +263,10 @@
         }
         finally
         {
-            _sending = false;
+            _isWaiting = false;
+            LogChatInput("await-end");
             LogChatInput("SendAsync exit sent=true");
+            await InvokeAsync(StateHasChanged);
         }
     }
 

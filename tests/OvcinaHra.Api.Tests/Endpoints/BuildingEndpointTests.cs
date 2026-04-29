@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using OvcinaHra.Api.Tests.Fixtures;
 using OvcinaHra.Shared.Domain.Enums;
@@ -8,6 +9,9 @@ namespace OvcinaHra.Api.Tests.Endpoints;
 
 public class BuildingEndpointTests(PostgresFixture postgres) : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
+    private static readonly byte[] ValidPng = Convert.FromBase64String(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==");
+
     private async Task<GameDetailDto> CreateGameAsync()
     {
         var response = await Client.PostAsJsonAsync("/api/games",
@@ -257,6 +261,32 @@ public class BuildingEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var buildings = await Client.GetFromJsonAsync<List<BuildingListDto>>($"/api/buildings/by-game/{game.Id}");
         Assert.Contains(buildings!, b => b.Id == created.Id);
+    }
+
+    [Fact]
+    public async Task NestedGetGameBuildings_WithImage_UsesCatalogThumbnailUrl()
+    {
+        var game = await CreateGameAsync();
+        var createResp = await Client.PostAsJsonAsync("/api/buildings", new CreateBuildingDto("Obrazárna"));
+        var created = await createResp.Content.ReadFromJsonAsync<BuildingDetailDto>();
+        Assert.NotNull(created);
+
+        using var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(ValidPng);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        content.Add(fileContent, "file", "photo.png");
+        var uploadResponse = await Client.PostAsync($"/api/images/buildings/{created.Id}", content);
+        Assert.Equal(HttpStatusCode.OK, uploadResponse.StatusCode);
+        var refreshed = await Client.GetFromJsonAsync<BuildingDetailDto>($"/api/buildings/{created.Id}");
+        Assert.NotNull(refreshed?.ImagePath);
+
+        var linkResponse = await Client.PostAsync($"/api/games/{game.Id}/buildings/{created.Id}", null);
+        Assert.Equal(HttpStatusCode.Created, linkResponse.StatusCode);
+
+        var buildings = await Client.GetFromJsonAsync<List<BuildingListDto>>($"/api/games/{game.Id}/buildings");
+        var listed = Assert.Single(buildings!, b => b.Id == created.Id);
+        Assert.NotNull(listed.ImageUrl);
+        Assert.Contains($"/api/images/buildings/{created.Id}/thumb?size=small", listed.ImageUrl);
     }
 
     [Fact]
