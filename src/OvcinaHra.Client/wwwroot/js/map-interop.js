@@ -1301,6 +1301,20 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
     wrapper.appendChild(pin);
     var self = this;
     wrapper.addEventListener('click', function (e) {
+        var modifier = {
+            ctrl: !!(e && (e.ctrlKey || e.metaKey)),
+            shift: !!(e && e.shiftKey),
+            meta: !!(e && e.metaKey)
+        };
+        self._mapDiag('location.pin.click.enter', {
+            locationId: id,
+            modifier: modifier,
+            target: self._eventTargetName(e && e.target),
+            currentTarget: self._eventTargetName(e && e.currentTarget),
+            moveShortcutActive: !!self._moveShortcutActive,
+            hasDotNetRef: !!self._dotnetRef,
+            defaultPrevented: !!(e && e.defaultPrevented)
+        });
         var payload = self._clickDiagPayload(e, 'location-pin', { lat: lat, lng: lon }, { locationId: id });
         self._mapDiag('feature.click.enter', payload);
         self._mapDiag('location.click.enter', payload);
@@ -1317,6 +1331,7 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
             locationId: id
         });
         if (self._moveShortcutActive) {
+            self._mapDiag('location.pin.click.move_target_branch_taken', { locationId: id });
             e.preventDefault();
             e.stopPropagation();
             self._mapDiag('location.relocate.target', { source: 'location-pin', locationId: id, lng: lon, lat: lat });
@@ -1324,12 +1339,15 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
             return;
         }
         if (payload.ctrl && payload.shift) {
+            self._mapDiag('location.pin.click.ctrlshift_branch_taken', { locationId: id });
             e.preventDefault();
             e.stopPropagation();
             self._mapDiag('location.relocate.start', { locationId: id, from: { lng: lon, lat: lat } });
+            self._mapDiag('location.move_mode.dispatch.attempt', { locationId: id, hasDotNetRef: !!self._dotnetRef });
             if (self._dotnetRef) self._dotnetRef.invokeMethodAsync('OnLocationMoveShortcutStarted', id, lat, lon);
             return;
         }
+        self._mapDiag('location.pin.click.default_branch_taken', { locationId: id });
         e.stopPropagation();
         if (self._dotnetRef) self._dotnetRef.invokeMethodAsync('OnMapPinClicked', 'location', id);
     });

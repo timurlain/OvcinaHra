@@ -79,6 +79,7 @@
                                  OnMapClick="OnMapClickAsync" />
                         @if (_shortcutMoveActive)
                         {
+                            Console.WriteLine("[map-diag] map.location.move_mode.banner.rendered visible=true");
                             <div class="oh-map-move-hint" role="status" aria-live="polite">
                                 <span><strong>Přesun: @_shortcutMoveName</strong> — klikni na novou pozici.</span>
                                 @if (_shortcutMoveError is not null)
@@ -579,6 +580,7 @@
         var loc = _data?.Locations.FirstOrDefault(l => l.Id == e.Id);
         Console.WriteLine($"[map-diag] MapPage.OnPinMoveShortcutStarted locationId={e.Id} from={{lng:{FormatCoord(e.Lng)},lat:{FormatCoord(e.Lat)}}}");
         _shortcutMoveActive = true;
+        Console.WriteLine($"[map-diag] map.location.move_mode.state_set isActive=true locationId={e.Id}");
         _shortcutMoveId = e.Id;
         _shortcutMoveName = loc?.EffectiveName ?? loc?.Name ?? "tato lokace";
         _shortcutMoveFromLat = e.Lat;
