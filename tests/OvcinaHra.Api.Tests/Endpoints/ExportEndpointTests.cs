@@ -429,6 +429,114 @@ public class ExportEndpointTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task LibrarianTreasures_MissingGame_ReturnsNotFound()
+    {
+        var response = await Client.GetAsync("/api/games/999999/exports/librarian-treasures.pdf");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task LibrarianTreasures_NoHiddenTreasuresWithItems_ReturnsCzechProblemDetails()
+    {
+        var game = await CreateGameAsync();
+
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var location = new Location { Name = "Lesní síň", LocationKind = LocationKind.Magical };
+            db.Locations.Add(location);
+            await db.SaveChangesAsync();
+
+            db.TreasureQuests.Add(new TreasureQuest
+            {
+                Title = "Prázdná skrýš",
+                Difficulty = GameTimePhase.Start,
+                GameId = game.Id,
+                LocationId = location.Id
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var response = await Client.GetAsync($"/api/games/{game.Id}/exports/librarian-treasures.pdf");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Vybraná hra nemá žádné skryté poklady s předměty.", problem.Detail);
+    }
+
+    [Fact]
+    public async Task LibrarianTreasures_HiddenTreasures_ReturnsTwoColumnA4Pdf()
+    {
+        var game = await CreateGameAsync();
+
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var location = new Location { Name = "Vořařská osada", LocationKind = LocationKind.Village };
+            var stash = new SecretStash { Name = "Skrýš u šípkového keře" };
+            db.Locations.Add(location);
+            db.SecretStashes.Add(stash);
+            var items = Enumerable.Range(1, 34)
+                .Select(i => CreateItem($"Železný klíč {i:00}", ItemType.Artifact))
+                .ToList();
+            db.Items.AddRange(items);
+            await db.SaveChangesAsync();
+
+            for (var i = 0; i < items.Count; i++)
+            {
+                db.TreasureQuests.Add(new TreasureQuest
+                {
+                    Title = $"Poklad {i:00}",
+                    Difficulty = (GameTimePhase)(i % Enum.GetValues<GameTimePhase>().Length),
+                    GameId = game.Id,
+                    LocationId = i % 2 == 0 ? location.Id : null,
+                    SecretStashId = i % 2 == 0 ? null : stash.Id,
+                    TreasureItems =
+                    [
+                        new TreasureItem
+                        {
+                            ItemId = items[i].Id,
+                            GameId = game.Id,
+                            Count = i % 3 + 1
+                        }
+                    ]
+                });
+            }
+
+            await db.SaveChangesAsync();
+        }
+
+        var response = await Client.GetAsync($"/api/games/{game.Id}/exports/librarian-treasures.pdf");
+
+        response.EnsureSuccessStatusCode();
+        Assert.Equal("application/pdf", response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(
+            $"Knihovnik_Edition-30_{DateTime.Today:yyyy-MM-dd}.pdf",
+            response.Content.Headers.ContentDisposition?.FileName?.Trim('"'));
+        var bytes = await response.Content.ReadAsByteArrayAsync();
+        Assert.StartsWith("%PDF-1.4", Encoding.ASCII.GetString(bytes, 0, 8));
+        var pdfText = Encoding.ASCII.GetString(bytes);
+        Assert.Matches(@"/Count\s+2\b", pdfText);
+        Assert.Contains("/MediaBox [0 0 595.276 841.89]", pdfText);
+        Assert.Equal(2, CountOccurrences(pdfText, "/Subtype /Image"));
+        WriteLibrarianTreasuresSmokeArtifact(bytes);
+    }
+
+    [Fact]
+    public void LibrarianTreasures_Layout_IsTwoColumnsWithCuttableCells()
+    {
+        var layout = LibrarianTreasureExportService.CalculateLayoutForTesting(34);
+
+        Assert.Equal(2, layout.Columns);
+        Assert.Equal(4, layout.CellsPerStrip);
+        Assert.True(layout.BorderThicknessPx >= 5);
+        Assert.True(layout.RowsPerColumn > 0);
+        Assert.True(layout.PageCount > 1);
+    }
+
+    [Fact]
     public async Task MagicBook_GameSpellRows_ReturnsTwoPageA4Pdf()
     {
         var game = await CreateGameAsync();
@@ -599,5 +707,22 @@ public class ExportEndpointTests(PostgresFixture postgres)
         var tmp = Path.Combine(directory.FullName, ".tmp");
         Directory.CreateDirectory(tmp);
         File.WriteAllBytes(Path.Combine(tmp, "cenik-smoke.pdf"), bytes);
+    }
+
+    private static void WriteLibrarianTreasuresSmokeArtifact(byte[] bytes)
+    {
+        if (Environment.GetEnvironmentVariable("OVCINA_WRITE_LIBRARIAN_TREASURES_SMOKE") != "1")
+            return;
+
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "OvcinaHra.slnx")))
+            directory = directory.Parent;
+
+        if (directory is null)
+            return;
+
+        var tmp = Path.Combine(directory.FullName, ".tmp");
+        Directory.CreateDirectory(tmp);
+        File.WriteAllBytes(Path.Combine(tmp, "librarian-treasures-smoke.pdf"), bytes);
     }
 }
