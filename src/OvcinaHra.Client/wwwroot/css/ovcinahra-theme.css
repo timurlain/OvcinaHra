@@ -2492,6 +2492,12 @@
 
 /* Assignment panel ----------------------------------------- */
 .oh-tp-assign-panel{display:flex;flex-direction:column;background:var(--oh-surface);border:1px solid var(--oh-card-border,var(--oh-border));border-radius:var(--oh-radius);box-shadow:var(--oh-shadow);overflow:hidden;min-height:520px}
+.oh-tp-placement-phase{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid var(--oh-border);background:linear-gradient(135deg,var(--oh-primary-surface),#fff8ec)}
+.oh-tp-placement-phase-lbl{font:800 .82rem var(--oh-font-body);color:var(--oh-primary);white-space:nowrap}
+.oh-tp-placement-phase .oh-tl-seg{background:rgba(255,255,255,.72)}
+.oh-tp-placement-phase .oh-tl-seg-btn[data-stage="start"].on{background:var(--oh-stage-start)}
+.oh-tp-placement-phase .oh-tl-seg-btn[data-stage="mid"].on{background:var(--oh-stage-midgame)}
+.oh-tp-placement-phase .oh-tl-seg-btn[data-stage="end"].on{background:var(--oh-stage-lategame)}
 .oh-tp-assign-hdr{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--oh-border);background:var(--oh-surface-alt)}
 .oh-tp-assign-hdr h5{margin:0;font:700 1rem var(--oh-font-heading);color:var(--oh-primary);flex:1}
 .oh-tp-assign-hdr .oh-tp-close{background:none;border:none;font-size:1.1rem;cursor:pointer;color:var(--oh-text-secondary);padding:2px 6px;line-height:1}

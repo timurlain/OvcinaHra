@@ -301,6 +301,7 @@ public static class TreasurePlanningEndpoints
             dto.LocationId,
             dto.SecretStashId,
             kind = isComposite ? "composite" : "single",
+            phase = dto.Difficulty.ToString(),
             poolCount,
             poolUnits = poolAssignments.Sum(p => p.Count),
             unlimitedCount

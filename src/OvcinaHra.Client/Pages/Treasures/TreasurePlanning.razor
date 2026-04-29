@@ -242,6 +242,20 @@ else
 
             @* RIGHT: assignment panel *@
             <div class="oh-tp-assign-panel">
+                <div class="oh-tp-placement-phase">
+                    <span class="oh-tp-placement-phase-lbl">Fáze umístění</span>
+                    <div class="oh-tl-seg" role="group" aria-label="Fáze, do které se ukládají nové poklady">
+                        @foreach (var phase in placementPhaseOptions)
+                        {
+                            <button type="button"
+                                    class="oh-tl-seg-btn @(lastUsedDifficulty == phase.Value ? "on" : "")"
+                                    data-stage="@phase.StageKey"
+                                    @onclick="() => SetPlacementPhase(phase.Value)">
+                                @phase.Label
+                            </button>
+                        }
+                    </div>
+                </div>
                 @if (focusedLocationId is null)
                 {
                     @* --- Default: pool grid --- *@
@@ -1313,6 +1327,37 @@ else
         Console.WriteLine($"[treasure-alloc] {json}");
     }
 
+    private void SetPlacementPhase(GameTimePhase next)
+    {
+        if (lastUsedDifficulty == next) return;
+        var previous = PlacementPhaseUiName(lastUsedDifficulty);
+        lastUsedDifficulty = next;
+        var current = PlacementPhaseUiName(next);
+        Console.WriteLine($"[treasure-alloc] phase-toggle changed from={previous} to={current}");
+        LogTreasureAlloc("phase-toggle", new
+        {
+            from = previous,
+            to = current,
+            phase = next.ToString(),
+            gameId
+        });
+    }
+
+    private static string PlacementPhaseUiName(GameTimePhase phase) => phase switch
+    {
+        GameTimePhase.Start => "Start",
+        GameTimePhase.Lategame or GameTimePhase.EndGame => "Konec",
+        _ => "Hra"
+    };
+
+    private static void LogAssignRequestPhase(GameTimePhase phase, string source, int? locationId, int? secretStashId = null)
+    {
+        Console.WriteLine(
+            $"[treasure-alloc] assign request includes phase={PlacementPhaseUiName(phase)} " +
+            $"source={source} locationId={locationId?.ToString() ?? "null"} " +
+            $"stashId={secretStashId?.ToString() ?? "null"}");
+    }
+
     private void CollapseQuickAllocationStepper()
     {
         if (quickAllocation is null) return;
@@ -1432,12 +1477,19 @@ else
 
     // ===== Stage metadata =====
     private record StageInfo(string Key, string SoftKey, GameTimePhase Value, string Label);
+    private record PlacementPhaseOption(string StageKey, GameTimePhase Value, string Label);
     private static readonly List<StageInfo> stageKeys =
     [
         new("start", "start",    GameTimePhase.Start,    "Start"),
         new("early", "early",    GameTimePhase.Early,    "Rozvoj hry"),
         new("mid",   "midgame",  GameTimePhase.Midgame,  "Střed hry"),
         new("late",  "lategame", GameTimePhase.Lategame, "Závěr hry"),
+    ];
+    private static readonly List<PlacementPhaseOption> placementPhaseOptions =
+    [
+        new("start", GameTimePhase.Start, "Start"),
+        new("mid", GameTimePhase.Midgame, "Hra"),
+        new("end", GameTimePhase.Lategame, "Konec"),
     ];
 
     private static readonly List<EnumItem<GameTimePhase>> difficultyValues = Enum.GetValues<GameTimePhase>()
@@ -1906,12 +1958,14 @@ else
             source,
             target = "location",
             locationId,
+            phase = PlacementPhaseUiName(dto.Difficulty),
             dto.Title,
             poolRows = assignments.Count,
             poolUnits = assignments.Sum(a => a.Count),
             unlimitedRows = unlimitedAssignments.Count,
             unlimitedUnits = unlimitedAssignments.Sum(a => a.Count)
         });
+        LogAssignRequestPhase(dto.Difficulty, source, locationId);
 
         var result = await Api.PostWithProblemAsync<AssignTreasureDto, TreasureQuestDetailDto>("/api/treasure-planning/assign", dto);
         if (!result.Ok || result.Value is null)
@@ -1967,12 +2021,14 @@ else
             source,
             target = "location",
             locationId,
+            phase = PlacementPhaseUiName(dto.Difficulty),
             poolItemId = item.Id,
             item.ItemId,
             kind = item.IsUnique ? "unique" : "non-unique",
             availableCount = item.Count,
             committedCount = count
         });
+        LogAssignRequestPhase(dto.Difficulty, source, locationId);
 
         var result = await Api.PostWithProblemAsync<AssignTreasureDto, TreasureQuestDetailDto>("/api/treasure-planning/assign", dto);
         if (!result.Ok || result.Value is null)
@@ -2075,8 +2131,10 @@ else
             dto.SecretStashId,
             poolCount = (dto.PoolItems?.Count ?? 0) + (dto.TreasureItemIds?.Count ?? 0),
             poolUnits = dto.PoolItems?.Sum(p => p.Count) ?? 0,
-            unlimitedCount = dto.UnlimitedItems?.Count ?? 0
+            unlimitedCount = dto.UnlimitedItems?.Count ?? 0,
+            phase = PlacementPhaseUiName(dto.Difficulty)
         });
+        LogAssignRequestPhase(dto.Difficulty, "form-save", dto.LocationId, dto.SecretStashId);
         var result = await Api.PostWithProblemAsync<AssignTreasureDto, TreasureQuestDetailDto>("/api/treasure-planning/assign", dto);
         if (!result.Ok)
         {
@@ -2185,6 +2243,7 @@ else
             var result = await Api.PostWithProblemAsync<AssignTreasureDto, TreasureQuestDetailDto>(
                 "/api/treasure-planning/assign",
                 dto);
+            LogAssignRequestPhase(dto.Difficulty, "gros-dialog", locationId);
             if (!result.Ok || result.Value is null)
             {
                 grosError = result.ProblemDetail ?? "Vytvoření pokladu z grošů se nepodařilo.";
