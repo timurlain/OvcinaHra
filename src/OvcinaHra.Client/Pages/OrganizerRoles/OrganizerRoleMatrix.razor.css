@@ -24,16 +24,48 @@
 
 .oh-orgrole-filters {
     display: grid;
-    grid-template-columns: minmax(220px, 300px) minmax(260px, 380px) 1fr;
+    grid-template-columns: minmax(220px, 280px) minmax(220px, 300px) minmax(260px, 380px) 1fr;
     gap: 12px;
     align-items: end;
     margin-bottom: 16px;
 }
 
-.oh-orgrole-filters label {
+.oh-orgrole-filters label,
+.oh-orgrole-view-toggle {
     display: grid;
     gap: 4px;
     font-weight: 600;
+}
+
+.oh-orgrole-view-buttons {
+    display: inline-flex;
+    min-height: 38px;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--bs-body-bg);
+}
+
+.oh-orgrole-view-btn {
+    border: 0;
+    padding: 6px 12px;
+    background: transparent;
+    color: var(--bs-body-color);
+    font-weight: 700;
+}
+
+.oh-orgrole-view-btn + .oh-orgrole-view-btn {
+    border-left: 1px solid var(--bs-border-color);
+}
+
+.oh-orgrole-view-btn:hover,
+.oh-orgrole-view-btn:focus {
+    background: color-mix(in srgb, var(--oh-stage-early) 12%, transparent);
+}
+
+.oh-orgrole-view-btn.is-active {
+    background: var(--oh-stage-early);
+    color: #fff;
 }
 
 .oh-orgrole-filter-note {
@@ -116,7 +148,8 @@
 
 .oh-orgrole-role-cell small,
 .oh-orgrole-slot small,
-.oh-orgrole-cell-btn small {
+.oh-orgrole-cell-btn small,
+.oh-orgrole-role-pill small {
     display: block;
     color: var(--bs-secondary-color);
     font-size: 0.78rem;
@@ -154,6 +187,28 @@
 .oh-orgrole-empty-cell {
     color: var(--bs-secondary-color);
     font-size: 1.2rem;
+}
+
+.oh-orgrole-adult-cell {
+    background: color-mix(in srgb, var(--bs-body-bg) 88%, var(--oh-stage-early) 12%);
+}
+
+.oh-orgrole-role-pill {
+    display: block;
+    padding: 4px 6px;
+    border: 1px solid color-mix(in srgb, var(--oh-stage-early) 28%, var(--bs-border-color));
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--oh-stage-early) 9%, var(--bs-body-bg));
+}
+
+.oh-orgrole-role-pill + .oh-orgrole-role-pill {
+    margin-top: 4px;
+}
+
+.oh-orgrole-role-pill strong {
+    display: block;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
 }
 
 .oh-orgrole-cell.is-dimmed {

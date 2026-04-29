@@ -52,11 +52,12 @@ public static class RecipeEndpoints
                 r.OutputItemId,
                 OutputItemName = r.OutputItem.Name,
                 OutputItemImagePath = r.OutputItem.ImagePath,
+                OutputItemEffect = r.OutputItem.Effect,
                 r.LocationId,
                 LocationName = r.Location != null ? r.Location.Name : null,
                 Ingredients = r.Ingredients
                     .OrderBy(i => i.Item.Name)
-                    .Select(i => new { i.ItemId, ItemName = i.Item.Name, ItemImagePath = i.Item.ImagePath, i.Quantity })
+                    .Select(i => new { i.ItemId, ItemName = i.Item.Name, ItemImagePath = i.Item.ImagePath, ItemEffect = i.Item.Effect, i.Quantity })
                     .ToList(),
                 Buildings = r.BuildingRequirements
                     .OrderBy(br => br.Building.Name)
@@ -90,11 +91,12 @@ public static class RecipeEndpoints
                 r.OutputItemId,
                 OutputItemName = r.OutputItem.Name,
                 OutputItemImagePath = r.OutputItem.ImagePath,
+                OutputItemEffect = r.OutputItem.Effect,
                 r.LocationId,
                 LocationName = r.Location != null ? r.Location.Name : null,
                 Ingredients = r.Ingredients
                     .OrderBy(i => i.Item.Name)
-                    .Select(i => new { i.ItemId, ItemName = i.Item.Name, ItemImagePath = i.Item.ImagePath, i.Quantity })
+                    .Select(i => new { i.ItemId, ItemName = i.Item.Name, ItemImagePath = i.Item.ImagePath, ItemEffect = i.Item.Effect, i.Quantity })
                     .ToList(),
                 Buildings = r.BuildingRequirements
                     .OrderBy(br => br.Building.Name)
@@ -155,10 +157,11 @@ public static class RecipeEndpoints
                 r.OutputItem.ItemType, r.GameId, r.TemplateRecipeId,
                 r.OutputItemId, r.OutputItem.Name,
                 OutputItemThumbnailUrl: ThumbForItem(http, r.OutputItem),
+                OutputItemEffect: r.OutputItem.Effect,
                 OutputQuantity: 1,
                 r.LocationId, r.Location?.Name,
                 r.Ingredients.OrderBy(i => i.Item.Name).Select(i =>
-                    new RecipeIngredientChipDto(i.ItemId, i.Item.Name, ThumbForItem(http, i.Item), i.Quantity)).ToList(),
+                    new RecipeIngredientChipDto(i.ItemId, i.Item.Name, ThumbForItem(http, i.Item), i.Quantity, i.Item.Effect)).ToList(),
                 r.BuildingRequirements.OrderBy(br => br.Building.Name).Select(br =>
                     new RecipeBuildingChipDto(br.BuildingId, br.Building.Name)).ToList(),
                 r.SkillRequirements.OrderBy(sr => sr.GameSkill.Name).Select(sr =>
@@ -452,6 +455,7 @@ public static class RecipeEndpoints
     {
         string outputItemName = (string)r.OutputItemName;
         string? outputItemImagePath = (string?)r.OutputItemImagePath;
+        string? outputItemEffect = (string?)r.OutputItemEffect;
         int outputItemId = (int)r.OutputItemId;
         string? thumb = string.IsNullOrWhiteSpace(outputItemImagePath)
             ? null
@@ -463,7 +467,7 @@ public static class RecipeEndpoints
             string? ingThumb = string.IsNullOrWhiteSpace((string?)i.ItemImagePath)
                 ? null
                 : ImageEndpoints.ThumbUrl(http, "items", (int)i.ItemId, "small");
-            ingredients.Add(new RecipeIngredientChipDto((int)i.ItemId, (string)i.ItemName, ingThumb, (int)i.Quantity));
+            ingredients.Add(new RecipeIngredientChipDto((int)i.ItemId, (string)i.ItemName, ingThumb, (int)i.Quantity, (string?)i.ItemEffect));
         }
 
         var buildings = new List<RecipeBuildingChipDto>();
@@ -484,6 +488,7 @@ public static class RecipeEndpoints
             outputItemId,
             outputItemName,
             thumb,
+            outputItemEffect,
             OutputQuantity: 1,
             (int?)r.LocationId,
             (string?)r.LocationName,

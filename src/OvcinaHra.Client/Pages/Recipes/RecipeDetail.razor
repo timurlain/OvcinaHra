@@ -63,29 +63,74 @@ else
             }
             else
             {
-                <ul class="oh-rec-rel-list">
-                    @foreach (var ing in detail.Ingredients)
+                <div class="oh-rec-item-card-row">
+                    @foreach (var card in IngredientCards)
                     {
-                        <li>
-                            <strong>@ing.Name</strong>
-                            <span class="oh-rec-qty">×@ing.Quantity</span>
-                        </li>
+                        <div id="@card.TargetId"
+                             class="oh-rec-item-card"
+                             tabindex="0"
+                             title="@card.Name"
+                             @key="@card.TargetId"
+                             @onmouseenter="() => ShowItemFlyout(card)"
+                             @onmouseleave="HideItemFlyout"
+                             @onfocus="() => ShowItemFlyout(card)"
+                             @onblur="HideItemFlyout">
+                            @if (!failedRecipeItemImages.Contains(card.ItemId))
+                            {
+                                <img src="@ItemThumbUrl(card.ItemId)"
+                                     alt="@card.Name"
+                                     class="oh-rec-item-card-img"
+                                     @onerror="() => OnRecipeItemImageError(card)" />
+                            }
+                            else
+                            {
+                                <span class="oh-rec-item-card-img oh-rec-item-card-img--fallback">
+                                    <i class="bi bi-box"></i>
+                                </span>
+                            }
+                            <span class="oh-rec-item-card-body">
+                                <strong>@card.Name</strong>
+                                <span class="oh-rec-item-card-qty">×@card.Quantity</span>
+                            </span>
+                        </div>
                     }
-                </ul>
+                </div>
             }
         </section>
 
         <section class="oh-rec-rel-section">
             <h6><i class="bi bi-bag"></i> Výstupní artefakt</h6>
-            <ul class="oh-rec-rel-list">
-                <li>
-                    <strong>@detail.OutputItemName</strong>
-                    @if (detail.OutputQuantity > 1)
-                    {
-                        <span class="oh-rec-qty">×@detail.OutputQuantity</span>
-                    }
-                </li>
-            </ul>
+            @if (OutputCard is { } outputCard)
+            {
+                <div class="oh-rec-item-card-row">
+                    <div id="@outputCard.TargetId"
+                         class="oh-rec-item-card oh-rec-item-card--output"
+                         tabindex="0"
+                         title="@outputCard.Name"
+                         @onmouseenter="() => ShowItemFlyout(outputCard)"
+                         @onmouseleave="HideItemFlyout"
+                         @onfocus="() => ShowItemFlyout(outputCard)"
+                         @onblur="HideItemFlyout">
+                        @if (!failedRecipeItemImages.Contains(outputCard.ItemId))
+                        {
+                            <img src="@ItemThumbUrl(outputCard.ItemId)"
+                                 alt="@outputCard.Name"
+                                 class="oh-rec-item-card-img"
+                                 @onerror="() => OnRecipeItemImageError(outputCard)" />
+                        }
+                        else
+                        {
+                            <span class="oh-rec-item-card-img oh-rec-item-card-img--fallback">
+                                <i class="bi bi-bag"></i>
+                            </span>
+                        }
+                        <span class="oh-rec-item-card-body">
+                            <strong>@outputCard.Name</strong>
+                            <span class="oh-rec-item-card-qty">×@outputCard.Quantity</span>
+                        </span>
+                    </div>
+                </div>
+            }
         </section>
 
         <section class="oh-rec-rel-section">
@@ -163,6 +208,14 @@ else
     </BodyContentTemplate>
 </DxPopup>
 
+<DxFlyout @bind-IsOpen="@isItemFlyoutOpen"
+          PositionTarget="@itemFlyoutTarget"
+          Position="FlyoutPosition.Top"
+          BodyText="@ItemFlyoutText"
+          HeaderVisible="false"
+          CloseOnOutsideClick="false"
+          Width="260px" />
+
 @code {
     [Parameter] public int Id { get; set; }
 
@@ -173,9 +226,28 @@ else
     private bool isEditVisible;
     private bool isDeleteVisible;
     private string? deleteError;
+    private readonly HashSet<int> failedRecipeItemImages = [];
+    private bool isItemFlyoutOpen;
+    private string? itemFlyoutTarget;
+    private RecipeItemCard? itemFlyoutCard;
 
     private bool CanDelete =>
         detail is not null && (detail.GameId is not null || detail.ForksCount == 0);
+
+    private IEnumerable<RecipeItemCard> IngredientCards =>
+        detail?.Ingredients.Select(i => new RecipeItemCard("ingredient", i.ItemId, i.Name, i.Quantity, i.Effect)) ?? [];
+
+    private RecipeItemCard? OutputCard =>
+        detail is null
+            ? null
+            : new RecipeItemCard("output", detail.OutputItemId, detail.OutputItemName, detail.OutputQuantity, detail.OutputItemEffect);
+
+    private string ItemFlyoutText =>
+        itemFlyoutCard is null
+            ? string.Empty
+            : string.IsNullOrWhiteSpace(itemFlyoutCard.Effect)
+                ? "Efekt není vyplněný."
+                : Excerpt(itemFlyoutCard.Effect);
 
     protected override async Task OnInitializedAsync()
     {
@@ -198,9 +270,15 @@ else
     {
         loading = true;
         error = null;
+        failedRecipeItemImages.Clear();
+        HideItemFlyout();
         try
         {
             detail = await Api.GetAsync<RecipeDetailDto>($"/api/recipes/{Id}");
+            if (detail is not null)
+            {
+                Console.WriteLine($"[recipe-detail] loaded recipeId={detail.Id} ingredientCount={detail.Ingredients.Count} outputCount=1");
+            }
         }
         catch (Exception ex) { error = ex.Message; }
         finally { loading = false; StateHasChanged(); }
@@ -227,8 +305,41 @@ else
     // Adapter — RecipeFormulaCard accepts the list DTO; cast detail to it.
     private static RecipeListDto AsListDto(RecipeDetailDto d) =>
         new(d.Id, d.Name, d.Title, d.Category, d.GameId, d.TemplateRecipeId,
-            d.OutputItemId, d.OutputItemName, d.OutputItemThumbnailUrl, d.OutputQuantity,
+            d.OutputItemId, d.OutputItemName, d.OutputItemThumbnailUrl, d.OutputItemEffect, d.OutputQuantity,
             d.LocationId, d.LocationName,
             d.Ingredients, d.Buildings, d.Skills,
             d.IngredientNotes, d.ForksCount);
+
+    private static string ItemThumbUrl(int itemId) => $"/api/images/items/{itemId}/thumb?size=small";
+
+    private void ShowItemFlyout(RecipeItemCard card)
+    {
+        itemFlyoutCard = card;
+        itemFlyoutTarget = $"#{card.TargetId}";
+        isItemFlyoutOpen = true;
+    }
+
+    private void HideItemFlyout()
+    {
+        isItemFlyoutOpen = false;
+        itemFlyoutTarget = null;
+        itemFlyoutCard = null;
+    }
+
+    private void OnRecipeItemImageError(RecipeItemCard card)
+    {
+        failedRecipeItemImages.Add(card.ItemId);
+        Console.WriteLine($"[recipe-detail] image-load-failed recipeId={Id} itemId={card.ItemId} name={card.Name}");
+    }
+
+    private static string Excerpt(string text)
+    {
+        var normalized = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return normalized.Length <= 220 ? normalized : normalized[..217] + "...";
+    }
+
+    private sealed record RecipeItemCard(string Kind, int ItemId, string Name, int Quantity, string? Effect)
+    {
+        public string TargetId => $"oh-rec-item-card-{Kind}-{ItemId}";
+    }
 }

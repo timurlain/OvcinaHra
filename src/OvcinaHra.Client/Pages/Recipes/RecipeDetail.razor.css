@@ -1,0 +1,74 @@
+.oh-rec-item-card-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.oh-rec-item-card {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    width: min(100%, 260px);
+    min-height: 72px;
+    padding: 8px;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 8px;
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    cursor: help;
+}
+
+.oh-rec-item-card:hover,
+.oh-rec-item-card:focus {
+    outline: 2px solid color-mix(in srgb, var(--bs-primary) 45%, transparent);
+    outline-offset: 1px;
+    border-color: color-mix(in srgb, var(--bs-primary) 45%, var(--bs-border-color));
+}
+
+.oh-rec-item-card--output {
+    border-color: color-mix(in srgb, var(--oh-stage-early, #4f7f24) 45%, var(--bs-border-color));
+}
+
+.oh-rec-item-card-img {
+    width: 56px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: 6px;
+    background: var(--bs-tertiary-bg);
+}
+
+.oh-rec-item-card-img--fallback {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--bs-secondary-color);
+    font-size: 1.45rem;
+}
+
+.oh-rec-item-card-body {
+    display: grid;
+    min-width: 0;
+    gap: 4px;
+}
+
+.oh-rec-item-card-body strong {
+    overflow-wrap: anywhere;
+    line-height: 1.15;
+}
+
+.oh-rec-item-card-qty {
+    justify-self: start;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-secondary-color);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+@media (max-width: 768px) {
+    .oh-rec-item-card {
+        width: 100%;
+    }
+}

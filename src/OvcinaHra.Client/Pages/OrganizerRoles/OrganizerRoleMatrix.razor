@@ -24,6 +24,21 @@
 </div>
 
 <div class="oh-orgrole-filters">
+    <div class="oh-orgrole-view-toggle" role="group" aria-label="Pohled rozpisu rolí">
+        <span>Pohled</span>
+        <div class="oh-orgrole-view-buttons">
+            <button type="button"
+                    class="@ViewButtonCss(OrganizerRoleViewMode.ByRole)"
+                    @onclick="() => SetViewMode(OrganizerRoleViewMode.ByRole)">
+                dle role
+            </button>
+            <button type="button"
+                    class="@ViewButtonCss(OrganizerRoleViewMode.ByAdult)"
+                    @onclick="() => SetViewMode(OrganizerRoleViewMode.ByAdult)">
+                dle dospělého
+            </button>
+        </div>
+    </div>
     <label>
         <span>Typ role</span>
         <DxComboBox TData="RoleFilterOption" TValue="NpcRole?"
@@ -48,7 +63,9 @@
     @if (selectedAdultPersonId is not null)
     {
         <span class="oh-orgrole-filter-note">
-            Záznamy ostatních dospělých jsou ztlumené.
+            @(viewMode == OrganizerRoleViewMode.ByRole
+                ? "Záznamy ostatních dospělých jsou ztlumené."
+                : "Zobrazený je vybraný dospělý.")
         </span>
     }
 </div>
@@ -94,62 +111,138 @@ else if (npcs.Count == 0)
 }
 else
 {
-    <div class="oh-orgrole-matrix-wrap">
-        <table class="oh-orgrole-matrix">
-            <thead>
-                <tr>
-                    <th class="oh-orgrole-role-head">NPC role</th>
-                    @foreach (var slot in slots)
-                    {
-                        <th @key="slot.Id">
-                            <div class="oh-orgrole-slot">
-                                <span>@FormatSlotTime(slot)</span>
-                                <small>@slot.Stage.GetDisplayName()</small>
-                            </div>
-                        </th>
-                    }
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var npc in FilteredNpcs)
-                {
-                    <tr @key="npc.NpcId">
-                        <th class="oh-orgrole-role-cell">
-                            <span>@npc.NpcName</span>
-                            <small>@npc.Role.GetDisplayName()</small>
-                        </th>
+    @if (viewMode == OrganizerRoleViewMode.ByRole)
+    {
+        <div class="oh-orgrole-matrix-wrap">
+            <table class="oh-orgrole-matrix">
+                <thead>
+                    <tr>
+                        <th class="oh-orgrole-role-head">NPC role</th>
                         @foreach (var slot in slots)
                         {
-                            var assignment = GetAssignment(slot.Id, npc.NpcId);
-                            <td class="@CellCss(assignment)" @key="slot.Id">
-                                <button type="button"
-                                        class="oh-orgrole-cell-btn"
-                                        aria-label="@CellButtonLabel(slot, npc, assignment)"
-                                        @onclick="() => OpenCellEditor(slot, npc, assignment)">
-                                    @if (assignment is null)
-                                    {
-                                        <span class="oh-orgrole-empty-cell">+</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="oh-orgrole-person">@assignment.PersonName</span>
-                                        @if (!string.IsNullOrWhiteSpace(assignment.PersonEmail))
-                                        {
-                                            <small>@assignment.PersonEmail</small>
-                                        }
-                                        @if (IsDuplicateAdultSlot(assignment))
-                                        {
-                                            <span class="oh-orgrole-dup">více rolí</span>
-                                        }
-                                    }
-                                </button>
-                            </td>
+                            <th @key="slot.Id">
+                                <div class="oh-orgrole-slot">
+                                    <span>@FormatSlotTime(slot)</span>
+                                    <small>@slot.Stage.GetDisplayName()</small>
+                                </div>
+                            </th>
                         }
                     </tr>
-                }
-            </tbody>
-        </table>
-    </div>
+                </thead>
+                <tbody>
+                    @foreach (var npc in FilteredNpcs)
+                    {
+                        <tr @key="npc.NpcId">
+                            <th class="oh-orgrole-role-cell">
+                                <span>@npc.NpcName</span>
+                                <small>@npc.Role.GetDisplayName()</small>
+                            </th>
+                            @foreach (var slot in slots)
+                            {
+                                var assignment = GetAssignment(slot.Id, npc.NpcId);
+                                <td class="@CellCss(assignment)" @key="slot.Id">
+                                    <button type="button"
+                                            class="oh-orgrole-cell-btn"
+                                            aria-label="@CellButtonLabel(slot, npc, assignment)"
+                                            @onclick="() => OpenCellEditor(slot, npc, assignment)">
+                                        @if (assignment is null)
+                                        {
+                                            <span class="oh-orgrole-empty-cell">+</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="oh-orgrole-person">@assignment.PersonName</span>
+                                            @if (!string.IsNullOrWhiteSpace(assignment.PersonEmail))
+                                            {
+                                                <small>@assignment.PersonEmail</small>
+                                            }
+                                            @if (IsDuplicateAdultSlot(assignment))
+                                            {
+                                                <span class="oh-orgrole-dup">více rolí</span>
+                                            }
+                                        }
+                                    </button>
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else if (!FilteredAdults.Any())
+    {
+        <div class="oh-orgrole-empty">
+            <i class="bi bi-person-lines-fill"></i>
+            <h2>Žádní dospělí k zobrazení</h2>
+            <p>Upravte filtr dospělého nebo zkontrolujte napojení registrace.</p>
+        </div>
+    }
+    else
+    {
+        <div class="oh-orgrole-matrix-wrap">
+            <table class="oh-orgrole-matrix oh-orgrole-matrix--adult">
+                <thead>
+                    <tr>
+                        <th class="oh-orgrole-role-head">Dospělý</th>
+                        @foreach (var slot in slots)
+                        {
+                            <th @key="slot.Id">
+                                <div class="oh-orgrole-slot">
+                                    <span>@FormatSlotTime(slot)</span>
+                                    <small>@slot.Stage.GetDisplayName()</small>
+                                </div>
+                            </th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var adult in FilteredAdults)
+                    {
+                        <tr @key="adult.PersonId">
+                            <th class="oh-orgrole-role-cell oh-orgrole-adult-cell">
+                                <span>@adult.Name</span>
+                                @if (!string.IsNullOrWhiteSpace(adult.Email))
+                                {
+                                    <small>@adult.Email</small>
+                                }
+                            </th>
+                            @foreach (var slot in slots)
+                            {
+                                var slotAssignments = GetAdultAssignments(slot.Id, adult.PersonId);
+                                <td class="@AdultCellCss(slotAssignments)" @key="slot.Id">
+                                    <button type="button"
+                                            class="oh-orgrole-cell-btn"
+                                            aria-label="@AdultCellButtonLabel(slot, adult, slotAssignments)"
+                                            @onclick="() => OpenAdultCellEditor(slot, adult, slotAssignments)">
+                                        @if (slotAssignments.Count == 0)
+                                        {
+                                            <span class="oh-orgrole-empty-cell">—</span>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var assignment in slotAssignments)
+                                            {
+                                                var npc = GetNpc(assignment.NpcId);
+                                                <span class="oh-orgrole-role-pill" @key="assignment.Id">
+                                                    <strong>@(npc?.NpcName ?? $"NPC #{assignment.NpcId}")</strong>
+                                                    <small>@(npc?.Role.GetDisplayName() ?? "Role")</small>
+                                                </span>
+                                            }
+                                            @if (slotAssignments.Count > 1)
+                                            {
+                                                <span class="oh-orgrole-dup">více rolí</span>
+                                            }
+                                        }
+                                    </button>
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
 }
 
 <DxPopup @bind-Visible="@isBulkVisible" HeaderText="Přiřadit dospělého na všechny sloty" Width="560px">
@@ -199,6 +292,18 @@ else
 <DxPopup @bind-Visible="@isCellVisible" HeaderText="@cellTitle" Width="520px">
     <BodyContentTemplate Context="cellContext">
         <DxFormLayout>
+            @if (editNpcCanChange)
+            {
+                <DxFormLayoutItem Caption="NPC role" ColSpanMd="12">
+                    <DxComboBox TData="NpcOption" TValue="int?"
+                                Data="@FilteredNpcOptions"
+                                @bind-Value="@editNpcId"
+                                TextFieldName="@nameof(NpcOption.Display)"
+                                ValueFieldName="@nameof(NpcOption.NpcId)"
+                                NullText="Vyberte NPC roli..."
+                                SearchMode="ListSearchMode.AutoSearch" />
+                </DxFormLayoutItem>
+            }
             <DxFormLayoutItem Caption="Dospělý" ColSpanMd="12">
                 <DxComboBox TData="AdultOption" TValue="int?"
                             Data="@adultOptions"
@@ -206,7 +311,8 @@ else
                             TextFieldName="@nameof(AdultOption.Display)"
                             ValueFieldName="@nameof(AdultOption.PersonId)"
                             NullText="Vyberte dospělého..."
-                            SearchMode="ListSearchMode.AutoSearch" />
+                            SearchMode="ListSearchMode.AutoSearch"
+                            Enabled="@(!editPersonLocked)" />
             </DxFormLayoutItem>
             <DxFormLayoutItem Caption="Poznámka" ColSpanMd="12">
                 <DxMemo @bind-Text="@editNotes" Rows="2" />
@@ -224,7 +330,7 @@ else
                 </button>
             }
             <button type="button" class="btn btn-secondary" @onclick="() => isCellVisible = false" disabled="@isSaving">Zrušit</button>
-            <button type="button" class="btn btn-primary" @onclick="SaveCellAsync" disabled="@(isSaving || editPersonId is null)">Uložit</button>
+            <button type="button" class="btn btn-primary" @onclick="SaveCellAsync" disabled="@(isSaving || editPersonId is null || editNpcId is null)">Uložit</button>
         </div>
     </BodyContentTemplate>
 </DxPopup>
@@ -254,7 +360,9 @@ else
 
 @code {
     private static readonly CultureInfo Czech = CultureInfo.GetCultureInfo("cs-CZ");
+    private enum OrganizerRoleViewMode { ByRole, ByAdult }
 
+    private OrganizerRoleViewMode viewMode = OrganizerRoleViewMode.ByRole;
     private List<OrganizerRoleTimeSlotDto> slots = [];
     private List<OrganizerRoleNpcDto> npcs = [];
     private List<OrganizerRoleAssignmentDto> assignments = [];
@@ -263,6 +371,8 @@ else
     private List<NpcOption> npcOptions = [];
     private List<RoleFilterOption> roleFilterOptions = [new(null, "Všechny typy")];
     private Dictionary<(int SlotId, int NpcId), OrganizerRoleAssignmentDto> assignmentLookup = [];
+    private Dictionary<(int SlotId, int PersonId), List<OrganizerRoleAssignmentDto>> adultSlotAssignments = [];
+    private Dictionary<int, OrganizerRoleNpcDto> npcLookup = [];
     private HashSet<int> duplicateAdultSlotAssignmentIds = [];
 
     private bool loading = true;
@@ -285,6 +395,9 @@ else
     private OrganizerRoleTimeSlotDto? editingSlot;
     private OrganizerRoleNpcDto? editingNpc;
     private OrganizerRoleAssignmentDto? editingAssignment;
+    private int? editNpcId;
+    private bool editNpcCanChange;
+    private bool editPersonLocked;
     private int? editPersonId;
     private string? editNotes;
     private string? cellError;
@@ -298,14 +411,27 @@ else
     private IEnumerable<OrganizerRoleNpcDto> FilteredNpcs =>
         selectedRole is null ? npcs : npcs.Where(n => n.Role == selectedRole);
 
+    private IEnumerable<NpcOption> FilteredNpcOptions =>
+        selectedRole is null ? npcOptions : npcOptions.Where(n => n.Role == selectedRole);
+
+    private IEnumerable<AdultOption> FilteredAdults =>
+        selectedAdultPersonId is int personId
+            ? adultOptions.Where(a => a.PersonId == personId)
+            : adultOptions;
+
     private int ExistingBulkAssignmentCount =>
         bulkNpcId is int npcId ? assignments.Count(a => a.NpcId == npcId) : 0;
 
     private bool BulkWillOverwrite => ExistingBulkAssignmentCount > 0;
 
-    private string cellTitle => editingSlot is null || editingNpc is null
+    private OrganizerRoleNpcDto? SelectedEditNpc =>
+        editNpcId is int npcId ? GetNpc(npcId) : editingNpc;
+
+    private string cellTitle => editingSlot is null
         ? "Upravit obsazení"
-        : $"{editingNpc.NpcName} - {FormatSlotTime(editingSlot)}";
+        : SelectedEditNpc is { } npc
+            ? $"{npc.NpcName} - {FormatSlotTime(editingSlot)}"
+            : $"Obsazení - {FormatSlotTime(editingSlot)}";
 
     protected override async Task OnInitializedAsync()
     {
@@ -403,6 +529,14 @@ else
     private void RebuildDerivedState()
     {
         assignmentLookup = assignments.ToDictionary(a => (a.GameTimeSlotId, a.NpcId));
+        npcLookup = npcs.ToDictionary(n => n.NpcId);
+        adultSlotAssignments = assignments
+            .GroupBy(a => (a.GameTimeSlotId, a.PersonId))
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderBy(a => GetNpc(a.NpcId)?.Role.GetDisplayName())
+                      .ThenBy(a => GetNpc(a.NpcId)?.NpcName)
+                      .ToList());
         duplicateAdultSlotAssignmentIds = assignments
             .GroupBy(a => (a.GameTimeSlotId, a.PersonId))
             .Where(g => g.Count() > 1)
@@ -421,10 +555,28 @@ else
             selectedRole = null;
         if (selectedAdultPersonId is not null && adultOptions.All(a => a.PersonId != selectedAdultPersonId))
             selectedAdultPersonId = null;
+        if (viewMode == OrganizerRoleViewMode.ByAdult)
+            LogAdultTranspose();
     }
 
     private OrganizerRoleAssignmentDto? GetAssignment(int slotId, int npcId) =>
         assignmentLookup.TryGetValue((slotId, npcId), out var assignment) ? assignment : null;
+
+    private OrganizerRoleNpcDto? GetNpc(int npcId) =>
+        npcLookup.TryGetValue(npcId, out var npc) ? npc : null;
+
+    private IReadOnlyList<OrganizerRoleAssignmentDto> GetAdultAssignments(int slotId, int personId)
+    {
+        if (!adultSlotAssignments.TryGetValue((slotId, personId), out var slotAssignments))
+            return Array.Empty<OrganizerRoleAssignmentDto>();
+
+        if (selectedRole is null)
+            return slotAssignments;
+
+        return slotAssignments
+            .Where(a => GetNpc(a.NpcId)?.Role == selectedRole)
+            .ToList();
+    }
 
     private string FormatSlotTime(OrganizerRoleTimeSlotDto slot)
     {
@@ -456,6 +608,42 @@ else
 
     private bool IsDuplicateAdultSlot(OrganizerRoleAssignmentDto assignment) =>
         duplicateAdultSlotAssignmentIds.Contains(assignment.Id);
+
+    private string AdultCellCss(IReadOnlyList<OrganizerRoleAssignmentDto> slotAssignments)
+    {
+        var classes = new List<string> { "oh-orgrole-cell" };
+        if (slotAssignments.Count == 0) classes.Add("is-empty");
+        if (slotAssignments.Any(a => IsDuplicateAdultSlot(a))) classes.Add("has-duplicate");
+        return string.Join(' ', classes);
+    }
+
+    private string AdultCellButtonLabel(
+        OrganizerRoleTimeSlotDto slot,
+        AdultOption adult,
+        IReadOnlyList<OrganizerRoleAssignmentDto> slotAssignments)
+    {
+        var action = slotAssignments.Count == 0 ? "Přiřadit NPC roli" : "Upravit přiřazení";
+        return $"{action}: {adult.Name}, {FormatSlotTime(slot)}";
+    }
+
+    private string ViewButtonCss(OrganizerRoleViewMode mode) =>
+        viewMode == mode ? "oh-orgrole-view-btn is-active" : "oh-orgrole-view-btn";
+
+    private void SetViewMode(OrganizerRoleViewMode mode)
+    {
+        if (viewMode == mode)
+            return;
+
+        viewMode = mode;
+        Console.WriteLine($"[organizer-roles] view-toggle clicked={(mode == OrganizerRoleViewMode.ByRole ? "byrole" : "byadult")}");
+        if (mode == OrganizerRoleViewMode.ByAdult)
+            LogAdultTranspose();
+    }
+
+    private void LogAdultTranspose()
+    {
+        Console.WriteLine($"[organizer-roles] transpose computed adultCount={FilteredAdults.Count()} slotCount={slots.Count}");
+    }
 
     private void OpenBulkAssign()
     {
@@ -530,19 +718,55 @@ else
         editingSlot = slot;
         editingNpc = npc;
         editingAssignment = assignment;
+        editNpcId = npc.NpcId;
+        editNpcCanChange = false;
+        editPersonLocked = false;
         editPersonId = assignment?.PersonId ?? selectedAdultPersonId;
         editNotes = assignment?.Notes;
         isCellVisible = true;
         Console.WriteLine($"[organizer-roles] cell popup.open gameId={GameContext.SelectedGameId} slotId={slot.Id} npcId={npc.NpcId}");
     }
 
+    private void OpenAdultCellEditor(
+        OrganizerRoleTimeSlotDto slot,
+        AdultOption adult,
+        IReadOnlyList<OrganizerRoleAssignmentDto> slotAssignments)
+    {
+        cellError = null;
+        var assignment = slotAssignments.FirstOrDefault();
+        var npc = assignment is null
+            ? FilteredNpcs.FirstOrDefault()
+            : GetNpc(assignment.NpcId);
+
+        editingSlot = slot;
+        editingNpc = npc;
+        editingAssignment = assignment;
+        editNpcId = assignment?.NpcId ?? npc?.NpcId;
+        editNpcCanChange = assignment is null;
+        editPersonLocked = assignment is null;
+        editPersonId = assignment?.PersonId ?? adult.PersonId;
+        editNotes = assignment?.Notes;
+        isCellVisible = true;
+        if (editNpcId is null)
+            cellError = "Vybraný typ role nemá žádné NPC.";
+
+        Console.WriteLine($"[organizer-roles] adult-cell popup.open gameId={GameContext.SelectedGameId} slotId={slot.Id} personId={adult.PersonId} npcId={editNpcId}");
+    }
+
     private async Task SaveCellAsync()
     {
         if (GameContext.SelectedGameId is not int gameId
             || editingSlot is null
-            || editingNpc is null
+            || editNpcId is not int npcId
             || editPersonId is not int personId)
             return;
+
+        var npc = GetNpc(npcId);
+        if (npc is null)
+        {
+            cellError = "Vybraná NPC role nebyla nalezena.";
+            return;
+        }
 
         var adult = adultOptions.FirstOrDefault(a => a.PersonId == personId);
         if (adult is null)
@@ -554,10 +778,10 @@ else
         isSaving = true;
         try
         {
-            Console.WriteLine($"[organizer-roles] cell save.start gameId={gameId} slotId={editingSlot.Id} npcId={editingNpc.NpcId} personId={personId}");
+            Console.WriteLine($"[organizer-roles] cell save.start gameId={gameId} slotId={editingSlot.Id} npcId={npcId} personId={personId}");
             var dto = new UpsertOrganizerRoleAssignmentDto(personId, adult.Name, adult.Email, editNotes);
             var (ok, problemDetail) = await Api.PutWithProblemAsync(
-                $"/api/games/{gameId}/organizer-role-assignments/slots/{editingSlot.Id}/npcs/{editingNpc.NpcId}",
+                $"/api/games/{gameId}/organizer-role-assignments/slots/{editingSlot.Id}/npcs/{npcId}",
                 dto);
             if (!ok)
             {
@@ -567,7 +791,7 @@ else
 
             isCellVisible = false;
             await LoadMatrixAsync();
-            Console.WriteLine($"[organizer-roles] cell save.ok gameId={gameId} slotId={editingSlot.Id} npcId={editingNpc.NpcId}");
+            Console.WriteLine($"[organizer-roles] cell save.ok gameId={gameId} slotId={editingSlot.Id} npcId={npcId}");
         }
         catch (Exception ex)
         {
@@ -582,15 +806,15 @@ else
 
     private async Task RemoveCellAsync()
     {
-        if (GameContext.SelectedGameId is not int gameId || editingSlot is null || editingNpc is null)
+        if (GameContext.SelectedGameId is not int gameId || editingSlot is null || editNpcId is not int npcId)
             return;
 
         isSaving = true;
         try
         {
-            Console.WriteLine($"[organizer-roles] cell remove.start gameId={gameId} slotId={editingSlot.Id} npcId={editingNpc.NpcId}");
+            Console.WriteLine($"[organizer-roles] cell remove.start gameId={gameId} slotId={editingSlot.Id} npcId={npcId}");
             var (ok, problemDetail) = await Api.DeleteWithProblemAsync(
-                $"/api/games/{gameId}/organizer-role-assignments/slots/{editingSlot.Id}/npcs/{editingNpc.NpcId}");
+                $"/api/games/{gameId}/organizer-role-assignments/slots/{editingSlot.Id}/npcs/{npcId}");
             if (!ok)
             {
                 cellError = problemDetail ?? "Obsazení se nepodařilo odebrat.";
@@ -600,7 +824,7 @@ else
             isRemoveConfirmVisible = false;
             isCellVisible = false;
             await LoadMatrixAsync();
-            Console.WriteLine($"[organizer-roles] cell remove.ok gameId={gameId} slotId={editingSlot.Id} npcId={editingNpc.NpcId}");
+            Console.WriteLine($"[organizer-roles] cell remove.ok gameId={gameId} slotId={editingSlot.Id} npcId={npcId}");
         }
         catch (Exception ex)
         {
