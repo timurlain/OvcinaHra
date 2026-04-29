@@ -29,11 +29,13 @@
         <div class="oh-orgrole-view-buttons">
             <button type="button"
                     class="@ViewButtonCss(OrganizerRoleViewMode.ByRole)"
+                    aria-pressed="@(viewMode == OrganizerRoleViewMode.ByRole)"
                     @onclick="() => SetViewMode(OrganizerRoleViewMode.ByRole)">
                 dle role
             </button>
             <button type="button"
                     class="@ViewButtonCss(OrganizerRoleViewMode.ByAdult)"
+                    aria-pressed="@(viewMode == OrganizerRoleViewMode.ByAdult)"
                     @onclick="() => SetViewMode(OrganizerRoleViewMode.ByAdult)">
                 dle dospělého
             </button>
@@ -372,6 +374,7 @@ else
     private List<RoleFilterOption> roleFilterOptions = [new(null, "Všechny typy")];
     private Dictionary<(int SlotId, int NpcId), OrganizerRoleAssignmentDto> assignmentLookup = [];
     private Dictionary<(int SlotId, int PersonId), List<OrganizerRoleAssignmentDto>> adultSlotAssignments = [];
+    private Dictionary<(int SlotId, int PersonId, NpcRole Role), List<OrganizerRoleAssignmentDto>> adultSlotRoleAssignments = [];
     private Dictionary<int, OrganizerRoleNpcDto> npcLookup = [];
     private HashSet<int> duplicateAdultSlotAssignmentIds = [];
 
@@ -534,9 +537,14 @@ else
             .GroupBy(a => (a.GameTimeSlotId, a.PersonId))
             .ToDictionary(
                 g => g.Key,
-                g => g.OrderBy(a => GetNpc(a.NpcId)?.Role.GetDisplayName())
-                      .ThenBy(a => GetNpc(a.NpcId)?.NpcName)
-                      .ToList());
+                g => OrderAssignments(g).ToList());
+        adultSlotRoleAssignments = assignments
+            .Select(a => (Assignment: a, Npc: GetNpc(a.NpcId)))
+            .Where(row => row.Npc is not null)
+            .GroupBy(row => (row.Assignment.GameTimeSlotId, row.Assignment.PersonId, row.Npc!.Role))
+            .ToDictionary(
+                g => g.Key,
+                g => OrderAssignments(g.Select(row => row.Assignment)).ToList());
         duplicateAdultSlotAssignmentIds = assignments
             .GroupBy(a => (a.GameTimeSlotId, a.PersonId))
             .Where(g => g.Count() > 1)
@@ -573,10 +581,14 @@ else
         if (selectedRole is null)
             return slotAssignments;
 
-        return slotAssignments
-            .Where(a => GetNpc(a.NpcId)?.Role == selectedRole)
-            .ToList();
+        return adultSlotRoleAssignments.TryGetValue((slotId, personId, selectedRole.Value), out var filteredAssignments)
+            ? filteredAssignments
+            : Array.Empty<OrganizerRoleAssignmentDto>();
     }
+
+    private IOrderedEnumerable<OrganizerRoleAssignmentDto> OrderAssignments(IEnumerable<OrganizerRoleAssignmentDto> source) =>
+        source.OrderBy(a => GetNpc(a.NpcId)?.Role.GetDisplayName())
+            .ThenBy(a => GetNpc(a.NpcId)?.NpcName);
 
     private string FormatSlotTime(OrganizerRoleTimeSlotDto slot)
     {

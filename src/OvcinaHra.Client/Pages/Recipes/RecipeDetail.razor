@@ -73,11 +73,12 @@ else
                              @key="@card.TargetId"
                              @onmouseenter="() => ShowItemFlyout(card)"
                              @onmouseleave="HideItemFlyout"
-                             @onfocus="() => ShowItemFlyout(card)"
+                            @onfocus="() => ShowItemFlyout(card)"
                              @onblur="HideItemFlyout">
-                            @if (!failedRecipeItemImages.Contains(card.ItemId))
+                            @if (!failedRecipeItemImages.Contains(card.ItemId)
+                                && !string.IsNullOrWhiteSpace(card.ThumbnailUrl))
                             {
-                                <img src="@ItemThumbUrl(card.ItemId)"
+                                <img src="@card.ThumbnailUrl"
                                      alt="@card.Name"
                                      class="oh-rec-item-card-img"
                                      @onerror="() => OnRecipeItemImageError(card)" />
@@ -111,9 +112,10 @@ else
                          @onmouseleave="HideItemFlyout"
                          @onfocus="() => ShowItemFlyout(outputCard)"
                          @onblur="HideItemFlyout">
-                        @if (!failedRecipeItemImages.Contains(outputCard.ItemId))
+                        @if (!failedRecipeItemImages.Contains(outputCard.ItemId)
+                            && !string.IsNullOrWhiteSpace(outputCard.ThumbnailUrl))
                         {
-                            <img src="@ItemThumbUrl(outputCard.ItemId)"
+                            <img src="@outputCard.ThumbnailUrl"
                                  alt="@outputCard.Name"
                                  class="oh-rec-item-card-img"
                                  @onerror="() => OnRecipeItemImageError(outputCard)" />
@@ -235,12 +237,12 @@ else
         detail is not null && (detail.GameId is not null || detail.ForksCount == 0);
 
     private IEnumerable<RecipeItemCard> IngredientCards =>
-        detail?.Ingredients.Select(i => new RecipeItemCard("ingredient", i.ItemId, i.Name, i.Quantity, i.Effect)) ?? [];
+        detail?.Ingredients.Select(i => new RecipeItemCard("ingredient", i.ItemId, i.Name, i.Quantity, i.Effect, i.ThumbnailUrl)) ?? [];
 
     private RecipeItemCard? OutputCard =>
         detail is null
             ? null
-            : new RecipeItemCard("output", detail.OutputItemId, detail.OutputItemName, detail.OutputQuantity, detail.OutputItemEffect);
+            : new RecipeItemCard("output", detail.OutputItemId, detail.OutputItemName, detail.OutputQuantity, detail.OutputItemEffect, detail.OutputItemThumbnailUrl);
 
     private string ItemFlyoutText =>
         itemFlyoutCard is null
@@ -310,8 +312,6 @@ else
             d.Ingredients, d.Buildings, d.Skills,
             d.IngredientNotes, d.ForksCount);
 
-    private static string ItemThumbUrl(int itemId) => $"/api/images/items/{itemId}/thumb?size=small";
-
     private void ShowItemFlyout(RecipeItemCard card)
     {
         itemFlyoutCard = card;
@@ -338,7 +338,7 @@ else
         return normalized.Length <= 220 ? normalized : normalized[..217] + "...";
     }
 
-    private sealed record RecipeItemCard(string Kind, int ItemId, string Name, int Quantity, string? Effect)
+    private sealed record RecipeItemCard(string Kind, int ItemId, string Name, int Quantity, string? Effect, string? ThumbnailUrl)
     {
         public string TargetId => $"oh-rec-item-card-{Kind}-{ItemId}";
     }
