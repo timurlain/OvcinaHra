@@ -293,7 +293,6 @@ public class TreasurePlanningPoolEndpointTests(PostgresFixture postgres) : Integ
         var game = await CreateGameAsync();
         var parent = await CreateLocationAsync("Starý brod");
         var child = await CreateLocationAsync("Starý brod - břeh", parent.Id);
-        await AssignLocationToGameAsync(game.Id, parent.Id);
         await AssignLocationToGameAsync(game.Id, child.Id);
         var gros = await CreateItemAsync("Groše", ItemType.Money);
 
@@ -308,6 +307,8 @@ public class TreasurePlanningPoolEndpointTests(PostgresFixture postgres) : Integ
         Assert.NotNull(cards);
         var card = Assert.Single(cards!);
         Assert.Equal(parent.Id, card.LocationId);
+        Assert.Equal(49.5m, card.EffectiveLatitude);
+        Assert.Equal(17.1m, card.EffectiveLongitude);
         Assert.Equal(4, card.TotalItems);
         Assert.DoesNotContain(cards!, c => c.LocationId == child.Id);
     }

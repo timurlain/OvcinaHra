@@ -168,10 +168,19 @@ public static class TreasurePlanningEndpoints
         ILoggerFactory loggerFactory)
     {
         var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.TreasurePlanningEndpoints");
-        var gameLocationIds = await db.GameLocations
+        var assignedLocationIds = await db.GameLocations
             .Where(gl => gl.GameId == gameId)
             .Select(gl => gl.LocationId)
             .ToListAsync();
+
+        var parentIdsForAssignedChildren = await db.Locations
+            .Where(l => assignedLocationIds.Contains(l.Id) && l.ParentLocationId.HasValue)
+            .Select(l => l.ParentLocationId!.Value)
+            .ToListAsync();
+        var gameLocationIds = assignedLocationIds
+            .Concat(parentIdsForAssignedChildren)
+            .Distinct()
+            .ToList();
 
         var locations = await db.Locations
             .Where(l => gameLocationIds.Contains(l.Id))
@@ -234,7 +243,11 @@ public static class TreasurePlanningEndpoints
                 allQuests.SelectMany(q => q.TreasureItems).Sum(ti => ti.Count),
                 loc.GameSecretStashes.Count, 3,
                 stashSummaries,
-                Region: loc.Region);
+                Region: loc.Region,
+                Latitude: loc.Coordinates?.Latitude,
+                Longitude: loc.Coordinates?.Longitude,
+                EffectiveLatitude: loc.Coordinates?.Latitude,
+                EffectiveLongitude: loc.Coordinates?.Longitude);
         }).ToList();
 
         return TypedResults.Ok(result);

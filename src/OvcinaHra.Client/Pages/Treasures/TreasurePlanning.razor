@@ -1289,7 +1289,7 @@ else
     private MapView? mapView;
     private bool styleLoaded;
     private bool markersPlaced;
-    private sealed record LocatedTreasureLocation(LocationListDto Location, decimal Latitude, decimal Longitude);
+    private sealed record LocatedTreasureLocation(TreasurePlanningLocationDto Location, decimal Latitude, decimal Longitude);
 
     // ===== Overview =====
     private bool overviewVisible;
@@ -1542,28 +1542,25 @@ else
         // placed. Saved bbox stays as a fallback (and CZ countryside as a
         // last resort) so games without placements still render somewhere
         // sensible.
-        var placed = locations
-            .Where(l => !l.ParentLocationId.HasValue)
+        var placed = locationCards
             .Select(ToLocatedTreasureLocation)
             .OfType<LocatedTreasureLocation>()
             .ToList();
-        var cardsByLocationId = locationCards.ToDictionary(c => c.LocationId);
 
         await FitMapToLocationExtentOrFallbackAsync(placed);
         foreach (var placedLocation in placed)
         {
-            var loc = placedLocation.Location;
-            cardsByLocationId.TryGetValue(loc.Id, out var card);
-            if (card is null || card.TotalItems == 0)
+            var card = placedLocation.Location;
+            if (card.TotalItems == 0)
             {
-                await mapView.AddZeroMarkerAsync(loc.Id,
+                await mapView.AddZeroMarkerAsync(card.LocationId,
                     (double)placedLocation.Latitude, (double)placedLocation.Longitude,
-                    loc.Name, KindSlug(loc.LocationKind));
+                    card.LocationName, KindSlug(card.LocationKind));
             }
             else
             {
                 var counts = new[] { card.StartCount, card.EarlyCount, card.MidgameCount, card.LategameCount };
-                await mapView.AddPieMarkerAsync(loc.Id,
+                await mapView.AddPieMarkerAsync(card.LocationId,
                     (double)placedLocation.Latitude, (double)placedLocation.Longitude,
                     counts);
             }
@@ -1577,12 +1574,12 @@ else
     private int? _cachedBoundsGameId;
     private (double SwLat, double SwLng, double NeLat, double NeLng)? _cachedBounds;
 
-    private static LocatedTreasureLocation? ToLocatedTreasureLocation(LocationListDto location)
+    private static LocatedTreasureLocation? ToLocatedTreasureLocation(TreasurePlanningLocationDto location)
     {
         if (location.EffectiveLatitude.HasValue && location.EffectiveLongitude.HasValue)
             return new LocatedTreasureLocation(location, location.EffectiveLatitude.Value, location.EffectiveLongitude.Value);
 
-        if (!location.ParentLocationId.HasValue && location.Latitude.HasValue && location.Longitude.HasValue)
+        if (location.Latitude.HasValue && location.Longitude.HasValue)
             return new LocatedTreasureLocation(location, location.Latitude.Value, location.Longitude.Value);
 
         return null;
