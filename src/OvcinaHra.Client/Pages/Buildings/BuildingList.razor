@@ -1,19 +1,25 @@
 @page "/buildings"
 @attribute [Authorize]
 @inject ApiClient Api
+@inject GameContextService GameContext
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
-@* Issue #208 — single-catalog Buildings list with 3-mode toggle:
-   Galerie (5:7 tiles, default) ↔ Karty (horizontal card-rows) ↔ Seznam
-   (DxGrid). The legacy per-game / catalog mode toggle is gone — the
-   building catalog is global per the design brief, and the per-game
-   construction-recipe editor lives at /recipes (BuildingRecipe entity,
-   issue #142, untouched). View choice persists in localStorage. *@
+@* Buildings have two independent modes:
+   - data scope: Jen tato hra ↔ Katalog (query parameter, like Items)
+   - visual view: Galerie ↔ Karty ↔ Seznam (localStorage, issue #208)
+   Keep them separate so the catalog/game distinction stays visible without
+   losing the richer building presentation modes. *@
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <h1 class="mb-0">Stavby</h1>
+    <h1 class="mb-0">@(Catalog ? "Katalog staveb" : "Stavby")</h1>
     <div class="d-flex gap-2 align-items-center">
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm @(Catalog ? "btn-outline-primary" : "btn-primary")"
+                    @onclick='() => Nav.NavigateTo("/buildings")'>Jen tato hra</button>
+            <button class="btn btn-sm @(Catalog ? "btn-primary" : "btn-outline-primary")"
+                    @onclick='() => Nav.NavigateTo("/buildings?catalog=true")'>Katalog</button>
+        </div>
         <div class="oh-segmented" role="tablist" aria-label="Zobrazení">
             <button type="button"
                     class="oh-segmented-btn @(view == "galerie" ? "oh-segmented-btn--on" : "")"
@@ -58,11 +64,18 @@
 {
     <p class="text-muted">Načítám…</p>
 }
+else if (!Catalog && GameContext.SelectedGameId is null)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-controller fs-1 d-block mb-2"></i>
+        <p>Vyber hru v levém panelu.</p>
+    </div>
+}
 else if (filtered.Count == 0)
 {
     <div class="text-center text-muted py-5">
         <i class="bi bi-house fs-1 d-block mb-2"></i>
-        <p>Žádné stavby zatím nejsou.</p>
+        <p>@(Catalog ? "Žádné stavby zatím nejsou." : "Tato hra nemá přiřazené žádné stavby.")</p>
         <button class="btn btn-outline-primary" type="button"
                 @onclick="ClearFilters">Zrušit filtry</button>
     </div>
@@ -72,8 +85,33 @@ else if (view == "galerie")
     <div class="oh-bld-gallery">
         @foreach (var b in filtered)
         {
-            <BuildingTile @key="b.Id" Building="@b"
-                          OnClick="@(_ => Nav.NavigateTo($"/buildings/{b.Id}"))" />
+            <div class="oh-bld-action-card" @key="b.Id">
+                <BuildingTile Building="@b"
+                              OnClick="@(_ => Nav.NavigateTo($"/buildings/{b.Id}"))" />
+                @if (Catalog)
+                {
+                    @if (assignedBuildingIds.Contains(b.Id))
+                    {
+                        <span class="btn btn-sm btn-outline-secondary disabled"><i class="bi bi-check2"></i> V této hře</span>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn btn-sm btn-outline-primary"
+                                disabled="@(GameContext.SelectedGameId is null || isAssociationBusy)"
+                                @onclick="() => AddBuildingToGameAsync(b)">
+                            <i class="bi bi-plus-circle"></i> Přidat do hry
+                        </button>
+                    }
+                }
+                else
+                {
+                    <button type="button" class="btn btn-sm btn-outline-danger"
+                            disabled="@isAssociationBusy"
+                            @onclick="() => RequestRemoveFromGame(b)">
+                        <i class="bi bi-x-circle"></i> Odebrat ze hry
+                    </button>
+                }
+            </div>
         }
     </div>
 }
@@ -82,17 +120,42 @@ else if (view == "karty")
     <div class="oh-bld-cardrow-wrap">
         @foreach (var b in filtered)
         {
-            <BuildingCardRow @key="b.Id" Building="@b"
-                             OnClick="@(_ => Nav.NavigateTo($"/buildings/{b.Id}"))" />
+            <div class="oh-bld-action-row" @key="b.Id">
+                <BuildingCardRow Building="@b"
+                                 OnClick="@(_ => Nav.NavigateTo($"/buildings/{b.Id}"))" />
+                @if (Catalog)
+                {
+                    @if (assignedBuildingIds.Contains(b.Id))
+                    {
+                        <span class="btn btn-sm btn-outline-secondary disabled align-self-center"><i class="bi bi-check2"></i> V této hře</span>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn btn-sm btn-outline-primary align-self-center"
+                                disabled="@(GameContext.SelectedGameId is null || isAssociationBusy)"
+                                @onclick="() => AddBuildingToGameAsync(b)">
+                            <i class="bi bi-plus-circle"></i> Přidat do hry
+                        </button>
+                    }
+                }
+                else
+                {
+                    <button type="button" class="btn btn-sm btn-outline-danger align-self-center"
+                            disabled="@isAssociationBusy"
+                            @onclick="() => RequestRemoveFromGame(b)">
+                        <i class="bi bi-x-circle"></i> Odebrat ze hry
+                    </button>
+                }
+            </div>
         }
     </div>
 }
 else
 {
-    @* Seznam mode — LayoutKey bumped to grid-layout-buildings-v2 because
-       column schema changed (image, recipe pair, counts).
+    @* Seznam mode — LayoutKey bumped to grid-layout-buildings-v3 because
+       the action column was added for Přidat/Odebrat ze hry.
        Memory rule: feedback_ovcinagrid_layoutkey_bump. *@
-    <OvcinaGrid Data="@filtered" KeyFieldName="Id" LayoutKey="grid-layout-buildings-v2"
+    <OvcinaGrid Data="@filtered" KeyFieldName="Id" LayoutKey="grid-layout-buildings-v3"
                 RowClick="@(e => Nav.NavigateTo($"/buildings/{((BuildingListDto)e.Grid.GetDataItem(e.VisibleIndex)).Id}"))">
         <Columns>
             <DxGridDataColumn Caption="" Width="60px" AllowSort="false" AllowGroup="false">
@@ -143,8 +206,43 @@ else
             </DxGridDataColumn>
             <DxGridDataColumn FieldName="Description" Caption="Popis" MinWidth="240" Visible="false" />
             <DxGridDataColumn FieldName="Notes" Caption="Poznámky" MinWidth="240" Visible="false" />
+            <DxGridDataColumn Caption="" Width="160px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{ var b = (BuildingListDto)context.DataItem; }
+                    @if (Catalog)
+                    {
+                        @if (assignedBuildingIds.Contains(b.Id))
+                        {
+                            <span class="btn btn-sm btn-outline-secondary disabled"><i class="bi bi-check2"></i> V této hře</span>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                    disabled="@(GameContext.SelectedGameId is null || isAssociationBusy)"
+                                    @onclick:stopPropagation="true"
+                                    @onclick="() => AddBuildingToGameAsync(b)">
+                                <i class="bi bi-plus-circle"></i> Přidat
+                            </button>
+                        }
+                    }
+                    else
+                    {
+                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                disabled="@isAssociationBusy"
+                                @onclick:stopPropagation="true"
+                                @onclick="() => RequestRemoveFromGame(b)">
+                            <i class="bi bi-x-circle"></i> Odebrat
+                        </button>
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
         </Columns>
     </OvcinaGrid>
+}
+
+@if (associationError is not null)
+{
+    <div class="alert alert-danger mt-3">@associationError</div>
 }
 
 @* "+ Nová stavba" minimal create modal. After create, nav to /buildings/{id}
@@ -171,8 +269,29 @@ else
     </BodyContentTemplate>
 </DxPopup>
 
+<DxPopup @bind-Visible="@isRemoveFromGameVisible" HeaderText="Odebrat stavbu z této hry?" Width="440px">
+    <BodyContentTemplate Context="removeCtx">
+        <p>Opravdu chceš odebrat stavbu <strong>@pendingRemoveBuilding?.Name</strong> z aktuální hry? Katalogová stavba zůstane zachovaná.</p>
+        @if (associationError is not null)
+        {
+            <div class="alert alert-danger">@associationError</div>
+        }
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" type="button" @onclick="() => isRemoveFromGameVisible = false" disabled="@isAssociationBusy">Zrušit</button>
+            <button class="btn btn-danger" type="button" @onclick="ConfirmRemoveFromGameAsync" disabled="@isAssociationBusy">
+                @if (isAssociationBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Odebrat
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
 @code {
+    [SupplyParameterFromQuery]
+    public bool Catalog { get; set; }
+
     private List<BuildingListDto> buildings = [];
+    private HashSet<int> assignedBuildingIds = [];
     private bool loading = true;
 
     private string view = "galerie"; // galerie | karty | seznam — persisted
@@ -185,6 +304,11 @@ else
     private bool isCreating;
     private string? createError;
     private string createName = "";
+    private bool _previousCatalog;
+    private bool isAssociationBusy;
+    private bool isRemoveFromGameVisible;
+    private BuildingListDto? pendingRemoveBuilding;
+    private string? associationError;
 
     private List<BuildingListDto> filtered =>
         buildings.Where(b =>
@@ -199,6 +323,8 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        await GameContext.InitializeAsync();
+        _previousCatalog = Catalog;
         try
         {
             view = await JS.InvokeAsync<string>("localStorage.getItem", "oh-building-view") ?? "galerie";
@@ -208,12 +334,36 @@ else
         await LoadAsync();
     }
 
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Catalog != _previousCatalog)
+        {
+            _previousCatalog = Catalog;
+            await LoadAsync();
+        }
+    }
+
     private async Task LoadAsync()
     {
         loading = true;
+        associationError = null;
         try
         {
-            buildings = await Api.GetListAsync<BuildingListDto>("/api/buildings");
+            if (!Catalog && GameContext.SelectedGameId is int gameId)
+            {
+                buildings = await Api.GetListAsync<BuildingListDto>($"/api/games/{gameId}/buildings");
+                assignedBuildingIds = buildings.Select(b => b.Id).ToHashSet();
+            }
+            else
+            {
+                buildings = await Api.GetListAsync<BuildingListDto>("/api/buildings");
+                assignedBuildingIds = [];
+                if (Catalog && GameContext.SelectedGameId is int catalogGameId)
+                {
+                    var linked = await Api.GetListAsync<BuildingListDto>($"/api/games/{catalogGameId}/buildings");
+                    assignedBuildingIds = linked.Select(b => b.Id).ToHashSet();
+                }
+            }
         }
         finally { loading = false; }
     }
@@ -264,5 +414,61 @@ else
         onlyWithImage = false;
         onlyWithRecipes = false;
         onlyWithEffect = false;
+    }
+
+    private async Task AddBuildingToGameAsync(BuildingListDto building)
+    {
+        if (GameContext.SelectedGameId is not int gameId) return;
+        associationError = null;
+        isAssociationBusy = true;
+        try
+        {
+            var (ok, _, problem) = await Api.PostWithProblemAsync<object, object>(
+                $"/api/games/{gameId}/buildings/{building.Id}",
+                new { });
+            if (!ok)
+            {
+                associationError = problem ?? "Přidání stavby do hry se nezdařilo.";
+                return;
+            }
+
+            assignedBuildingIds.Add(building.Id);
+            if (!Catalog)
+            {
+                await LoadAsync();
+            }
+        }
+        catch (Exception ex) { associationError = ex.Message; }
+        finally { isAssociationBusy = false; }
+    }
+
+    private void RequestRemoveFromGame(BuildingListDto building)
+    {
+        pendingRemoveBuilding = building;
+        associationError = null;
+        isRemoveFromGameVisible = true;
+    }
+
+    private async Task ConfirmRemoveFromGameAsync()
+    {
+        if (pendingRemoveBuilding is null || GameContext.SelectedGameId is not int gameId) return;
+        associationError = null;
+        isAssociationBusy = true;
+        try
+        {
+            var (ok, problem) = await Api.DeleteWithProblemAsync($"/api/games/{gameId}/buildings/{pendingRemoveBuilding.Id}");
+            if (!ok)
+            {
+                associationError = problem ?? "Odebrání stavby ze hry se nezdařilo.";
+                return;
+            }
+
+            assignedBuildingIds.Remove(pendingRemoveBuilding.Id);
+            buildings.RemoveAll(b => b.Id == pendingRemoveBuilding.Id);
+            pendingRemoveBuilding = null;
+            isRemoveFromGameVisible = false;
+        }
+        catch (Exception ex) { associationError = ex.Message; }
+        finally { isAssociationBusy = false; }
     }
 }

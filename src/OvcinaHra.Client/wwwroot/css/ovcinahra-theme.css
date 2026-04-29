@@ -4021,6 +4021,7 @@ body.oh-map-print-labeled .oh-map-pin .oh-map-pin-label{display:block}
 
 /* — Galerie tile (5:7 portrait) — */
 .oh-bld-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:18px}
+.oh-bld-action-card{display:flex;flex-direction:column;gap:8px}
 .oh-bld-tile{position:relative;display:flex;flex-direction:column;
     background:#FFF8F0;border:1px solid #d8d2be;border-radius:10px;overflow:hidden;
     cursor:pointer;text-align:left;padding:0;transition:.18s ease;font-family:inherit}
@@ -4053,6 +4054,7 @@ body.oh-map-print-labeled .oh-map-pin .oh-map-pin-label{display:block}
 
 /* — Karty mode (horizontal card-rows) — */
 .oh-bld-cardrow-wrap{display:flex;flex-direction:column;gap:10px}
+.oh-bld-action-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:stretch}
 .oh-bld-cardrow{display:grid;grid-template-columns:86px 1fr auto;gap:14px;align-items:center;
     background:#FFF8F0;border:1px solid #ead9b8;border-radius:10px;overflow:hidden;
     cursor:pointer;text-align:left;padding:10px;transition:.15s ease;font-family:inherit;

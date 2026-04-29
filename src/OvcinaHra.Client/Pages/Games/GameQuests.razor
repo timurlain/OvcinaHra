@@ -67,9 +67,9 @@ else if (filtered.Count == 0)
 }
 else
 {
-    @* LayoutKey bumped to grid-layout-game-quests-v2 — column schema added
-       state, image, counts. Memory rule: feedback_ovcinagrid_layoutkey_bump. *@
-    <OvcinaGrid Data="@filtered" KeyFieldName="Id" LayoutKey="grid-layout-game-quests-v2"
+    @* LayoutKey bumped to grid-layout-game-quests-v3 — action column added
+       for Odebrat ze hry. Memory rule: feedback_ovcinagrid_layoutkey_bump. *@
+    <OvcinaGrid Data="@filtered" KeyFieldName="Id" LayoutKey="grid-layout-game-quests-v3"
                 RowClick="@(e => Nav.NavigateTo($"/quests/{((QuestListDto)e.Grid.GetDataItem(e.VisibleIndex)).Id}"))">
         <Columns>
             <DxGridDataColumn Caption="" Width="60px" AllowSort="false" AllowGroup="false">
@@ -120,6 +120,17 @@ else
                 </CellDisplayTemplate>
             </DxGridDataColumn>
             <DxGridDataColumn FieldName="ChainOrder" Caption="Pořadí" Width="90px" Visible="false" />
+            <DxGridDataColumn Caption="" Width="140px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{ var q = (QuestListDto)context.DataItem; }
+                    <button type="button" class="btn btn-sm btn-outline-danger"
+                            disabled="@isRemovingFromGame"
+                            @onclick:stopPropagation="true"
+                            @onclick="() => RequestRemoveFromGame(q)">
+                        <i class="bi bi-x-circle"></i> Odebrat
+                    </button>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
         </Columns>
     </OvcinaGrid>
 }
@@ -257,6 +268,23 @@ else
     </BodyContentTemplate>
 </DxPopup>
 
+<DxPopup @bind-Visible="@isRemoveFromGameVisible" HeaderText="Odebrat quest z této hry?" Width="440px">
+    <BodyContentTemplate Context="removeCtx">
+        <p>Opravdu chceš odebrat quest <strong>@pendingRemoveQuest?.Name</strong> z této hry? Quest zůstane zachovaný v katalogu.</p>
+        @if (removeError is not null)
+        {
+            <div class="alert alert-danger">@removeError</div>
+        }
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" type="button" @onclick="() => isRemoveFromGameVisible = false" disabled="@isRemovingFromGame">Zrušit</button>
+            <button class="btn btn-danger" type="button" @onclick="ConfirmRemoveFromGameAsync" disabled="@isRemovingFromGame">
+                @if (isRemovingFromGame) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Odebrat
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
 @code {
     [Parameter] public int GameId { get; set; }
 
@@ -264,6 +292,10 @@ else
     private List<QuestListDto> quests = [];
     private List<QuestCatalogDto>? catalog;
     private bool loading = true;
+    private bool isRemoveFromGameVisible;
+    private bool isRemovingFromGame;
+    private QuestListDto? pendingRemoveQuest;
+    private string? removeError;
 
     private string stateFilter = "all"; // all | inactive | active | done
     private List<QuestType> selectedQuestTypes = [];
@@ -458,6 +490,36 @@ else
         }
         catch (Exception ex) { bulkError = ex.Message; }
         finally { isBulkAdding = false; }
+    }
+
+    private void RequestRemoveFromGame(QuestListDto quest)
+    {
+        pendingRemoveQuest = quest;
+        removeError = null;
+        isRemoveFromGameVisible = true;
+    }
+
+    private async Task ConfirmRemoveFromGameAsync()
+    {
+        if (pendingRemoveQuest is null) return;
+        removeError = null;
+        isRemovingFromGame = true;
+        try
+        {
+            var (ok, problem) = await Api.DeleteWithProblemAsync($"/api/games/{GameId}/quests/{pendingRemoveQuest.Id}");
+            if (!ok)
+            {
+                removeError = problem ?? "Odebrání questu ze hry se nezdařilo.";
+                return;
+            }
+
+            quests.RemoveAll(q => q.Id == pendingRemoveQuest.Id);
+            pendingRemoveQuest = null;
+            isRemoveFromGameVisible = false;
+            await LoadCatalogIfNeededAsync();
+        }
+        catch (Exception ex) { removeError = ex.Message; }
+        finally { isRemovingFromGame = false; }
     }
 
     private async Task OpenBlankCreateModal()

@@ -44,6 +44,10 @@
         <button type="button" title="Upravit" @onclick="HandleEdit"><i class="bi bi-pencil"></i></button>
         <button type="button" title="Přidat kořist" @onclick="HandleAddLoot"><i class="bi bi-plus-square"></i></button>
         <button type="button" title="Zkoušet (Soubojová karta)" @onclick="HandleBattle"><i class="bi bi-play-fill"></i></button>
+        @if (!Catalog)
+        {
+            <button type="button" title="Odebrat ze hry" @onclick="HandleRemoveFromGame"><i class="bi bi-x-circle"></i></button>
+        }
         <button type="button" class="oh-mon-danger" title="Smazat" @onclick="HandleDelete"><i class="bi bi-trash"></i></button>
     </div>
 
@@ -57,7 +61,7 @@
             else
             {
                 <button type="button" class="oh-mon-assign" @onclick="HandleAssign">
-                    <i class="bi bi-plus-lg"></i> Přiřadit ke hře
+                    <i class="bi bi-plus-lg"></i> Přidat do hry
                 </button>
             }
         </div>
@@ -74,6 +78,7 @@
     [Parameter] public EventCallback OnBattle { get; set; }
     [Parameter] public EventCallback OnDelete { get; set; }
     [Parameter] public EventCallback OnAssign { get; set; }
+    [Parameter] public EventCallback OnRemoveFromGame { get; set; }
 
     private bool imageFailed;
     private string? _lastImageUrl;
@@ -93,6 +98,7 @@
     private Task HandleBattle() => OnBattle.HasDelegate ? OnBattle.InvokeAsync() : Task.CompletedTask;
     private Task HandleDelete() => OnDelete.HasDelegate ? OnDelete.InvokeAsync() : Task.CompletedTask;
     private Task HandleAssign() => OnAssign.HasDelegate ? OnAssign.InvokeAsync() : Task.CompletedTask;
+    private Task HandleRemoveFromGame() => OnRemoveFromGame.HasDelegate ? OnRemoveFromGame.InvokeAsync() : Task.CompletedTask;
 
     public static string MonsterTypeIcon(MonsterType t) => t switch
     {
