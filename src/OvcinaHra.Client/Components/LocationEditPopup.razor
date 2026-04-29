@@ -446,6 +446,10 @@
     private void OnParentChangeRequested(int? newParentId)
     {
         model.ParentLocationId = newParentId;
+        parentId = newParentId;
+        parentName = newParentId.HasValue
+            ? AllLocations.FirstOrDefault(l => l.Id == newParentId.Value)?.Name ?? $"Lokace #{newParentId}"
+            : null;
     }
 
     private void SetParentChoices(IEnumerable<LocationListDto> candidates)

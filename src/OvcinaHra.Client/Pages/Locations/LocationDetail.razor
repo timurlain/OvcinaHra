@@ -662,6 +662,9 @@ else
     private void OnParentLocationChanged(int? value)
     {
         parentLocationId = value;
+        parent = value.HasValue
+            ? allLocations.FirstOrDefault(l => l.Id == value.Value)
+            : null;
         if (parentLocationId.HasValue)
         {
             RefreshInheritedCoordinates();
