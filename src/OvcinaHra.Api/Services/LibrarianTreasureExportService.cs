@@ -30,6 +30,7 @@ public sealed class LibrarianTreasureExportProblemException(string detail)
 
 public sealed class LibrarianTreasureExportService(
     WorldDbContext db,
+    IWebHostEnvironment environment,
     ILogger<LibrarianTreasureExportService> logger) : ILibrarianTreasureExportService
 {
     private const double A4WidthPt = 595.276;
@@ -55,16 +56,6 @@ public sealed class LibrarianTreasureExportService(
     private static readonly Color HeaderFill = Color.ParseHex("#f1f1f1");
     private static readonly StringComparer CzechComparer =
         StringComparer.Create(CultureInfo.GetCultureInfo("cs-CZ"), ignoreCase: false);
-    private static readonly string[] PreferredReadableFonts =
-    [
-        "Segoe UI",
-        "Arial",
-        "DejaVu Sans",
-        "Liberation Sans",
-        "Noto Sans",
-        "Helvetica"
-    ];
-
     public async Task<LibrarianTreasureExportFile> RenderLibrarianTreasuresAsync(
         int gameId,
         CancellationToken ct = default)
@@ -308,33 +299,19 @@ public sealed class LibrarianTreasureExportService(
         return [content, place, phase, stamp];
     }
 
-    private static LibrarianTreasureFonts LoadFonts()
+    private LibrarianTreasureFonts LoadFonts()
     {
-        var family = FindReadableFontFamily();
+        var fontRoot = System.IO.Path.Combine(environment.ContentRootPath, "Fonts", "Inter");
+        var fontCollection = new FontCollection();
+        var regular = fontCollection.Add(System.IO.Path.Combine(fontRoot, "Inter-Regular.ttf"));
+        var bold = fontCollection.Add(System.IO.Path.Combine(fontRoot, "Inter-Bold.ttf"));
         return new LibrarianTreasureFonts(
-            Title: family.CreateFont(52, FontStyle.Bold),
-            Subtitle: family.CreateFont(31),
-            Header: family.CreateFont(HeaderFontPx, FontStyle.Bold),
-            Body: family.CreateFont(BodyFontPx),
-            Phase: family.CreateFont(PhaseFontPx, FontStyle.Bold),
-            Small: family.CreateFont(24));
-    }
-
-    private static FontFamily FindReadableFontFamily()
-    {
-        foreach (var preferred in PreferredReadableFonts)
-        {
-            if (SystemFonts.Collection.TryGet(preferred, out var family))
-                return family;
-        }
-
-        foreach (var family in SystemFonts.Collection.Families)
-        {
-            if (!family.Name.Contains("Kalam", StringComparison.OrdinalIgnoreCase))
-                return family;
-        }
-
-        throw new LibrarianTreasureExportProblemException("Na serveru není dostupný čitelný font pro export.");
+            Title: bold.CreateFont(52),
+            Subtitle: regular.CreateFont(31),
+            Header: bold.CreateFont(HeaderFontPx),
+            Body: regular.CreateFont(BodyFontPx),
+            Phase: bold.CreateFont(PhaseFontPx),
+            Small: regular.CreateFont(24));
     }
 
     private static string FormatContents(IReadOnlyList<LibrarianTreasureItem> items) =>
