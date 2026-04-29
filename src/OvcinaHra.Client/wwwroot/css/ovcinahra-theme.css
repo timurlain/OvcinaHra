@@ -3726,6 +3726,12 @@
 .oh-map-kind-lbl{flex:1;font-size:.875rem}
 .oh-map-kind-num{font-variant-numeric:tabular-nums;font-size:.8rem;color:var(--oh-text-muted,#6b6453)}
 .oh-map-canvas{position:relative;border:1px solid var(--oh-border,#d8d2be);border-radius:8px;overflow:hidden}
+.oh-map-move-hint{position:absolute;left:50%;top:52px;z-index:12;transform:translateX(-50%);
+    display:flex;align-items:center;flex-wrap:wrap;gap:10px;max-width:min(720px,calc(100% - 24px));
+    padding:8px 10px;border-radius:6px;background:rgba(45,80,22,.95);color:#fff;
+    box-shadow:0 2px 10px rgba(0,0,0,.22);font:600 .86rem var(--oh-font-body,sans-serif)}
+.oh-map-move-hint-error{color:#ffe1df;font-weight:700}
+.oh-map-move-hint .btn{white-space:nowrap;padding:2px 8px;font-size:.78rem}
 .oh-map-style-toolbar{position:absolute;top:8px;right:8px;z-index:10;display:flex;gap:4px;
     background:rgba(250,246,236,.92);padding:3px;border-radius:99px;
     box-shadow:0 1px 4px rgba(0,0,0,.12)}
@@ -3784,7 +3790,9 @@
    Ctrl+Click will place an ungeocoded location, Ctrl+Shift+Click will
    move an existing one). Class toggled by map-interop.js keydown/keyup. */
 .oh-map-ctrl-held .maplibregl-canvas-container,
-.oh-map-ctrl-held .maplibregl-canvas{cursor:crosshair !important}
+.oh-map-ctrl-held .maplibregl-canvas,
+.oh-map-move-shortcut-active .maplibregl-canvas-container,
+.oh-map-move-shortcut-active .maplibregl-canvas{cursor:crosshair !important}
 
 /* Issue #273 — graduated location labels. Each pin advertises a
    `data-minzoom` (set in JS from KIND_MIN_ZOOM) and the zoomend handler
