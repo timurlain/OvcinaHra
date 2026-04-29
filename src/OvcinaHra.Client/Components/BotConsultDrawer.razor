@@ -111,6 +111,7 @@
     private const string PersonaStorageKey = "oh-bot-last-persona";
     private const string Rulemaster = "rulemaster";
     private const string Loremaster = "loremaster";
+    private const int MaxDraftShortcutAttachAttempts = 5;
 
     private readonly List<BotMessage> _messages = [];
     private bool _enabled;
@@ -119,6 +120,7 @@
     private bool _drozdIconFailed;
     private bool _draftShortcutAttached;
     private bool _draftShortcutUnavailable;
+    private int _draftShortcutAttachAttempts;
     private string _persona = Loremaster;
     private string _draft = string.Empty;
     private ElementReference _draftInput;
@@ -137,8 +139,18 @@
             StateHasChanged();
         }
 
-        if (_open && !_draftShortcutAttached && !_draftShortcutUnavailable)
-            await AttachDraftShortcutAsync();
+        if (_open
+            && !_draftShortcutAttached
+            && !_draftShortcutUnavailable
+            && _draftShortcutAttachAttempts < MaxDraftShortcutAttachAttempts)
+        {
+            var attached = await AttachDraftShortcutAsync();
+            if (!attached && _open && !_draftShortcutUnavailable)
+            {
+                await Task.Delay(25);
+                StateHasChanged();
+            }
+        }
     }
 
     private async Task LoadAvailabilityAsync()
@@ -180,6 +192,7 @@
     {
         _open = true;
         _draftShortcutAttached = false;
+        _draftShortcutAttachAttempts = 0;
     }
 
     private void Close()
@@ -211,8 +224,12 @@
 
     private async Task SendAsync()
     {
+        LogChatInput($"SendAsync entry canSend={Flag(CanSend)} sending={Flag(_sending)}");
         if (!CanSend)
+        {
+            LogChatInput("SendAsync exit sent=false");
             return;
+        }
 
         var persona = _persona;
         var text = _draft.Trim();
@@ -242,36 +259,63 @@
         finally
         {
             _sending = false;
+            LogChatInput("SendAsync exit sent=true");
         }
     }
 
     [JSInvokable]
     public async Task SendDraftFromKeyboardAsync()
     {
-        await SendAsync();
-        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await SendAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (ObjectDisposedException ex)
+        {
+            LogChatInput("keyboard-submit-disposed");
+            Logger.LogDebug(ex, "Bot consult drawer keyboard submit reached a disposed component.");
+        }
+        catch (InvalidOperationException ex)
+        {
+            LogChatInput("keyboard-submit-failed invalid-operation");
+            Logger.LogDebug(ex, "Bot consult drawer keyboard submit failed.");
+        }
     }
 
-    private async Task AttachDraftShortcutAsync()
+    private async Task<bool> AttachDraftShortcutAsync()
     {
         try
         {
+            _draftShortcutAttachAttempts++;
             _keyboardModule ??= await Js.InvokeAsync<IJSObjectReference>(
                 "import",
                 "./Components/BotConsultDrawer.razor.js");
             _selfReference ??= DotNetObjectReference.Create(this);
-            await _keyboardModule.InvokeVoidAsync("attachEnterToSend", _draftInput, _selfReference);
-            _draftShortcutAttached = true;
+            var attached = await _keyboardModule.InvokeAsync<bool>("attachEnterToSend", _draftInput, _selfReference);
+            _draftShortcutAttached = attached;
+            if (attached)
+                _draftShortcutAttachAttempts = 0;
+            else if (_draftShortcutAttachAttempts >= MaxDraftShortcutAttachAttempts)
+                Logger.LogWarning("Bot consult drawer Enter-to-send shortcut did not attach after {Attempts} attempts.", _draftShortcutAttachAttempts);
+
+            return attached;
         }
         catch (JSException ex)
         {
             DisableDraftShortcut(ex);
+            return false;
         }
         catch (InvalidOperationException ex)
         {
             DisableDraftShortcut(ex);
+            return false;
         }
     }
+
+    private static void LogChatInput(string message) => Console.WriteLine($"[chat-input] {message}");
+
+    private static string Flag(bool value) => value ? "true" : "false";
 
     private void DisableDraftShortcut(Exception exception)
     {
