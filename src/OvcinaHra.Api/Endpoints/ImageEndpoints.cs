@@ -123,10 +123,11 @@ public static class ImageEndpoints
         if (isLocationPlacement)
         {
             logger.LogInformation(
-                "[loc-placement] image.upload.entry gameId={GameId} locationId={LocationId} userId={UserId} imageBlobUrl={ImageBlobUrl}",
+                "[loc-placement] image.upload.entry gameId={GameId} locationId={LocationId} userId={UserId} imageBlobKey={ImageBlobKey} imageBlobUrl={ImageBlobUrl}",
                 gameId,
                 entityId,
                 userId,
+                null,
                 null);
         }
 
@@ -169,11 +170,12 @@ public static class ImageEndpoints
             if (isLocationPlacement)
             {
                 logger.LogInformation(
-                    "[loc-placement] image.upload.blob-uploaded gameId={GameId} locationId={LocationId} userId={UserId} imageBlobUrl={ImageBlobUrl}",
+                    "[loc-placement] image.upload.blob-uploaded gameId={GameId} locationId={LocationId} userId={UserId} imageBlobKey={ImageBlobKey} imageBlobUrl={ImageBlobUrl}",
                     gameId,
                     entityId,
                     userId,
-                    blobKey);
+                    blobKey,
+                    null);
             }
 
             // Invalidate cached thumbnails for this logical image entity. Legacy
@@ -189,20 +191,36 @@ public static class ImageEndpoints
                 // CS4014 without a pragma.
                 _ = PreGenerateAllPresetsAsync(thumbnailService, thumbLogger, entityType, entityId, blobKey);
             }
+            else if (entityType == "locations")
+            {
+                await blobService.DeletePrefixAsync($"locationplacements-thumbs/{entityId}-");
+                _ = PreGenerateAllPresetsAsync(thumbnailService, thumbLogger, "locationplacements", entityId, blobKey);
+            }
 
             await UpdateEntityImagePath(db, entityType, entityId, blobKey, isPlacement);
 
             var url = await blobService.GetSasUrlAsync(blobKey);
+            if (isLocationPlacement)
+            {
+                logger.LogInformation(
+                    "[loc-placement] image.upload.url-ready gameId={GameId} locationId={LocationId} userId={UserId} imageBlobKey={ImageBlobKey} imageBlobUrl={ImageBlobUrl}",
+                    gameId,
+                    entityId,
+                    userId,
+                    blobKey,
+                    url);
+            }
             return TypedResults.Ok(new ImageUploadResult(blobKey, url));
         }
         catch (Exception ex) when (isLocationPlacement && ex is not OperationCanceledException)
         {
             logger.LogError(
                 ex,
-                "[loc-placement] image.upload.failed gameId={GameId} locationId={LocationId} userId={UserId} imageBlobUrl={ImageBlobUrl}",
+                "[loc-placement] image.upload.failed gameId={GameId} locationId={LocationId} userId={UserId} imageBlobKey={ImageBlobKey} imageBlobUrl={ImageBlobUrl}",
                 gameId,
                 entityId,
                 userId,
+                null,
                 null);
             throw;
         }
@@ -464,6 +482,10 @@ public static class ImageEndpoints
         if (pathToDelete is not null)
         {
             await blobService.DeleteAsync(pathToDelete);
+            if (isPlacement && entityType == "locations")
+                await blobService.DeletePrefixAsync($"locationplacements-thumbs/{entityId}-");
+            else if (!isPlacement)
+                await blobService.DeletePrefixAsync($"{entityType}-thumbs/{entityId}-");
             await UpdateEntityImagePath(db, entityType, entityId, null, isPlacement);
         }
 

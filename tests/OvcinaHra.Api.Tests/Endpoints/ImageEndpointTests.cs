@@ -107,6 +107,27 @@ public class ImageEndpointTests(PostgresFixture postgres) : IntegrationTestBase(
     }
 
     [Fact]
+    public async Task Upload_LegacyLocationPlacement_InvalidatesPlacementThumbnailCache()
+    {
+        var locResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Legacy umístění", LocationKind.Village, 49.5m, 17.1m));
+        var loc = await locResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+        var blob = (InMemoryBlobService)Factory.Services.GetRequiredService<IBlobStorageService>();
+        var staleThumbKey = $"locationplacements-thumbs/{loc!.Id}-stale.webp";
+        await blob.UploadAsync(staleThumbKey, new MemoryStream(ValidPng), "image/webp");
+
+        using var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(ValidPng);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        content.Add(fileContent, "file", "legacy-placement.png");
+
+        var response = await Client.PostAsync($"/api/images/locations/{loc.Id}?field=placement", content);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.False(blob.Contains(staleThumbKey));
+    }
+
+    [Fact]
     public async Task Upload_LocationStamp_TooSmall_ReturnsProblemDetails()
     {
         var locResponse = await Client.PostAsJsonAsync("/api/locations",

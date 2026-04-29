@@ -285,10 +285,11 @@ public static class LocationEndpoints
         var organizer = GetOrganizer(http.User);
         var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.LocationEndpoints");
         logger.LogInformation(
-            "[loc-placement] placement.record.entry gameId={GameId} locationId={LocationId} userId={UserId} imageBlobUrl={ImageBlobUrl}",
+            "[loc-placement] placement.record.entry gameId={GameId} locationId={LocationId} userId={UserId} imageBlobKey={ImageBlobKey} imageBlobUrl={ImageBlobUrl}",
             dto.GameId,
             id,
             organizer.UserId,
+            null,
             null);
 
         try
@@ -299,10 +300,11 @@ public static class LocationEndpoints
             if (location is null)
             {
                 logger.LogInformation(
-                    "[loc-placement] placement.record.not-found gameId={GameId} locationId={LocationId} userId={UserId} imageBlobUrl={ImageBlobUrl}",
+                    "[loc-placement] placement.record.not-found gameId={GameId} locationId={LocationId} userId={UserId} imageBlobKey={ImageBlobKey} imageBlobUrl={ImageBlobUrl}",
                     dto.GameId,
                     id,
                     organizer.UserId,
+                    null,
                     null);
                 return TypedResults.NotFound();
             }
@@ -310,10 +312,11 @@ public static class LocationEndpoints
             if (string.IsNullOrWhiteSpace(location.PlacementPhotoPath))
             {
                 logger.LogInformation(
-                    "[loc-placement] placement.record.missing-photo gameId={GameId} locationId={LocationId} userId={UserId} imageBlobUrl={ImageBlobUrl}",
+                    "[loc-placement] placement.record.missing-photo gameId={GameId} locationId={LocationId} userId={UserId} imageBlobKey={ImageBlobKey} imageBlobUrl={ImageBlobUrl}",
                     dto.GameId,
                     id,
                     organizer.UserId,
+                    null,
                     null);
                 return PlacementProblem("Nejprve nahrajte fotografii umístění.");
             }
@@ -349,12 +352,14 @@ public static class LocationEndpoints
             db.WorldActivities.Add(activity);
             await db.SaveChangesAsync(ct);
 
+            var placementPhotoUrl = ImageEndpoints.ThumbUrl(http, "locationplacements", location.Id, "small");
             logger.LogInformation(
-                "[loc-placement] placement.record.activity-inserted gameId={GameId} locationId={LocationId} userId={UserId} imageBlobUrl={ImageBlobUrl} activityId={ActivityId}",
+                "[loc-placement] placement.record.activity-inserted gameId={GameId} locationId={LocationId} userId={UserId} imageBlobKey={ImageBlobKey} imageBlobUrl={ImageBlobUrl} activityId={ActivityId}",
                 dto.GameId,
                 id,
                 organizer.UserId,
                 location.PlacementPhotoPath,
+                placementPhotoUrl,
                 activity.Id);
 
             return TypedResults.Ok(new LocationPlacementStatusDto(
@@ -362,7 +367,7 @@ public static class LocationEndpoints
                 location.Name,
                 true,
                 location.PlacementPhotoPath,
-                ImageEndpoints.ThumbUrl(http, "locationplacements", location.Id, "small"),
+                placementPhotoUrl,
                 location.SetupNotes,
                 activity.TimestampUtc,
                 activity.OrganizerName));
@@ -371,10 +376,11 @@ public static class LocationEndpoints
         {
             logger.LogError(
                 ex,
-                "[loc-placement] placement.record.failed gameId={GameId} locationId={LocationId} userId={UserId} imageBlobUrl={ImageBlobUrl}",
+                "[loc-placement] placement.record.failed gameId={GameId} locationId={LocationId} userId={UserId} imageBlobKey={ImageBlobKey} imageBlobUrl={ImageBlobUrl}",
                 dto.GameId,
                 id,
                 organizer.UserId,
+                null,
                 null);
             throw;
         }
