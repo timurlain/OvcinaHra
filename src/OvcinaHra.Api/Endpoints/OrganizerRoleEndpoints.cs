@@ -8,6 +8,11 @@ namespace OvcinaHra.Api.Endpoints;
 
 public static class OrganizerRoleEndpoints
 {
+    private const string LoggerCategory = "OvcinaHra.Api.Endpoints.OrganizerRoleEndpoints";
+    private const int PersonNameMaxLength = 200;
+    private const int PersonEmailMaxLength = 200;
+    private const int NotesMaxLength = 1000;
+
     public static RouteGroupBuilder MapOrganizerRoleEndpoints(this IEndpointRouteBuilder routes)
     {
         var group = routes.MapGroup("/api/games/{gameId:int}/organizer-role-assignments")
@@ -27,7 +32,7 @@ public static class OrganizerRoleEndpoints
         ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
-        var logger = loggerFactory.CreateLogger("OrganizerRoleEndpoints");
+        var logger = loggerFactory.CreateLogger(LoggerCategory);
         if (!await db.Games.AnyAsync(g => g.Id == gameId, ct))
         {
             logger.LogInformation("[organizer-roles] matrix game_not_found gameId={GameId}", gameId);
@@ -93,8 +98,16 @@ public static class OrganizerRoleEndpoints
         ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
-        var logger = loggerFactory.CreateLogger("OrganizerRoleEndpoints");
-        var validation = await ValidateAssignmentTargetAsync(gameId, dto.NpcId, dto.PersonId, dto.PersonName, db, ct);
+        var logger = loggerFactory.CreateLogger(LoggerCategory);
+        var validation = await ValidateAssignmentTargetAsync(
+            gameId,
+            dto.NpcId,
+            dto.PersonId,
+            dto.PersonName,
+            dto.PersonEmail,
+            dto.Notes,
+            db,
+            ct);
         if (validation is not null) return validation;
 
         var slotIds = await db.GameTimeSlots
@@ -168,8 +181,17 @@ public static class OrganizerRoleEndpoints
         ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
-        var logger = loggerFactory.CreateLogger("OrganizerRoleEndpoints");
-        var validation = await ValidateAssignmentTargetAsync(gameId, npcId, dto.PersonId, dto.PersonName, db, ct, slotId);
+        var logger = loggerFactory.CreateLogger(LoggerCategory);
+        var validation = await ValidateAssignmentTargetAsync(
+            gameId,
+            npcId,
+            dto.PersonId,
+            dto.PersonName,
+            dto.PersonEmail,
+            dto.Notes,
+            db,
+            ct,
+            slotId);
         if (validation is not null) return validation;
 
         var existing = await db.OrganizerRoleAssignments
@@ -227,7 +249,7 @@ public static class OrganizerRoleEndpoints
         db.OrganizerRoleAssignments.Remove(assignment);
         await db.SaveChangesAsync(ct);
 
-        loggerFactory.CreateLogger("OrganizerRoleEndpoints").LogInformation(
+        loggerFactory.CreateLogger(LoggerCategory).LogInformation(
             "[organizer-roles] slot unassigned gameId={GameId} slotId={SlotId} npcId={NpcId} personId={PersonId}",
             gameId,
             slotId,
@@ -242,6 +264,8 @@ public static class OrganizerRoleEndpoints
         int npcId,
         int personId,
         string personName,
+        string? personEmail,
+        string? notes,
         WorldDbContext db,
         CancellationToken ct,
         int? slotId = null)
@@ -254,8 +278,37 @@ public static class OrganizerRoleEndpoints
                 StatusCodes.Status400BadRequest);
         }
 
+        if (personName.Trim().Length > PersonNameMaxLength)
+        {
+            return Problem(
+                $"Jméno dospělého může mít nejvýše {PersonNameMaxLength} znaků.",
+                "Jméno dospělého je příliš dlouhé",
+                StatusCodes.Status400BadRequest);
+        }
+
+        if (!string.IsNullOrWhiteSpace(personEmail) && personEmail.Trim().Length > PersonEmailMaxLength)
+        {
+            return Problem(
+                $"E-mail dospělého může mít nejvýše {PersonEmailMaxLength} znaků.",
+                "E-mail dospělého je příliš dlouhý",
+                StatusCodes.Status400BadRequest);
+        }
+
+        if (!string.IsNullOrWhiteSpace(notes) && notes.Trim().Length > NotesMaxLength)
+        {
+            return Problem(
+                $"Poznámka může mít nejvýše {NotesMaxLength} znaků.",
+                "Poznámka je příliš dlouhá",
+                StatusCodes.Status400BadRequest);
+        }
+
         if (!await db.Games.AnyAsync(g => g.Id == gameId, ct))
-            return TypedResults.Problem(statusCode: StatusCodes.Status404NotFound);
+        {
+            return Problem(
+                "Požadovaná hra nebyla nalezena.",
+                "Hra neexistuje",
+                StatusCodes.Status404NotFound);
+        }
 
         if (slotId is int sid && !await db.GameTimeSlots.AnyAsync(s => s.Id == sid && s.GameId == gameId, ct))
         {

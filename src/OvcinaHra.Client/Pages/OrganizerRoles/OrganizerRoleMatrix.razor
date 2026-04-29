@@ -124,6 +124,7 @@ else
                             <td class="@CellCss(assignment)" @key="slot.Id">
                                 <button type="button"
                                         class="oh-orgrole-cell-btn"
+                                        aria-label="@CellButtonLabel(slot, npc, assignment)"
                                         @onclick="() => OpenCellEditor(slot, npc, assignment)">
                                     @if (assignment is null)
                                     {
@@ -322,6 +323,7 @@ else
         {
             await LoadMatrixAsync();
             await LoadAdultsAsync();
+            RebuildDerivedState();
         }
         catch (Exception ex)
         {
@@ -429,6 +431,16 @@ else
         var start = slot.StartTime.ToLocalTime();
         var end = start.AddHours((double)slot.DurationHours);
         return $"{start.ToString("d.M. HH:mm", Czech)}-{end.ToString("HH:mm", Czech)}";
+    }
+
+    private string CellButtonLabel(
+        OrganizerRoleTimeSlotDto slot,
+        OrganizerRoleNpcDto npc,
+        OrganizerRoleAssignmentDto? assignment)
+    {
+        var action = assignment is null ? "Přiřadit dospělého" : "Upravit přiřazení";
+        var person = assignment is null ? null : $" - {assignment.PersonName}";
+        return $"{action}: {npc.NpcName}, {FormatSlotTime(slot)}{person}";
     }
 
     private string CellCss(OrganizerRoleAssignmentDto? assignment)

@@ -57,6 +57,8 @@ public class ApiClient
         using var response = await _http.GetAsync(url, cancellationToken);
         if (!response.IsSuccessStatusCode)
             return (false, default, await ReadProblemDetailAsync(response));
+        if (response.Content.Headers.ContentLength == 0 || response.StatusCode == HttpStatusCode.NoContent)
+            return (true, default, null);
 
         return (true, await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken), null);
     }

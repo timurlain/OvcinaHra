@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Mvc;
 using OvcinaHra.Api.Tests.Fixtures;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
@@ -139,6 +140,23 @@ public class OrganizerRoleEndpointTests(PostgresFixture postgres) : IntegrationT
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         var matrix = await LoadMatrixAsync(game.Id);
         Assert.Empty(matrix.Assignments);
+    }
+
+    [Fact]
+    public async Task UpsertSlotAssignment_RejectsTooLongPersonFieldsWithProblemDetails()
+    {
+        var (game, npc, slots) = await CreateGameWithNpcAndSlotsAsync(slotCount: 1);
+        var tooLongName = new string('A', 201);
+
+        var response = await Client.PutAsJsonAsync(
+            $"/api/games/{game.Id}/organizer-role-assignments/slots/{slots[0].Id}/npcs/{npc.Id}",
+            new UpsertOrganizerRoleAssignmentDto(501, tooLongName, "pavel@example.com"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Jméno dospělého je příliš dlouhé", problem.Title);
+        Assert.Contains("200", problem.Detail ?? "");
     }
 
     private async Task<(GameDetailDto Game, NpcDetailDto Npc, List<GameTimeSlotDto> Slots)> CreateGameWithNpcAndSlotsAsync(int slotCount)
