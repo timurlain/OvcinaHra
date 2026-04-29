@@ -51,19 +51,29 @@ public static class TreasurePlanningEndpoints
             .Where(ti => ti.GameId == gameId
                 && ti.TreasureQuestId == null
                 && ti.Item.ItemType != ItemType.Money)
-            .Include(ti => ti.Item)
             .OrderBy(ti => ti.Item.ItemType).ThenBy(ti => ti.Item.Name)
+            .Select(ti => new
+            {
+                ti.Id,
+                ti.ItemId,
+                ItemName = ti.Item.Name,
+                ti.Item.ItemType,
+                ti.Count,
+                ti.GameId,
+                ti.Item.IsUnique,
+                ti.Item.ImagePath
+            })
             .ToListAsync();
         var items = rows
             .Select(ti => new TreasurePoolItemDto(
                 ti.Id,
                 ti.ItemId,
-                ti.Item.Name,
-                ti.Item.ItemType,
+                ti.ItemName,
+                ti.ItemType,
                 ti.Count,
                 ti.GameId,
-                ti.Item.IsUnique,
-                ItemThumbnailUrl(http, ti.ItemId, ti.Item.ImagePath)))
+                ti.IsUnique,
+                ItemThumbnailUrl(http, ti.ItemId, ti.ImagePath)))
             .ToList();
         return TypedResults.Ok(items);
     }
@@ -254,12 +264,13 @@ public static class TreasurePlanningEndpoints
                 var sQuests = quests.Where(q => q.SecretStashId == gs.SecretStashId).ToList();
                 return new StashSummaryDto(gs.SecretStashId, gs.SecretStash.Name, sQuests.SelectMany(q => q.TreasureItems).Sum(ti => ti.Count));
             }).ToList();
-            var assignedTreasures = allQuests
+            var allAssignedTreasures = allQuests
                 .OrderBy(q => q.Difficulty)
                 .ThenBy(q => q.Title)
                 .SelectMany(q => q.TreasureItems
                     .OrderBy(ti => ti.Item.Name)
                     .Select(ti => new TreasurePlanningAssignedTreasureDto(
+                        ti.Id,
                         q.Id,
                         q.Title,
                         q.Difficulty,
@@ -267,7 +278,18 @@ public static class TreasurePlanningEndpoints
                         ti.Item.Name,
                         ti.Count,
                         ItemThumbnailUrl(http, ti.ItemId, ti.Item.ImagePath))))
+                .GroupBy(ti => new { ti.QuestId, ti.Difficulty, ti.ItemId, ti.ItemName, ti.ItemThumbnailUrl })
+                .Select(g => new TreasurePlanningAssignedTreasureDto(
+                    g.Min(ti => ti.TreasureItemId),
+                    g.Key.QuestId,
+                    g.First().QuestTitle,
+                    g.Key.Difficulty,
+                    g.Key.ItemId,
+                    g.Key.ItemName,
+                    g.Sum(ti => ti.Count),
+                    g.Key.ItemThumbnailUrl))
                 .ToList();
+            var assignedTreasures = allAssignedTreasures.Take(4).ToList();
 
             return new TreasurePlanningLocationDto(
                 loc.Id, loc.Name, loc.LocationKind,
@@ -283,7 +305,8 @@ public static class TreasurePlanningEndpoints
                 Longitude: loc.Coordinates?.Longitude,
                 EffectiveLatitude: loc.Coordinates?.Latitude,
                 EffectiveLongitude: loc.Coordinates?.Longitude,
-                AssignedTreasures: assignedTreasures);
+                AssignedTreasures: assignedTreasures,
+                AssignedTreasureCount: allAssignedTreasures.Count);
         }).ToList();
 
         return TypedResults.Ok(result);

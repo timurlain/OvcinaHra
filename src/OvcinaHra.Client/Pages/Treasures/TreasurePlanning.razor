@@ -248,7 +248,7 @@ else
                         @foreach (var phase in placementPhaseOptions)
                         {
                             <button type="button"
-                                    class="oh-tl-seg-btn @(lastUsedDifficulty == phase.Value ? "on" : "")"
+                                    class="oh-tl-seg-btn @(placementPhase == phase.Value ? "on" : "")"
                                     data-stage="@phase.StageKey"
                                     @onclick="() => SetPlacementPhase(phase.Value)">
                                 @phase.Label
@@ -1339,8 +1339,9 @@ else
 
     private void SetPlacementPhase(GameTimePhase next)
     {
-        if (lastUsedDifficulty == next) return;
-        var previous = PlacementPhaseUiName(lastUsedDifficulty);
+        if (placementPhase == next && lastUsedDifficulty == next) return;
+        var previous = PlacementPhaseUiName(placementPhase);
+        placementPhase = next;
         lastUsedDifficulty = next;
         var current = PlacementPhaseUiName(next);
         Console.WriteLine($"[treasure-alloc] phase-toggle changed from={previous} to={current}");
@@ -1358,6 +1359,13 @@ else
         GameTimePhase.Start => "Start",
         GameTimePhase.Lategame or GameTimePhase.EndGame => "Konec",
         _ => "Hra"
+    };
+
+    private static GameTimePhase PlacementPhaseBucket(GameTimePhase phase) => phase switch
+    {
+        GameTimePhase.Start => GameTimePhase.Start,
+        GameTimePhase.Lategame or GameTimePhase.EndGame => GameTimePhase.Lategame,
+        _ => GameTimePhase.Midgame
     };
 
     private static void LogAssignRequestPhase(GameTimePhase phase, string source, int? locationId, int? secretStashId = null)
@@ -1425,6 +1433,7 @@ else
     private OvcinaHra.Shared.Domain.Enums.LocationKind? treasuresKindFilter;
     private string? treasuresRegionFilter;
     private GameTimePhase lastUsedDifficulty = GameTimePhase.Start;
+    private GameTimePhase placementPhase = GameTimePhase.Start;
 
     // ===== Game context =====
     private int gameId => GameContext.SelectedGameId ?? 1;
@@ -1955,7 +1964,7 @@ else
         var unlimitedAssignments = BuildCompositeBundleUnlimitedAssignments();
         var dto = new AssignTreasureDto(
             Title: EffectiveCompositeBundleTitle,
-            Difficulty: lastUsedDifficulty,
+            Difficulty: placementPhase,
             GameId: gameId,
             LocationId: locationId,
             PoolItems: assignments,
@@ -1994,6 +2003,7 @@ else
         }
 
         lastUsedDifficulty = dto.Difficulty;
+        placementPhase = PlacementPhaseBucket(dto.Difficulty);
         var completedBundleId = compositeBundleClientId;
         var completedUnits = CompositeBundleUnitCount;
         ClearCompositeBundle();
@@ -2021,7 +2031,7 @@ else
         var count = item.IsUnique ? item.Count : 1;
         var dto = new AssignTreasureDto(
             Title: item.ItemName,
-            Difficulty: lastUsedDifficulty,
+            Difficulty: placementPhase,
             GameId: gameId,
             LocationId: locationId,
             PoolItems: [new PoolItemAssignDto(item.Id, count)]);
@@ -2050,6 +2060,7 @@ else
         }
 
         lastUsedDifficulty = dto.Difficulty;
+        placementPhase = PlacementPhaseBucket(dto.Difficulty);
         selectedPool.RemoveAll(p => p.Id == item.Id);
         focusedLocationId = locationId;
         focusTab = "prehled";
@@ -2153,6 +2164,7 @@ else
         }
 
         lastUsedDifficulty = dto.Difficulty;
+        placementPhase = PlacementPhaseBucket(dto.Difficulty);
         selectedPool.Clear();
         markersPlaced = false;
         await LoadAllAsync();
@@ -2245,7 +2257,7 @@ else
             var count = Math.Max(1, grosCount);
             var dto = new AssignTreasureDto(
                 Title: $"Groše × {count}",
-                Difficulty: lastUsedDifficulty,
+                Difficulty: placementPhase,
                 GameId: gameId,
                 LocationId: locationId,
                 UnlimitedItems: [new UnlimitedItemAssignDto(grosItem.ItemId, count)]);
@@ -2261,6 +2273,7 @@ else
             }
 
             lastUsedDifficulty = dto.Difficulty;
+            placementPhase = PlacementPhaseBucket(dto.Difficulty);
             isGrosDialogVisible = false;
             markersPlaced = false;
             await LoadAllAsync();

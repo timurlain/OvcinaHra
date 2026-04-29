@@ -65,9 +65,11 @@ public record TreasurePlanningLocationDto(
     decimal? Longitude = null,
     decimal? EffectiveLatitude = null,
     decimal? EffectiveLongitude = null,
-    List<TreasurePlanningAssignedTreasureDto>? AssignedTreasures = null);
+    List<TreasurePlanningAssignedTreasureDto>? AssignedTreasures = null,
+    int AssignedTreasureCount = 0);
 
 public record TreasurePlanningAssignedTreasureDto(
+    int TreasureItemId,
     int QuestId,
     string QuestTitle,
     GameTimePhase Difficulty,

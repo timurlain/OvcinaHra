@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.Extensions.DependencyInjection;
+using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Tests.Fixtures;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
@@ -33,6 +35,16 @@ public class TreasurePlanningPoolEndpointTests(PostgresFixture postgres) : Integ
             new CreateItemDto(name, itemType));
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<ItemDetailDto>())!;
+    }
+
+    private async Task SetItemImagePathAsync(int itemId, string imagePath)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        var item = await db.Items.FindAsync(itemId);
+        Assert.NotNull(item);
+        item!.ImagePath = imagePath;
+        await db.SaveChangesAsync();
     }
 
     private async Task AssignItemToGameAsync(int gameId, int itemId, int? stockCount = null, bool isFindable = false)
@@ -71,6 +83,33 @@ public class TreasurePlanningPoolEndpointTests(PostgresFixture postgres) : Integ
             new CreateTreasurePoolItemDto(itemId, gameId, count));
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<TreasurePoolItemDto>())!;
+    }
+
+    [Fact]
+    public async Task GetPool_ReturnsAbsoluteThumbnailUrlOnlyWhenItemHasImagePath()
+    {
+        var game = await CreateGameAsync();
+        var illustrated = await CreateItemAsync("Ilustrovaný klíč");
+        var plain = await CreateItemAsync("Obyčejný kámen");
+        await SetItemImagePathAsync(illustrated.Id, $"items/{illustrated.Id}/klic.webp");
+        await AssignItemToGameAsync(game.Id, illustrated.Id);
+        await AssignItemToGameAsync(game.Id, plain.Id);
+        await AddPoolItemAsync(game.Id, illustrated.Id);
+        await AddPoolItemAsync(game.Id, plain.Id);
+
+        var pool = await Client.GetFromJsonAsync<List<TreasurePoolItemDto>>(
+            $"/api/treasure-planning/pool/{game.Id}");
+
+        Assert.NotNull(pool);
+        var illustratedRow = Assert.Single(pool!, p => p.ItemId == illustrated.Id);
+        var plainRow = Assert.Single(pool!, p => p.ItemId == plain.Id);
+        Assert.NotNull(illustratedRow.ItemThumbnailUrl);
+        Assert.True(
+            Uri.TryCreate(illustratedRow.ItemThumbnailUrl, UriKind.Absolute, out var thumbnailUri),
+            $"Expected absolute thumbnail URL, got '{illustratedRow.ItemThumbnailUrl}'.");
+        Assert.Equal($"/api/images/items/{illustrated.Id}/thumb", thumbnailUri!.AbsolutePath);
+        Assert.Equal("?size=small", thumbnailUri.Query);
+        Assert.Null(plainRow.ItemThumbnailUrl);
     }
 
     [Fact]
