@@ -298,6 +298,7 @@ else
                                     <button type="button"
                                             class="btn btn-sm btn-outline-primary"
                                             @onclick="AddCompositeBundleItem"
+                                            aria-label="Přidat do balíčku"
                                             disabled="@(!CanAddCompositeBundleItem)">
                                         <i class="bi bi-plus-circle"></i>
                                     </button>
@@ -341,16 +342,18 @@ else
                         }
                         @if (HasCompositeBundle)
                         {
-                            <div @ref="compositeBundleElement"
-                                 class="oh-tp-composite-tile @(selectedCompositeBundle ? "selected" : "")"
-                                 @onclick="ToggleCompositeBundleSelection">
+                            <button @ref="compositeBundleElement"
+                                    type="button"
+                                    class="oh-tp-composite-tile @(selectedCompositeBundle ? "selected" : "")"
+                                    aria-pressed="@selectedCompositeBundle"
+                                    @onclick="ToggleCompositeBundleSelection">
                                 <div class="oh-tp-composite-icon"><i class="bi bi-collection"></i></div>
                                 <div class="oh-tp-composite-body">
                                     <strong>@EffectiveCompositeBundleTitle</strong>
                                     <span>@CompositeBundleSummary</span>
                                 </div>
                                 <div class="oh-tp-composite-count">×@CompositeBundleUnitCount</div>
-                            </div>
+                            </button>
                         }
                         @if (HasPendingAllocation)
                         {
