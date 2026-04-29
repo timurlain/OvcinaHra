@@ -143,6 +143,38 @@ public class OrganizerRoleEndpointTests(PostgresFixture postgres) : IntegrationT
     }
 
     [Fact]
+    public async Task BulkAssign_NonexistentGame_ReturnsNotFoundBeforePayloadValidation()
+    {
+        var response = await Client.PostAsJsonAsync(
+            "/api/games/999999999/organizer-role-assignments/bulk",
+            new BulkOrganizerRoleAssignmentDto(1, 0, "", null));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Hra neexistuje", problem.Title);
+        Assert.Equal("Požadovaná hra nebyla nalezena.", problem.Detail);
+    }
+
+    [Fact]
+    public async Task BulkAssign_GameWithoutTimeSlots_ReturnsPolishedProblemDetails()
+    {
+        var game = await CreateGameAsync();
+        var npc = await CreateNpcAsync("Bez slotů", NpcRole.Monster);
+        await AssignNpcAsync(game.Id, npc.Id);
+
+        var response = await Client.PostAsJsonAsync(
+            $"/api/games/{game.Id}/organizer-role-assignments/bulk",
+            new BulkOrganizerRoleAssignmentDto(npc.Id, 501, "Pavel Dospělý", "pavel@example.com"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Hra nemá časové sloty", problem.Title);
+        Assert.Equal("Nejdřív vytvořte časové bloky v harmonogramu.", problem.Detail);
+    }
+
+    [Fact]
     public async Task UpsertSlotAssignment_RejectsTooLongPersonFieldsWithProblemDetails()
     {
         var (game, npc, slots) = await CreateGameWithNpcAndSlotsAsync(slotCount: 1);
