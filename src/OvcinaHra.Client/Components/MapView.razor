@@ -152,6 +152,12 @@
     /// boundary.</summary>
     [Parameter] public EventCallback<(int Id, double Lat, double Lng)> OnMapPagePinDrag { get; set; }
 
+    /// <summary>Fires when Ctrl+Shift+click on a map-page location pin starts shortcut move mode.</summary>
+    [Parameter] public EventCallback<(int Id, double Lat, double Lng)> OnMapPagePinMoveShortcut { get; set; }
+
+    /// <summary>Fires when Escape cancels shortcut move mode before coordinates are committed.</summary>
+    [Parameter] public EventCallback OnMapPagePinMoveShortcutCancel { get; set; }
+
     /// <summary>
     /// When set, the map loads the game's vector overlay (issue #96) and
     /// surfaces the "Upravit překryv" editor button.
@@ -800,6 +806,20 @@
     {
         Console.WriteLine($"[map-diag] MapView.OnLocationPinDragged entry id={id} lat={lat} lng={lng} hasDelegate={OnMapPagePinDrag.HasDelegate}");
         await OnMapPagePinDrag.InvokeAsync((id, lat, lng));
+    }
+
+    [JSInvokable]
+    public async Task OnLocationMoveShortcutStarted(int id, double lat, double lng)
+    {
+        Console.WriteLine($"[map-diag] MapView.OnLocationMoveShortcutStarted entry id={id} lat={lat} lng={lng} hasDelegate={OnMapPagePinMoveShortcut.HasDelegate}");
+        await OnMapPagePinMoveShortcut.InvokeAsync((id, lat, lng));
+    }
+
+    [JSInvokable]
+    public async Task OnLocationMoveShortcutCanceled()
+    {
+        Console.WriteLine($"[map-diag] MapView.OnLocationMoveShortcutCanceled entry hasDelegate={OnMapPagePinMoveShortcutCancel.HasDelegate}");
+        await OnMapPagePinMoveShortcutCancel.InvokeAsync();
     }
 
     [JSInvokable]

@@ -5,6 +5,7 @@ window.ovcinaMap = {
     _dotnetRef: null,
     _elementId: null,
     _apiKey: null,
+    _moveShortcutActive: false,
 
     // Glyph URL — required by MapLibre for any layer with `text-field` in
     // its layout (e.g. the overlay editor's `oh-overlay-preview-text` text
@@ -92,6 +93,7 @@ window.ovcinaMap = {
         this._dotnetRef = dotnetRef;
         this._elementId = elementId;
         this._apiKey = (mapyCzApiKey && mapyCzApiKey.length > 5) ? mapyCzApiKey : null;
+        this._moveShortcutActive = false;
         // Resolved at init so every style construction below picks up the
         // environment-specific URL (#166). Empty/missing/whitespace-only →
         // fall back to the demotiles dev URL so local smoke testing still
@@ -200,6 +202,14 @@ window.ovcinaMap = {
         // rest of the time. Listeners cleared in dispose().
         var mapContainer = this._map.getContainer();
         var keyDown = function (e) {
+            if (e.key === 'Escape' && window.ovcinaMap._moveShortcutActive) {
+                e.preventDefault();
+                window.ovcinaMap._mapDiag('location.relocate.cancel', { source: 'escape' });
+                if (window.ovcinaMap._dotnetRef) {
+                    window.ovcinaMap._dotnetRef.invokeMethodAsync('OnLocationMoveShortcutCanceled');
+                }
+                return;
+            }
             if (e.key === 'Control' || e.key === 'Meta') {
                 mapContainer.classList.add('oh-map-ctrl-held');
                 window.ovcinaMap._mapDiag('modifier.down', { key: e.key, ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
@@ -325,6 +335,17 @@ window.ovcinaMap = {
         }
     },
 
+    setMoveShortcutMode: function (active) {
+        this._moveShortcutActive = !!active;
+        if (this._map) {
+            var container = this._map.getContainer();
+            if (container) {
+                container.classList.toggle('oh-map-move-shortcut-active', this._moveShortcutActive);
+            }
+        }
+        this._mapDiag('location.relocate.mode', { active: this._moveShortcutActive });
+    },
+
     addMarker: function (id, lat, lon, name, kind, color) {
         if (!this._map) return;
         this.removeMarker(id);
@@ -422,6 +443,7 @@ window.ovcinaMap = {
     },
 
     dispose: function () {
+        this._moveShortcutActive = false;
         this.clearMarkers();
         if (this._map) {
             this._map.remove();
@@ -1283,6 +1305,20 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind) {
             target: 'location',
             locationId: id
         });
+        if (self._moveShortcutActive) {
+            e.preventDefault();
+            e.stopPropagation();
+            self._mapDiag('location.relocate.target', { source: 'location-pin', locationId: id, lng: lon, lat: lat });
+            if (self._dotnetRef) self._dotnetRef.invokeMethodAsync('OnMapClicked', lat, lon, false, false);
+            return;
+        }
+        if (payload.ctrl && payload.shift) {
+            e.preventDefault();
+            e.stopPropagation();
+            self._mapDiag('location.relocate.start', { locationId: id, from: { lng: lon, lat: lat } });
+            if (self._dotnetRef) self._dotnetRef.invokeMethodAsync('OnLocationMoveShortcutStarted', id, lat, lon);
+            return;
+        }
         e.stopPropagation();
         if (self._dotnetRef) self._dotnetRef.invokeMethodAsync('OnMapPinClicked', 'location', id);
     });
@@ -1375,6 +1411,20 @@ window.ovcinaMap.addStashPin = function (id, locationId, lat, lon, name, count, 
             target: 'stash-location',
             locationId: locationId
         });
+        if (self._moveShortcutActive) {
+            e.preventDefault();
+            e.stopPropagation();
+            self._mapDiag('location.relocate.target', { source: 'stash-pin', locationId: locationId, stashId: id, lng: lon, lat: lat });
+            if (self._dotnetRef) self._dotnetRef.invokeMethodAsync('OnMapClicked', lat, lon, false, false);
+            return;
+        }
+        if (payload.ctrl && payload.shift) {
+            e.preventDefault();
+            e.stopPropagation();
+            self._mapDiag('location.relocate.start', { source: 'stash-pin', locationId: locationId, stashId: id, from: { lng: lon, lat: lat } });
+            if (self._dotnetRef) self._dotnetRef.invokeMethodAsync('OnLocationMoveShortcutStarted', locationId, lat, lon);
+            return;
+        }
         e.stopPropagation();
         // Stash pins open the host location's peek per the brief —
         // "stash IS at the location" — keeps one peek surface.
