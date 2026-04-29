@@ -154,6 +154,44 @@ public class TreasurePlanningPoolEndpointTests(PostgresFixture postgres) : Integ
     }
 
     [Fact]
+    public async Task AssignTreasure_WithCompositePoolItems_CreatesOneQuestAndSplitsRows()
+    {
+        var game = await CreateGameAsync();
+        var location = await CreateLocationAsync();
+        var silver = await CreateItemAsync("Stříbro");
+        var bronze = await CreateItemAsync("Bronz");
+        await AssignItemToGameAsync(game.Id, silver.Id);
+        await AssignItemToGameAsync(game.Id, bronze.Id);
+        var silverPool = await AddPoolItemAsync(game.Id, silver.Id, count: 5);
+        var bronzePool = await AddPoolItemAsync(game.Id, bronze.Id, count: 3);
+
+        var assignResponse = await Client.PostAsJsonAsync("/api/treasure-planning/assign",
+            new AssignTreasureDto(
+                Title: "Balíček: Stříbro × 2 + Bronz × 1",
+                Difficulty: GameTimePhase.Early,
+                GameId: game.Id,
+                LocationId: location.Id,
+                PoolItems:
+                [
+                    new PoolItemAssignDto(silverPool.Id, 2),
+                    new PoolItemAssignDto(bronzePool.Id, 1)
+                ]));
+        assignResponse.EnsureSuccessStatusCode();
+
+        var quest = (await assignResponse.Content.ReadFromJsonAsync<TreasureQuestDetailDto>())!;
+        Assert.Equal(2, quest.Items.Count);
+        Assert.Equal(location.Id, quest.LocationId);
+        Assert.All(quest.Items, item => Assert.Equal(quest.Id, item.TreasureQuestId));
+        Assert.Equal(2, Assert.Single(quest.Items, i => i.ItemId == silver.Id).Count);
+        Assert.Equal(1, Assert.Single(quest.Items, i => i.ItemId == bronze.Id).Count);
+
+        var poolAfterAssign = await Client.GetFromJsonAsync<List<TreasurePoolItemDto>>(
+            $"/api/treasure-planning/pool/{game.Id}");
+        Assert.Equal(3, Assert.Single(poolAfterAssign!, p => p.ItemId == silver.Id).Count);
+        Assert.Equal(2, Assert.Single(poolAfterAssign!, p => p.ItemId == bronze.Id).Count);
+    }
+
+    [Fact]
     public async Task RemoveFromPool_NonExistentRow_ReturnsNotFound()
     {
         var response = await Client.DeleteAsync("/api/treasure-planning/pool/999999");
