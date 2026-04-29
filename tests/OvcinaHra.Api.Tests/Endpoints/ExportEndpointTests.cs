@@ -200,6 +200,45 @@ public class ExportEndpointTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public void OrganizerMap_PinLabelPlacement_AvoidsDenseClusterOverlaps()
+    {
+        var placements = ExplorerMapExportService.PlacePinLabelsForTesting(
+            [
+                (100d, 100d, "Aradhrynd"),
+                (105d, 102d, "Brodečko"),
+                (110d, 104d, "Azanulinbar-dum"),
+                (116d, 108d, "Kamenný brod"),
+                (121d, 112d, "Ostrov čarodějnice")
+            ],
+            mapWidth: 260,
+            mapHeight: 260);
+
+        for (var i = 0; i < placements.Count; i++)
+        {
+            for (var j = i + 1; j < placements.Count; j++)
+            {
+                Assert.False(
+                    Overlaps(placements[i], placements[j]),
+                    $"{placements[i].Text} overlaps {placements[j].Text}");
+            }
+        }
+    }
+
+    [Fact]
+    public void OrganizerMap_PinLabelPlacement_UsesFallbackWhenCandidatesAreExhausted()
+    {
+        var placements = ExplorerMapExportService.PlacePinLabelsForTesting(
+            Enumerable.Range(1, 9)
+                .Select(i => (120d, 120d, $"Místo {i}"))
+                .ToList(),
+            mapWidth: 260,
+            mapHeight: 260);
+
+        Assert.Contains(placements, placement => placement.UsedFallback);
+        Assert.Contains(placements, placement => placement.Attempts == 8);
+    }
+
+    [Fact]
     public void OrganizerMap_RendersNamesForAllLocationKinds()
     {
         foreach (var kind in Enum.GetValues<LocationKind>())
@@ -411,6 +450,17 @@ public class ExportEndpointTests(PostgresFixture postgres)
         }
 
         return count;
+    }
+
+    private static bool Overlaps(
+        ExplorerMapExportService.PinLabelPlacementForTesting first,
+        ExplorerMapExportService.PinLabelPlacementForTesting second)
+    {
+        var overlapX = MathF.Min(first.X + first.Width, second.X + second.Width)
+            - MathF.Max(first.X, second.X);
+        var overlapY = MathF.Min(first.Y + first.Height, second.Y + second.Height)
+            - MathF.Max(first.Y, second.Y);
+        return overlapX > 0 && overlapY > 0;
     }
 
     private static void WriteMagicBookSmokeArtifact(byte[] bytes)
