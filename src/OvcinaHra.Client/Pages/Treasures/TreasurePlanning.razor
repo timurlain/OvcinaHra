@@ -348,6 +348,9 @@ else
                                         @foreach (var line in GetCompositeBundleDisplayLines())
                                         {
                                             <div class="oh-tp-bundle-line" @key="line.ItemId">
+                                                <TreasureItemThumbnail ItemId="@line.ItemId"
+                                                                       ItemName="@line.ItemName"
+                                                                       ThumbnailUrl="@line.ItemThumbnailUrl" />
                                                 <span class="oh-tp-bundle-line-name">@line.ItemName</span>
                                                 <button type="button"
                                                         class="oh-tp-stepper-btn"
@@ -712,7 +715,14 @@ else
                         @foreach (var item in editQuestItems)
                         {
                             <tr>
-                                <td>@item.ItemName</td>
+                                <td>
+                                    <div class="oh-tp-edit-item">
+                                        <TreasureItemThumbnail ItemId="@item.ItemId"
+                                                               ItemName="@item.ItemName"
+                                                               ThumbnailUrl="@item.ItemThumbnailUrl" />
+                                        <span>@item.ItemName</span>
+                                    </div>
+                                </td>
                                 <td>@item.Count</td>
                                 <td>
                                     <button class="btn btn-sm btn-link text-danger p-0"
@@ -940,9 +950,9 @@ else
     private string? wiredCompositeBundlePayload;
     private readonly List<CompositeBundleLine> compositeBundleItems = [];
 
-    private sealed record CompositeBundleLine(int PoolItemId, int ItemId, string ItemName, bool IsUnique, int Count);
-    private sealed record CompositeBundleDisplayLine(int ItemId, string ItemName, int Count);
-    private sealed record CompositeBundleChoice(int PoolItemId, int ItemId, string ItemName, string Label, int Available, bool IsUnique);
+    private sealed record CompositeBundleLine(int PoolItemId, int ItemId, string ItemName, bool IsUnique, int Count, string? ItemThumbnailUrl);
+    private sealed record CompositeBundleDisplayLine(int ItemId, string ItemName, int Count, string? ItemThumbnailUrl);
+    private sealed record CompositeBundleChoice(int PoolItemId, int ItemId, string ItemName, string Label, int Available, bool IsUnique, string? ItemThumbnailUrl);
 
     private int CompositeBundleCurrencyCount => Math.Max(0, compositeBundleCurrencyCount ?? 0);
     private bool HasCompositeBundleCurrency => CompositeBundleCurrencyCount > 0;
@@ -976,16 +986,16 @@ else
             {
                 var available = p.Count - GetCompositeBundleReservedCount(p.Id);
                 var label = p.IsUnique ? p.ItemName : $"{p.ItemName} (zbývá {available})";
-                return new CompositeBundleChoice(p.Id, p.ItemId, p.ItemName, label, available, p.IsUnique);
+                return new CompositeBundleChoice(p.Id, p.ItemId, p.ItemName, label, available, p.IsUnique, p.ItemThumbnailUrl);
             })
             .Where(c => c.Available > 0)
             .OrderBy(c => c.ItemName);
 
     private IEnumerable<CompositeBundleDisplayLine> GetCompositeBundleDisplayLines() =>
         compositeBundleItems
-            .GroupBy(i => new { i.ItemId, i.ItemName })
+            .GroupBy(i => new { i.ItemId, i.ItemName, i.ItemThumbnailUrl })
             .OrderBy(g => g.Key.ItemName)
-            .Select(g => new CompositeBundleDisplayLine(g.Key.ItemId, g.Key.ItemName, g.Sum(i => i.Count)));
+            .Select(g => new CompositeBundleDisplayLine(g.Key.ItemId, g.Key.ItemName, g.Sum(i => i.Count), g.Key.ItemThumbnailUrl));
 
     private IEnumerable<string> GetCompositeBundleSummaryParts()
     {
@@ -1056,7 +1066,7 @@ else
         }
         else
         {
-            compositeBundleItems.Add(new CompositeBundleLine(poolItem.Id, poolItem.ItemId, poolItem.ItemName, poolItem.IsUnique, count));
+            compositeBundleItems.Add(new CompositeBundleLine(poolItem.Id, poolItem.ItemId, poolItem.ItemName, poolItem.IsUnique, count, poolItem.ItemThumbnailUrl));
         }
         selectedPool.Clear();
         selectedCompositeBundle = true;
@@ -1132,7 +1142,7 @@ else
             }
             else
             {
-                compositeBundleItems.Add(new CompositeBundleLine(poolItem.Id, poolItem.ItemId, poolItem.ItemName, poolItem.IsUnique, 1));
+                compositeBundleItems.Add(new CompositeBundleLine(poolItem.Id, poolItem.ItemId, poolItem.ItemName, poolItem.IsUnique, 1, poolItem.ItemThumbnailUrl));
             }
         }
         if (!HasCompositeBundle)

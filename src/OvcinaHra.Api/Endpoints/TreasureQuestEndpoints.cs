@@ -34,7 +34,7 @@ public static class TreasureQuestEndpoints
         return TypedResults.Ok(tqs);
     }
 
-    private static async Task<Results<Ok<TreasureQuestDetailDto>, NotFound>> GetById(int id, WorldDbContext db)
+    private static async Task<Results<Ok<TreasureQuestDetailDto>, NotFound>> GetById(int id, WorldDbContext db, HttpContext http)
     {
         var t = await db.TreasureQuests
             .Include(t => t.Location)
@@ -46,8 +46,14 @@ public static class TreasureQuestEndpoints
         return TypedResults.Ok(new TreasureQuestDetailDto(
             t.Id, t.Title, t.Clue, t.Difficulty,
             t.LocationId, t.Location?.Name, t.SecretStashId, t.SecretStash?.Name, t.GameId,
-            t.TreasureItems.Select(ti => new TreasureItemDto(ti.Id, ti.ItemId, ti.Item.Name, ti.Count, ti.TreasureQuestId)).ToList()));
+            t.TreasureItems.Select(ti => ToTreasureItemDto(http, ti)).ToList()));
     }
+
+    private static TreasureItemDto ToTreasureItemDto(HttpContext http, TreasureItem item) =>
+        new(item.Id, item.ItemId, item.Item.Name, item.Count, item.TreasureQuestId,
+            string.IsNullOrWhiteSpace(item.Item.ImagePath)
+                ? null
+                : ImageEndpoints.ThumbUrl(http, "items", item.ItemId, "small"));
 
     private static async Task<Results<Created<TreasureQuestListDto>, ValidationProblem>> Create(CreateTreasureQuestDto dto, WorldDbContext db)
     {

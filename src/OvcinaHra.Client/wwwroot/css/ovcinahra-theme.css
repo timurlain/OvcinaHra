@@ -2537,6 +2537,9 @@
 .oh-tp-bundle-line{display:flex;align-items:center;gap:7px;padding:5px 7px;border:1px solid rgba(45,80,22,.18);border-radius:7px;background:rgba(255,255,255,.72)}
 .oh-tp-bundle-line-name{flex:1;font-weight:700;font-size:.82rem;color:var(--oh-text)}
 .oh-tp-bundle-line .remove{background:none;border:none;color:var(--oh-error);padding:0 2px}
+.oh-tp-item-thumb-img,.oh-tp-item-thumb{width:34px;height:34px;border-radius:6px;flex:0 0 34px;border:1px solid rgba(45,80,22,.2)}
+.oh-tp-item-thumb-img{object-fit:cover;background:var(--oh-surface-alt)}
+.oh-tp-item-thumb{display:inline-flex;align-items:center;justify-content:center;background:var(--oh-primary-surface);color:var(--oh-primary-light);font-size:.95rem}
 .oh-tp-bundle-money{display:grid;grid-template-columns:minmax(5.5rem,1fr) 42px minmax(7rem,9rem) 42px;gap:8px;align-items:center;padding:7px;border:1px solid rgba(45,80,22,.2);border-radius:7px;background:rgba(255,255,255,.8)}
 .oh-tp-bundle-money-name{font-weight:800;font-size:.86rem;color:var(--oh-text)}
 .oh-tp-bundle-money-btn{width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #2D5016;border-radius:8px;background:#fff;color:#2D5016;padding:0}
@@ -2563,6 +2566,7 @@
 .oh-tp-focus-quest:hover{border-color:var(--oh-primary-light)}
 .oh-tp-focus-quest-title{flex:1;font:600 .875rem var(--oh-font-body);color:var(--oh-text)}
 .oh-tp-focus-quest-meta{font-size:.75rem;color:var(--oh-text-secondary);font-family:var(--oh-font-mono)}
+.oh-tp-edit-item{display:flex;align-items:center;gap:8px}
 .oh-tp-focus-stash-hdr{font:600 .75rem var(--oh-font-body);color:var(--oh-text-secondary);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 6px}
 .oh-tp-focus-group-hdr{display:flex;align-items:center;gap:6px;font:700 .875rem var(--oh-font-heading);color:var(--oh-primary);margin:10px 0 6px}
 .oh-tp-focus-group-hdr .sw{width:10px;height:10px;border-radius:2px}
@@ -3295,6 +3299,12 @@
 .oh-tp-card-name{font-weight:600;color:var(--oh-text,#2a2a2a);font-size:.95rem}
 .oh-tp-card-name-count{color:var(--oh-text-secondary,#666);font-family:'JetBrains Mono',monospace;font-size:.82rem}
 .oh-tp-card-stash{font-size:.75rem;color:var(--oh-text-secondary,#666);display:flex;align-items:center;gap:.3rem}
+.oh-tp-card-treasures{display:flex;flex-direction:column;gap:4px;margin-top:.2rem}
+.oh-tp-card-treasure{display:flex;align-items:center;gap:6px;min-width:0;padding:3px 4px;border:1px solid rgba(45,80,22,.12);border-radius:7px;background:rgba(255,255,255,.55)}
+.oh-tp-card-treasure .oh-tp-item-thumb-img,.oh-tp-card-treasure .oh-tp-item-thumb{width:32px;height:32px;flex-basis:32px}
+.oh-tp-card-treasure-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 .78rem var(--oh-font-body);color:var(--oh-text,#2a2a2a)}
+.oh-tp-card-treasure-count{font:800 .75rem 'JetBrains Mono',monospace;color:#2D5016}
+.oh-tp-card-treasure-more{font:.72rem 'JetBrains Mono',monospace;color:var(--oh-text-secondary,#666);padding-left:2px}
 .oh-tp-card-actions{display:flex;margin-top:.2rem}
 .oh-tp-card-gros{display:inline-flex;align-items:center;gap:.3rem;border:1px solid var(--oh-border,#D9CFB6);border-radius:999px;background:#fff8ec;color:#2D5016;padding:.2rem .55rem;font:700 .75rem var(--oh-font-body);cursor:pointer}
 .oh-tp-card-gros:hover{background:#F2EBD8;border-color:#B8A87A}

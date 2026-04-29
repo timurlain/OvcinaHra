@@ -1,0 +1,51 @@
+@if (!string.IsNullOrWhiteSpace(ThumbnailUrl) && !imageFailed)
+{
+    <img class="@ImageCssClass"
+         src="@ThumbnailUrl"
+         alt="@ItemName"
+         draggable="false"
+         @onload="HandleImageLoaded"
+         @onerror="HandleImageFailed" />
+}
+else
+{
+    <div class="@FallbackCssClass" aria-hidden="true">
+        <i class="bi @FallbackIcon"></i>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public int ItemId { get; set; }
+    [Parameter, EditorRequired] public string ItemName { get; set; } = "";
+    [Parameter] public string? ThumbnailUrl { get; set; }
+    [Parameter] public string ImageCssClass { get; set; } = "oh-tp-item-thumb-img";
+    [Parameter] public string FallbackCssClass { get; set; } = "oh-tp-item-thumb oh-tp-item-thumb--placeholder";
+    [Parameter] public string FallbackIcon { get; set; } = "bi-gem";
+
+    private bool imageFailed;
+    private bool loadLogged;
+    private string? lastThumbnailUrl;
+    private int lastItemId;
+
+    protected override void OnParametersSet()
+    {
+        if (lastItemId == ItemId && lastThumbnailUrl == ThumbnailUrl) return;
+        lastItemId = ItemId;
+        lastThumbnailUrl = ThumbnailUrl;
+        imageFailed = false;
+        loadLogged = false;
+    }
+
+    private void HandleImageLoaded()
+    {
+        if (loadLogged) return;
+        loadLogged = true;
+        Console.WriteLine($"[treasure-alloc] thumbnail-load itemId={ItemId} status=ok");
+    }
+
+    private void HandleImageFailed()
+    {
+        imageFailed = true;
+        Console.WriteLine($"[treasure-alloc] thumbnail-load itemId={ItemId} status=failed");
+    }
+}

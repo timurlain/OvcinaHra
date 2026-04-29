@@ -44,20 +44,30 @@ public static class TreasurePlanningEndpoints
         return group;
     }
 
-    private static async Task<Ok<List<TreasurePoolItemDto>>> GetPool(int gameId, WorldDbContext db)
+    private static async Task<Ok<List<TreasurePoolItemDto>>> GetPool(int gameId, WorldDbContext db, HttpContext http)
     {
-        var items = await db.TreasureItems
+        var rows = await db.TreasureItems
             .Where(ti => ti.GameId == gameId
                 && ti.TreasureQuestId == null
                 && ti.Item.ItemType != ItemType.Money)
             .Include(ti => ti.Item)
             .OrderBy(ti => ti.Item.ItemType).ThenBy(ti => ti.Item.Name)
-            .Select(ti => new TreasurePoolItemDto(ti.Id, ti.ItemId, ti.Item.Name, ti.Item.ItemType, ti.Count, ti.GameId, ti.Item.IsUnique))
             .ToListAsync();
+        var items = rows
+            .Select(ti => new TreasurePoolItemDto(
+                ti.Id,
+                ti.ItemId,
+                ti.Item.Name,
+                ti.Item.ItemType,
+                ti.Count,
+                ti.GameId,
+                ti.Item.IsUnique,
+                ItemThumbnailUrl(http, ti.ItemId, ti.Item.ImagePath)))
+            .ToList();
         return TypedResults.Ok(items);
     }
 
-    private static async Task<Results<Created<TreasurePoolItemDto>, ValidationProblem>> AddToPool(CreateTreasurePoolItemDto dto, WorldDbContext db)
+    private static async Task<Results<Created<TreasurePoolItemDto>, ValidationProblem>> AddToPool(CreateTreasurePoolItemDto dto, WorldDbContext db, HttpContext http)
     {
         var gameItem = await db.GameItems
             .Include(gi => gi.Item)
@@ -100,7 +110,15 @@ public static class TreasurePlanningEndpoints
         await db.SaveChangesAsync();
 
         return TypedResults.Created($"/api/treasure-planning/pool/{dto.GameId}",
-            new TreasurePoolItemDto(ti.Id, ti.ItemId, gameItem.Item.Name, gameItem.Item.ItemType, ti.Count, ti.GameId, gameItem.Item.IsUnique));
+            new TreasurePoolItemDto(
+                ti.Id,
+                ti.ItemId,
+                gameItem.Item.Name,
+                gameItem.Item.ItemType,
+                ti.Count,
+                ti.GameId,
+                gameItem.Item.IsUnique,
+                ItemThumbnailUrl(http, ti.ItemId, gameItem.Item.ImagePath)));
     }
 
     private static async Task<Results<NoContent, NotFound, ValidationProblem>> RemoveFromPool(int id, WorldDbContext db)
@@ -165,7 +183,8 @@ public static class TreasurePlanningEndpoints
     private static async Task<Ok<List<TreasurePlanningLocationDto>>> GetLocationCards(
         int gameId,
         WorldDbContext db,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        HttpContext http)
     {
         var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.TreasurePlanningEndpoints");
         var assignedLocationIds = await db.GameLocations
@@ -210,6 +229,7 @@ public static class TreasurePlanningEndpoints
         var quests = await db.TreasureQuests
             .Where(tq => tq.GameId == gameId)
             .Include(tq => tq.TreasureItems)
+            .ThenInclude(ti => ti.Item)
             .ToListAsync();
 
         var result = parentLocations.Select(loc =>
@@ -233,6 +253,20 @@ public static class TreasurePlanningEndpoints
                 var sQuests = quests.Where(q => q.SecretStashId == gs.SecretStashId).ToList();
                 return new StashSummaryDto(gs.SecretStashId, gs.SecretStash.Name, sQuests.SelectMany(q => q.TreasureItems).Sum(ti => ti.Count));
             }).ToList();
+            var assignedTreasures = allQuests
+                .OrderBy(q => q.Difficulty)
+                .ThenBy(q => q.Title)
+                .SelectMany(q => q.TreasureItems
+                    .OrderBy(ti => ti.Item.Name)
+                    .Select(ti => new TreasurePlanningAssignedTreasureDto(
+                        q.Id,
+                        q.Title,
+                        q.Difficulty,
+                        ti.ItemId,
+                        ti.Item.Name,
+                        ti.Count,
+                        ItemThumbnailUrl(http, ti.ItemId, ti.Item.ImagePath))))
+                .ToList();
 
             return new TreasurePlanningLocationDto(
                 loc.Id, loc.Name, loc.LocationKind,
@@ -247,7 +281,8 @@ public static class TreasurePlanningEndpoints
                 Latitude: loc.Coordinates?.Latitude,
                 Longitude: loc.Coordinates?.Longitude,
                 EffectiveLatitude: loc.Coordinates?.Latitude,
-                EffectiveLongitude: loc.Coordinates?.Longitude);
+                EffectiveLongitude: loc.Coordinates?.Longitude,
+                AssignedTreasures: assignedTreasures);
         }).ToList();
 
         return TypedResults.Ok(result);
@@ -282,7 +317,8 @@ public static class TreasurePlanningEndpoints
     private static async Task<Results<Created<TreasureQuestDetailDto>, ValidationProblem>> AssignTreasure(
         AssignTreasureDto dto,
         WorldDbContext db,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        HttpContext http)
     {
         var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.TreasurePlanningEndpoints");
         var poolAssignments = dto.PoolItems?
@@ -520,7 +556,7 @@ public static class TreasurePlanningEndpoints
                 new TreasureQuestDetailDto(
                     loaded.Id, loaded.Title, loaded.Clue, loaded.Difficulty,
                     loaded.LocationId, loaded.Location?.Name, loaded.SecretStashId, loaded.SecretStash?.Name, loaded.GameId,
-                    loaded.TreasureItems.Select(ti => new TreasureItemDto(ti.Id, ti.ItemId, ti.Item.Name, ti.Count, ti.TreasureQuestId)).ToList()));
+                    loaded.TreasureItems.Select(ti => ToTreasureItemDto(http, ti)).ToList()));
         }
         catch (Exception ex)
         {
@@ -607,7 +643,8 @@ public static class TreasurePlanningEndpoints
         int id,
         AdjustTreasureItemCountDto dto,
         WorldDbContext db,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        HttpContext http)
     {
         var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.TreasurePlanningEndpoints");
         LogTreasureAlloc(logger, LogLevel.Information, "count-adjust-entry", new
@@ -743,7 +780,7 @@ public static class TreasurePlanningEndpoints
             item.Count
         });
 
-        return TypedResults.Ok(new TreasureItemDto(item.Id, item.ItemId, item.Item.Name, item.Count, item.TreasureQuestId));
+        return TypedResults.Ok(ToTreasureItemDto(http, item));
     }
 
     private static void AssignPoolItemToQuest(TreasureItem poolItem, int count, int questId, WorldDbContext db)
@@ -783,6 +820,15 @@ public static class TreasurePlanningEndpoints
 
         poolRow.Count += count;
     }
+
+    private static TreasureItemDto ToTreasureItemDto(HttpContext http, TreasureItem item) =>
+        new(item.Id, item.ItemId, item.Item.Name, item.Count, item.TreasureQuestId,
+            ItemThumbnailUrl(http, item.ItemId, item.Item.ImagePath));
+
+    private static string? ItemThumbnailUrl(HttpContext http, int itemId, string? imagePath) =>
+        string.IsNullOrWhiteSpace(imagePath)
+            ? null
+            : ImageEndpoints.ThumbUrl(http, "items", itemId, "small");
 
     private static void LogTreasureAlloc(ILogger logger, LogLevel level, string eventName, object payload, Exception? exception = null)
     {
