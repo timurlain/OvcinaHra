@@ -1,347 +1,717 @@
 @page "/p/{PersonId:int}"
 @attribute [Authorize]
 @inject ApiClient Api
+@inject NavigationManager Nav
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Domain.Rules
+@using OvcinaHra.Shared.Dtos
 @using OvcinaHra.Shared.Extensions
 
-@if (loading)
-{
-    <div class="text-center py-5">
-        <p class="text-muted">Načítám...</p>
-    </div>
-}
-else if (notFound)
-{
-    <div class="text-center text-muted py-5">
-        <i class="bi bi-person-x fs-1 d-block mb-2"></i>
-        <h4>Postava nenalezena</h4>
-        <p>Tento hráč nemá aktivní postavu v aktuální hře.</p>
-    </div>
-}
-else if (character is not null)
-{
-    @if (error is not null)
+<PageTitle>@(_character?.Name ?? "Hrdina") · Sken</PageTitle>
+
+<div class="oh-sken">
+    @if (_loading)
     {
-        <div class="alert alert-danger alert-dismissible">
-            @error
-            <button type="button" class="btn-close" @onclick="() => error = null"></button>
-        </div>
+        <p class="text-center text-muted sken-mt-lg">Načítám…</p>
     }
-
-    @* Header *@
-    <div class="card mb-3" style="background: var(--oh-primary-surface, #f0ebe3);">
-        <div class="card-body text-center">
-            <h2 class="mb-1">@character.Name</h2>
-            @if (character.PlayerFullName is not null)
-            {
-                <small class="text-muted d-block mb-1">@character.PlayerFullName</small>
-            }
-            <div class="d-flex justify-content-center gap-2 flex-wrap">
-                @if (character.Kingdom is not null)
-                {
-                    <span class="badge bg-secondary fs-6">@character.Kingdom</span>
-                }
-                @if (character.Race is not null)
-                {
-                    <span class="badge bg-info text-dark fs-6">@character.Race.Value.GetDisplayName()</span>
-                }
-            </div>
-        </div>
-    </div>
-
-    @* Status bar *@
-    <div class="d-flex gap-2 mb-3 justify-content-center flex-wrap">
-        <div class="badge bg-primary fs-5 p-2">Úroveň @character.CurrentLevel</div>
-        <div class="badge fs-5 p-2 @(character.Class is null ? "bg-warning text-dark" : "bg-success")">
-            @(character.Class is not null ? character.Class.Value.GetDisplayName() : "Začátečník")
-        </div>
-        @if (character.TotalXp > 0)
-        {
-            <div class="badge bg-secondary fs-5 p-2">@character.TotalXp XP</div>
-        }
-    </div>
-
-    @* Class picker *@
-    @if (character.TotalXp >= 5 && character.Class is null)
+    else if (_character is null)
     {
-        <div class="card border-warning mb-3">
-            <div class="card-body">
-                <h5 class="card-title text-center"><i class="bi bi-star-fill text-warning me-1"></i> Zvolte povolání!</h5>
-                <div class="d-grid gap-2">
-                    @foreach (var pc in Enum.GetValues<PlayerClass>())
-                    {
-                        <button class="btn btn-lg btn-outline-primary" @onclick="() => ChooseClassAsync(pc)" disabled="@actionInProgress">
-                            @pc.GetDisplayName()
-                        </button>
-                    }
-                </div>
-            </div>
+        <div class="alert alert-warning sken-mt-md" role="alert">
+            Hrdina s ID @PersonId nenalezen. <a href="/sken">Zpět na Sken</a>.
         </div>
-    }
-
-    @* Optional location *@
-    <div class="mb-3">
-        <DxTextBox @bind-Text="@currentLocation" NullText="Stanoviště (volitelné)" />
-    </div>
-
-    @* Quick action buttons *@
-    <div class="d-grid gap-2 mb-3">
-        <button class="btn btn-success btn-lg" @onclick="LevelUpAsync" disabled="@actionInProgress">
-            <i class="bi bi-arrow-up-circle me-2"></i> Level Up
-        </button>
-        <button class="btn btn-primary btn-lg" @onclick="() => isPointsVisible = true" disabled="@actionInProgress">
-            <i class="bi bi-plus-circle me-2"></i> Přidat body
-        </button>
-        <button class="btn btn-outline-primary btn-lg" @onclick="() => isNoteVisible = true" disabled="@actionInProgress">
-            <i class="bi bi-journal-plus me-2"></i> Přidat poznámku
-        </button>
-        <button class="btn btn-outline-secondary btn-lg" @onclick="() => isSkillVisible = true" disabled="@actionInProgress">
-            <i class="bi bi-lightning me-2"></i> Přidat dovednost
-        </button>
-    </div>
-
-    @* Skills list *@
-    @if (character.Skills.Count > 0)
-    {
-        <div class="mb-3">
-            <h5>Dovednosti</h5>
-            <div class="d-flex flex-wrap gap-1">
-                @foreach (var skill in character.Skills)
-                {
-                    <span class="badge bg-light text-dark border">@skill</span>
-                }
-            </div>
-        </div>
-    }
-
-    @* Recent events *@
-    <div class="mb-2">
-        <a href="https://registrace.ovcina.cz/person/@PersonId" target="_blank" class="btn btn-sm btn-outline-secondary">
-            <i class="bi bi-box-arrow-up-right me-1"></i> Otevřít v registraci
-        </a>
-    </div>
-
-    <h5>Poslední události</h5>
-    @if (character.RecentEvents.Count == 0)
-    {
-        <p class="text-muted">Žádné události.</p>
     }
     else
     {
-        <div class="list-group list-group-flush">
-            @foreach (var evt in character.RecentEvents)
+        @if (_error is not null)
+        {
+            <div class="alert alert-danger sken-mt-md" role="alert">
+                @_error
+                <button type="button" aria-label="Zavřít"
+                        @onclick="() => _error = null"
+                        style="float:right; background:transparent; border:0; font-size:1.2rem; line-height:1; cursor:pointer;">×</button>
+            </div>
+        }
+
+        <div class="sken-character-tile">
+            <h2>@_character.Name</h2>
+            @if (!string.IsNullOrWhiteSpace(_character.PlayerFullName))
             {
-                <div class="list-group-item px-0 py-2 d-flex justify-content-between align-items-start">
-                    <div>
-                        <span class="badge bg-secondary me-1">@evt.EventType.GetDisplayName()</span>
-                        <small class="text-muted">@FormatEventData(evt)</small>
-                    </div>
-                    <small class="text-muted text-nowrap">@evt.Timestamp.ToString("HH:mm")</small>
+                <div class="sken-character-tile-meta">@_character.PlayerFullName</div>
+            }
+            <div class="sken-character-tile-level">
+                Úroveň @_character.CurrentLevel
+                @if (_character.Class is { } cls)
+                {
+                    <span> · @cls.GetDisplayName()</span>
+                }
+            </div>
+            @if (_character.Kingdom is not null || _character.Race is not null)
+            {
+                <div class="sken-character-tile-meta sken-mt-sm">
+                    @if (_character.Kingdom is not null)
+                    {
+                        <span>@_character.Kingdom</span>
+                    }
+                    @if (_character.Kingdom is not null && _character.Race is not null)
+                    {
+                        <span> · </span>
+                    }
+                    @if (_character.Race is not null)
+                    {
+                        <span>@_character.Race.Value.GetDisplayName()</span>
+                    }
                 </div>
             }
+            @if (_character.TotalXp > 0)
+            {
+                <div class="sken-character-tile-meta sken-mt-sm">@_character.TotalXp zk</div>
+            }
         </div>
-    }
-}
 
-@* Points modal *@
-<DxPopup @bind-Visible="@isPointsVisible" HeaderText="Přidat body" Width="350px">
-    <BodyContentTemplate Context="popupContext">
-        <div class="mb-3">
-            <label class="form-label fw-semibold">Kategorie</label>
-            <div class="d-flex gap-2">
-                @foreach (var cat in new[] { "Dobré", "Špatné", "Neutrální" })
+        @* === Action surface === *@
+        <div class="sken-stack">
+
+            @* Class not yet picked — show class picker prompt *@
+            @if (_character.Class is null)
+            {
+                <button class="btn-sken btn-sken-warning"
+                        @onclick="OpenClassPicker"
+                        disabled="@_busy">
+                    Zvolit povolání a získat 1. úroveň (5 zk)
+                </button>
+            }
+            else if (_character.CurrentLevel < LevelingRules.MaxLevel)
+            {
+                <button class="btn-sken btn-sken-primary"
+                        @onclick="OpenLevelUpConfirm"
+                        disabled="@_busy">
+                    +1 úroveň (@LevelingRules.XpCostForLevelUp(_character.CurrentLevel) zk)
+                </button>
+            }
+            else if (_character.CurrentLevel >= LevelingRules.MaxLevel
+                     && CanBuyMoreMasteries
+                     && AvailableMasteries.Count > 0)
+            {
+                <button class="btn-sken btn-sken-primary"
+                        @onclick="OpenMasteryPicker"
+                        disabled="@_busy">
+                    Mistrovská dovednost (@LevelingRules.MasterySkillCost zk)
+                </button>
+            }
+            else if (_character.CurrentLevel >= LevelingRules.MaxLevel)
+            {
+                <div class="alert alert-info" role="status">
+                    Hrdina dosáhl 5. úrovně a vybral všechny mistrovské dovednosti, které mohl.
+                </div>
+            }
+
+            <button class="btn-sken btn-sken-secondary"
+                    @onclick="OpenNoteModal"
+                    disabled="@_busy">
+                Přidat poznámku
+            </button>
+
+            @if (_character.CurrentLevel > 0)
+            {
+                <button class="btn-sken btn-sken-outline"
+                        @onclick="OpenResetConfirm"
+                        disabled="@_busy">
+                    Vrátit poslední úroveň
+                </button>
+            }
+        </div>
+
+        @* === Skills list === *@
+        @if (_character.Skills.Count > 0)
+        {
+            <div class="sken-mt-lg">
+                <h5 style="color:var(--sken-forest);">Dovednosti</h5>
+                <ul style="list-style:none; padding-left:0; margin:0;">
+                    @foreach (var skill in _character.Skills)
+                    {
+                        <li style="padding:6px 0; border-bottom:1px solid var(--sken-parchment-dark);">
+                            @skill
+                        </li>
+                    }
+                </ul>
+            </div>
+        }
+
+        @* === Pending treasure quests === *@
+        @if (_pending is { Count: > 0 })
+        {
+            <div class="sken-mt-lg">
+                <h5 style="color:var(--sken-forest);">Čekající pokladové úkoly</h5>
+                @foreach (var q in _pending)
                 {
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="pointsCategory"
-                               id="cat_@cat" value="@cat" checked="@(pointsCategory == cat)"
-                               @onchange="() => pointsCategory = cat" />
-                        <label class="form-check-label" for="cat_@cat">@cat</label>
+                    <div class="sken-pending-quest">
+                        <div><strong>@q.QuestName</strong></div>
+                        <div class="text-muted">→ @q.ExpectedStashName</div>
+                        <button class="btn-sken btn-sken-secondary sken-mt-sm"
+                                @onclick="() => GoVerifyStamp(q)">
+                            Ověřit razítko →
+                        </button>
                     </div>
                 }
             </div>
-        </div>
-        <div class="mb-3">
-            <label class="form-label fw-semibold">Počet bodů</label>
-            <DxSpinEdit @bind-Value="@pointsAmount" MinValue="1" />
-        </div>
-        <div class="mb-3">
-            <label class="form-label fw-semibold">Poznámka (volitelná)</label>
-            <DxTextBox @bind-Text="@pointsNote" NullText="Poznámka..." />
-        </div>
-        <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" @onclick="() => isPointsVisible = false" disabled="@actionInProgress">Zrušit</button>
-            <button class="btn btn-primary" @onclick="AddPointsAsync" disabled="@actionInProgress">Přidat</button>
-        </div>
-    </BodyContentTemplate>
-</DxPopup>
+        }
 
-@* Note modal *@
-<DxPopup @bind-Visible="@isNoteVisible" HeaderText="Přidat poznámku" Width="350px">
-    <BodyContentTemplate Context="popupContext">
-        <div class="mb-3">
-            <DxMemo @bind-Text="@noteText" Rows="3" NullText="Text poznámky..." />
+        @* === Recent events === *@
+        <div class="sken-mt-lg">
+            <h5 style="color:var(--sken-forest);">Poslední události</h5>
+            @if (_character.RecentEvents.Count == 0)
+            {
+                <p class="text-muted">Žádné události.</p>
+            }
+            else
+            {
+                @foreach (var evt in _character.RecentEvents)
+                {
+                    <div class="sken-event-row">
+                        <span style="flex:1;">
+                            <strong>@CzechEventLabel(evt.EventType)</strong>
+                            @{ var detail = FormatEventData(evt); }
+                            @if (!string.IsNullOrEmpty(detail))
+                            {
+                                <span class="text-muted"> — @detail</span>
+                            }
+                        </span>
+                        <span class="sken-event-time">@evt.Timestamp.ToLocalTime().ToString("HH:mm")</span>
+                    </div>
+                }
+            }
         </div>
-        <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" @onclick="() => isNoteVisible = false" disabled="@actionInProgress">Zrušit</button>
-            <button class="btn btn-primary" @onclick="AddNoteAsync" disabled="@actionInProgress">Přidat</button>
-        </div>
-    </BodyContentTemplate>
-</DxPopup>
 
-@* Skill modal *@
-<DxPopup @bind-Visible="@isSkillVisible" HeaderText="Přidat dovednost" Width="350px">
-    <BodyContentTemplate Context="popupContext">
-        <div class="mb-3">
-            <DxTextBox @bind-Text="@skillName" NullText="Název dovednosti..." />
+        <div class="sken-mt-lg" style="text-align:center;">
+            <a href="https://registrace.ovcina.cz/person/@PersonId" target="_blank" rel="noopener"
+               style="color:var(--sken-forest);">
+                Otevřít v registraci →
+            </a>
         </div>
-        <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" @onclick="() => isSkillVisible = false" disabled="@actionInProgress">Zrušit</button>
-            <button class="btn btn-primary" @onclick="AddSkillAsync" disabled="@actionInProgress">Přidat</button>
+    }
+</div>
+
+@* === Class picker modal === *@
+@if (_classPickerOpen)
+{
+    <div class="sken-modal-backdrop" @onclick="() => _classPickerOpen = false">
+        <div class="sken-modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true">
+            <h3>Zvol povolání (5 zk)</h3>
+            <p class="text-muted">Vybrané povolání zůstává po celou hru. Hrdina dostane 1. úroveň zdarma.</p>
+            <div class="sken-class-grid">
+                @foreach (var cls in Enum.GetValues<PlayerClass>())
+                {
+                    <button class="btn-sken btn-sken-primary"
+                            @onclick="() => PickClass(cls)"
+                            disabled="@_busy">
+                        @cls.GetDisplayName()
+                    </button>
+                }
+            </div>
+            <button class="btn-sken btn-sken-secondary sken-mt-md"
+                    @onclick="() => _classPickerOpen = false"
+                    disabled="@_busy">
+                Zrušit
+            </button>
         </div>
-    </BodyContentTemplate>
-</DxPopup>
+    </div>
+}
+
+@* === Level-up confirm modal === *@
+@if (_levelUpConfirmOpen && _character is not null)
+{
+    var cost = LevelingRules.XpCostForLevelUp(_character.CurrentLevel);
+    var newLevel = _character.CurrentLevel + 1;
+    var autoSkills = _character.Class is { } cls
+        ? LevelingRules.AutoSkillsAtLevel(cls, newLevel)
+        : (IReadOnlyList<MidLevelSkill>)Array.Empty<MidLevelSkill>();
+
+    <div class="sken-modal-backdrop" @onclick="() => _levelUpConfirmOpen = false">
+        <div class="sken-modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true">
+            <h3>Povýšit na úroveň @newLevel?</h3>
+            <p>Cena: <strong>@cost zk</strong>.</p>
+
+            @if (newLevel == 1)
+            {
+                <p>📜 Hrdina dostane kartičku 1. úrovně — předej mu ji.</p>
+            }
+
+            @if (autoSkills.Count > 0)
+            {
+                <div class="alert alert-info" role="status" style="margin-top:8px;">
+                    <strong>Automaticky získané dovednosti:</strong>
+                    <ul style="margin:6px 0 0 18px; padding:0;">
+                        @foreach (var s in autoSkills)
+                        {
+                            <li>
+                                <strong>@s.Name</strong>
+                                <div class="text-muted small">@s.Description</div>
+                            </li>
+                        }
+                    </ul>
+                    <p class="sken-mt-sm" style="margin-bottom:0;">
+                        📜 Hrdina dostane kartičku <strong>@string.Join(" + ", autoSkills.Select(a => a.Name))</strong> — předej mu ji.
+                    </p>
+                </div>
+            }
+
+            <div class="sken-stack sken-mt-md">
+                <button class="btn-sken btn-sken-success"
+                        @onclick="ConfirmLevelUp"
+                        disabled="@_busy">
+                    Potvrdit povýšení
+                </button>
+                <button class="btn-sken btn-sken-secondary"
+                        @onclick="() => _levelUpConfirmOpen = false"
+                        disabled="@_busy">
+                    Zrušit
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* === Mastery picker modal === *@
+@if (_masteryPickerOpen && _character?.Class is not null)
+{
+    <div class="sken-modal-backdrop" @onclick="() => _masteryPickerOpen = false">
+        <div class="sken-modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true">
+            <h3>Mistrovská dovednost (@LevelingRules.MasterySkillCost zk)</h3>
+            <p class="text-muted">
+                Hrdina si může koupit až @LevelingRules.MaxBuyableMasteries mistrovské dovednosti.
+                Aktuálně koupeno: @OwnedBuyableMasteryCount.
+            </p>
+            @foreach (var m in AvailableMasteries)
+            {
+                <div style="background:var(--sken-card); border-radius:var(--sken-radius); padding:12px; margin-bottom:10px;">
+                    <strong>@m.Name</strong>
+                    <div class="text-muted small">@m.Description</div>
+                    <button class="btn-sken btn-sken-primary sken-mt-sm"
+                            @onclick="() => OpenMasteryConfirm(m)"
+                            disabled="@_busy">
+                        Vybrat @m.Name
+                    </button>
+                </div>
+            }
+            <button class="btn-sken btn-sken-secondary sken-mt-md"
+                    @onclick="() => _masteryPickerOpen = false"
+                    disabled="@_busy">
+                Zavřít
+            </button>
+        </div>
+    </div>
+}
+
+@* === Mastery confirm modal === *@
+@if (_masteryConfirmOpen && _pendingMastery is { } pm)
+{
+    <div class="sken-modal-backdrop" @onclick="CancelMasteryConfirm">
+        <div class="sken-modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true">
+            <h3>Potvrdit nákup?</h3>
+            <p>
+                <strong>@pm.Name</strong> za @LevelingRules.MasterySkillCost zk.
+            </p>
+            <p class="text-muted small">@pm.Description</p>
+            <p>📜 Hrdina dostane kartičku <strong>@pm.Name</strong> — předej mu ji.</p>
+            <div class="sken-stack sken-mt-md">
+                <button class="btn-sken btn-sken-success"
+                        @onclick="ConfirmMasteryPurchase"
+                        disabled="@_busy">
+                    Potvrdit nákup
+                </button>
+                <button class="btn-sken btn-sken-secondary"
+                        @onclick="CancelMasteryConfirm"
+                        disabled="@_busy">
+                    Zrušit
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* === Reset confirm modal === *@
+@if (_resetConfirmOpen)
+{
+    <div class="sken-modal-backdrop" @onclick="() => _resetConfirmOpen = false">
+        <div class="sken-modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true">
+            <h3>Vrátit poslední úroveň?</h3>
+            <p>Tahle akce zruší poslední povýšení hrdiny — XP nebudou vráceny automaticky.</p>
+            <div class="sken-stack sken-mt-md">
+                <button class="btn-sken btn-sken-danger"
+                        @onclick="DoReset"
+                        disabled="@_busy">
+                    Ano, vrátit úroveň
+                </button>
+                <button class="btn-sken btn-sken-secondary"
+                        @onclick="() => _resetConfirmOpen = false"
+                        disabled="@_busy">
+                    Zrušit
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* === Note modal === *@
+@if (_noteOpen)
+{
+    <div class="sken-modal-backdrop" @onclick="() => _noteOpen = false">
+        <div class="sken-modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true">
+            <h3>Přidat poznámku</h3>
+            <textarea class="form-control"
+                      rows="4"
+                      style="width:100%; font-size:1rem;"
+                      @bind="_noteText"
+                      placeholder="Text poznámky…"></textarea>
+            <div class="sken-stack sken-mt-md">
+                <button class="btn-sken btn-sken-primary"
+                        @onclick="DoSaveNote"
+                        disabled="@(_busy || string.IsNullOrWhiteSpace(_noteText))">
+                    Uložit
+                </button>
+                <button class="btn-sken btn-sken-secondary"
+                        @onclick="() => _noteOpen = false"
+                        disabled="@_busy">
+                    Zrušit
+                </button>
+            </div>
+        </div>
+    </div>
+}
 
 @code {
     [Parameter] public int PersonId { get; set; }
 
-    private ScanCharacterDto? character;
-    private bool loading = true, notFound, actionInProgress;
-    private string? currentLocation, error;
+    private bool _loading = true;
+    private bool _busy;
+    private string? _error;
+    private ScanCharacterDto? _character;
+    private List<PendingTreasureQuestDto>? _pending;
 
-    // Points modal
-    private bool isPointsVisible;
-    private string pointsCategory = "Dobré";
-    private int pointsAmount = 1;
-    private string? pointsNote;
+    private bool _classPickerOpen;
+    private bool _levelUpConfirmOpen;
+    private bool _masteryPickerOpen;
+    private bool _masteryConfirmOpen;
+    private bool _resetConfirmOpen;
+    private bool _noteOpen;
+    private string _noteText = "";
+    private MasteryOption? _pendingMastery;
 
-    // Note modal
-    private bool isNoteVisible;
-    private string noteText = "";
+    private List<string> OwnedSkills => _character?.Skills ?? [];
 
-    // Skill modal
-    private bool isSkillVisible;
-    private string skillName = "";
+    private List<MasteryOption> AvailableMasteries =>
+        _character?.Class is { } cls
+            ? LevelingRules.BuyableMasteriesAtL5(cls)
+                .Where(m => !OwnedSkills.Contains(m.Name))
+                .ToList()
+            : [];
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    private int OwnedBuyableMasteryCount =>
+        _character?.Class is { } cls
+            ? LevelingRules.BuyableMasteriesAtL5(cls).Count(m => OwnedSkills.Contains(m.Name))
+            : 0;
+
+    private bool CanBuyMoreMasteries =>
+        OwnedBuyableMasteryCount < LevelingRules.MaxBuyableMasteries;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Re-load when navigating /p/12 → /p/13 in-app (PersonId changes)
+        if (_character is not null && _character.ExternalPersonId != PersonId)
+        {
+            await LoadAsync();
+        }
+    }
 
     private async Task LoadAsync()
     {
-        loading = true; notFound = false; error = null;
+        Console.WriteLine($"[sken] LoadAsync personId={PersonId}");
+        _loading = true;
+        StateHasChanged();
         try
         {
-            character = await Api.GetAsync<ScanCharacterDto>($"/api/scan/{PersonId}");
-            if (character is null) notFound = true;
-        }
-        catch { notFound = true; }
-        loading = false;
-    }
-
-    private async Task LevelUpAsync()
-    {
-        actionInProgress = true;
-        try
-        {
-            var data = System.Text.Json.JsonSerializer.Serialize(new { });
-            await Api.PostAsync<CreateCharacterEventDto, CharacterEventDto>(
-                $"/api/scan/{PersonId}/events",
-                new CreateCharacterEventDto(CharacterEventType.LevelUp, data, currentLocation));
-            await LoadAsync();
-        }
-        catch (Exception ex) { error = ex.Message; }
-        finally { actionInProgress = false; }
-    }
-
-    private async Task ChooseClassAsync(PlayerClass pc)
-    {
-        actionInProgress = true;
-        try
-        {
-            var data = System.Text.Json.JsonSerializer.Serialize(new { @class = pc.ToString() });
-            await Api.PostAsync<CreateCharacterEventDto, CharacterEventDto>(
-                $"/api/scan/{PersonId}/events",
-                new CreateCharacterEventDto(CharacterEventType.ClassChosen, data, currentLocation));
-            await LoadAsync();
-        }
-        catch (Exception ex) { error = ex.Message; }
-        finally { actionInProgress = false; }
-    }
-
-    private async Task AddPointsAsync()
-    {
-        actionInProgress = true;
-        try
-        {
-            var data = System.Text.Json.JsonSerializer.Serialize(new
+            _character = await Api.GetAsync<ScanCharacterDto>($"/api/scan/{PersonId}");
+            if (_character is not null)
             {
-                category = pointsCategory,
-                amount = pointsAmount,
-                note = string.IsNullOrEmpty(pointsNote) ? null : pointsNote
-            });
-            await Api.PostAsync<CreateCharacterEventDto, CharacterEventDto>(
-                $"/api/scan/{PersonId}/events",
-                new CreateCharacterEventDto(CharacterEventType.PointsChanged, data, currentLocation));
-            isPointsVisible = false; pointsAmount = 1; pointsNote = null;
-            await LoadAsync();
+                try
+                {
+                    _pending = await Api.GetListAsync<PendingTreasureQuestDto>(
+                        $"/api/scan/{PersonId}/treasure-quests/pending");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[sken] pending-quests fetch failed: {ex.Message}");
+                    _pending = [];
+                }
+            }
+            else
+            {
+                _pending = null;
+            }
         }
-        catch (Exception ex) { error = ex.Message; }
-        finally { actionInProgress = false; }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[sken] LoadAsync error: {ex.Message}");
+            _error = $"Nepodařilo se načíst hrdinu: {ex.Message}";
+            _character = null;
+        }
+        finally
+        {
+            _loading = false;
+        }
     }
 
-    private async Task AddNoteAsync()
+    // === Class picker ===
+
+    private void OpenClassPicker() => _classPickerOpen = true;
+
+    private async Task PickClass(PlayerClass cls)
     {
-        actionInProgress = true;
+        _classPickerOpen = false;
+        if (_character is null) return;
+        _busy = true;
         try
         {
-            var data = System.Text.Json.JsonSerializer.Serialize(new { text = noteText });
-            await Api.PostAsync<CreateCharacterEventDto, CharacterEventDto>(
-                $"/api/scan/{PersonId}/events",
-                new CreateCharacterEventDto(CharacterEventType.Note, data, currentLocation));
-            isNoteVisible = false; noteText = "";
+            // ClassChosen first — sets assignment.Class on the API. LevelUp second
+            // — increments level to 1. Auto-skills (none for any class at L1) last.
+            await PostEventAsync(
+                CharacterEventType.ClassChosen,
+                System.Text.Json.JsonSerializer.Serialize(new { @class = cls.ToString() }));
+            await PostEventAsync(CharacterEventType.LevelUp, "{}");
+            await GrantAutoSkillsAsync(cls, 1);
             await LoadAsync();
         }
-        catch (Exception ex) { error = ex.Message; }
-        finally { actionInProgress = false; }
+        catch (Exception ex)
+        {
+            _error = $"Volba povolání selhala: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 
-    private async Task AddSkillAsync()
+    // === Level up ===
+
+    private void OpenLevelUpConfirm() => _levelUpConfirmOpen = true;
+
+    private async Task ConfirmLevelUp()
     {
-        actionInProgress = true;
+        _levelUpConfirmOpen = false;
+        if (_character is null) return;
+        _busy = true;
         try
         {
-            var data = System.Text.Json.JsonSerializer.Serialize(new { skill = skillName });
-            await Api.PostAsync<CreateCharacterEventDto, CharacterEventDto>(
-                $"/api/scan/{PersonId}/events",
-                new CreateCharacterEventDto(CharacterEventType.SkillGained, data, currentLocation));
-            isSkillVisible = false; skillName = "";
+            var newLevel = _character.CurrentLevel + 1;
+            await PostEventAsync(CharacterEventType.LevelUp, "{}");
+            if (_character.Class is { } cls)
+            {
+                await GrantAutoSkillsAsync(cls, newLevel);
+            }
             await LoadAsync();
         }
-        catch (Exception ex) { error = ex.Message; }
-        finally { actionInProgress = false; }
+        catch (Exception ex)
+        {
+            _error = $"Povýšení selhalo: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 
-    private string FormatEventData(CharacterEventDto evt) => evt.EventType switch
+    private async Task GrantAutoSkillsAsync(PlayerClass cls, int newLevel)
     {
-        CharacterEventType.LevelUp => $"→ Úroveň {ParseLevel(evt.Data)}",
-        CharacterEventType.ClassChosen => $"→ {ParseClass(evt.Data)}",
-        CharacterEventType.PointsChanged => ParsePoints(evt.Data),
-        CharacterEventType.SkillGained => ParseSkill(evt.Data),
-        CharacterEventType.Note => ParseNote(evt.Data),
-        _ => evt.Data
+        foreach (var skill in LevelingRules.AutoSkillsAtLevel(cls, newLevel))
+        {
+            await PostEventAsync(
+                CharacterEventType.SkillGained,
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    skill = skill.Name,
+                    automatic = true,
+                    level = newLevel
+                }));
+        }
+    }
+
+    // === Mastery ===
+
+    private void OpenMasteryPicker() => _masteryPickerOpen = true;
+
+    private void OpenMasteryConfirm(MasteryOption m)
+    {
+        _pendingMastery = m;
+        _masteryConfirmOpen = true;
+        _masteryPickerOpen = false;
+    }
+
+    private void CancelMasteryConfirm()
+    {
+        _masteryConfirmOpen = false;
+        _pendingMastery = null;
+    }
+
+    private async Task ConfirmMasteryPurchase()
+    {
+        if (_pendingMastery is not { } m) return;
+        _masteryConfirmOpen = false;
+        _pendingMastery = null;
+        _busy = true;
+        try
+        {
+            await PostEventAsync(
+                CharacterEventType.SkillGained,
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    skill = m.Name,
+                    mastery = true,
+                    automatic = false,
+                    xpCost = LevelingRules.MasterySkillCost
+                }));
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Nákup mistrovské dovednosti selhal: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // === Reset ===
+
+    private void OpenResetConfirm() => _resetConfirmOpen = true;
+
+    private async Task DoReset()
+    {
+        _resetConfirmOpen = false;
+        _busy = true;
+        try
+        {
+            var ok = await Api.DeleteAsync($"/api/scan/{PersonId}/events/last-levelup");
+            if (!ok)
+            {
+                _error = "Vrácení úrovně selhalo (žádná úroveň k vrácení nebo chyba serveru).";
+                return;
+            }
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Vrácení úrovně selhalo: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // === Note ===
+
+    private void OpenNoteModal()
+    {
+        _noteText = "";
+        _noteOpen = true;
+    }
+
+    private async Task DoSaveNote()
+    {
+        if (string.IsNullOrWhiteSpace(_noteText)) return;
+        _noteOpen = false;
+        _busy = true;
+        try
+        {
+            await PostEventAsync(
+                CharacterEventType.Note,
+                System.Text.Json.JsonSerializer.Serialize(new { text = _noteText }));
+            _noteText = "";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Uložení poznámky selhalo: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // === Verify-stamp navigation ===
+
+    private void GoVerifyStamp(PendingTreasureQuestDto q)
+    {
+        Nav.NavigateTo($"/p/{PersonId}/verify-stamp/{q.QuestId}");
+    }
+
+    // === Helpers ===
+
+    private async Task PostEventAsync(CharacterEventType type, string data)
+    {
+        var dto = new CreateCharacterEventDto(type, data, null);
+        await Api.PostAsync<CreateCharacterEventDto, CharacterEventDto>(
+            $"/api/scan/{PersonId}/events", dto);
+    }
+
+    private static string CzechEventLabel(CharacterEventType t) => t switch
+    {
+        CharacterEventType.LevelUp => "+1 úroveň",
+        CharacterEventType.LevelUpReverted => "vráceno povýšení",
+        CharacterEventType.ClassChosen => "vybrána třída",
+        CharacterEventType.SkillGained => "získaná dovednost",
+        CharacterEventType.Note => "poznámka",
+        CharacterEventType.PointsChanged => "změna bodů",
+        CharacterEventType.TreasureQuestStampVerified => "ověřené razítko",
+        _ => t.ToString()
     };
 
-    private static string ParseLevel(string json)
+    private static string FormatEventData(CharacterEventDto evt) => evt.EventType switch
     {
-        try { return System.Text.Json.JsonDocument.Parse(json).RootElement.GetProperty("level").GetInt32().ToString(); }
-        catch { return "?"; }
-    }
+        CharacterEventType.ClassChosen => ParseClass(evt.Data),
+        CharacterEventType.SkillGained => ParseSkill(evt.Data),
+        CharacterEventType.Note => ParseNote(evt.Data),
+        CharacterEventType.PointsChanged => ParsePoints(evt.Data),
+        _ => string.Empty
+    };
 
     private static string ParseClass(string json)
     {
         try
         {
-            var cls = System.Text.Json.JsonDocument.Parse(json).RootElement.GetProperty("class").GetString();
-            return Enum.TryParse<PlayerClass>(cls, out var pc) ? pc.GetDisplayName() : cls ?? "?";
+            var cls = System.Text.Json.JsonDocument.Parse(json).RootElement
+                .GetProperty("class").GetString();
+            return Enum.TryParse<PlayerClass>(cls, out var pc) ? pc.GetDisplayName() : cls ?? string.Empty;
         }
-        catch { return "?"; }
+        catch { return string.Empty; }
+    }
+
+    private static string ParseSkill(string json)
+    {
+        try
+        {
+            return System.Text.Json.JsonDocument.Parse(json).RootElement
+                .GetProperty("skill").GetString() ?? string.Empty;
+        }
+        catch { return string.Empty; }
+    }
+
+    private static string ParseNote(string json)
+    {
+        try
+        {
+            var t = System.Text.Json.JsonDocument.Parse(json).RootElement
+                .GetProperty("text").GetString() ?? string.Empty;
+            return t.Length > 60 ? t[..60] + "…" : t;
+        }
+        catch { return string.Empty; }
     }
 
     private static string ParsePoints(string json)
@@ -349,22 +719,10 @@ else if (character is not null)
         try
         {
             var root = System.Text.Json.JsonDocument.Parse(json).RootElement;
-            var cat = root.GetProperty("category").GetString();
-            var amt = root.GetProperty("amount").GetInt32();
-            return $"{cat} +{amt}";
+            var amt = root.TryGetProperty("amount", out var a) ? a.GetInt32() : 0;
+            var cat = root.TryGetProperty("category", out var c) ? c.GetString() : null;
+            return string.IsNullOrEmpty(cat) ? $"+{amt}" : $"{cat} +{amt}";
         }
-        catch { return "body"; }
-    }
-
-    private static string ParseSkill(string json)
-    {
-        try { return System.Text.Json.JsonDocument.Parse(json).RootElement.GetProperty("skill").GetString() ?? "?"; }
-        catch { return "?"; }
-    }
-
-    private static string ParseNote(string json)
-    {
-        try { return System.Text.Json.JsonDocument.Parse(json).RootElement.GetProperty("text").GetString() ?? ""; }
-        catch { return json; }
+        catch { return string.Empty; }
     }
 }

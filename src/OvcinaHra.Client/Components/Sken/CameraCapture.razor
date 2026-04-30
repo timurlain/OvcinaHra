@@ -1,0 +1,69 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<video id="@_videoId" playsinline autoplay
+       style="width:100%; max-width:480px; border-radius:8px; background:#000;"></video>
+
+<div class="sken-stack sken-mt-md">
+    <button class="btn-sken btn-sken-primary" @onclick="DoCapture">Vyfotit</button>
+    <button class="btn-sken btn-sken-secondary" @onclick="OnRetake">Znovu otevřít kameru</button>
+</div>
+
+@if (_error is not null)
+{
+    <p class="text-danger sken-mt-sm" role="alert">@_error</p>
+}
+
+@code {
+    [Parameter] public EventCallback<string> OnCaptured { get; set; }
+    [Parameter] public EventCallback OnRetakeRequested { get; set; }
+
+    private readonly string _videoId = $"cam-{Guid.NewGuid():N}";
+    private string? _error;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            var result = await JS.InvokeAsync<JsResult>("ohCamera.openOn", _videoId);
+            if (!result.Ok)
+            {
+                _error = $"Kamera selhala: {result.Error}";
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kamera selhala: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private async Task DoCapture()
+    {
+        try
+        {
+            var dataUrl = await JS.InvokeAsync<string?>("ohCamera.capture");
+            if (string.IsNullOrEmpty(dataUrl))
+            {
+                _error = "Snímek se nepodařilo zachytit.";
+                return;
+            }
+            await OnCaptured.InvokeAsync(dataUrl);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Snímek selhal: {ex.Message}";
+        }
+    }
+
+    private Task OnRetake() => OnRetakeRequested.InvokeAsync();
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("ohCamera.close"); } catch { }
+    }
+
+    private sealed record JsResult(bool Ok, string? Error);
+}

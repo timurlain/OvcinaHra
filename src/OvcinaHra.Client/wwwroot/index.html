@@ -18,6 +18,8 @@
     <!-- OvčinaHra theme -->
     <link rel="stylesheet" href="css/app.css" />
     <link rel="stylesheet" href="css/ovcinahra-theme.css" />
+    <!-- Sken section (player-facing /p/{id}, /sken, /verify-stamp) — touch-friendly forest-green -->
+    <link rel="stylesheet" href="css/sken.css" />
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link href="OvcinaHra.Client.styles.css" rel="stylesheet" />
     <link href="manifest.webmanifest" rel="manifest" />
@@ -46,6 +48,10 @@
     <script src="js/download-interop.js?v=20260427"></script>
     <script src="js/image-resize-interop.js?v=20260430-463"></script>
     <script src="js/version-refresh.js"></script>
+    <!-- Sken section — html5-qrcode CDN (QR scanner) + qr/camera interops -->
+    <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="js/qr-interop.js?v=20260430-sken"></script>
+    <script src="js/camera-interop.js?v=20260430-sken"></script>
     <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
     <script>navigator.serviceWorker.register('service-worker.js', { updateViaCache: 'none' });</script>
     <script>
