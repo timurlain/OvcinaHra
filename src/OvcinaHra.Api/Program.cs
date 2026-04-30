@@ -39,8 +39,12 @@ try
     });
 
     builder.Services.AddOpenApi();
-    builder.Services.AddDbContext<WorldDbContext>(options =>
-        options.UseNpgsql(builder.Configuration.GetConnectionString("WorldDb")));
+    builder.Services.AddHttpContextAccessor();
+    builder.Services.AddScoped<WorldChangeAuditInterceptor>();
+    builder.Services.AddDbContext<WorldDbContext>((sp, options) =>
+        options
+            .UseNpgsql(builder.Configuration.GetConnectionString("WorldDb"))
+            .AddInterceptors(sp.GetRequiredService<WorldChangeAuditInterceptor>()));
     builder.Services.AddHealthChecks()
         .AddDbContextCheck<WorldDbContext>();
 

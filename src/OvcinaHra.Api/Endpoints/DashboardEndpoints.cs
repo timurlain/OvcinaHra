@@ -108,90 +108,48 @@ public static class DashboardEndpoints
         count == 0 ? "low" : count < 5 ? "low" : count < 15 ? "mid" : "high";
 
     /// <summary>
-    /// Powers RecentActivityFeed — real WorldActivity recordings first,
-    /// followed by legacy per-entity timestamp rows until every workflow
-    /// records through WorldActivity.
+    /// Powers RecentActivityFeed from the best-effort WorldChange audit log.
     /// </summary>
     private static async Task<Ok<List<DashboardActivityDto>>> GetActivity(
-        int gameId, WorldDbContext db, HttpContext http, int? limit = 10)
+        int gameId, WorldDbContext db, int? limit = 10)
     {
         var take = Math.Clamp(limit ?? 10, 1, 50);
 
-        var activityRows = await db.WorldActivities
-            .Where(a => a.GameId == gameId)
-            .OrderByDescending(a => a.TimestampUtc)
+        var changes = await db.WorldChanges
+            .AsNoTracking()
+            .Where(c => c.GameId == gameId || c.GameId == null)
+            .OrderByDescending(c => c.ChangedAtUtc)
+            .ThenByDescending(c => c.Id)
             .Take(take)
-            .Select(a => new
+            .Select(c => new
             {
-                a.Id,
-                a.LocationId,
-                a.Description,
-                a.OrganizerName,
-                a.TimestampUtc,
-                a.ActivityType,
-                LocationName = a.Location != null ? a.Location.Name : null,
-                PlacementPhotoPath = a.Location != null ? a.Location.PlacementPhotoPath : null
+                c.EntityType,
+                c.EntityId,
+                c.EntityName,
+                c.Operation,
+                c.ActorDisplayName,
+                c.ChangedAtUtc
             })
             .ToListAsync();
 
-        var activities = activityRows.Select(a => new DashboardActivityDto(
-            a.LocationId.HasValue ? "location" : "activity",
-            a.LocationId ?? a.Id,
-            a.LocationName ?? a.Description,
-            a.LocationId.HasValue && !string.IsNullOrWhiteSpace(a.PlacementPhotoPath)
-                ? ImageEndpoints.ThumbUrl(http, "locationplacements", a.LocationId.Value, "small")
-                : null,
-            ActivityVerb(a.ActivityType),
-            a.OrganizerName,
-            a.TimestampUtc)).ToList();
+        var rows = changes.Select(c => new DashboardActivityDto(
+            c.EntityType.ToLowerInvariant(),
+            c.EntityId,
+            c.EntityName,
+            null,
+            ChangeVerb(c.Operation),
+            c.ActorDisplayName,
+            c.ChangedAtUtc)).ToList();
 
-        // Per-entity slices, each ordered DESC and capped at `take` so the
-        // merged result has enough material to slice the global top-N from.
-        // Sequential awaits — single DbContext can't serve concurrent queries.
-        var characters = await db.CharacterAssignments
-            .Where(a => a.GameId == gameId)
-            .OrderByDescending(a => a.Character.UpdatedAtUtc)
-            .Take(take)
-            .Select(a => new DashboardActivityDto(
-                "character", a.CharacterId, a.Character.Name,
-                null, "upravil", "—", a.Character.UpdatedAtUtc))
-            .ToListAsync();
-
-        var events = await db.GameEvents
-            .Where(e => e.GameId == gameId)
-            .OrderByDescending(e => e.UpdatedAtUtc)
-            .Take(take)
-            .Select(e => new DashboardActivityDto(
-                "event", e.Id, e.Name,
-                null, "upravil", "—", e.UpdatedAtUtc))
-            .ToListAsync();
-
-        var npcs = await db.GameNpcs
-            .Where(gn => gn.GameId == gameId)
-            .OrderByDescending(gn => gn.Npc.UpdatedAtUtc)
-            .Take(take)
-            .Select(gn => new DashboardActivityDto(
-                "npc", gn.NpcId, gn.Npc.Name,
-                null, "upravil", "—", gn.Npc.UpdatedAtUtc))
-            .ToListAsync();
-
-        var merged = characters
-            .Concat(activities)
-            .Concat(events)
-            .Concat(npcs)
-            .OrderByDescending(x => x.OccurredUtc)
-            .Take(take)
-            .ToList();
-
-        return TypedResults.Ok(merged);
+        return TypedResults.Ok(rows);
     }
 
-    private static string ActivityVerb(WorldActivityType type) => type switch
+    private static string ChangeVerb(WorldChangeOperation operation) => operation switch
     {
-        WorldActivityType.LocationPlaced => "umístil",
-        WorldActivityType.CharacterLevelUp => "zapsal level",
-        WorldActivityType.QuestCompleted => "dokončil quest",
-        _ => "zapsal"
+        WorldChangeOperation.Created => "vytvořil",
+        WorldChangeOperation.Updated => "upravil",
+        WorldChangeOperation.Deleted => "smazal",
+        _ => "upravil"
     };
 
     /// <summary>
