@@ -1196,7 +1196,6 @@ else
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[loc-placement] exif read result=parse-failed gameId={gameId} detail={ex.Message}");
             Console.WriteLine($"[image-upload] exif.read result=parse-failed surface=placement gameId={gameId} detail={ex.Message}");
             return;
         }
@@ -1209,13 +1208,10 @@ else
 
         if (gps is null)
         {
-            Console.WriteLine($"[loc-placement] exif read result=no-gps gameId={gameId}");
             return;
         }
 
         placementPhotoGps = gps;
-        Console.WriteLine($"[loc-placement] exif read result=found-gps gameId={gameId}");
-        Console.WriteLine($"[loc-placement] exif gps-coords lat={FormatPlacementGpsCoord(gps.Lat)} lng={FormatPlacementGpsCoord(gps.Lng)}");
 
         var selected = SelectedPlacementLocation;
         if (selected is null)

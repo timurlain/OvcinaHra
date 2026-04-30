@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Diagnostics;
 using System.Globalization;
 using System.Security.Claims;
+using System.Text.RegularExpressions;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Dtos;
@@ -11,7 +12,7 @@ using SixLabors.ImageSharp;
 
 namespace OvcinaHra.Api.Endpoints;
 
-public static class ImageEndpoints
+public static partial class ImageEndpoints
 {
     // "locationstamps" and "locationplacements" are logical aliases keyed by
     // Location.Id. They write Location.StampImagePath / PlacementPhotoPath but
@@ -23,6 +24,9 @@ public static class ImageEndpoints
     private const long MaxFileSize = 5 * 1024 * 1024; // 5 MB
     private const int LocationStampMinimumPixels = 200;
     private const double LocationStampAspectTolerance = 0.10;
+    private const int CapturedAtMaxLength = 64;
+    [GeneratedRegex(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$", RegexOptions.CultureInvariant)]
+    private static partial Regex CapturedAtIsoRegex();
 
     public static RouteGroupBuilder MapImageEndpoints(this IEndpointRouteBuilder routes)
     {
@@ -192,7 +196,19 @@ public static class ImageEndpoints
                 return TypedResults.NotFound();
             }
 
-            var metadata = await ReadUploadMetadataAsync(http, ct);
+            var metadataResult = await ReadUploadMetadataAsync(http, ct);
+            if (metadataResult.Problem is not null)
+            {
+                logger.LogInformation(
+                    "[image-upload-server] metadata.validation-failed capturedAt={CapturedAt} reason={Reason}",
+                    metadataResult.CapturedAtForLog,
+                    metadataResult.FailureReason);
+                LogPlacementImageExit(logger, isPlacementUpload, entityId, gameId, userId, 400, detail: $"capturedAt:{metadataResult.FailureReason}");
+                LogImageUploadServerExit(logger, isServerTimedImageUpload, http, entityType, entityId, userId, serverTimer, 400, detail: $"capturedAt:{metadataResult.FailureReason}");
+                return TypedResults.BadRequest(metadataResult.Problem);
+            }
+
+            var metadata = metadataResult.Metadata;
             var isPlacement = string.Equals(field, "placement", StringComparison.OrdinalIgnoreCase);
             var suffix = isPlacement ? "placement" : "image";
             var ext = file.ContentType switch
@@ -413,17 +429,48 @@ public static class ImageEndpoints
         }
     }
 
-    private static async Task<ImageUploadMetadataDto?> ReadUploadMetadataAsync(HttpContext http, CancellationToken ct)
+    private static async Task<UploadMetadataReadResult> ReadUploadMetadataAsync(HttpContext http, CancellationToken ct)
     {
         var form = await http.Request.ReadFormAsync(ct);
         var gpsLatitude = ReadNullableDouble(form, "gpsLatitude");
         var gpsLongitude = ReadNullableDouble(form, "gpsLongitude");
         var capturedAt = ReadNullableString(form, "capturedAt");
 
+        var capturedAtValidationFailure = ValidateCapturedAt(capturedAt);
+        if (capturedAtValidationFailure is not null)
+        {
+            return new UploadMetadataReadResult(
+                null,
+                ImageFieldValidationProblem("capturedAt", "Neplatný formát data v poli capturedAt."),
+                capturedAtValidationFailure,
+                TruncateForLog(capturedAt));
+        }
+
         if (gpsLatitude is null && gpsLongitude is null && capturedAt is null)
+            return new UploadMetadataReadResult(null, null, null, null);
+
+        return new UploadMetadataReadResult(new ImageUploadMetadataDto(gpsLatitude, gpsLongitude, capturedAt), null, null, null);
+    }
+
+    private static string? ValidateCapturedAt(string? capturedAt)
+    {
+        if (capturedAt is null)
             return null;
 
-        return new ImageUploadMetadataDto(gpsLatitude, gpsLongitude, capturedAt);
+        if (capturedAt.Length > CapturedAtMaxLength)
+            return "too-long";
+
+        if (!CapturedAtIsoRegex().IsMatch(capturedAt))
+            return "invalid-format";
+
+        return DateTime.TryParseExact(
+            capturedAt,
+            "yyyy-MM-dd'T'HH:mm:ss",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out _)
+            ? null
+            : "invalid-format";
     }
 
     private static double? ReadNullableDouble(IFormCollection form, string key)
@@ -444,6 +491,14 @@ public static class ImageEndpoints
 
         var value = values.ToString();
         return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static string? TruncateForLog(string? value)
+    {
+        if (value is null || value.Length <= 96)
+            return value;
+
+        return value[..96] + "...";
     }
 
     /// <summary>
@@ -922,6 +977,22 @@ public static class ImageEndpoints
         Detail = detail,
         Status = StatusCodes.Status400BadRequest
     };
+
+    private static ProblemDetails ImageFieldValidationProblem(string field, string detail)
+    {
+        var problem = ImageValidationProblem(detail);
+        problem.Extensions["errors"] = new Dictionary<string, string[]>
+        {
+            [field] = [detail]
+        };
+        return problem;
+    }
+
+    private sealed record UploadMetadataReadResult(
+        ImageUploadMetadataDto? Metadata,
+        ProblemDetails? Problem,
+        string? FailureReason,
+        string? CapturedAtForLog);
 
     private static async Task<bool> EntityExists(WorldDbContext db, string entityType, int entityId)
     {
