@@ -7,5 +7,6 @@ public enum WorldActivityType
 {
     LocationPlaced = 0,
     CharacterLevelUp = 1,
-    QuestCompleted = 2
+    QuestCompleted = 2,
+    CharacterLevelReverted = 3
 }

@@ -1,5 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Tests.Fixtures;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
@@ -85,6 +88,35 @@ public class QuestPhase1Tests(PostgresFixture postgres) : IntegrationTestBase(po
         Assert.Equal(HttpStatusCode.NoContent, r3.StatusCode);
         var afterRevert = await Client.GetFromJsonAsync<QuestDetailDto>($"/api/quests/{created.Id}");
         Assert.Equal(QuestState.Inactive, afterRevert!.State);
+    }
+
+    [Fact]
+    public async Task PatchState_TransitionToCompleted_WritesWorldActivityMirrorOnce()
+    {
+        var gameResponse = await Client.PostAsJsonAsync("/api/games",
+            new CreateGameDto("Quest audit", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+        var game = await gameResponse.Content.ReadFromJsonAsync<GameDetailDto>();
+
+        var createResponse = await Client.PostAsJsonAsync("/api/quests",
+            new CreateQuestDto("Najít prsten", QuestType.General, game!.Id));
+        var created = await createResponse.Content.ReadFromJsonAsync<QuestListDto>();
+
+        var first = await Client.PatchAsJsonAsync($"/api/quests/{created!.Id}/state",
+            new UpdateQuestStateDto(QuestState.Completed));
+        var second = await Client.PatchAsJsonAsync($"/api/quests/{created.Id}/state",
+            new UpdateQuestStateDto(QuestState.Completed));
+
+        Assert.Equal(HttpStatusCode.NoContent, first.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, second.StatusCode);
+
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        var row = await db.WorldActivities.SingleAsync(a =>
+            a.GameId == game.Id && a.ActivityType == WorldActivityType.QuestCompleted);
+
+        Assert.Equal(created.Id, row.QuestId);
+        Assert.Equal("Splněn úkol: Najít prsten", row.Description);
+        Assert.Equal("Test Organizátor", row.OrganizerName);
     }
 
     [Fact]
