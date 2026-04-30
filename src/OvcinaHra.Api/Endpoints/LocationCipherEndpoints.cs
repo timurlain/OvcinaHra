@@ -162,7 +162,7 @@ public static class LocationCipherEndpoints
         var existing = await db.LocationCiphers
             .AnyAsync(c => c.GameId == dto.GameId && c.LocationId == dto.LocationId && c.Skill == dto.Skill, ct);
         if (existing)
-            return Results.Conflict(ValidationProblem("Šifra pro tuto lokaci a dovednost už existuje."));
+            return Results.Conflict(ConflictProblem("Šifra pro tuto lokaci a dovednost už existuje."));
 
         var cipher = new LocationCipher
         {
@@ -226,7 +226,7 @@ public static class LocationCipherEndpoints
         var duplicate = await db.LocationCiphers.AnyAsync(c =>
             c.Id != id && c.GameId == dto.GameId && c.LocationId == dto.LocationId && c.Skill == dto.Skill, ct);
         if (duplicate)
-            return Results.Conflict(ValidationProblem("Šifra pro tuto lokaci a dovednost už existuje."));
+            return Results.Conflict(ConflictProblem("Šifra pro tuto lokaci a dovednost už existuje."));
 
         ApplyWrite(cipher, createDto, validation);
         LogCipher(logger, "db-write", new { endpoint = "update", id });
@@ -674,6 +674,8 @@ public static class LocationCipherEndpoints
             return WriteValidation.Fail("Typ Pytlík musí mít číslo pytlíku.");
         if (dto.OrganizerNotes is { Length: > 1000 })
             return WriteValidation.Fail("OrganizerNotes má příliš mnoho znaků. Maximum je 1000.");
+        if (dto.Tier == CipherTier.QuestTied && !dto.LinkedQuestId.HasValue)
+            return WriteValidation.Fail("Questová šifra musí mít vybraný quest.");
 
         if (dto.LinkedQuestId.HasValue)
         {
@@ -725,6 +727,8 @@ public static class LocationCipherEndpoints
             return "CipherText musí mít XOX wrapper.";
 
         var inner = cipherText[3..^3];
+        if (inner.Length == 0)
+            return "CipherText musí obsahovat alespoň jedno písmeno A-Z uvnitř XOX wrapperu.";
         var max = skill.GetMaxCipherLetters();
         if (inner.Length > max)
             return $"CipherText pro {skill.GetDisplayName()} má {inner.Length} znaků bez wrapperu. Maximum je {max}.";
@@ -805,7 +809,7 @@ public static class LocationCipherEndpoints
         HasAnyRole(user, "Admin", "Administrator", "Osud", "Organizer", "Organizator", "Organizátor", "Service");
 
     private static bool CanDeleteOrBulk(ClaimsPrincipal user) =>
-        HasAnyRole(user, "Admin", "Administrator", "Osud", "Organizer", "Organizator", "Organizátor", "Service");
+        HasAnyRole(user, "Admin", "Administrator", "Service");
 
     private static bool CanVoucherRead(ClaimsPrincipal user) =>
         HasAnyRole(user, "Admin", "Administrator", "Osud", "Knihovník", "Knihovnik", "Organizer", "Organizator", "Organizátor", "Service");
@@ -838,6 +842,13 @@ public static class LocationCipherEndpoints
         Title = "Šifru nejde uložit",
         Detail = detail,
         Status = StatusCodes.Status400BadRequest
+    };
+
+    private static ProblemDetails ConflictProblem(string detail) => new()
+    {
+        Title = "Konflikt šifry lokace",
+        Detail = detail,
+        Status = StatusCodes.Status409Conflict
     };
 
     private sealed record WriteValidation(

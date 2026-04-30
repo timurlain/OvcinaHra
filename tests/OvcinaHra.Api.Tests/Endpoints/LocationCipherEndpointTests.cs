@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -175,6 +176,30 @@ public class LocationCipherEndpointTests(PostgresFixture postgres) : Integration
     }
 
     [Fact]
+    public async Task Create_QuestTiedWithoutQuest_ReturnsBadRequest()
+    {
+        var (game, location) = await CreateAssignedLocationAsync();
+
+        var response = await Client.PostAsJsonAsync("/api/location-ciphers",
+            new LocationCipherCreateDto(game.Id, location.Id, AdventuringSkill.HledaniMagie,
+                CipherTier.QuestTied, CipherContentType.Info, "Questová stopa"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Create_EmptyWrappedCipherText_ReturnsBadRequest()
+    {
+        var (game, location) = await CreateAssignedLocationAsync();
+
+        var response = await Client.PostAsJsonAsync("/api/location-ciphers",
+            new LocationCipherCreateDto(game.Id, location.Id, AdventuringSkill.HledaniMagie,
+                CipherTier.Micro, CipherContentType.Info, "Odhalený text", CipherText: "XOXXOX"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Put_QuestNotLinkedToLocation_ReturnsBadRequest()
     {
         var (game, location) = await CreateAssignedLocationAsync();
@@ -195,7 +220,8 @@ public class LocationCipherEndpointTests(PostgresFixture postgres) : Integration
             $"/api/location-ciphers/{game.Id}/{location.Id}/znalost-bytosti",
             new UpsertLocationCipherDto("Nic tu neni"));
 
-        var response = await Client.DeleteAsync(
+        using var admin = CreateRoleClient("Admin");
+        var response = await admin.DeleteAsync(
             $"/api/location-ciphers/{game.Id}/{location.Id}/znalost-bytosti");
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
@@ -208,8 +234,9 @@ public class LocationCipherEndpointTests(PostgresFixture postgres) : Integration
     public async Task BulkImport_AdditivelyUpsertsByGameLocationAndSkill()
     {
         var (game, location) = await CreateAssignedLocationAsync();
+        using var admin = CreateRoleClient("Admin");
 
-        var first = await Client.PostAsJsonAsync("/api/location-ciphers/bulk-import",
+        var first = await admin.PostAsJsonAsync("/api/location-ciphers/bulk-import",
             new LocationCipherBulkImportDto(game.Id,
             [
                 CreateCipher(game.Id, location.Id, AdventuringSkill.HledaniMagie, "První stopa"),
@@ -218,7 +245,7 @@ public class LocationCipherEndpointTests(PostgresFixture postgres) : Integration
             ]));
         first.EnsureSuccessStatusCode();
 
-        var second = await Client.PostAsJsonAsync("/api/location-ciphers/bulk-import",
+        var second = await admin.PostAsJsonAsync("/api/location-ciphers/bulk-import",
             new LocationCipherBulkImportDto(game.Id,
             [
                 CreateCipher(game.Id, location.Id, AdventuringSkill.HledaniMagie, "Změněná stopa"),
@@ -302,6 +329,27 @@ public class LocationCipherEndpointTests(PostgresFixture postgres) : Integration
     }
 
     [Fact]
+    public async Task DeleteAndBulkImport_ForOrganizer_ReturnForbidden()
+    {
+        var (game, location) = await CreateAssignedLocationAsync();
+        var create = await Client.PostAsJsonAsync("/api/location-ciphers",
+            new LocationCipherCreateDto(game.Id, location.Id, AdventuringSkill.HledaniMagie,
+                CipherTier.Micro, CipherContentType.Info, "Jen admin mazání"));
+        create.EnsureSuccessStatusCode();
+        var cipher = await create.Content.ReadFromJsonAsync<LocationCipherDetailDto>();
+
+        var delete = await Client.DeleteAsync($"/api/location-ciphers/{cipher!.Id}");
+        var bulk = await Client.PostAsJsonAsync("/api/location-ciphers/bulk-import",
+            new LocationCipherBulkImportDto(game.Id,
+            [
+                CreateCipher(game.Id, location.Id, AdventuringSkill.Prohledavani, "Hromadně")
+            ]));
+
+        Assert.Equal(HttpStatusCode.Forbidden, delete.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, bulk.StatusCode);
+    }
+
+    [Fact]
     public async Task Create_DuplicateLibraryKeywordInGameReturnsBadRequest()
     {
         var (game, location) = await CreateAssignedLocationAsync();
@@ -380,6 +428,14 @@ public class LocationCipherEndpointTests(PostgresFixture postgres) : Integration
         });
         await db.SaveChangesAsync();
         return character.Id;
+    }
+
+    private HttpClient CreateRoleClient(params string[] roles)
+    {
+        var client = Factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", TestJwt.CreateToken(Factory.Services, roles));
+        return client;
     }
 
     private async Task<int> CreateLocationQuestAsync(int gameId, int locationId)
