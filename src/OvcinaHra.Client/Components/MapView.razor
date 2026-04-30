@@ -15,8 +15,9 @@
             <Authorized>
                 <button type="button" class="btn btn-sm btn-outline-primary oh-map-overlay-edit-btn"
                         title="Upravit vektorový překryv mapy"
+                        aria-label="Upravit překryv"
                         @onclick="EnterEditModeAsync">
-                    <i class="bi bi-vector-pen"></i> Upravit překryv
+                    <i class="bi bi-vector-pen"></i><span class="d-none d-md-inline ms-1">Upravit překryv</span>
                 </button>
             </Authorized>
         </AuthorizeView>
