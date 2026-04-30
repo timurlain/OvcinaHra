@@ -297,6 +297,15 @@ public class DashboardEndpointsTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task WorldActivity_NonExistentGame_Returns404()
+    {
+        // §1 — REST 404 before 200-with-empty so orchestrator bugs
+        // (typo'd gameId, stale URL) surface instead of being masked.
+        var response = await Client.GetAsync("/api/dashboard/world-activity?gameId=999999");
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task WorldActivity_OtherGame_IsExcluded()
     {
         var gameA = await CreateGameAsync();

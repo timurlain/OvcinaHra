@@ -142,42 +142,51 @@ public static class ScanEndpoints
             Location = dto.Location
         };
 
+        // Issue #478 — capture level for audit before any save. assignment.Events
+        // is the pre-add count from .Include(a => a.Events), so +1 = the new
+        // level (matches eventData seeded on line 109).
+        int? newLevelForAudit = dto.EventType == CharacterEventType.LevelUp
+            ? assignment.Events.Count(e => e.EventType == CharacterEventType.LevelUp) + 1
+            : null;
+
         db.CharacterEvents.Add(ev);
         TrackIdempotency(db, assignment.Id, idempotencyKey, ev);
+        await db.SaveChangesAsync();
 
-        // Issue #478 — mirror level-ups into the WorldActivity audit log so the
-        // Aktivity světa table on the cockpit surfaces them alongside placements.
-        // CharacterEvent stays the system-of-record for player progression
-        // (RecentActivityPanel polls it for the live takeover); WorldActivity
-        // is the organizer-action audit overlay. Same SaveChangesAsync below
-        // keeps the two writes transactional.
-        if (dto.EventType == CharacterEventType.LevelUp)
+        // Issue #478 — best-effort mirror into the WorldActivity audit log so
+        // the Aktivity světa table on the cockpit surfaces level-ups alongside
+        // placements. CharacterEvent stays the system-of-record for player
+        // progression (RecentActivityPanel polls it for the live takeover);
+        // WorldActivity is the organizer-action audit overlay. Audit failures
+        // must never roll back the primary event — pre-check the Game FK
+        // (cheap query) so we don't throw on assignments tied to fake gameIds
+        // (test fixtures), and wrap the audit save in try/catch as a belt
+        // for any other transient constraint hit.
+        if (newLevelForAudit is { } newLevel
+            && await db.Games.AnyAsync(g => g.Id == assignment.GameId))
         {
-            int newLevel;
             try
             {
-                using var doc = JsonDocument.Parse(eventData);
-                newLevel = doc.RootElement.GetProperty("level").GetInt32();
+                db.WorldActivities.Add(new WorldActivity
+                {
+                    GameId = assignment.GameId,
+                    TimestampUtc = ev.Timestamp,
+                    OrganizerUserId = organizer.UserId,
+                    OrganizerName = organizer.Name,
+                    ActivityType = WorldActivityType.CharacterLevelUp,
+                    Description = $"{assignment.Character.Name} dosáhl {newLevel}. úrovně",
+                    CharacterAssignmentId = assignment.Id,
+                    DataJson = eventData
+                });
+                await db.SaveChangesAsync();
             }
-            catch (JsonException)
+            catch (Exception)
             {
-                newLevel = assignment.Events.Count(e => e.EventType == CharacterEventType.LevelUp) + 1;
+                // Audit overlay only — primary level-up is already persisted
+                // and returned to the caller; the missed audit row will simply
+                // not appear in the Aktivity světa table.
             }
-
-            db.WorldActivities.Add(new WorldActivity
-            {
-                GameId = assignment.GameId,
-                TimestampUtc = ev.Timestamp,
-                OrganizerUserId = organizer.UserId,
-                OrganizerName = organizer.Name,
-                ActivityType = WorldActivityType.CharacterLevelUp,
-                Description = $"{assignment.Character.Name} dosáhl {newLevel}. úrovně",
-                CharacterAssignmentId = assignment.Id,
-                DataJson = eventData
-            });
         }
-
-        await db.SaveChangesAsync();
 
         return TypedResults.Created($"/api/scan/{personId}/events/{ev.Id}", ToDto(ev));
     }

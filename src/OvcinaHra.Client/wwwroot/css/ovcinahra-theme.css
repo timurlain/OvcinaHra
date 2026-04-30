@@ -3515,6 +3515,10 @@
 /* Issue #478 — Aktivity světa table on Home cockpit */
 .oh-home-world-activity{padding:14px 18px;background:var(--oh-surface,#FAF6EC);
     border:1px solid var(--oh-border,#d8d2be);border-radius:8px}
+.oh-world-activity-tools{display:inline-flex;align-items:center;gap:10px}
+.oh-world-activity-tools .btn{padding:2px 8px;line-height:1}
+.oh-spin{display:inline-block;animation:oh-spin 1s linear infinite}
+@keyframes oh-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
 .oh-world-activity-scroll{max-height:420px;overflow-y:auto;border-radius:6px}
 .oh-world-activity-table{font-size:.88rem}
 .oh-world-activity-table thead th{position:sticky;top:0;background:var(--oh-surface-alt,#F2EBD8);

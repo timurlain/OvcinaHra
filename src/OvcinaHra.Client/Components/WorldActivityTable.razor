@@ -1,19 +1,31 @@
 @* Issue #478 — raw WorldActivity audit table on the Home cockpit.
    Two columns: Time (dd/MM HH:mm) + event description with type badge.
    Surfaces level-ups / placements / quest completions flowing in from
-   Glejt PWA + in-app workflows so organizers can verify pre-weekend. *@
+   Glejt PWA + in-app workflows so organizers can verify pre-weekend.
+   Auto-refreshes every 15s and exposes a manual refresh button so
+   the table picks up scans that land while the cockpit is open. *@
 
 @using OvcinaHra.Shared.Domain.Enums
 @using OvcinaHra.Shared.Dtos
 @inject ApiClient Api
+@implements IAsyncDisposable
 
 <section class="oh-home-world-activity" aria-labelledby="oh-home-world-activity-title">
-    <header class="oh-home-act-head">
+    <header class="oh-home-act-head oh-home-recent-head">
         <h2 id="oh-home-world-activity-title">Aktivity světa</h2>
-        @if (_rows is not null && _rows.Count > 0)
-        {
-            <span class="text-muted small">@_rows.Count záznamů</span>
-        }
+        <div class="oh-world-activity-tools">
+            @if (_rows is not null && _rows.Count > 0)
+            {
+                <span class="text-muted small">@_rows.Count záznamů</span>
+            }
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    title="Obnovit"
+                    aria-label="Obnovit"
+                    disabled="@_isRefreshing"
+                    @onclick="OnManualRefreshAsync">
+                <i class="bi @(_isRefreshing ? "bi-arrow-repeat oh-spin" : "bi-arrow-clockwise")"></i>
+            </button>
+        </div>
     </header>
 
     @if (_rows is null)
@@ -69,8 +81,12 @@
 </section>
 
 @code {
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(15);
+
     private List<WorldActivityRowDto>? _rows;
-    private int? _loadedGameId;
+    private int? _activeGameId;
+    private CancellationTokenSource? _pollCts;
+    private bool _isRefreshing;
 
     [Parameter] public int? GameId { get; set; }
 
@@ -78,31 +94,68 @@
     {
         if (GameId is null)
         {
+            StopPolling();
             _rows = null;
-            _loadedGameId = null;
+            _activeGameId = null;
             return;
         }
 
-        if (_loadedGameId == GameId.Value && _rows is not null) return;
-        _loadedGameId = GameId.Value;
-        await LoadAsync(GameId.Value);
+        if (_activeGameId == GameId.Value && _pollCts is not null) return;
+
+        StopPolling();
+        _activeGameId = GameId.Value;
+        _rows = null;
+        _pollCts = new CancellationTokenSource();
+        await LoadAsync(GameId.Value, _pollCts.Token);
+        _ = PollAsync(GameId.Value, _pollCts.Token);
     }
 
-    private async Task LoadAsync(int gameId)
+    private async Task PollAsync(int gameId, CancellationToken cancellationToken)
     {
         try
         {
-            var rows = await Api.GetListAsync<WorldActivityRowDto>(
-                $"/api/dashboard/world-activity?gameId={gameId}&take=100");
-            _rows = rows ?? [];
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(PollInterval, cancellationToken);
+                await LoadAsync(gameId, cancellationToken);
+            }
         }
-        catch (Exception)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // ApiClient already logs; keep prior _rows so a transient flake
-            // doesn't blank the table mid-session.
-            _rows ??= [];
         }
+    }
+
+    private async Task LoadAsync(int gameId, CancellationToken cancellationToken)
+    {
+        var rows = await Api.GetListAsync<WorldActivityRowDto>(
+            $"/api/dashboard/world-activity?gameId={gameId}&take=100",
+            cancellationToken);
+        if (cancellationToken.IsCancellationRequested) return;
+        _rows = rows;
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnManualRefreshAsync()
+    {
+        if (_activeGameId is null || _isRefreshing) return;
+        _isRefreshing = true;
+        try
+        {
+            var token = _pollCts?.Token ?? CancellationToken.None;
+            await LoadAsync(_activeGameId.Value, token);
+        }
+        finally
+        {
+            _isRefreshing = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void StopPolling()
+    {
+        _pollCts?.Cancel();
+        _pollCts?.Dispose();
+        _pollCts = null;
     }
 
     private static string TypeLabel(WorldActivityType type) => type switch
@@ -137,5 +190,11 @@
         if (row.LocationId.HasValue) return $"/locations/{row.LocationId.Value}";
         if (row.QuestId.HasValue) return $"/quests/{row.QuestId.Value}";
         return null;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        StopPolling();
+        return ValueTask.CompletedTask;
     }
 }

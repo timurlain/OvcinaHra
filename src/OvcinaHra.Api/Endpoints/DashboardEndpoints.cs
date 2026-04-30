@@ -200,12 +200,16 @@ public static class DashboardEndpoints
     /// the Home cockpit. Returns the audit log 1:1 (no merge with legacy
     /// entity-timestamp rows) so organizers can verify what's flowing in
     /// from the Glejt PWA + in-app workflows pre-weekend. Default 100 rows,
-    /// max 500.
+    /// max 500. 404 when the game doesn't exist (per §1 — REST 404 before
+    /// 200-with-empty masking orchestrator bugs).
     /// </summary>
-    private static async Task<Ok<List<WorldActivityRowDto>>> GetWorldActivity(
+    private static async Task<Results<Ok<List<WorldActivityRowDto>>, NotFound>> GetWorldActivity(
         int gameId, WorldDbContext db, int? take = 100)
     {
         var n = Math.Clamp(take ?? 100, 1, 500);
+
+        if (!await db.Games.AnyAsync(g => g.Id == gameId))
+            return TypedResults.NotFound();
 
         var rows = await db.WorldActivities
             .Where(a => a.GameId == gameId)
