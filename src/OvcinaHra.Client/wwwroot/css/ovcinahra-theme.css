@@ -4504,3 +4504,10 @@ body.oh-map-print-labeled .oh-map-pin .oh-map-pin-label.oh-map-pin-label-with-re
 .oh-cipher-error{border-left:3px solid #842029;background:#f8d7da;color:#842029;border-radius:3px;padding:8px 10px;font-size:.88rem}
 .oh-cipher-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 @media (max-width:720px){.oh-cipher-panel-head{align-items:flex-start;flex-direction:column}.oh-cipher-actions{justify-content:flex-start}}
+
+/* Assign-NPC popup — "Skrýt obsazené" toggle + ✓ marker on already-linked adults */
+.oh-npc-assign-toggle{display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+    font:500 .88rem var(--oh-font-body)}
+.oh-npc-assign-toggle input[type=checkbox]{margin:0}
+.oh-npc-adult-row{display:inline-flex;align-items:center;gap:6px}
+.oh-npc-adult-row__check{color:#2D5016;font-size:1rem}

@@ -194,11 +194,28 @@ else
         else
         {
             <DxFormLayout>
+                <DxFormLayoutItem Caption="" ColSpanMd="12">
+                    <label class="oh-npc-assign-toggle">
+                        <input type="checkbox" @bind="hideOccupiedAdults" />
+                        <span>Skrýt obsazené organizátory</span>
+                    </label>
+                </DxFormLayoutItem>
                 <DxFormLayoutItem Caption="Hráč" ColSpanMd="12">
-                    <DxComboBox Data="@availableAdults" @bind-Value="@selectedAdultPersonId"
+                    <DxComboBox Data="@displayedAdults" @bind-Value="@selectedAdultPersonId"
                                 TextFieldName="Display" ValueFieldName="PersonId"
                                 NullText="(vyberte dospělého hráče)"
-                                SearchMode="ListSearchMode.AutoSearch" />
+                                SearchMode="ListSearchMode.AutoSearch">
+                        <ItemTemplate Context="adult">
+                            <span class="oh-npc-adult-row">
+                                @if (adult.HasNpcLinked)
+                                {
+                                    <i class="bi bi-check-circle-fill oh-npc-adult-row__check"
+                                       title="Tento organizátor už má přiřazené NPC"></i>
+                                }
+                                <span>@adult.Display</span>
+                            </span>
+                        </ItemTemplate>
+                    </DxComboBox>
                 </DxFormLayoutItem>
                 <DxFormLayoutItem Caption="Poznámky" ColSpanMd="12">
                     <DxMemo @bind-Text="@assignNotes" Rows="2" />
@@ -258,7 +275,16 @@ else
     private List<AdultPickerItem> availableAdults = [];
     private int? selectedAdultPersonId;
 
-    private record AdultPickerItem(int PersonId, string FirstName, string LastName, string? Email, string Display);
+    private record AdultPickerItem(int PersonId, string FirstName, string LastName, string? Email, string Display, bool HasNpcLinked);
+
+    // "Skrýt obsazené organizátory" — defaults true so the picker only shows
+    // adults free to take a new NPC role; flipping it off shows everyone with
+    // a ✓ on the rows that already have an NPC linked in this game.
+    private bool hideOccupiedAdults = true;
+
+    private List<AdultPickerItem> displayedAdults => hideOccupiedAdults
+        ? availableAdults.Where(a => !a.HasNpcLinked).ToList()
+        : availableAdults;
 
     private bool _previousCatalog;
 
@@ -366,6 +392,9 @@ else
         selectedAdultPersonId = null;
         assignError = null;
         adultsLoadError = null;
+        // Reset the "Skrýt obsazené" toggle to its default each time so a
+        // previous picker session's state doesn't bleed into a fresh assign.
+        hideOccupiedAdults = true;
         isAssignVisible = true;
         _ = LoadAvailableAdultsAsync();
     }
@@ -386,12 +415,13 @@ else
 
         try
         {
-            var adults = await Api.GetListAsync<RegistraceAdultDto>($"/api/npcs/available-players/{gid}");
+            var adults = await Api.GetListAsync<NpcAdultPickerItemDto>($"/api/npcs/available-players/{gid}");
             availableAdults = adults
                 .OrderBy(a => a.LastName).ThenBy(a => a.FirstName)
                 .Select(a => new AdultPickerItem(
                     a.PersonId, a.FirstName, a.LastName, a.Email,
-                    BuildAdultDisplay(a)))
+                    BuildAdultDisplay(a),
+                    a.HasNpcLinked))
                 .ToList();
         }
         catch (Exception ex)
@@ -406,7 +436,7 @@ else
         }
     }
 
-    private static string BuildAdultDisplay(RegistraceAdultDto a)
+    private static string BuildAdultDisplay(NpcAdultPickerItemDto a)
     {
         var name = $"{a.FirstName} {a.LastName}".Trim();
         return a.Roles is { Count: > 0 } ? $"{name} — {string.Join(", ", a.Roles)}" : name;
