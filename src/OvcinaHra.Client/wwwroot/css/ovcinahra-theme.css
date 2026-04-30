@@ -3611,6 +3611,21 @@ a.oh-world-activity-desc:hover{color:#2D5016;border-bottom-color:#2D5016}
  * parchment (Inactive) / forest (Active) / dim-gold (Completed).
  * =========================================================================== */
 
+/* — Catalog header toolbar — */
+.oh-qst-page-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.oh-qst-page-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;min-width:0}
+
+@media (max-width:768px){
+    .oh-qst-page-head{align-items:flex-start}
+    .oh-qst-page-actions{width:100%;justify-content:flex-start}
+}
+
+@media (max-width:420px){
+    .oh-qst-page-actions .oh-segmented{display:flex;width:100%}
+    .oh-qst-page-actions .oh-segmented-btn{flex:1 1 0;justify-content:center;padding-inline:8px}
+    .oh-qst-page-actions .btn{width:100%;justify-content:center}
+}
+
 /* — Filters above the gallery — */
 .oh-qst-filters{display:flex;gap:12px;align-items:center;flex-wrap:wrap;
     padding:10px 12px;background:#FFF8F0;border:1px solid #ead9b8;border-radius:8px}
