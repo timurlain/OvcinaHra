@@ -52,10 +52,7 @@
                 }
 
                 <div class="oh-home-bottom-row">
-                    @if (_isGameRunning)
-                    {
-                        <RecentActivityPanel GameId="GameContext.SelectedGameId" IsRunning="_isGameRunning" />
-                    }
+                    <RecentActivityFeed Rows="_activity" />
                     <QuickLaunchTiles />
                 </div>
 
@@ -80,11 +77,15 @@
     private DashboardStatsDto? _stats;
     private DashboardIssuesDto? _issues;
     private List<TimelineRowDto>? _timeline;
+    private List<DashboardActivityDto>? _activity;
+    private CancellationTokenSource? _activityRefreshCts;
 
     protected override async Task OnInitializedAsync()
     {
         await GameContext.InitializeAsync();
         GameContext.OnGameChanged += HandleGameChanged;
+        _activityRefreshCts = new CancellationTokenSource();
+        _ = RefreshActivityLoopAsync(_activityRefreshCts.Token);
         await LoadCockpitAsync();
     }
 
@@ -95,7 +96,7 @@
         var gameId = GameContext.SelectedGameId;
         if (gameId is null)
         {
-            _stats = null; _issues = null; _timeline = null;
+            _stats = null; _issues = null; _timeline = null; _activity = null;
             await InvokeAsync(StateHasChanged);
             return;
         }
@@ -112,8 +113,10 @@
                 $"/api/dashboard/issues?gameId={gameId.Value}");
             var timelineTask = Api.GetListAsync<TimelineRowDto>(
                 $"/api/dashboard/timeline?gameId={gameId.Value}&take=6");
+            var activityTask = Api.GetListAsync<DashboardActivityDto>(
+                $"/api/dashboard/activity?gameId={gameId.Value}&limit=10");
 
-            await Task.WhenAll(gameTask, statsTask, issuesTask, timelineTask);
+            await Task.WhenAll(gameTask, statsTask, issuesTask, timelineTask, activityTask);
 
             var game = gameTask.Result;
             if (game is not null)
@@ -126,6 +129,7 @@
             _stats = statsTask.Result;
             _issues = issuesTask.Result;
             _timeline = timelineTask.Result;
+            _activity = activityTask.Result;
             // Drive Hra běží mode from the explicit server bool, not the
             // localised label — Copilot caught the brittle string match.
             _isGameRunning = timelineTask.Result?.Any(r => r.IsRunning) ?? false;
@@ -143,5 +147,52 @@
 
     private void OnChangeGameClick() => Nav.NavigateTo("/games");
 
-    public void Dispose() => GameContext.OnGameChanged -= HandleGameChanged;
+    private async Task RefreshActivityLoopAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await RefreshActivityAsync(cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task RefreshActivityAsync(CancellationToken cancellationToken)
+    {
+        var gameId = GameContext.SelectedGameId;
+        if (gameId is null)
+        {
+            _activity = null;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        try
+        {
+            _activity = await Api.GetListAsync<DashboardActivityDto>(
+                $"/api/dashboard/activity?gameId={gameId.Value}&limit=10",
+                cancellationToken);
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // Keep the last visible activity list if a background refresh flakes.
+        }
+    }
+
+    public void Dispose()
+    {
+        GameContext.OnGameChanged -= HandleGameChanged;
+        _activityRefreshCts?.Cancel();
+        _activityRefreshCts?.Dispose();
+    }
 }

@@ -37,16 +37,14 @@ public record DashboardIssueDto(
 public record DashboardIssuesDto(IReadOnlyList<DashboardIssueDto> Issues);
 
 /// <summary>
-/// One row in the RecentActivityFeed. WorldActivity rows are real organizer
-/// recordings; legacy rows still come from entity timestamps until more
-/// activity types are wired through the same table.
+/// One row in the RecentActivityFeed, backed by the WorldChange audit log.
 /// </summary>
 public record DashboardActivityDto(
     string EntityType,
     int EntityId,
     string EntityName,
     string? ThumbnailUrl,
-    string Verb,        /* vytvořil | upravil | smazal — currently always "upravil" */
+    string Verb,        /* vytvořil | upravil | smazal */
     string ActorName,
     DateTime OccurredUtc);
 

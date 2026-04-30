@@ -24,6 +24,13 @@ public class DashboardEndpointsTests(PostgresFixture postgres)
         return (await response.Content.ReadFromJsonAsync<GameDetailDto>())!;
     }
 
+    private async Task ClearWorldChangesAsync()
+    {
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        await db.WorldChanges.ExecuteDeleteAsync();
+    }
+
     [Fact]
     public async Task Stats_EmptyGame_ReturnsAllZeros()
     {
@@ -180,6 +187,7 @@ public class DashboardEndpointsTests(PostgresFixture postgres)
     public async Task Activity_NoEdits_ReturnsEmpty()
     {
         var game = await CreateGameAsync();
+        await ClearWorldChangesAsync();
 
         var rows = await Client.GetFromJsonAsync<List<DashboardActivityDto>>(
             $"/api/dashboard/activity?gameId={game.Id}");
@@ -189,48 +197,143 @@ public class DashboardEndpointsTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task Activity_WorldActivityLocationPlacement_ReturnsActorLocationAndThumbnail()
+    public async Task Activity_WorldChanges_ReturnsNewestScopedRows()
     {
         var game = await CreateGameAsync();
-        int locationId;
+        var otherGame = await CreateGameAsync();
+        await ClearWorldChangesAsync();
+
+        var now = DateTime.UtcNow;
         using (var scope = Factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
-            var location = new Location
-            {
-                Name = "Starý brod",
-                LocationKind = LocationKind.Village,
-                PlacementPhotoPath = "locationplacements/1/image.png"
-            };
-            db.Locations.Add(location);
+            db.WorldChanges.AddRange(
+                new WorldChange
+                {
+                    GameId = game.Id,
+                    EntityType = nameof(Location),
+                    EntityId = 10,
+                    EntityName = "Starý brod",
+                    Operation = WorldChangeOperation.Updated,
+                    ActorUserId = "test-user",
+                    ActorDisplayName = "Test Organizátor",
+                    ChangedAtUtc = now
+                },
+                new WorldChange
+                {
+                    GameId = null,
+                    EntityType = nameof(Item),
+                    EntityId = 20,
+                    EntityName = "Hojivý lektvar",
+                    Operation = WorldChangeOperation.Created,
+                    ActorUserId = "system",
+                    ActorDisplayName = "System",
+                    ChangedAtUtc = now.AddMinutes(1)
+                },
+                new WorldChange
+                {
+                    GameId = otherGame.Id,
+                    EntityType = nameof(Npc),
+                    EntityId = 30,
+                    EntityName = "Cizí NPC",
+                    Operation = WorldChangeOperation.Deleted,
+                    ActorUserId = "other",
+                    ActorDisplayName = "Other",
+                    ChangedAtUtc = now.AddMinutes(2)
+                });
             await db.SaveChangesAsync();
-            location.PlacementPhotoPath = $"locationplacements/{location.Id}/image.png";
-            db.GameLocations.Add(new GameLocation { GameId = game.Id, LocationId = location.Id });
-            db.WorldActivities.Add(new WorldActivity
-            {
-                GameId = game.Id,
-                TimestampUtc = DateTime.UtcNow.AddMinutes(-1),
-                OrganizerUserId = "test-user",
-                OrganizerName = "Test Organizátor",
-                ActivityType = WorldActivityType.LocationPlaced,
-                Description = $"Umístěna lokace: {location.Name}",
-                LocationId = location.Id,
-                DataJson = "{}"
-            });
-            await db.SaveChangesAsync();
-            locationId = location.Id;
         }
 
         var rows = await Client.GetFromJsonAsync<List<DashboardActivityDto>>(
             $"/api/dashboard/activity?gameId={game.Id}");
 
-        var row = Assert.Single(rows!);
-        Assert.Equal("location", row.EntityType);
-        Assert.Equal(locationId, row.EntityId);
-        Assert.Equal("Starý brod", row.EntityName);
-        Assert.Equal("Test Organizátor", row.ActorName);
-        Assert.Equal("umístil", row.Verb);
-        Assert.Contains($"/api/images/locationplacements/{locationId}/thumb", row.ThumbnailUrl!);
+        Assert.NotNull(rows);
+        Assert.Collection(rows,
+            row =>
+            {
+                Assert.Equal("item", row.EntityType);
+                Assert.Equal(20, row.EntityId);
+                Assert.Equal("Hojivý lektvar", row.EntityName);
+                Assert.Equal("System", row.ActorName);
+                Assert.Equal("vytvořil", row.Verb);
+                Assert.Null(row.ThumbnailUrl);
+            },
+            row =>
+            {
+                Assert.Equal("location", row.EntityType);
+                Assert.Equal(10, row.EntityId);
+                Assert.Equal("Starý brod", row.EntityName);
+                Assert.Equal("Test Organizátor", row.ActorName);
+                Assert.Equal("upravil", row.Verb);
+            });
+    }
+
+    [Fact]
+    public async Task WorldChangeInterceptor_ApiCreateGame_RecordsAuthenticatedActor()
+    {
+        var game = await CreateGameAsync();
+
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        var row = await db.WorldChanges.SingleAsync(c =>
+            c.EntityType == nameof(Game) && c.EntityId == game.Id);
+
+        Assert.Equal(game.Id, row.GameId);
+        Assert.Equal("Cockpit", row.EntityName);
+        Assert.Equal(WorldChangeOperation.Created, row.Operation);
+        Assert.Equal("test-user", row.ActorUserId);
+        Assert.Equal("Test Organizátor", row.ActorDisplayName);
+    }
+
+    [Fact]
+    public async Task WorldChangeInterceptor_BackgroundSave_UsesSystemActor()
+    {
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            db.Locations.Add(new Location
+            {
+                Name = "Bez kontextu",
+                LocationKind = LocationKind.Wilderness
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var assertScope = Factory.Services.CreateScope();
+        var assertDb = assertScope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        var row = await assertDb.WorldChanges.SingleAsync(c => c.EntityType == nameof(Location));
+
+        Assert.Equal(WorldChangeOperation.Created, row.Operation);
+        Assert.Equal("system", row.ActorUserId);
+        Assert.Equal("System", row.ActorDisplayName);
+    }
+
+    [Fact]
+    public async Task WorldChangeInterceptor_ExplicitTransaction_SkipsAuditWithoutBlockingUserData()
+    {
+        await ClearWorldChangesAsync();
+
+        int locationId;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            await using var tx = await db.Database.BeginTransactionAsync();
+            var location = new Location
+            {
+                Name = "Transakční paseka",
+                LocationKind = LocationKind.Wilderness
+            };
+            db.Locations.Add(location);
+            await db.SaveChangesAsync();
+            locationId = location.Id;
+            await tx.CommitAsync();
+        }
+
+        using var assertScope = Factory.Services.CreateScope();
+        var assertDb = assertScope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        Assert.True(await assertDb.Locations.AnyAsync(l => l.Id == locationId));
+        Assert.False(await assertDb.WorldChanges.AnyAsync(c =>
+            c.EntityType == nameof(Location) && c.EntityId == locationId));
     }
 
     // Issue #478 — raw WorldActivity table on the cockpit. Returns audit
