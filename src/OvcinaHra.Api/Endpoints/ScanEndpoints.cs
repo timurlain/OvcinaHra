@@ -192,9 +192,10 @@ public static class ScanEndpoints
     }
 
     private static async Task<IResult> DeleteLastLevelUp(
-        int personId, WorldDbContext db, HttpContext httpContext)
+        int personId, WorldDbContext db, HttpContext httpContext, ILoggerFactory loggerFactory)
     {
         var assignment = await db.CharacterAssignments
+            .Include(a => a.Character)
             .Include(a => a.Events)
             .FirstOrDefaultAsync(a => a.ExternalPersonId == personId && a.IsActive);
 
@@ -234,6 +235,44 @@ public static class ScanEndpoints
         db.CharacterEvents.Add(audit);
         TrackIdempotency(db, assignment.Id, idempotencyKey, audit);
         await db.SaveChangesAsync();
+
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.WorldActivityMirror");
+        if (!await db.Games.AnyAsync(g => g.Id == assignment.GameId))
+        {
+            logger.LogInformation(
+                "[world-activity-mirror] level-reverted assignmentId={AssignmentId} gameId={GameId} skipped-no-game=true",
+                assignment.Id,
+                assignment.GameId);
+        }
+        else
+        {
+            logger.LogInformation(
+                "[world-activity-mirror] level-reverted assignmentId={AssignmentId} gameId={GameId} skipped-no-game=false",
+                assignment.Id,
+                assignment.GameId);
+            try
+            {
+                db.WorldActivities.Add(new WorldActivity
+                {
+                    GameId = assignment.GameId,
+                    TimestampUtc = audit.Timestamp,
+                    OrganizerUserId = organizer.UserId,
+                    OrganizerName = organizer.Name,
+                    ActivityType = WorldActivityType.CharacterLevelReverted,
+                    Description = $"{assignment.Character.Name} – vrácena úroveň",
+                    CharacterAssignmentId = assignment.Id,
+                    DataJson = audit.Data
+                });
+                await db.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex,
+                    "[world-activity-mirror] level-reverted audit-failed assignmentId={AssignmentId} gameId={GameId}",
+                    assignment.Id,
+                    assignment.GameId);
+            }
+        }
 
         return TypedResults.Ok(ToDto(audit));
     }

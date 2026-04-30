@@ -1,4 +1,5 @@
 using System.Data;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
@@ -341,7 +342,12 @@ public static class QuestEndpoints
         return TypedResults.NoContent();
     }
 
-    private static async Task<Results<NoContent, NotFound, BadRequest<string>>> UpdateState(int id, UpdateQuestStateDto dto, WorldDbContext db)
+    private static async Task<Results<NoContent, NotFound, BadRequest<string>>> UpdateState(
+        int id,
+        UpdateQuestStateDto dto,
+        WorldDbContext db,
+        HttpContext httpContext,
+        ILoggerFactory loggerFactory)
     {
         var q = await db.Quests.FindAsync(id);
         if (q is null) return TypedResults.NotFound();
@@ -349,9 +355,60 @@ public static class QuestEndpoints
         if (!Enum.IsDefined(dto.State))
             return TypedResults.BadRequest($"Unknown state '{dto.State}'.");
 
+        var previousState = q.State;
         q.State = dto.State;
         await db.SaveChangesAsync();
+
+        if (dto.State == QuestState.Completed && previousState != QuestState.Completed)
+            await MirrorQuestCompletedAsync(db, q, httpContext, loggerFactory);
+
         return TypedResults.NoContent();
+    }
+
+    private static async Task MirrorQuestCompletedAsync(
+        WorldDbContext db,
+        Quest quest,
+        HttpContext httpContext,
+        ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.WorldActivityMirror");
+        if (quest.GameId is not { } gameId || !await db.Games.AnyAsync(g => g.Id == gameId))
+        {
+            logger.LogInformation(
+                "[world-activity-mirror] quest-completed questId={QuestId} gameId={GameId} skipped-no-game=true",
+                quest.Id,
+                quest.GameId);
+            return;
+        }
+
+        logger.LogInformation(
+            "[world-activity-mirror] quest-completed questId={QuestId} gameId={GameId} skipped-no-game=false",
+            quest.Id,
+            gameId);
+
+        try
+        {
+            var organizer = GetOrganizer(httpContext.User);
+            db.WorldActivities.Add(new WorldActivity
+            {
+                GameId = gameId,
+                TimestampUtc = DateTime.UtcNow,
+                OrganizerUserId = organizer.UserId,
+                OrganizerName = organizer.Name,
+                ActivityType = WorldActivityType.QuestCompleted,
+                Description = $"Splněn úkol: {quest.Name}",
+                QuestId = quest.Id,
+                DataJson = "{}"
+            });
+            await db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "[world-activity-mirror] quest-completed audit-failed questId={QuestId} gameId={GameId}",
+                quest.Id,
+                gameId);
+        }
     }
 
     private static async Task<Results<NoContent, NotFound>> Delete(int id, WorldDbContext db)
@@ -615,5 +672,16 @@ public static class QuestEndpoints
 
         await tx.CommitAsync();
         return TypedResults.NoContent();
+    }
+
+    private static (string UserId, string Name) GetOrganizer(ClaimsPrincipal user)
+    {
+        var userId = user.FindFirstValue("sub")
+            ?? user.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? "unknown";
+        var name = user.FindFirstValue("name")
+            ?? user.FindFirstValue(ClaimTypes.Name)
+            ?? "Unknown";
+        return (userId, name);
     }
 }

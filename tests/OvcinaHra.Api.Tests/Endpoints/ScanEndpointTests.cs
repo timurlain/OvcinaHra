@@ -234,6 +234,28 @@ public class ScanEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
     }
 
     [Fact]
+    public async Task DeleteLastLevelUp_WithRealGame_WritesWorldActivityMirror()
+    {
+        var game = await CreateGameAsync("Scan revert mirror");
+        await SeedCharacterWithAssignment(externalPersonId: 115, gameId: game.Id);
+        await Client.PostAsJsonAsync("/api/scan/115/events",
+            new CreateCharacterEventDto(CharacterEventType.LevelUp, "{}"));
+
+        var response = await Client.DeleteAsync("/api/scan/115/events/last-levelup");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        var row = await db.WorldActivities.SingleAsync(a =>
+            a.GameId == game.Id && a.ActivityType == WorldActivityType.CharacterLevelReverted);
+
+        Assert.Equal("Thorin – vrácena úroveň", row.Description);
+        Assert.Equal("Test Organizátor", row.OrganizerName);
+        Assert.NotNull(row.CharacterAssignmentId);
+    }
+
+    [Fact]
     public async Task DeleteLastLevelUp_WhenNoLevelUp_ReturnsNotFound()
     {
         await SeedCharacterWithAssignment(externalPersonId: 106);
