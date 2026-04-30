@@ -336,6 +336,106 @@ public class DashboardEndpointsTests(PostgresFixture postgres)
             c.EntityType == nameof(Location) && c.EntityId == locationId));
     }
 
+    // Issue #478 — raw WorldActivity table on the cockpit. Returns audit
+    // rows 1:1 (no merge with legacy entity timestamps), ordered DESC,
+    // includes Location.Name when present.
+    [Fact]
+    public async Task WorldActivity_ReturnsRawRowsOrderedDesc()
+    {
+        var game = await CreateGameAsync();
+        int locationId;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var location = new Location
+            {
+                Name = "Aradhrynd",
+                LocationKind = LocationKind.Town
+            };
+            db.Locations.Add(location);
+            await db.SaveChangesAsync();
+            db.GameLocations.Add(new GameLocation { GameId = game.Id, LocationId = location.Id });
+            db.WorldActivities.AddRange(
+                new WorldActivity
+                {
+                    GameId = game.Id,
+                    TimestampUtc = DateTime.UtcNow.AddMinutes(-10),
+                    OrganizerUserId = "u1",
+                    OrganizerName = "Drozd",
+                    ActivityType = WorldActivityType.LocationPlaced,
+                    Description = $"Umístěna lokace: {location.Name}",
+                    LocationId = location.Id,
+                    DataJson = "{}"
+                },
+                new WorldActivity
+                {
+                    GameId = game.Id,
+                    TimestampUtc = DateTime.UtcNow.AddMinutes(-1),
+                    OrganizerUserId = "u2",
+                    OrganizerName = "Tasha",
+                    ActivityType = WorldActivityType.CharacterLevelUp,
+                    Description = "Beorn dosáhl 3. úrovně",
+                    DataJson = "{\"level\":3}"
+                });
+            await db.SaveChangesAsync();
+            locationId = location.Id;
+        }
+
+        var rows = await Client.GetFromJsonAsync<List<WorldActivityRowDto>>(
+            $"/api/dashboard/world-activity?gameId={game.Id}");
+
+        Assert.NotNull(rows);
+        Assert.Equal(2, rows.Count);
+
+        // Newest first.
+        Assert.Equal(WorldActivityType.CharacterLevelUp, rows[0].ActivityType);
+        Assert.Equal("Tasha", rows[0].OrganizerName);
+        Assert.Null(rows[0].LocationId);
+        Assert.Null(rows[0].LocationName);
+
+        Assert.Equal(WorldActivityType.LocationPlaced, rows[1].ActivityType);
+        Assert.Equal("Drozd", rows[1].OrganizerName);
+        Assert.Equal(locationId, rows[1].LocationId);
+        Assert.Equal("Aradhrynd", rows[1].LocationName);
+    }
+
+    [Fact]
+    public async Task WorldActivity_NonExistentGame_Returns404()
+    {
+        // §1 — REST 404 before 200-with-empty so orchestrator bugs
+        // (typo'd gameId, stale URL) surface instead of being masked.
+        var response = await Client.GetAsync("/api/dashboard/world-activity?gameId=999999");
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task WorldActivity_OtherGame_IsExcluded()
+    {
+        var gameA = await CreateGameAsync();
+        var gameB = await CreateGameAsync();
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            db.WorldActivities.Add(new WorldActivity
+            {
+                GameId = gameB.Id,
+                TimestampUtc = DateTime.UtcNow,
+                OrganizerUserId = "u1",
+                OrganizerName = "Other",
+                ActivityType = WorldActivityType.QuestCompleted,
+                Description = "Quest done in other game",
+                DataJson = "{}"
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var rows = await Client.GetFromJsonAsync<List<WorldActivityRowDto>>(
+            $"/api/dashboard/world-activity?gameId={gameA.Id}");
+
+        Assert.NotNull(rows);
+        Assert.Empty(rows);
+    }
+
     [Fact]
     public async Task Timeline_PastSlot_IsExcluded()
     {

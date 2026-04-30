@@ -7,9 +7,9 @@ using OvcinaHra.Shared.Dtos;
 namespace OvcinaHra.Api.Endpoints;
 
 /// <summary>
-/// Issue #158 — server-side fan-out for the Home cockpit. Four routes,
-/// each returns one of the Dashboard*Dto records and powers a single
-/// section of the cockpit. The cockpit fires them in parallel client-side.
+/// Issue #158 — server-side fan-out for the Home cockpit. Each route
+/// returns one of the Dashboard*Dto records and powers a single section
+/// of the cockpit. The cockpit fires them in parallel client-side.
 /// </summary>
 public static class DashboardEndpoints
 {
@@ -20,6 +20,7 @@ public static class DashboardEndpoints
         group.MapGet("/stats", GetStats);
         group.MapGet("/issues", GetIssues);
         group.MapGet("/activity", GetActivity);
+        group.MapGet("/world-activity", GetWorldActivity);
         group.MapGet("/timeline", GetTimeline);
         group.MapGet("/events/recent", GetRecentEvents);
 
@@ -151,6 +152,41 @@ public static class DashboardEndpoints
         WorldChangeOperation.Deleted => "smazal",
         _ => "upravil"
     };
+
+    /// <summary>
+    /// Issue #478 — raw WorldActivity rows for the Aktivity světa table on
+    /// the Home cockpit. Returns the audit log 1:1 (no merge with legacy
+    /// entity-timestamp rows) so organizers can verify what's flowing in
+    /// from the Glejt PWA + in-app workflows pre-weekend. Default 100 rows,
+    /// max 500. 404 when the game doesn't exist (per §1 — REST 404 before
+    /// 200-with-empty masking orchestrator bugs).
+    /// </summary>
+    private static async Task<Results<Ok<List<WorldActivityRowDto>>, NotFound>> GetWorldActivity(
+        int gameId, WorldDbContext db, int? take = 100)
+    {
+        var n = Math.Clamp(take ?? 100, 1, 500);
+
+        if (!await db.Games.AnyAsync(g => g.Id == gameId))
+            return TypedResults.NotFound();
+
+        var rows = await db.WorldActivities
+            .Where(a => a.GameId == gameId)
+            .OrderByDescending(a => a.TimestampUtc)
+            .Take(n)
+            .Select(a => new WorldActivityRowDto(
+                a.Id,
+                a.TimestampUtc,
+                a.OrganizerName,
+                a.ActivityType,
+                a.Description,
+                a.LocationId,
+                a.Location != null ? a.Location.Name : null,
+                a.CharacterAssignmentId,
+                a.QuestId))
+            .ToListAsync();
+
+        return TypedResults.Ok(rows);
+    }
 
     /// <summary>
     /// Powers TimelinePreview — upcoming and currently-running GameTimeSlot
