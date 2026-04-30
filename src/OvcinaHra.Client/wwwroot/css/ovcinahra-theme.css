@@ -231,6 +231,13 @@
     color: var(--oh-primary-light);
 }
 
+.location-tabs .dxbl-tabs-item.dxbl-active,
+.location-tabs .dxbl-tabs-item.dxbl-active:hover,
+.location-tabs .dxbl-tabs-item.dxbl-active:focus,
+.location-tabs .dxbl-tabs-item.dxbl-active * {
+    color: var(--oh-header-text) !important;
+}
+
 /* === DxPager === */
 
 .dxbl-pager .dxbl-pager-page-item.dxbl-active {
