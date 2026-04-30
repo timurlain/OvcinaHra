@@ -26,7 +26,8 @@ public sealed class MagicBookExportProblemException(string detail)
 
 public sealed class MagicBookExportService(
     IMagicBookExportPlanner planner,
-    IWebHostEnvironment environment) : IMagicBookExportService
+    IWebHostEnvironment environment,
+    ILogger<MagicBookExportService> logger) : IMagicBookExportService
 {
     private const double A4WidthPt = 595.276;
     private const double A4HeightPt = 841.89;
@@ -35,20 +36,56 @@ public sealed class MagicBookExportService(
     private const int A4HeightPx = 3508;
     private const int A6WidthPx = 1240;
     private const int A6HeightPx = 1748;
-    private const int SafeMarginPx = 42;
-    private const int SectionGapPx = 18;
-    private const int SectionPaddingPx = 20;
-    private const int SectionHeaderHeightPx = 56;
-    private const int SpellNameLineHeightPx = 42;
-    private const int BodyLineHeightPx = 34;
-    private const int SpellGapPx = 12;
-    private const int SpellBoxPaddingX = 16;
-    private const int SpellBoxPaddingY = 12;
 
     private static readonly Color Paper = Color.ParseHex("#fff8e8");
     private static readonly Color SpellBoxFill = Color.ParseHex("#fffaf0");
     private static readonly Color Ink = Color.ParseHex("#26180f");
     private static readonly Color Border = Color.ParseHex("#3b2b18");
+    private static readonly MagicBookLayout[] LayoutCandidates =
+    [
+        new(
+            "comfortable",
+            SafeMarginPx: 42,
+            SectionGapPx: 18,
+            SectionPaddingPx: 20,
+            SectionHeaderHeightPx: 56,
+            SpellNameLineHeightPx: 42,
+            BodyLineHeightPx: 34,
+            SpellGapPx: 12,
+            SpellBoxPaddingX: 16,
+            SpellBoxPaddingY: 12,
+            SectionFontSize: 38,
+            SpellNameFontSize: 34,
+            BodyFontSize: 28),
+        new(
+            "compact",
+            SafeMarginPx: 42,
+            SectionGapPx: 12,
+            SectionPaddingPx: 14,
+            SectionHeaderHeightPx: 42,
+            SpellNameLineHeightPx: 32,
+            BodyLineHeightPx: 25,
+            SpellGapPx: 8,
+            SpellBoxPaddingX: 14,
+            SpellBoxPaddingY: 8,
+            SectionFontSize: 32,
+            SpellNameFontSize: 27,
+            BodyFontSize: 22),
+        new(
+            "dense",
+            SafeMarginPx: 34,
+            SectionGapPx: 10,
+            SectionPaddingPx: 10,
+            SectionHeaderHeightPx: 36,
+            SpellNameLineHeightPx: 28,
+            BodyLineHeightPx: 22,
+            SpellGapPx: 6,
+            SpellBoxPaddingX: 12,
+            SpellBoxPaddingY: 7,
+            SectionFontSize: 28,
+            SpellNameFontSize: 24,
+            BodyFontSize: 19)
+    ];
 
     public async Task<MagicBookExportFile> RenderMagicBookAsync(int gameId, CancellationToken ct = default)
     {
@@ -58,9 +95,9 @@ public sealed class MagicBookExportService(
         if (document.SpellCount == 0)
             throw new MagicBookExportProblemException("Vybraná hra nemá přiřazená žádná kouzla.");
 
-        var fonts = LoadFonts();
-        using var lowLevelPage = RenderA6Page(document.Pages[0], fonts);
-        using var highLevelPage = RenderA6Page(document.Pages[1], fonts);
+        var fontFamilies = LoadFontFamilies();
+        using var lowLevelPage = RenderA6Page(document.Pages[0], fontFamilies, logger);
+        using var highLevelPage = RenderA6Page(document.Pages[1], fontFamilies, logger);
         var sheets = new[]
         {
             await RenderA4SheetAsync(lowLevelPage, ct),
@@ -85,25 +122,84 @@ public sealed class MagicBookExportService(
 
     private static Image<Rgba32> RenderA6Page(
         MagicBookPage page,
-        MagicBookFonts fonts)
+        MagicBookFontFamilies fontFamilies,
+        ILogger<MagicBookExportService> logger)
     {
+        var (layout, fonts, sectionPlans) = BuildPagePlan(page, fontFamilies);
+        var totalHeight = TotalSectionHeight(sectionPlans, layout);
+        var availableHeight = AvailablePageHeight(layout);
+        var pageOverflowing = totalHeight > availableHeight;
         var image = new Image<Rgba32>(A6WidthPx, A6HeightPx, Paper);
         image.Mutate(ctx =>
         {
             ctx.Draw(Border, 4, new RectangularPolygon(14, 14, A6WidthPx - 28, A6HeightPx - 28));
-            var sectionPlans = BuildSectionPlans(page, maxEffectLines: 2);
-            if (TotalSectionHeight(sectionPlans) > A6HeightPx - SafeMarginPx * 2)
-                sectionPlans = BuildSectionPlans(page, maxEffectLines: 1);
-            sectionPlans = ExpandSectionsToPageHeight(sectionPlans);
+            logger.LogDebug(
+                "[export-server] magic-book.layout page={PageNumber} layout={LayoutName} totalHeight={TotalHeight} availableHeight={AvailableHeight} truncated={Truncated}",
+                page.PageNumber,
+                layout.Name,
+                totalHeight,
+                availableHeight,
+                pageOverflowing);
 
-            var y = (float)SafeMarginPx;
+            sectionPlans = ExpandSectionsToPageHeight(sectionPlans, layout);
+
+            var y = (float)layout.SafeMarginPx;
             foreach (var section in sectionPlans)
-                DrawSection(ctx, section, fonts, ref y);
+                DrawSection(ctx, section, fonts, layout, pageOverflowing, logger, ref y);
         });
         return image;
     }
 
-    private static List<MagicBookSectionPlan> BuildSectionPlans(MagicBookPage page, int maxEffectLines) =>
+    internal static MagicBookLayoutDiagnostics CalculateLayoutForTesting(
+        MagicBookPage page,
+        string fontRoot)
+    {
+        var fontFamilies = LoadFontFamilies(fontRoot);
+        var (layout, fonts, sectionPlans) = BuildPagePlan(page, fontFamilies);
+        var textWidth = SpellTextWidth(layout);
+        var maxLineWidth = sectionPlans
+            .SelectMany(section => section.Spells)
+            .SelectMany(spell => spell.EffectLines)
+            .Select(line => TextMeasurer.MeasureSize(line, new TextOptions(fonts.Body)).Width)
+            .DefaultIfEmpty(0)
+            .Max();
+
+        return new MagicBookLayoutDiagnostics(
+            layout.Name,
+            TotalSectionHeight(sectionPlans, layout),
+            AvailablePageHeight(layout),
+            textWidth,
+            sectionPlans.Sum(section => section.Spells.Count),
+            sectionPlans.Any(section => section.Spells.Any(spell => spell.Truncated))
+                || TotalSectionHeight(sectionPlans, layout) > AvailablePageHeight(layout),
+            maxLineWidth);
+    }
+
+    private static (MagicBookLayout Layout, MagicBookFonts Fonts, List<MagicBookSectionPlan> Sections)
+        BuildPagePlan(MagicBookPage page, MagicBookFontFamilies fontFamilies)
+    {
+        MagicBookLayout? fallbackLayout = null;
+        MagicBookFonts? fallbackFonts = null;
+        List<MagicBookSectionPlan>? fallbackSections = null;
+
+        foreach (var layout in LayoutCandidates)
+        {
+            var fonts = CreateFonts(fontFamilies, layout);
+            var sections = BuildSectionPlans(page, fonts, layout);
+            fallbackLayout = layout;
+            fallbackFonts = fonts;
+            fallbackSections = sections;
+            if (TotalSectionHeight(sections, layout) <= AvailablePageHeight(layout))
+                return (layout, fonts, sections);
+        }
+
+        return (fallbackLayout!, fallbackFonts!, fallbackSections!);
+    }
+
+    private static List<MagicBookSectionPlan> BuildSectionPlans(
+        MagicBookPage page,
+        MagicBookFonts fonts,
+        MagicBookLayout layout) =>
         page.Sections
             .Where(section => section.Spells.Count > 0)
             .Select(section =>
@@ -114,32 +210,46 @@ public sealed class MagicBookExportService(
                         var brief = string.IsNullOrWhiteSpace(spell.Effect)
                             ? spell.Description ?? string.Empty
                             : spell.Effect;
-                        var lines = Wrap(brief, 58).Take(maxEffectLines).ToList();
-                        var height = SpellBoxPaddingY * 2
-                            + SpellNameLineHeightPx
-                            + lines.Count * BodyLineHeightPx;
-                        return new MagicBookSpellPlan(spell, lines, height);
+                        var textWidth = SpellTextWidth(layout);
+                        var lines = Wrap(brief, fonts.Body, textWidth).ToList();
+                        var truncated = lines.Any(line => MeasureWidth(line, fonts.Body) > textWidth + 0.5f);
+                        var height = layout.SpellBoxPaddingY * 2
+                            + layout.SpellNameLineHeightPx
+                            + lines.Count * layout.BodyLineHeightPx;
+                        return new MagicBookSpellPlan(spell, lines, height, brief.Length, truncated);
                     })
                     .ToList();
-                var height = SectionPaddingPx * 2
-                    + SectionHeaderHeightPx
+                var height = layout.SectionPaddingPx * 2
+                    + layout.SectionHeaderHeightPx
                     + spells.Sum(spell => spell.Height)
-                    + Math.Max(0, spells.Count - 1) * SpellGapPx;
+                    + Math.Max(0, spells.Count - 1) * layout.SpellGapPx;
                 return new MagicBookSectionPlan(section, spells, height);
             })
             .ToList();
 
-    private static float TotalSectionHeight(IReadOnlyList<MagicBookSectionPlan> sections) =>
-        sections.Sum(section => section.Height) + Math.Max(0, sections.Count - 1) * SectionGapPx;
+    private static float TotalSectionHeight(
+        IReadOnlyList<MagicBookSectionPlan> sections,
+        MagicBookLayout layout) =>
+        sections.Sum(section => section.Height) + Math.Max(0, sections.Count - 1) * layout.SectionGapPx;
+
+    private static float AvailablePageHeight(MagicBookLayout layout) =>
+        A6HeightPx - layout.SafeMarginPx * 2;
+
+    private static float SpellTextWidth(MagicBookLayout layout) =>
+        A6WidthPx
+        - layout.SafeMarginPx * 2
+        - layout.SectionPaddingPx * 2
+        - layout.SpellBoxPaddingX * 2;
 
     private static List<MagicBookSectionPlan> ExpandSectionsToPageHeight(
-        IReadOnlyList<MagicBookSectionPlan> sections)
+        IReadOnlyList<MagicBookSectionPlan> sections,
+        MagicBookLayout layout)
     {
         if (sections.Count == 0)
             return [];
 
-        var available = A6HeightPx - SafeMarginPx * 2;
-        var total = TotalSectionHeight(sections);
+        var available = AvailablePageHeight(layout);
+        var total = TotalSectionHeight(sections, layout);
         if (total >= available)
             return sections.ToList();
 
@@ -153,12 +263,19 @@ public sealed class MagicBookExportService(
         IImageProcessingContext ctx,
         MagicBookSectionPlan plan,
         MagicBookFonts fonts,
+        MagicBookLayout layout,
+        bool pageOverflowing,
+        ILogger<MagicBookExportService> logger,
         ref float y)
     {
         var color = Color.ParseHex(plan.Section.ColorHex);
         var textColor = plan.Section.Level == 5 ? Color.White : Ink;
         var boxTop = y;
-        var box = new RectangularPolygon(SafeMarginPx, boxTop, A6WidthPx - SafeMarginPx * 2, plan.Height);
+        var box = new RectangularPolygon(
+            layout.SafeMarginPx,
+            boxTop,
+            A6WidthPx - layout.SafeMarginPx * 2,
+            plan.Height);
         ctx.Fill(color, box);
         ctx.Draw(Border, 3, box);
 
@@ -168,40 +285,51 @@ public sealed class MagicBookExportService(
             header,
             fonts.Section,
             textColor,
-            SafeMarginPx,
-            boxTop + SectionPaddingPx - 2,
-            A6WidthPx - SafeMarginPx * 2);
+            layout.SafeMarginPx,
+            boxTop + layout.SectionPaddingPx - 2,
+            A6WidthPx - layout.SafeMarginPx * 2);
 
-        y = boxTop + SectionPaddingPx + SectionHeaderHeightPx;
+        y = boxTop + layout.SectionPaddingPx + layout.SectionHeaderHeightPx;
         foreach (var spell in plan.Spells)
-            DrawSpell(ctx, spell, fonts, ref y);
+            DrawSpell(ctx, spell, fonts, layout, pageOverflowing, logger, ref y);
 
-        y = boxTop + plan.Height + SectionGapPx;
+        y = boxTop + plan.Height + layout.SectionGapPx;
     }
 
     private static void DrawSpell(
         IImageProcessingContext ctx,
         MagicBookSpellPlan plan,
         MagicBookFonts fonts,
+        MagicBookLayout layout,
+        bool pageOverflowing,
+        ILogger<MagicBookExportService> logger,
         ref float y)
     {
-        var boxX = SafeMarginPx + SectionPaddingPx;
-        var boxWidth = A6WidthPx - SafeMarginPx * 2 - SectionPaddingPx * 2;
+        var boxX = layout.SafeMarginPx + layout.SectionPaddingPx;
+        var boxWidth = A6WidthPx - layout.SafeMarginPx * 2 - layout.SectionPaddingPx * 2;
         var box = new RectangularPolygon(boxX, y, boxWidth, plan.Height);
         ctx.Fill(SpellBoxFill, box);
         ctx.Draw(Border, 2, box);
 
-        var textX = boxX + SpellBoxPaddingX;
-        var textY = y + SpellBoxPaddingY - 2;
+        logger.LogDebug(
+            "[export-server] magic-book.spell-render levelId={LevelId} spellId={SpellId} descLen={DescriptionLength} boxHeight={BoxHeight} truncated={Truncated}",
+            plan.Spell.Level,
+            plan.Spell.SpellId,
+            plan.EffectTextLength,
+            plan.Height,
+            plan.Truncated || pageOverflowing);
+
+        var textX = boxX + layout.SpellBoxPaddingX;
+        var textY = y + layout.SpellBoxPaddingY - 2;
         DrawText(ctx, plan.Spell.Name, fonts.SpellName, Ink, textX, textY);
-        textY += SpellNameLineHeightPx;
+        textY += layout.SpellNameLineHeightPx;
         foreach (var line in plan.EffectLines)
         {
             DrawText(ctx, line, fonts.Body, Ink, textX, textY);
-            textY += BodyLineHeightPx;
+            textY += layout.BodyLineHeightPx;
         }
 
-        y += plan.Height + SpellGapPx;
+        y += plan.Height + layout.SpellGapPx;
     }
 
     private static async Task<PdfImage> RenderA4SheetAsync(Image<Rgba32> bookPage, CancellationToken ct)
@@ -230,17 +358,29 @@ public sealed class MagicBookExportService(
         return new PdfImage(A4WidthPx, A4HeightPx, stream.ToArray());
     }
 
-    private MagicBookFonts LoadFonts()
+    private MagicBookFontFamilies LoadFontFamilies()
+    {
+        var fontRoot = System.IO.Path.Combine(environment.ContentRootPath, "Fonts", "Kalam");
+        return LoadFontFamilies(fontRoot);
+    }
+
+    private static MagicBookFontFamilies LoadFontFamilies(string fontRoot)
     {
         var fonts = new FontCollection();
-        var fontRoot = System.IO.Path.Combine(environment.ContentRootPath, "Fonts", "Kalam");
         var regular = fonts.Add(System.IO.Path.Combine(fontRoot, "Kalam-Regular.ttf"));
         var bold = fonts.Add(System.IO.Path.Combine(fontRoot, "Kalam-Bold.ttf"));
 
+        return new MagicBookFontFamilies(regular, bold);
+    }
+
+    private static MagicBookFonts CreateFonts(
+        MagicBookFontFamilies families,
+        MagicBookLayout layout)
+    {
         return new MagicBookFonts(
-            Section: bold.CreateFont(38),
-            SpellName: bold.CreateFont(34),
-            Body: regular.CreateFont(28));
+            Section: families.Bold.CreateFont(layout.SectionFontSize),
+            SpellName: families.Bold.CreateFont(layout.SpellNameFontSize),
+            Body: families.Regular.CreateFont(layout.BodyFontSize));
     }
 
     private static void DrawText(
@@ -265,31 +405,61 @@ public sealed class MagicBookExportService(
         DrawText(ctx, text, font, color, x + (width - size.Width) / 2, y);
     }
 
-    private static IEnumerable<string> Wrap(string value, int maxChars)
+    private static IEnumerable<string> Wrap(string value, Font font, float maxWidth)
     {
         var words = value.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var current = string.Empty;
-        foreach (var word in words)
+        foreach (var token in words.SelectMany(word => BreakLongWord(word, font, maxWidth)))
         {
             if (current.Length == 0)
             {
-                current = word;
+                current = token;
                 continue;
             }
 
-            if (current.Length + word.Length + 1 <= maxChars)
+            var candidate = current + " " + token;
+            if (MeasureWidth(candidate, font) <= maxWidth)
             {
-                current += " " + word;
+                current = candidate;
                 continue;
             }
 
             yield return current;
-            current = word;
+            current = token;
         }
 
         if (!string.IsNullOrWhiteSpace(current))
             yield return current;
     }
+
+    private static IEnumerable<string> BreakLongWord(string word, Font font, float maxWidth)
+    {
+        if (MeasureWidth(word, font) <= maxWidth)
+        {
+            yield return word;
+            yield break;
+        }
+
+        var current = string.Empty;
+        foreach (var c in word)
+        {
+            var candidate = current + c;
+            if (current.Length > 0 && MeasureWidth(candidate, font) > maxWidth)
+            {
+                yield return current;
+                current = c.ToString();
+                continue;
+            }
+
+            current = candidate;
+        }
+
+        if (!string.IsNullOrEmpty(current))
+            yield return current;
+    }
+
+    private static float MeasureWidth(string value, Font font) =>
+        TextMeasurer.MeasureSize(value, new TextOptions(font)).Width;
 
     private static string Pt(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
 
@@ -297,6 +467,25 @@ public sealed class MagicBookExportService(
         Font Section,
         Font SpellName,
         Font Body);
+
+    private sealed record MagicBookFontFamilies(
+        FontFamily Regular,
+        FontFamily Bold);
+
+    private sealed record MagicBookLayout(
+        string Name,
+        int SafeMarginPx,
+        int SectionGapPx,
+        int SectionPaddingPx,
+        int SectionHeaderHeightPx,
+        int SpellNameLineHeightPx,
+        int BodyLineHeightPx,
+        int SpellGapPx,
+        int SpellBoxPaddingX,
+        int SpellBoxPaddingY,
+        float SectionFontSize,
+        float SpellNameFontSize,
+        float BodyFontSize);
 
     private sealed record MagicBookSectionPlan(
         MagicBookLevelSection Section,
@@ -306,5 +495,16 @@ public sealed class MagicBookExportService(
     private sealed record MagicBookSpellPlan(
         MagicBookSpell Spell,
         IReadOnlyList<string> EffectLines,
-        float Height);
+        float Height,
+        int EffectTextLength,
+        bool Truncated);
 }
+
+internal sealed record MagicBookLayoutDiagnostics(
+    string LayoutName,
+    float TotalHeight,
+    float AvailableHeight,
+    float TextWidth,
+    int SpellCount,
+    bool HasTruncatedLines,
+    float MaxLineWidth);
