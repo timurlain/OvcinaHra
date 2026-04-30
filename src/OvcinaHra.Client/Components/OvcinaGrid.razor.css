@@ -6,6 +6,18 @@
     height: 100%;
 }
 
+.ovcina-grid-scroll {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.ovcina-grid-scroll ::deep .ovcina-grid {
+    min-width: 100%;
+}
+
 .ovcina-grid-tools {
     display: flex;
     justify-content: flex-end;
