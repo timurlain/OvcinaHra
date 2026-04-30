@@ -478,8 +478,21 @@
                 new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (shape is null) return;
             Console.WriteLine($"[map-diag] MapView.OnShapeComplete parsed id={shape.Id} type={shape.GetType().Name}");
-            _stagedShapes.Add(shape);
-            _createdShapeIds.Add(shape.Id);
+            var existingIndex = _stagedShapes.FindIndex(s => s.Id == shape.Id);
+            if (existingIndex >= 0)
+            {
+                _stagedShapes[existingIndex] = shape;
+                if (_selectedShape?.Id == shape.Id)
+                {
+                    _selectedShape = shape;
+                }
+                Console.WriteLine($"[map-handdraw] shape-replaced id={shape.Id}");
+            }
+            else
+            {
+                _stagedShapes.Add(shape);
+                _createdShapeIds.Add(shape.Id);
+            }
             Console.WriteLine($"[map-diag] MapView.OnShapeComplete staged={_stagedShapes.Count} created={_createdShapeIds.Count}");
             await InvokeAsync(StateHasChanged);
             await JS.InvokeVoidAsync("ovcinaOverlay.render", _elementId, _stagedShapes);

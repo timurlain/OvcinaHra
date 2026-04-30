@@ -3784,14 +3784,24 @@
     color:var(--oh-text,#2a2a2a);font:600 .8rem var(--oh-font-body);cursor:pointer}
 .oh-map-tb-mode.is-active{background:#2D5016;border-color:#2D5016;color:#fff}
 .oh-map-tb-counts{margin-left:auto;font-variant-numeric:tabular-nums}
-.oh-map-shell{display:grid;grid-template-columns:220px 1fr;gap:10px;flex:1;min-height:0;position:relative}
-.oh-map-layer-rail{padding:10px 12px;background:var(--oh-surface,#FAF6EC);
-    border:1px solid var(--oh-border,#d8d2be);border-radius:8px;align-self:start}
+.oh-map-shell{display:grid;grid-template-columns:1fr;gap:10px;flex:1;min-height:0;position:relative}
+.oh-map-layers-control{position:absolute;top:8px;left:8px;z-index:12}
+.oh-map-layers-button{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 11px;
+    border-radius:99px;border:1px solid var(--oh-border,#d8d2be);background:rgba(250,246,236,.94);
+    color:var(--oh-text,#2a2a2a);font:700 .75rem var(--oh-font-body);cursor:pointer;
+    box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.oh-map-layers-button:hover,.oh-map-layers-button.is-active{background:#2D5016;border-color:#2D5016;color:#fff}
+.oh-map-layers-button i{font-size:.95rem}
+.oh-map-layers-panel{position:absolute;top:38px;left:0;width:250px;max-height:min(72vh,540px);overflow:auto;
+    padding:10px 12px;background:var(--oh-surface,#FAF6EC);border:1px solid var(--oh-border,#d8d2be);
+    border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
 .oh-map-layer-title{margin:0 0 8px;font:700 .95rem var(--oh-font-heading)}
 .oh-map-layer-row{display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;border-radius:5px}
 .oh-map-layer-row:hover{background:var(--oh-surface-alt,#F2EBD8)}
 .oh-map-layer-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;background:#2D5016}
 .oh-map-layer-stash{background:#C19A3A}
+.oh-map-layer-region{background:#2D5016}
+.oh-map-layer-done{background:#1F8F3A}
 .oh-map-layer-overlay{background:#7048a8}
 .oh-map-layer-organizer-overlay{background:#b26223}
 .oh-map-layer-lbl{flex:1}
@@ -3828,8 +3838,8 @@
 .oh-map-style-btn{padding:3px 9px;border-radius:99px;border:none;background:transparent;
     color:var(--oh-text,#2a2a2a);font:600 .72rem var(--oh-font-body);cursor:pointer}
 .oh-map-style-btn.is-active{background:#2D5016;color:#fff}
-.oh-map-treasure-filter{position:absolute;top:8px;left:8px;z-index:10;display:flex;align-items:center;
-    gap:4px;flex-wrap:wrap;max-width:calc(100% - 360px);background:rgba(250,246,236,.94);
+.oh-map-treasure-filter{position:absolute;top:8px;left:102px;z-index:10;display:flex;align-items:center;
+    gap:4px;flex-wrap:wrap;max-width:calc(100% - 454px);background:rgba(250,246,236,.94);
     padding:3px;border-radius:99px;box-shadow:0 1px 4px rgba(0,0,0,.12)}
 .oh-map-treasure-filter-lbl{padding:0 5px;color:var(--oh-text-secondary,#6b6257);
     font:700 .68rem var(--oh-font-body);letter-spacing:0;text-transform:uppercase}
@@ -3842,17 +3852,9 @@
 .oh-map-treasure-chip[data-stage="early"]{--c:var(--oh-stage-early);color:#3a2612}
 .oh-map-treasure-chip[data-stage="midgame"]{--c:var(--oh-stage-midgame)}
 .oh-map-treasure-chip[data-stage="lategame"]{--c:var(--oh-stage-lategame)}
-.oh-map-region-toggle{display:flex;align-items:center;gap:5px;margin-left:4px;padding:3px 9px;
-    border-radius:99px;color:var(--oh-text,#2a2a2a);font:600 .72rem var(--oh-font-body);
-    cursor:pointer;user-select:none}
-.oh-map-region-toggle input{width:13px;height:13px;margin:0;accent-color:#2D5016}
-.oh-map-region-toggle:hover{background:rgba(45,80,22,.08);color:#2D5016}
-.oh-map-region-toggle.is-active{background:#2D5016;color:#fff}
-.oh-map-done-toggle input{accent-color:#1F8F3A}
-.oh-map-done-toggle:hover{background:rgba(31,143,58,.08);color:#1F8F3A}
-.oh-map-done-toggle.is-active{background:#1F8F3A;color:#fff}
 @media (max-width: 900px){
-    .oh-map-treasure-filter{top:48px;right:8px;max-width:calc(100% - 16px)}
+    .oh-map-treasure-filter{top:48px;left:8px;right:8px;max-width:calc(100% - 16px)}
+    .oh-map-layers-panel{width:min(250px,calc(100vw - 24px))}
 }
 /* Issue #257 — tear-drop pins. Outer .oh-map-pin is a transparent
    anchor box; the round bubble + downward tail are painted by
@@ -4030,13 +4032,6 @@ body.oh-map-print-labeled .oh-map-pin .oh-map-pin-label.oh-map-pin-label-with-re
     gap:10px;padding:60px 20px;text-align:center}
 .oh-map-empty-art i{font-size:4rem;color:rgba(45,80,22,.35)}
 .oh-map-empty h2{font:700 1.4rem var(--oh-font-heading);margin:0}
-@media (max-width:900px){
-    .oh-map-shell{grid-template-columns:1fr}
-    .oh-map-layer-rail{position:absolute;left:8px;top:8px;z-index:5;width:200px;
-        box-shadow:0 1px 4px rgba(0,0,0,.18)}
-}
-}
-
 /* ===========================================================================
  * Shared coin/groše pill — extracted from buildings port (#208). Reuse on
  * Items + Recipes catalogs in follow-ups.
@@ -4205,27 +4200,7 @@ body.oh-map-print-labeled .oh-map-pin .oh-map-pin-label.oh-map-pin-label-with-re
    - Desktop (>900px): unchanged.
    ====================================================================== */
 
-/* Hamburger toggle — only visible on phone, sits over the canvas. */
-.oh-map-rail-toggle{display:none;position:absolute;top:8px;left:8px;z-index:11;
-    width:36px;height:36px;border-radius:99px;border:1px solid var(--oh-border,#d8d2be);
-    background:rgba(250,246,236,.94);color:var(--oh-text,#2a2a2a);cursor:pointer;
-    align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.18)}
-.oh-map-rail-toggle i{font-size:1.05rem}
-.oh-map-rail-backdrop{display:none;position:fixed;inset:0;background:rgba(20,16,8,.32);z-index:9}
-
 @media (max-width:600px){
-    /* Hamburger replaces the always-visible rail. */
-    .oh-map-rail-toggle{display:flex}
-    /* Layer rail hidden by default; slides in via .is-rail-open. */
-    .oh-map-shell .oh-map-layer-rail{
-        position:fixed;top:64px;left:0;bottom:0;width:min(260px,80vw);z-index:10;
-        background:var(--oh-surface,#FAF6EC);border-right:1px solid var(--oh-border,#d8d2be);
-        box-shadow:6px 0 24px rgba(0,0,0,.18);overflow-y:auto;
-        transform:translateX(-100%);transition:transform .25s cubic-bezier(.2,.7,.2,1)}
-    .oh-map-shell.is-rail-open .oh-map-layer-rail{transform:translateX(0)}
-    .oh-map-shell.is-rail-open .oh-map-rail-backdrop{display:block}
-
-    /* Canvas takes full width (rail no longer in flow). */
     .oh-map-shell{grid-template-columns:1fr}
 
     /* Peek becomes a bottom sheet — slides up from below covering ~70vh. */
