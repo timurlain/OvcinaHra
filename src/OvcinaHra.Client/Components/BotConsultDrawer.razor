@@ -7,16 +7,17 @@
 {
     <button type="button"
             class="oh-bot-fab @PersonaClass"
-            title="Zeptat se Drozda"
-            aria-label="Zeptat se Drozda"
+            title="Zeptej se Drozda"
+            aria-label="Zeptej se Drozda"
             @onclick="Open">
         <i class="bi bi-chat-dots-fill" aria-hidden="true"></i>
+        <span>Zeptej se Drozda</span>
     </button>
 
     @if (_open)
     {
         <div class="oh-bot-backdrop" @onclick="Close"></div>
-        <section class="oh-bot-drawer @PersonaClass" aria-label="Zeptat se Drozda">
+        <section class="oh-bot-drawer @PersonaClass" aria-label="Zeptej se Drozda">
             <header class="oh-bot-header">
                 <div>
                     <div class="oh-bot-title">
@@ -28,7 +29,7 @@
                                  aria-hidden="true"
                                  @onerror="HideDrozdIcon" />
                         }
-                        <h2>Zeptat se Drozda</h2>
+                        <h2>Zeptej se Drozda</h2>
                     </div>
                     <div class="oh-bot-personas" role="tablist" aria-label="Drozdova odbornost">
                         <button type="button"

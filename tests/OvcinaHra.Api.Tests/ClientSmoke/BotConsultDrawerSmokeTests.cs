@@ -38,7 +38,8 @@ public class BotConsultDrawerSmokeTests
         Assert.Contains("oh-bot-last-persona", drawer);
         Assert.Contains("rulemaster", drawer);
         Assert.Contains("loremaster", drawer);
-        Assert.Contains("Zeptat se Drozda", drawer);
+        Assert.Contains("aria-label=\"Zeptej se Drozda\"", drawer);
+        Assert.Matches("<span>\\s*Zeptej se Drozda\\s*</span>", drawer);
         Assert.Contains("img/drozd/drozd-idle.svg", drawer);
         Assert.Contains("@onerror=\"HideDrozdIcon\"", drawer);
         Assert.Contains("@ref=\"_draftInput\"", drawer);
@@ -55,6 +56,8 @@ public class BotConsultDrawerSmokeTests
         Assert.Contains("--oh-color-forest-deep", css);
         Assert.Contains("--oh-color-azanulinbar", css);
         Assert.Contains(".oh-bot-title-drozd", css);
+        Assert.Contains("border-radius: 999px", css);
+        Assert.Contains(".oh-bot-fab span", css);
         Assert.Contains("@media (max-width: 767.98px)", css);
         Assert.Contains("height: 100dvh;", css);
 
