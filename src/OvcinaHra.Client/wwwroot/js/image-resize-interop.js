@@ -66,12 +66,17 @@ window.ovcinaExif.haversineMeters = function (lat1, lng1, lat2, lng2) {
 };
 
 window.ovcinaExif.readGpsFromDataUrl = async function (dataUrl) {
+    const metadata = await window.ovcinaExif.readMetadataFromDataUrl(dataUrl);
+    return metadata && metadata.gps ? metadata.gps : null;
+};
+
+window.ovcinaExif.readMetadataFromDataUrl = async function (dataUrl) {
     if (typeof dataUrl !== "string" || dataUrl.length === 0) {
         return null;
     }
 
     const buffer = dataUrlToArrayBuffer(dataUrl);
-    return readExifGps(buffer);
+    return readExifMetadata(buffer);
 };
 
 function dataUrlToArrayBuffer(dataUrl) {
@@ -95,6 +100,11 @@ function dataUrlToArrayBuffer(dataUrl) {
 }
 
 function readExifGps(buffer) {
+    const metadata = readExifMetadata(buffer);
+    return metadata ? metadata.gps : null;
+}
+
+function readExifMetadata(buffer) {
     const view = new DataView(buffer);
     const tiffOffset = findTiffOffset(view);
     if (tiffOffset === null) {
@@ -112,12 +122,25 @@ function readExifGps(buffer) {
     }
 
     const firstIfdOffset = view.getUint32(tiffOffset + 4, littleEndian);
-    const gpsIfdPointer = readIfdTag(view, tiffOffset, tiffOffset + firstIfdOffset, littleEndian, 0x8825);
-    if (gpsIfdPointer === null) {
-        return null;
-    }
+    const ifd0Offset = tiffOffset + firstIfdOffset;
+    const gpsIfdPointer = readIfdTag(view, tiffOffset, ifd0Offset, littleEndian, 0x8825);
+    const exifIfdPointer = readIfdTag(view, tiffOffset, ifd0Offset, littleEndian, 0x8769);
 
-    return readGpsIfd(view, tiffOffset, tiffOffset + gpsIfdPointer, littleEndian);
+    const gps = gpsIfdPointer === null
+        ? null
+        : readGpsIfd(view, tiffOffset, tiffOffset + gpsIfdPointer, littleEndian);
+
+    let capturedAt = null;
+    if (exifIfdPointer !== null) {
+        const exifIfdOffset = tiffOffset + exifIfdPointer;
+        capturedAt =
+            normalizeExifDateTime(readIfdAsciiTag(view, tiffOffset, exifIfdOffset, littleEndian, 0x9003))
+            || normalizeExifDateTime(readIfdAsciiTag(view, tiffOffset, exifIfdOffset, littleEndian, 0x9004));
+    }
+    capturedAt = capturedAt
+        || normalizeExifDateTime(readIfdAsciiTag(view, tiffOffset, ifd0Offset, littleEndian, 0x0132));
+
+    return gps || capturedAt ? { gps, capturedAt } : null;
 }
 
 function findTiffOffset(view) {
@@ -156,6 +179,37 @@ function findTiffOffset(view) {
 }
 
 function readIfdTag(view, tiffOffset, ifdOffset, littleEndian, targetTag) {
+    const entryOffset = findIfdEntryOffset(view, ifdOffset, littleEndian, targetTag);
+    if (entryOffset === null) {
+        return null;
+    }
+
+    const type = view.getUint16(entryOffset + 2, littleEndian);
+    const count = view.getUint32(entryOffset + 4, littleEndian);
+    return readExifValue(view, tiffOffset, entryOffset, type, count, littleEndian);
+}
+
+function readIfdAsciiTag(view, tiffOffset, ifdOffset, littleEndian, targetTag) {
+    const entryOffset = findIfdEntryOffset(view, ifdOffset, littleEndian, targetTag);
+    if (entryOffset === null) {
+        return null;
+    }
+
+    const type = view.getUint16(entryOffset + 2, littleEndian);
+    const count = view.getUint32(entryOffset + 4, littleEndian);
+    if (type !== 2 || count <= 0) {
+        return null;
+    }
+
+    const valueOffset = valueDataOffset(view, tiffOffset, entryOffset, type, count, littleEndian);
+    if (valueOffset === null) {
+        return null;
+    }
+
+    return readAscii(view, valueOffset, count).replace(/\0/g, "").trim();
+}
+
+function findIfdEntryOffset(view, ifdOffset, littleEndian, targetTag) {
     if (ifdOffset < 0 || ifdOffset + 2 > view.byteLength) {
         return null;
     }
@@ -172,9 +226,7 @@ function readIfdTag(view, tiffOffset, ifdOffset, littleEndian, targetTag) {
             continue;
         }
 
-        const type = view.getUint16(entryOffset + 2, littleEndian);
-        const count = view.getUint32(entryOffset + 4, littleEndian);
-        return readExifValue(view, tiffOffset, entryOffset, type, count, littleEndian);
+        return entryOffset;
     }
 
     return null;
@@ -292,6 +344,20 @@ function readRationals(view, offset, count, littleEndian) {
 
 function dmsToDecimal(values) {
     return values[0] + values[1] / 60 + values[2] / 3600;
+}
+
+function normalizeExifDateTime(value) {
+    if (typeof value !== "string" || value.length === 0) {
+        return null;
+    }
+
+    const trimmed = value.replace(/\0/g, "").trim();
+    const match = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(trimmed);
+    if (!match) {
+        return trimmed || null;
+    }
+
+    return `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}`;
 }
 
 function readAscii(view, offset, length) {

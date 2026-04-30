@@ -1,4 +1,5 @@
 @using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
 
 <div class="image-picker-wrap">
     <label class="image-picker-box @(currentUrl is null ? "is-empty" : "is-filled") @(isWorking ? "is-working" : "")"
@@ -49,6 +50,7 @@
 
 @code {
     [Inject] private ApiClient Api { get; set; } = null!;
+    [Inject] private IJSRuntime JS { get; set; } = null!;
 
     [Parameter, EditorRequired] public string EntityType { get; set; } = "";
     [Parameter, EditorRequired] public int EntityId { get; set; }
@@ -57,6 +59,11 @@
 
     [Parameter] public string AspectRatio { get; set; } = "1:1";
     [Parameter] public string Width { get; set; } = "200px";
+    [Parameter] public bool AutoResize { get; set; } = true;
+    [Parameter] public bool? ReadExif { get; set; }
+    [Parameter] public int ResizeMaxDimension { get; set; } = DefaultResizeMaxDimension;
+    [Parameter] public double ResizeQuality { get; set; } = DefaultResizeQuality;
+    [Parameter] public string? Surface { get; set; }
 
     private string? currentUrl;
     private string? errorMessage;
@@ -68,6 +75,19 @@
     private string? _lastEntityType;
     private int _lastEntityId;
     private string? _lastField;
+
+    private const long DefaultMaxIngressFileSize = 30 * 1024 * 1024;
+    private const long DefaultMaxUploadFileSize = 5 * 1024 * 1024;
+    private const int DefaultResizeMaxDimension = 1920;
+    private const double DefaultResizeQuality = 0.85;
+
+    private bool IsPlacementSurface =>
+        string.Equals(EntityType, "locationplacements", StringComparison.Ordinal)
+        || (string.Equals(EntityType, "locations", StringComparison.Ordinal)
+            && string.Equals(Field, "placement", StringComparison.OrdinalIgnoreCase));
+
+    private bool ShouldReadExif => ReadExif ?? IsPlacementSurface;
+    private string UploadSurface => Surface ?? (IsPlacementSurface ? "placement" : EntityType);
 
     protected override void OnParametersSet()
     {
@@ -124,19 +144,76 @@
         try
         {
             var file = e.File;
-            if (file.Size > 5 * 1024 * 1024)
+            var surface = UploadSurface;
+            if (file.Size > DefaultMaxIngressFileSize)
             {
-                errorMessage = "Soubor je příliš velký (max 5 MB).";
+                errorMessage = $"Soubor je příliš velký (max {DefaultMaxIngressFileSize / 1024 / 1024} MB).";
+                Console.WriteLine($"[image-upload] reject reason=ingress-too-large surface={surface} entity={EntityType} id={EntityId} size={file.Size}");
                 return;
             }
 
-            var query = Field is not null ? $"?field={Field}" : "";
-            Console.WriteLine($"[image-upload] start entity={EntityType} id={EntityId} field={Field ?? "image"}");
+            Console.WriteLine($"[image-upload] start surface={surface} entity={EntityType} id={EntityId} field={Field ?? "image"} originalSize={file.Size}");
+            var originalContentType = string.IsNullOrWhiteSpace(file.ContentType)
+                ? "image/jpeg"
+                : file.ContentType;
+            string originalDataUrl;
+            try
+            {
+                await using var stream = file.OpenReadStream(maxAllowedSize: DefaultMaxIngressFileSize);
+                using var buffer = new MemoryStream();
+                await stream.CopyToAsync(buffer);
+                originalDataUrl = ToDataUrl(originalContentType, buffer.ToArray());
+            }
+            catch (Exception ex)
+            {
+                errorMessage = "Obrázek se nepodařilo načíst.";
+                Console.WriteLine($"[image-upload] reject reason=read-failed surface={surface} entity={EntityType} id={EntityId} detail={ex.Message}");
+                return;
+            }
+
+            var metadata = await ReadImageMetadataAsync(originalDataUrl, surface);
+            var uploadBytes = DecodeDataUrlBytes(originalDataUrl);
+            var uploadContentType = originalContentType;
+            var uploadFilename = string.IsNullOrWhiteSpace(file.Name) ? "image" : file.Name;
+
+            if (AutoResize)
+            {
+                try
+                {
+                    var resizeTimer = System.Diagnostics.Stopwatch.StartNew();
+                    Console.WriteLine($"[image-upload] resize.start surface={surface} entity={EntityType} id={EntityId} originalSize={file.Size} maxDim={ResizeMaxDimension} quality={ResizeQuality}");
+                    var resizedDataUrl = await JS.InvokeAsync<string>(
+                        "ovcinaImageResize.fromBase64",
+                        originalDataUrl,
+                        ResizeMaxDimension,
+                        ResizeQuality);
+                    uploadBytes = DecodeDataUrlBytes(resizedDataUrl);
+                    uploadContentType = "image/jpeg";
+                    uploadFilename = Path.ChangeExtension(uploadFilename, "jpg");
+                    resizeTimer.Stop();
+                    Console.WriteLine($"[image-upload] resize.done surface={surface} entity={EntityType} id={EntityId} resizedSize={uploadBytes.LongLength} elapsedMs={resizeTimer.ElapsedMilliseconds}");
+                }
+                catch (Exception ex)
+                {
+                    errorMessage = "Obrázek se nepodařilo zmenšit.";
+                    Console.WriteLine($"[image-upload] reject reason=resize-failed surface={surface} entity={EntityType} id={EntityId} detail={ex.Message}");
+                    return;
+                }
+            }
+
+            if (uploadBytes.LongLength > DefaultMaxUploadFileSize)
+            {
+                errorMessage = $"Obrázek se nepodařilo zmenšit pod {DefaultMaxUploadFileSize / 1024 / 1024} MB. Zkuste prosím jiný snímek.";
+                Console.WriteLine($"[image-upload] reject reason=too-large-after-resize surface={surface} entity={EntityType} id={EntityId} size={uploadBytes.LongLength}");
+                return;
+            }
+
+            var query = Field is not null ? $"?field={Uri.EscapeDataString(Field)}" : "";
             using var content = new MultipartFormDataContent();
-            using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
-            var fileContent = new StreamContent(stream);
-            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(file.ContentType);
-            content.Add(fileContent, "file", file.Name);
+            using var fileContent = new ByteArrayContent(uploadBytes);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(uploadContentType);
+            content.Add(fileContent, "file", uploadFilename);
+            AddMetadataFields(content, metadata);
 
             var (ok, result, problemDetail, statusCode) = await Api.PostMultipartWithProblemAsync<ImageUploadResult>(
                 $"/api/images/{EntityType}/{EntityId}{query}", content);
@@ -150,7 +227,7 @@
             if (result is not null)
             {
                 currentUrl = result.Url;
-                Console.WriteLine($"[image-upload] success blobKey={result.BlobKey}");
+                Console.WriteLine($"[image-upload] success surface={surface} entity={EntityType} id={EntityId} blobKey={result.BlobKey}");
             }
         }
         catch (Exception ex)
@@ -184,5 +261,90 @@
         }
         catch (Exception ex) { errorMessage = ex.Message; }
         finally { isWorking = false; }
+    }
+
+    private async Task<ImagePickerUploadMetadata?> ReadImageMetadataAsync(string originalDataUrl, string surface)
+    {
+        if (!ShouldReadExif)
+        {
+            Console.WriteLine($"[image-upload] exif.read result=skipped surface={surface} entity={EntityType} id={EntityId}");
+            return null;
+        }
+
+        try
+        {
+            var jsMetadata = await JS.InvokeAsync<ImagePickerExifMetadata?>(
+                "ovcinaExif.readMetadataFromDataUrl",
+                originalDataUrl);
+            if (jsMetadata is null
+                || (jsMetadata.Gps is null && string.IsNullOrWhiteSpace(jsMetadata.CapturedAt)))
+            {
+                Console.WriteLine($"[image-upload] exif.read result=no-gps surface={surface} entity={EntityType} id={EntityId} capturedAt=false");
+                return null;
+            }
+
+            var gps = jsMetadata.Gps;
+            var capturedAt = jsMetadata.CapturedAt;
+            var hasGps = gps is not null;
+            var hasCapturedAt = !string.IsNullOrWhiteSpace(capturedAt);
+            Console.WriteLine($"[image-upload] exif.read result={(hasGps ? "found-gps" : "no-gps")} surface={surface} entity={EntityType} id={EntityId} capturedAt={hasCapturedAt.ToString().ToLowerInvariant()}");
+            return new ImagePickerUploadMetadata
+            {
+                GpsLatitude = gps?.Lat,
+                GpsLongitude = gps?.Lng,
+                CapturedAt = capturedAt
+            };
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[image-upload] exif.read result=parse-failed surface={surface} entity={EntityType} id={EntityId} detail={ex.Message}");
+            return null;
+        }
+    }
+
+    private static string ToDataUrl(string contentType, byte[] bytes)
+        => $"data:{contentType};base64,{Convert.ToBase64String(bytes)}";
+
+    private static byte[] DecodeDataUrlBytes(string dataUrl)
+    {
+        var commaIdx = dataUrl.IndexOf(',');
+        if (commaIdx < 0)
+            throw new FormatException("Invalid data URL.");
+
+        return Convert.FromBase64String(dataUrl[(commaIdx + 1)..]);
+    }
+
+    private static void AddMetadataFields(MultipartFormDataContent content, ImagePickerUploadMetadata? metadata)
+    {
+        if (metadata is null)
+            return;
+
+        if (metadata.GpsLatitude.HasValue && metadata.GpsLongitude.HasValue)
+        {
+            content.Add(new StringContent(metadata.GpsLatitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)), "gpsLatitude");
+            content.Add(new StringContent(metadata.GpsLongitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)), "gpsLongitude");
+        }
+
+        if (!string.IsNullOrWhiteSpace(metadata.CapturedAt))
+            content.Add(new StringContent(metadata.CapturedAt), "capturedAt");
+    }
+
+    private sealed class ImagePickerExifMetadata
+    {
+        public ImagePickerGpsCoordinates? Gps { get; set; }
+        public string? CapturedAt { get; set; }
+    }
+
+    private sealed class ImagePickerUploadMetadata
+    {
+        public double? GpsLatitude { get; init; }
+        public double? GpsLongitude { get; init; }
+        public string? CapturedAt { get; init; }
+    }
+
+    private sealed class ImagePickerGpsCoordinates
+    {
+        public double Lat { get; set; }
+        public double Lng { get; set; }
     }
 }
