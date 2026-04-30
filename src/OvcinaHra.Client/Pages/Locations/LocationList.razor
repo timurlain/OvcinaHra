@@ -1735,7 +1735,7 @@ else
         cipherGridError = null;
         try
         {
-            var ciphers = await Api.GetListAsync<LocationCipherDto>($"/api/location-ciphers/{gameId}");
+            var ciphers = await Api.GetListAsync<LocationCipherDto>($"/api/location-ciphers/by-game/{gameId}");
             cipherStates.Clear();
             foreach (var cipher in ciphers)
             {
@@ -1877,11 +1877,11 @@ else
     }
 
     private sealed record CipherColumn(
-        CipherSkillKey SkillKey,
+        AdventuringSkill SkillKey,
         string SkillSlug,
         string SkillName);
 
-    private readonly record struct CipherCellKey(int LocationId, CipherSkillKey SkillKey);
+    private readonly record struct CipherCellKey(int LocationId, AdventuringSkill SkillKey);
 
     private sealed class CipherCellState
     {
@@ -1919,7 +1919,7 @@ else
     }
 
     private static readonly IReadOnlyList<CipherColumn> CipherColumns =
-        CipherSkillKeyExtensions.All
+        AdventuringSkillExtensions.All
             .Select(skill => new CipherColumn(
                 skill,
                 skill.GetSlug(),

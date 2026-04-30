@@ -12,6 +12,7 @@ public class LocationConfiguration : IEntityTypeConfiguration<Location>
         builder.Property(e => e.Name).IsRequired().HasMaxLength(200);
         builder.HasIndex(e => e.Name).IsUnique();
         builder.Property(e => e.LocationKind).HasConversion<string>().HasMaxLength(30);
+        builder.Property(e => e.RemotenessNotes).HasMaxLength(200);
 
         builder.OwnsOne(e => e.Coordinates, c =>
         {
@@ -31,5 +32,9 @@ public class LocationConfiguration : IEntityTypeConfiguration<Location>
                 stored: true);
 
         builder.HasIndex("SearchVector").HasMethod("GIN");
+
+        builder.ToTable(t =>
+            t.HasCheckConstraint("CK_Location_RemotenessScore_Range",
+                "\"RemotenessScore\" IS NULL OR (\"RemotenessScore\" >= 0 AND \"RemotenessScore\" <= 9)"));
     }
 }

@@ -1,4 +1,5 @@
-using Microsoft.AspNetCore.Http.HttpResults;
+using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
@@ -13,253 +14,827 @@ namespace OvcinaHra.Api.Endpoints;
 
 public static class LocationCipherEndpoints
 {
+    private static readonly JsonSerializerOptions LogJsonOptions = new(JsonSerializerDefaults.Web);
+
     public static RouteGroupBuilder MapLocationCipherEndpoints(this IEndpointRouteBuilder routes)
     {
-        var group = routes.MapGroup("/api/location-ciphers").WithTags("LocationCiphers");
+        var group = routes.MapGroup("/api/location-ciphers")
+            .WithTags("LocationCiphers")
+            .RequireAuthorization()
+            .AddEndpointFilter(LogEndpointException);
 
-        group.MapGet("/{gameId:int}", GetByGame);
-        group.MapGet("/{gameId:int}/{locationId:int}", GetByLocation);
+        group.MapGet("/by-game/{gameId:int}", GetByGame);
+        group.MapGet("/by-location/{locationId:int}", GetByLocation);
+        group.MapGet("/{id:int}", GetDetail);
+        group.MapPost("/", Create);
+        group.MapPut("/{id:int}", Update);
+        group.MapDelete("/{id:int}", Delete);
+        group.MapPost("/bulk-import", BulkImport);
+
+        // Compatibility for the existing location-detail cipher panel + PDF export.
+        group.MapGet("/{gameId:int}/{locationId:int}", GetByLocationLegacy);
         group.MapGet("/{gameId:int}/{locationId:int}/pdf", DownloadLocationPdf);
         group.MapGet("/{gameId:int}/{locationId:int}/{skillSlug}/pdf", DownloadSinglePdf);
-        group.MapPut("/{gameId:int}/{locationId:int}/{skillSlug}", Upsert);
-        group.MapDelete("/{gameId:int}/{locationId:int}/{skillSlug}", Delete);
+        group.MapPut("/{gameId:int}/{locationId:int}/{skillSlug}", UpsertLegacy);
+        group.MapDelete("/{gameId:int}/{locationId:int}/{skillSlug}", DeleteLegacy);
+
+        var vouchers = routes.MapGroup("/api/library-vouchers")
+            .WithTags("LibraryVouchers")
+            .RequireAuthorization()
+            .AddEndpointFilter(LogEndpointException);
+        vouchers.MapGet("/", GetLibraryVouchers);
+        vouchers.MapPost("/claim", ClaimVoucher);
 
         return group;
     }
 
-    private static async Task<Ok<List<LocationCipherDto>>> GetByGame(int gameId, WorldDbContext db)
+    private static async ValueTask<object?> LogEndpointException(
+        EndpointFilterInvocationContext context,
+        EndpointFilterDelegate next)
     {
+        try
+        {
+            return await next(context);
+        }
+        catch (Exception ex)
+        {
+            var loggerFactory = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>();
+            var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.LocationCipherEndpoints");
+            logger.LogError(ex, "[location-cipher] exception method={Method} path={Path}",
+                context.HttpContext.Request.Method,
+                context.HttpContext.Request.Path.Value);
+            throw;
+        }
+    }
+
+    private static async Task<IResult> GetByGame(
+        int gameId,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.LocationCipherEndpoints");
+        LogCipher(logger, "entry", new { endpoint = "by-game", gameId });
+        if (!CanAuthor(http.User))
+            return Results.Forbid();
+
         var rows = await db.LocationCiphers
+            .AsNoTracking()
+            .Include(c => c.Location)
+            .Include(c => c.LinkedQuest)
+            .Include(c => c.ClaimedByCharacter)
+            .Where(c => c.GameId == gameId)
+            .OrderBy(c => c.Location.Name)
+            .ThenBy(c => c.Skill)
+            .ToListAsync(ct);
+
+        LogCipher(logger, "exit", new { endpoint = "by-game", gameId, count = rows.Count });
+        return Results.Ok(rows.Select(ToDto).ToList());
+    }
+
+    private static async Task<IResult> GetByLocation(
+        int locationId,
+        int gameId,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.LocationCipherEndpoints");
+        LogCipher(logger, "entry", new { endpoint = "by-location", gameId, locationId });
+        if (!CanAuthor(http.User))
+            return Results.Forbid();
+
+        if (!await IsParentLocationInGameAsync(db, gameId, locationId, ct))
+            return Results.NotFound();
+
+        var slots = await BuildSlotsAsync(db, gameId, locationId, ct);
+        LogCipher(logger, "exit", new { endpoint = "by-location", gameId, locationId, count = slots.Count });
+        return Results.Ok(slots);
+    }
+
+    private static Task<IResult> GetByLocationLegacy(
+        int gameId,
+        int locationId,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct) =>
+        GetByLocation(locationId, gameId, db, http, loggerFactory, ct);
+
+    private static async Task<IResult> GetDetail(
+        int id,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.LocationCipherEndpoints");
+        LogCipher(logger, "entry", new { endpoint = "detail", id });
+        if (!CanAuthor(http.User))
+            return Results.Forbid();
+
+        var cipher = await LoadCipherAsync(db, id, ct);
+        if (cipher is null)
+            return Results.NotFound();
+
+        LogCipher(logger, "exit", new { endpoint = "detail", id });
+        return Results.Ok(ToDetailDto(cipher));
+    }
+
+    private static async Task<IResult> Create(
+        LocationCipherCreateDto dto,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.LocationCipherEndpoints");
+        LogCipher(logger, "entry", new { endpoint = "create", dto.GameId, dto.LocationId, dto.Skill });
+        if (!CanAuthor(http.User))
+            return Results.Forbid();
+
+        var validation = await ValidateWriteAsync(db, dto, ct);
+        if (validation.Error is not null)
+            return Results.BadRequest(ValidationProblem(validation.Error));
+
+        var existing = await db.LocationCiphers
+            .AnyAsync(c => c.GameId == dto.GameId && c.LocationId == dto.LocationId && c.Skill == dto.Skill, ct);
+        if (existing)
+            return Results.Conflict(ConflictProblem("Šifra pro tuto lokaci a dovednost už existuje."));
+
+        var cipher = new LocationCipher
+        {
+            GameId = dto.GameId,
+            LocationId = dto.LocationId,
+            Skill = dto.Skill,
+            Tier = dto.Tier,
+            ContentType = dto.ContentType,
+            RevealText = validation.RevealText!,
+            CipherText = validation.CipherText,
+            LibraryKeyword = validation.LibraryKeyword,
+            LibraryReward = validation.LibraryReward,
+            LinkedQuestId = dto.LinkedQuestId,
+            LinkedStashNumber = dto.LinkedStashNumber,
+            OrganizerNotes = NullIfWhiteSpace(dto.OrganizerNotes)
+        };
+        db.LocationCiphers.Add(cipher);
+
+        LogCipher(logger, "db-write", new { endpoint = "create", dto.GameId, dto.LocationId, dto.Skill });
+        await db.SaveChangesAsync(ct);
+
+        var saved = await LoadCipherAsync(db, cipher.Id, ct);
+        LogCipher(logger, "exit", new { endpoint = "create", id = cipher.Id });
+        return Results.Created($"/api/location-ciphers/{cipher.Id}", ToDetailDto(saved!));
+    }
+
+    private static async Task<IResult> Update(
+        int id,
+        LocationCipherUpdateDto dto,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.LocationCipherEndpoints");
+        LogCipher(logger, "entry", new { endpoint = "update", id, dto.GameId, dto.LocationId, dto.Skill });
+        if (!CanAuthor(http.User))
+            return Results.Forbid();
+
+        var cipher = await db.LocationCiphers.FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (cipher is null)
+            return Results.NotFound();
+
+        var createDto = new LocationCipherCreateDto(
+            dto.GameId,
+            dto.LocationId,
+            dto.Skill,
+            dto.Tier,
+            dto.ContentType,
+            dto.RevealText,
+            dto.CipherText,
+            dto.LibraryKeyword,
+            dto.LibraryReward,
+            dto.LinkedQuestId,
+            dto.LinkedStashNumber,
+            dto.OrganizerNotes);
+        var validation = await ValidateWriteAsync(db, createDto, ct, id);
+        if (validation.Error is not null)
+            return Results.BadRequest(ValidationProblem(validation.Error));
+
+        var duplicate = await db.LocationCiphers.AnyAsync(c =>
+            c.Id != id && c.GameId == dto.GameId && c.LocationId == dto.LocationId && c.Skill == dto.Skill, ct);
+        if (duplicate)
+            return Results.Conflict(ConflictProblem("Šifra pro tuto lokaci a dovednost už existuje."));
+
+        ApplyWrite(cipher, createDto, validation);
+        LogCipher(logger, "db-write", new { endpoint = "update", id });
+        await db.SaveChangesAsync(ct);
+
+        var saved = await LoadCipherAsync(db, id, ct);
+        LogCipher(logger, "exit", new { endpoint = "update", id });
+        return Results.Ok(ToDetailDto(saved!));
+    }
+
+    private static async Task<IResult> Delete(
+        int id,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.LocationCipherEndpoints");
+        LogCipher(logger, "entry", new { endpoint = "delete", id });
+        if (!CanDeleteOrBulk(http.User))
+            return Results.Forbid();
+
+        var cipher = await db.LocationCiphers.FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (cipher is null)
+            return Results.NotFound();
+
+        db.LocationCiphers.Remove(cipher);
+        LogCipher(logger, "db-write", new { endpoint = "delete", id });
+        await db.SaveChangesAsync(ct);
+        LogCipher(logger, "exit", new { endpoint = "delete", id });
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> BulkImport(
+        LocationCipherBulkImportDto dto,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.LocationCipherEndpoints");
+        LogCipher(logger, "entry", new { endpoint = "bulk-import", dto.GameId, count = dto.Ciphers.Count });
+        if (!CanDeleteOrBulk(http.User))
+            return Results.Forbid();
+
+        var changedIds = new List<int>();
+        var importKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        foreach (var row in dto.Ciphers)
+        {
+            if (row.GameId != dto.GameId)
+                return Results.BadRequest(ValidationProblem("Všechny importované šifry musí mít stejné GameId jako obálka importu."));
+
+            var cipher = await db.LocationCiphers.FirstOrDefaultAsync(c =>
+                c.GameId == row.GameId && c.LocationId == row.LocationId && c.Skill == row.Skill, ct);
+            var validation = await ValidateWriteAsync(db, row, ct, cipher?.Id);
+            if (validation.Error is not null)
+                return Results.BadRequest(ValidationProblem(validation.Error));
+            if (validation.LibraryKeyword is not null && !importKeywords.Add(validation.LibraryKeyword))
+                return Results.BadRequest(ValidationProblem("Knihovní heslo je v importu použité vícekrát."));
+
+            if (cipher is null)
+            {
+                cipher = new LocationCipher
+                {
+                    GameId = row.GameId,
+                    LocationId = row.LocationId,
+                    Skill = row.Skill,
+                    Tier = row.Tier,
+                    ContentType = row.ContentType,
+                    RevealText = validation.RevealText!,
+                    CipherText = validation.CipherText,
+                    LibraryKeyword = validation.LibraryKeyword,
+                    LibraryReward = validation.LibraryReward,
+                    LinkedQuestId = row.LinkedQuestId,
+                    LinkedStashNumber = row.LinkedStashNumber,
+                    OrganizerNotes = NullIfWhiteSpace(row.OrganizerNotes)
+                };
+                db.LocationCiphers.Add(cipher);
+            }
+            else
+            {
+                ApplyWrite(cipher, row, validation);
+            }
+
+            LogCipher(logger, "cipher.upsert", new { source = "bulk-import", row.GameId, row.LocationId, row.Skill });
+            await db.SaveChangesAsync(ct);
+            changedIds.Add(cipher.Id);
+        }
+
+        await tx.CommitAsync(ct);
+
+        var rows = await db.LocationCiphers
+            .AsNoTracking()
+            .Include(c => c.Location)
+            .Include(c => c.LinkedQuest)
+            .Include(c => c.ClaimedByCharacter)
+            .Where(c => changedIds.Contains(c.Id))
+            .OrderBy(c => c.Location.Name)
+            .ThenBy(c => c.Skill)
+            .ToListAsync(ct);
+
+        LogCipher(logger, "exit", new { endpoint = "bulk-import", dto.GameId, count = rows.Count });
+        return Results.Ok(rows.Select(ToDto).ToList());
+    }
+
+    private static async Task<IResult> GetLibraryVouchers(
+        int gameId,
+        bool? onlyUnclaimed,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.LocationCipherEndpoints");
+        var unclaimedOnly = onlyUnclaimed == true;
+        LogCipher(logger, "entry", new { endpoint = "library-vouchers", gameId, onlyUnclaimed = unclaimedOnly });
+        if (!CanVoucherRead(http.User))
+            return Results.Forbid();
+
+        var query = db.LocationCiphers
+            .AsNoTracking()
+            .Include(c => c.Location)
+            .Include(c => c.ClaimedByCharacter)
             .Where(c => c.GameId == gameId
-                && c.Location.GameLocations.Any(gl => gl.GameId == gameId))
-            .OrderBy(c => c.LocationId)
-            .ThenBy(c => c.SkillKey)
-            .Select(c => new
-            {
-                c.Id,
-                c.GameId,
-                c.LocationId,
-                c.SkillKey,
-                c.MessageRaw,
-                c.MessageNormalized,
-                c.QuestId,
-                QuestName = c.Quest == null ? null : c.Quest.Name
-            })
-            .ToListAsync();
+                && c.LibraryKeyword != null
+                && (c.Tier == CipherTier.StandardVoucher || c.Tier == CipherTier.FlagshipPaired));
+        if (unclaimedOnly)
+            query = query.Where(c => !c.IsClaimed);
 
-        return TypedResults.Ok(rows
-            .Select(c => ToDto(
-                c.Id, c.GameId, c.LocationId, c.SkillKey, c.MessageRaw,
-                c.MessageNormalized, c.QuestId, c.QuestName))
-            .ToList());
+        var rows = await query
+            .OrderBy(c => c.LibraryKeyword)
+            .ThenBy(c => c.Location.Name)
+            .ToListAsync(ct);
+
+        LogCipher(logger, "exit", new { endpoint = "library-vouchers", gameId, count = rows.Count });
+        return Results.Ok(rows.Select(ToVoucherDto).ToList());
     }
 
-    private static async Task<Results<Ok<List<LocationCipherSlotDto>>, NotFound>> GetByLocation(
-        int gameId, int locationId, WorldDbContext db)
+    private static async Task<IResult> ClaimVoucher(
+        int gameId,
+        CipherClaimRequestDto dto,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
     {
-        if (!await IsLocationInGameAsync(db, gameId, locationId))
-            return TypedResults.NotFound();
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.LocationCipherEndpoints");
+        var keyword = NormalizeKeyword(dto.LibraryKeyword);
+        logger.LogInformation("[location-cipher] voucher.claim attempt keyword={Keyword} gameId={GameId}", keyword, gameId);
+        if (!CanVoucherClaim(http.User))
+            return Results.Forbid();
 
-        var rows = await db.LocationCiphers
-            .Where(c => c.GameId == gameId && c.LocationId == locationId)
-            .Select(c => new
-            {
-                c.Id,
-                c.GameId,
-                c.LocationId,
-                c.SkillKey,
-                c.MessageRaw,
-                c.MessageNormalized,
-                c.QuestId,
-                QuestName = c.Quest == null ? null : c.Quest.Name
-            })
-            .ToListAsync();
+        if (keyword is null)
+        {
+            logger.LogInformation("[location-cipher] voucher.claim rejected reason=not-found keyword={Keyword} gameId={GameId}", dto.LibraryKeyword, gameId);
+            return Results.Ok(new CipherClaimResultDto(false, "Heslo neznámé", null, null));
+        }
 
-        var bySkill = rows.ToDictionary(c => c.SkillKey, c => ToDto(
-            c.Id, c.GameId, c.LocationId, c.SkillKey, c.MessageRaw,
-            c.MessageNormalized, c.QuestId, c.QuestName));
+        if (!dto.LocationStampVerified)
+        {
+            logger.LogInformation("[location-cipher] voucher.claim rejected reason=stamp-not-verified keyword={Keyword} gameId={GameId}", keyword, gameId);
+            return Results.Ok(new CipherClaimResultDto(false, "Razítko lokace nebylo ověřeno", null, null));
+        }
 
-        var slots = CipherSkillKeyExtensions.All
-            .Select(skill => new LocationCipherSlotDto(
-                skill,
-                skill.GetSlug(),
-                skill.GetDisplayName(),
-                skill.GetMaxMessageLetters(),
-                bySkill.GetValueOrDefault(skill)))
-            .ToList();
-
-        return TypedResults.Ok(slots);
-    }
-
-    private static async Task<Results<FileContentHttpResult, NotFound, BadRequest<ProblemDetails>>> DownloadSinglePdf(
-        int gameId, int locationId, string skillSlug, WorldDbContext db, ICipherPdfRenderer renderer)
-    {
-        if (!CipherSkillKeyExtensions.TryParseSlug(skillSlug, out var skillKey))
-            return TypedResults.BadRequest(ValidationProblem($"Neznámá šifrovací dovednost '{skillSlug}'."));
+        var characterExists = await db.CharacterAssignments
+            .AnyAsync(a => a.GameId == gameId && a.CharacterId == dto.CharacterId, ct);
+        if (!characterExists)
+            return Results.Ok(new CipherClaimResultDto(false, "Hrdina není v této hře", null, null));
 
         var cipher = await db.LocationCiphers
-            .Where(c => c.GameId == gameId && c.LocationId == locationId && c.SkillKey == skillKey)
-            .Select(c => new
-            {
-                c.MessageNormalized,
-                LocationName = c.Location.Name
-            })
-            .FirstOrDefaultAsync();
-        if (cipher is null)
-            return TypedResults.NotFound();
+            .AsNoTracking()
+            .Where(c => c.GameId == gameId
+                && c.LibraryKeyword == keyword
+                && (c.Tier == CipherTier.StandardVoucher || c.Tier == CipherTier.FlagshipPaired))
+            .Select(c => new { c.Id, c.IsClaimed, c.LibraryReward })
+            .FirstOrDefaultAsync(ct);
 
-        var pdf = renderer.RenderSingle(new CipherPdfCard(cipher.LocationName, skillKey, cipher.MessageNormalized));
-        return TypedResults.File(
-            pdf,
-            contentType: "application/pdf",
-            fileDownloadName: $"ovcina-sifra-{locationId}-{skillKey.GetSlug()}.pdf");
+        if (cipher is null)
+        {
+            logger.LogInformation("[location-cipher] voucher.claim rejected reason=not-found keyword={Keyword} gameId={GameId}", keyword, gameId);
+            return Results.Ok(new CipherClaimResultDto(false, "Heslo neznámé", null, null));
+        }
+
+        if (cipher.IsClaimed)
+        {
+            logger.LogInformation("[location-cipher] voucher.claim rejected reason=already-claimed keyword={Keyword} gameId={GameId} cipherId={CipherId}", keyword, gameId, cipher.Id);
+            return Results.Ok(new CipherClaimResultDto(false, "Heslo již bylo uplatněno", null, cipher.Id));
+        }
+
+        var now = DateTime.UtcNow;
+        var affected = await db.LocationCiphers
+            .Where(c => c.Id == cipher.Id && !c.IsClaimed)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(c => c.IsClaimed, true)
+                .SetProperty(c => c.ClaimedAtUtc, now)
+                .SetProperty(c => c.ClaimedByCharacterId, dto.CharacterId), ct);
+
+        if (affected == 0)
+        {
+            logger.LogInformation("[location-cipher] voucher.claim rejected reason=already-claimed keyword={Keyword} gameId={GameId} cipherId={CipherId}", keyword, gameId, cipher.Id);
+            return Results.Ok(new CipherClaimResultDto(false, "Heslo již bylo uplatněno", null, cipher.Id));
+        }
+
+        logger.LogInformation("[location-cipher] voucher.claim ok cipherId={CipherId} rewardLength={RewardLength}", cipher.Id, cipher.LibraryReward?.Length ?? 0);
+        return Results.Ok(new CipherClaimResultDto(true, "Uplatněno", cipher.LibraryReward, cipher.Id));
     }
 
-    private static async Task<Results<FileContentHttpResult, NotFound, BadRequest<ProblemDetails>>> DownloadLocationPdf(
-        int gameId, int locationId, WorldDbContext db, ICipherPdfRenderer renderer)
+    private static async Task<IResult> DownloadSinglePdf(
+        int gameId,
+        int locationId,
+        string skillSlug,
+        WorldDbContext db,
+        ICipherPdfRenderer renderer,
+        HttpContext http,
+        CancellationToken ct)
     {
+        if (!CanAuthor(http.User))
+            return Results.Forbid();
+        if (!AdventuringSkillExtensions.TryParseSlug(skillSlug, out var skill))
+            return Results.BadRequest(ValidationProblem($"Neznámá šifrovací dovednost '{skillSlug}'."));
+
+        var cipher = await db.LocationCiphers
+            .AsNoTracking()
+            .Where(c => c.GameId == gameId && c.LocationId == locationId && c.Skill == skill)
+            .Select(c => new
+            {
+                c.CipherText,
+                c.RevealText,
+                LocationName = c.Location.Name
+            })
+            .FirstOrDefaultAsync(ct);
+        if (cipher is null)
+            return Results.NotFound();
+
+        var cipherText = EnsureCipherText(cipher.CipherText, cipher.RevealText, skill);
+        var pdf = renderer.RenderSingle(new CipherPdfCard(cipher.LocationName, skill, cipherText));
+        return Results.File(
+            pdf,
+            contentType: "application/pdf",
+            fileDownloadName: $"ovcina-sifra-{locationId}-{skill.GetSlug()}.pdf");
+    }
+
+    private static async Task<IResult> DownloadLocationPdf(
+        int gameId,
+        int locationId,
+        WorldDbContext db,
+        ICipherPdfRenderer renderer,
+        HttpContext http,
+        CancellationToken ct)
+    {
+        if (!CanAuthor(http.User))
+            return Results.Forbid();
+
         var locationName = await db.GameLocations
             .Where(gl => gl.GameId == gameId && gl.LocationId == locationId)
             .Select(gl => gl.Location.Name)
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync(ct);
         if (locationName is null)
-            return TypedResults.NotFound();
+            return Results.NotFound();
 
         var ciphers = await db.LocationCiphers
+            .AsNoTracking()
             .Where(c => c.GameId == gameId && c.LocationId == locationId)
             .Select(c => new
             {
-                c.SkillKey,
-                c.MessageNormalized
+                c.Skill,
+                c.CipherText,
+                c.RevealText
             })
-            .ToListAsync();
+            .ToListAsync(ct);
         if (ciphers.Count == 0)
-            return TypedResults.BadRequest(ValidationProblem("V této lokaci zatím není žádná šifra k exportu."));
+            return Results.BadRequest(ValidationProblem("V této lokaci zatím není žádná šifra k exportu."));
 
-        var bySkill = ciphers.ToDictionary(c => c.SkillKey);
-        var cards = CipherSkillKeyExtensions.All
-            .Where(bySkill.ContainsKey)
-            .Select(skill => new CipherPdfCard(locationName, skill, bySkill[skill].MessageNormalized))
+        var cards = ciphers
+            .OrderBy(c => c.Skill)
+            .Select(c => new CipherPdfCard(locationName, c.Skill, EnsureCipherText(c.CipherText, c.RevealText, c.Skill)))
             .ToList();
         var pdf = renderer.RenderLocation(cards);
 
-        return TypedResults.File(
+        return Results.File(
             pdf,
             contentType: "application/pdf",
             fileDownloadName: $"ovcina-sifry-{locationId}.pdf");
     }
 
-    private static async Task<Results<NoContent, NotFound, BadRequest<ProblemDetails>>> Upsert(
-        int gameId, int locationId, string skillSlug, UpsertLocationCipherDto dto, WorldDbContext db)
+    private static async Task<IResult> UpsertLegacy(
+        int gameId,
+        int locationId,
+        string skillSlug,
+        UpsertLocationCipherDto dto,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
     {
-        if (!CipherSkillKeyExtensions.TryParseSlug(skillSlug, out var skillKey))
-            return TypedResults.BadRequest(ValidationProblem($"Neznámá šifrovací dovednost '{skillSlug}'."));
+        if (!AdventuringSkillExtensions.TryParseSlug(skillSlug, out var skill))
+            return Results.BadRequest(ValidationProblem($"Neznámá šifrovací dovednost '{skillSlug}'."));
 
-        if (!await IsLocationInGameAsync(db, gameId, locationId))
-            return TypedResults.NotFound();
-
-        var rawMessage = dto.MessageRaw?.Trim() ?? "";
-        if (rawMessage.Length > 500)
-            return TypedResults.BadRequest(ValidationProblem("Zpráva má příliš mnoho znaků. Maximum je 500 včetně mezer a interpunkce."));
-
-        var normalized = CipherTextNormalizer.NormalizeMessage(rawMessage);
-        var validationProblem = ValidateMessage(normalized, skillKey);
-        if (validationProblem is not null)
-            return TypedResults.BadRequest(validationProblem);
-
-        if (dto.QuestId.HasValue && !await IsQuestValidForLocationAsync(db, gameId, locationId, dto.QuestId.Value))
-            return TypedResults.BadRequest(ValidationProblem("Vybraný quest nepatří k této lokaci v aktuální hře."));
-
-        var cipher = await db.LocationCiphers.FirstOrDefaultAsync(c =>
-            c.GameId == gameId && c.LocationId == locationId && c.SkillKey == skillKey);
-
-        if (cipher is null)
+        var rows = await db.LocationCiphers
+            .Where(c => c.GameId == gameId && c.LocationId == locationId && c.Skill == skill)
+            .Select(c => c.Id)
+            .ToListAsync(ct);
+        if (rows.Count == 0)
         {
-            cipher = new LocationCipher
-            {
-                GameId = gameId,
-                LocationId = locationId,
-                SkillKey = skillKey,
-                MessageRaw = rawMessage,
-                MessageNormalized = normalized,
-                QuestId = dto.QuestId
-            };
-            db.LocationCiphers.Add(cipher);
-        }
-        else
-        {
-            cipher.MessageRaw = rawMessage;
-            cipher.MessageNormalized = normalized;
-            cipher.QuestId = dto.QuestId;
+            var result = await Create(
+                new LocationCipherCreateDto(
+                    gameId,
+                    locationId,
+                    skill,
+                    dto.QuestId.HasValue ? CipherTier.QuestTied : CipherTier.Micro,
+                    CipherContentType.Info,
+                    dto.MessageRaw,
+                    LinkedQuestId: dto.QuestId),
+                db,
+                http,
+                loggerFactory,
+                ct);
+            return IsSuccessResult(result) ? Results.NoContent() : result;
         }
 
-        await db.SaveChangesAsync();
-        return TypedResults.NoContent();
+        var update = new LocationCipherUpdateDto(
+            gameId,
+            locationId,
+            skill,
+            dto.QuestId.HasValue ? CipherTier.QuestTied : CipherTier.Micro,
+            CipherContentType.Info,
+            dto.MessageRaw,
+            LinkedQuestId: dto.QuestId);
+        var updateResult = await Update(rows[0], update, db, http, loggerFactory, ct);
+        return IsSuccessResult(updateResult) ? Results.NoContent() : updateResult;
     }
 
-    private static async Task<Results<NoContent, NotFound, BadRequest<ProblemDetails>>> Delete(
-        int gameId, int locationId, string skillSlug, WorldDbContext db)
+    private static async Task<IResult> DeleteLegacy(
+        int gameId,
+        int locationId,
+        string skillSlug,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
     {
-        if (!CipherSkillKeyExtensions.TryParseSlug(skillSlug, out var skillKey))
-            return TypedResults.BadRequest(ValidationProblem($"Neznámá šifrovací dovednost '{skillSlug}'."));
+        if (!AdventuringSkillExtensions.TryParseSlug(skillSlug, out var skill))
+            return Results.BadRequest(ValidationProblem($"Neznámá šifrovací dovednost '{skillSlug}'."));
 
-        var cipher = await db.LocationCiphers.FirstOrDefaultAsync(c =>
-            c.GameId == gameId && c.LocationId == locationId && c.SkillKey == skillKey);
-        if (cipher is null)
-            return TypedResults.NotFound();
-
-        db.LocationCiphers.Remove(cipher);
-        await db.SaveChangesAsync();
-        return TypedResults.NoContent();
+        var id = await db.LocationCiphers
+            .Where(c => c.GameId == gameId && c.LocationId == locationId && c.Skill == skill)
+            .Select(c => (int?)c.Id)
+            .FirstOrDefaultAsync(ct);
+        return id is null
+            ? Results.NotFound()
+            : await Delete(id.Value, db, http, loggerFactory, ct);
     }
 
-    private static async Task<bool> IsLocationInGameAsync(WorldDbContext db, int gameId, int locationId) =>
-        await db.GameLocations.AnyAsync(gl => gl.GameId == gameId && gl.LocationId == locationId);
-
-    private static async Task<bool> IsQuestValidForLocationAsync(
-        WorldDbContext db, int gameId, int locationId, int questId) =>
-        await db.Quests.AnyAsync(q =>
-            q.Id == questId
-            && (q.GameId == null || q.GameId == gameId)
-            && q.QuestLocations.Any(ql => ql.LocationId == locationId));
-
-    private static ProblemDetails? ValidateMessage(string normalized, CipherSkillKey skillKey)
+    private static async Task<List<LocationCipherSlotDto>> BuildSlotsAsync(
+        WorldDbContext db,
+        int gameId,
+        int locationId,
+        CancellationToken ct)
     {
+        var rows = await db.LocationCiphers
+            .AsNoTracking()
+            .Include(c => c.Location)
+            .Include(c => c.LinkedQuest)
+            .Include(c => c.ClaimedByCharacter)
+            .Where(c => c.GameId == gameId && c.LocationId == locationId)
+            .ToListAsync(ct);
+        var bySkill = rows.ToDictionary(c => c.Skill, ToDto);
+
+        return AdventuringSkillExtensions.All
+            .Select(skill => new LocationCipherSlotDto(
+                skill,
+                skill.GetSlug(),
+                skill.GetDisplayName(),
+                skill.GetMaxCipherLetters(),
+                bySkill.GetValueOrDefault(skill)))
+            .ToList();
+    }
+
+    private static async Task<LocationCipher?> LoadCipherAsync(WorldDbContext db, int id, CancellationToken ct) =>
+        await db.LocationCiphers
+            .Include(c => c.Location)
+            .Include(c => c.LinkedQuest)
+            .Include(c => c.ClaimedByCharacter)
+            .FirstOrDefaultAsync(c => c.Id == id, ct);
+
+    private static async Task<bool> IsParentLocationInGameAsync(
+        WorldDbContext db,
+        int gameId,
+        int locationId,
+        CancellationToken ct) =>
+        await db.Locations.AnyAsync(l =>
+            l.Id == locationId
+            && l.ParentLocationId == null
+            && l.GameLocations.Any(gl => gl.GameId == gameId), ct);
+
+    private static async Task<WriteValidation> ValidateWriteAsync(
+        WorldDbContext db,
+        LocationCipherCreateDto dto,
+        CancellationToken ct,
+        int? existingCipherId = null)
+    {
+        if (!Enum.IsDefined(dto.Skill))
+            return WriteValidation.Fail("Neznámá dobrodružná dovednost.");
+        if (!Enum.IsDefined(dto.Tier))
+            return WriteValidation.Fail("Neznámý tier šifry.");
+        if (!Enum.IsDefined(dto.ContentType))
+            return WriteValidation.Fail("Neznámý typ obsahu šifry.");
+
+        if (!await IsParentLocationInGameAsync(db, dto.GameId, dto.LocationId, ct))
+            return WriteValidation.Fail("Šifra musí patřit k rodičovské lokaci přiřazené do hry.");
+
+        var revealText = NullIfWhiteSpace(dto.RevealText);
+        if (revealText is null)
+            return WriteValidation.Fail("RevealText je povinný.");
+        if (revealText.Length > 500)
+            return WriteValidation.Fail("RevealText má příliš mnoho znaků. Maximum je 500.");
+
+        var cipherText = EnsureCipherText(dto.CipherText, revealText, dto.Skill);
+        var cipherProblem = ValidateCipherText(cipherText, dto.Skill);
+        if (cipherProblem is not null)
+            return WriteValidation.Fail(cipherProblem);
+
+        var keyword = NormalizeKeyword(dto.LibraryKeyword);
+        var reward = NullIfWhiteSpace(dto.LibraryReward);
+        if (dto.Tier is CipherTier.StandardVoucher or CipherTier.FlagshipPaired && (keyword is null || reward is null))
+            return WriteValidation.Fail("Knihovní voucher musí mít heslo i odměnu.");
+        if (dto.ContentType == CipherContentType.Keyword && keyword is null)
+            return WriteValidation.Fail("Typ Klíčové slovo musí mít vyplněné heslo.");
+        if (keyword is { Length: > 50 })
+            return WriteValidation.Fail("LibraryKeyword má příliš mnoho znaků. Maximum je 50.");
+        if (keyword is not null)
+        {
+            var keywordExists = await db.LocationCiphers.AnyAsync(c =>
+                c.GameId == dto.GameId
+                && c.LibraryKeyword == keyword
+                && (!existingCipherId.HasValue || c.Id != existingCipherId.Value), ct);
+            if (keywordExists)
+                return WriteValidation.Fail("Knihovní heslo už v této hře existuje.");
+        }
+
+        if (reward is { Length: > 500 })
+            return WriteValidation.Fail("LibraryReward má příliš mnoho znaků. Maximum je 500.");
+        if (dto.ContentType == CipherContentType.Pytlik && (!dto.LinkedStashNumber.HasValue || dto.LinkedStashNumber.Value <= 0))
+            return WriteValidation.Fail("Typ Pytlík musí mít číslo pytlíku.");
+        if (dto.OrganizerNotes is { Length: > 1000 })
+            return WriteValidation.Fail("OrganizerNotes má příliš mnoho znaků. Maximum je 1000.");
+        if (dto.Tier == CipherTier.QuestTied && !dto.LinkedQuestId.HasValue)
+            return WriteValidation.Fail("Questová šifra musí mít vybraný quest.");
+
+        if (dto.LinkedQuestId.HasValue)
+        {
+            var questValid = await db.Quests.AnyAsync(q =>
+                q.Id == dto.LinkedQuestId.Value
+                && (q.GameId == null || q.GameId == dto.GameId)
+                && q.QuestLocations.Any(ql => ql.LocationId == dto.LocationId), ct);
+            if (!questValid)
+                return WriteValidation.Fail("Vybraný quest nepatří k této lokaci v aktuální hře.");
+        }
+
+        return new WriteValidation(null, revealText, cipherText, keyword, reward);
+    }
+
+    private static void ApplyWrite(LocationCipher cipher, LocationCipherCreateDto dto, WriteValidation validation)
+    {
+        cipher.GameId = dto.GameId;
+        cipher.LocationId = dto.LocationId;
+        cipher.Skill = dto.Skill;
+        cipher.Tier = dto.Tier;
+        cipher.ContentType = dto.ContentType;
+        cipher.RevealText = validation.RevealText!;
+        cipher.CipherText = validation.CipherText;
+        cipher.LibraryKeyword = validation.LibraryKeyword;
+        cipher.LibraryReward = validation.LibraryReward;
+        cipher.LinkedQuestId = dto.LinkedQuestId;
+        cipher.LinkedStashNumber = dto.LinkedStashNumber;
+        cipher.OrganizerNotes = NullIfWhiteSpace(dto.OrganizerNotes);
+    }
+
+    private static string EnsureCipherText(string? cipherText, string revealText, AdventuringSkill skill)
+    {
+        var source = string.IsNullOrWhiteSpace(cipherText) ? revealText : cipherText;
+        var normalized = CipherTextNormalizer.NormalizeMessage(source);
         if (normalized.Length == 0)
-            return ValidationProblem("Zpráva musí obsahovat alespoň jedno písmeno A-Z.");
+            return "";
+        return normalized.StartsWith("XOX", StringComparison.Ordinal)
+            && normalized.EndsWith("XOX", StringComparison.Ordinal)
+            && normalized.Length >= 6
+            ? normalized
+            : $"XOX{normalized}XOX";
+    }
 
-        var max = skillKey.GetMaxMessageLetters();
-        if (normalized.Length > max)
-            return ValidationProblem($"Zpráva pro {skillKey.GetDisplayName()} má {normalized.Length} znaků po normalizaci. Maximum je {max}.");
+    private static string? ValidateCipherText(string cipherText, AdventuringSkill skill)
+    {
+        if (cipherText.Length == 0)
+            return "CipherText musí obsahovat alespoň jedno písmeno A-Z.";
+        if (!cipherText.StartsWith("XOX", StringComparison.Ordinal) || !cipherText.EndsWith("XOX", StringComparison.Ordinal))
+            return "CipherText musí mít XOX wrapper.";
+
+        var inner = cipherText[3..^3];
+        if (inner.Length == 0)
+            return "CipherText musí obsahovat alespoň jedno písmeno A-Z uvnitř XOX wrapperu.";
+        var max = skill.GetMaxCipherLetters();
+        if (inner.Length > max)
+            return $"CipherText pro {skill.GetDisplayName()} má {inner.Length} znaků bez wrapperu. Maximum je {max}.";
 
         return null;
     }
 
-    private static LocationCipherDto ToDto(
-        int id,
-        int gameId,
-        int locationId,
-        CipherSkillKey skillKey,
-        string messageRaw,
-        string messageNormalized,
-        int? questId,
-        string? questName)
+    private static string? NormalizeKeyword(string? value)
     {
-        var encoded = $"XOX{messageNormalized}XOX";
-        return new LocationCipherDto(
-            id,
-            gameId,
-            locationId,
-            skillKey,
-            skillKey.GetSlug(),
-            skillKey.GetDisplayName(),
-            skillKey.GetMaxMessageLetters(),
-            messageRaw,
-            messageNormalized,
-            encoded,
-            encoded.Length,
-            questId,
-            questName);
+        var normalized = CipherTextNormalizer.NormalizeMessage(value ?? "");
+        return normalized.Length == 0 ? null : normalized;
+    }
+
+    private static LocationCipherDto ToDto(LocationCipher c) => new(
+        c.Id,
+        c.GameId,
+        c.LocationId,
+        c.Location.Name,
+        c.Skill,
+        c.Skill.GetSlug(),
+        c.Skill.GetDisplayName(),
+        c.Skill.GetMaxCipherLetters(),
+        c.Tier,
+        c.ContentType,
+        c.IsClaimable,
+        c.IsClaimed,
+        c.RevealText,
+        c.CipherText,
+        c.LibraryKeyword,
+        c.LibraryReward,
+        c.LinkedQuestId,
+        c.LinkedQuest?.Name,
+        c.LinkedStashNumber,
+        c.OrganizerNotes,
+        c.ClaimedAtUtc,
+        c.ClaimedByCharacterId,
+        c.ClaimedByCharacter?.Name);
+
+    private static LocationCipherDetailDto ToDetailDto(LocationCipher c) => new(
+        c.Id,
+        c.GameId,
+        c.LocationId,
+        c.Location.Name,
+        c.Skill,
+        c.Skill.GetSlug(),
+        c.Skill.GetDisplayName(),
+        c.Skill.GetMaxCipherLetters(),
+        c.Tier,
+        c.ContentType,
+        c.IsClaimable,
+        c.IsClaimed,
+        c.RevealText,
+        c.CipherText,
+        c.LibraryKeyword,
+        c.LibraryReward,
+        c.LinkedQuestId,
+        c.LinkedQuest?.Name,
+        c.LinkedStashNumber,
+        c.OrganizerNotes,
+        c.ClaimedAtUtc,
+        c.ClaimedByCharacterId,
+        c.ClaimedByCharacter?.Name);
+
+    private static LibraryVoucherDto ToVoucherDto(LocationCipher c) => new(
+        c.Id,
+        c.LibraryKeyword!,
+        c.LibraryReward,
+        c.LocationId,
+        c.Location.Name,
+        c.IsClaimed,
+        c.ClaimedAtUtc,
+        c.Skill,
+        c.Skill.GetDisplayName(),
+        c.ClaimedByCharacterId,
+        c.ClaimedByCharacter?.Name);
+
+    private static bool CanAuthor(ClaimsPrincipal user) =>
+        HasAnyRole(user, "Admin", "Administrator", "Osud", "Organizer", "Organizator", "Organizátor", "Service");
+
+    private static bool CanDeleteOrBulk(ClaimsPrincipal user) =>
+        HasAnyRole(user, "Admin", "Administrator", "Service");
+
+    private static bool CanVoucherRead(ClaimsPrincipal user) =>
+        HasAnyRole(user, "Admin", "Administrator", "Osud", "Knihovník", "Knihovnik", "Organizer", "Organizator", "Organizátor", "Service");
+
+    private static bool CanVoucherClaim(ClaimsPrincipal user) => CanVoucherRead(user);
+
+    private static bool HasAnyRole(ClaimsPrincipal user, params string[] allowed)
+    {
+        var roles = user.FindAll("role").Select(c => c.Value)
+            .Concat(user.FindAll(ClaimTypes.Role).Select(c => c.Value));
+        return roles.Any(role => allowed.Any(a => string.Equals(a, role, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static bool IsSuccessResult(IResult result) =>
+        result.GetType().Name.Contains("Ok", StringComparison.Ordinal)
+        || result.GetType().Name.Contains("Created", StringComparison.Ordinal)
+        || result.GetType().Name.Contains("NoContent", StringComparison.Ordinal);
+
+    private static string? NullIfWhiteSpace(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static void LogCipher(ILogger logger, string eventName, object payload)
+    {
+        var json = JsonSerializer.Serialize(new { Event = eventName, Payload = payload }, LogJsonOptions);
+        logger.LogInformation("[location-cipher] {Payload}", json);
     }
 
     private static ProblemDetails ValidationProblem(string detail) => new()
@@ -268,4 +843,21 @@ public static class LocationCipherEndpoints
         Detail = detail,
         Status = StatusCodes.Status400BadRequest
     };
+
+    private static ProblemDetails ConflictProblem(string detail) => new()
+    {
+        Title = "Konflikt šifry lokace",
+        Detail = detail,
+        Status = StatusCodes.Status409Conflict
+    };
+
+    private sealed record WriteValidation(
+        string? Error,
+        string? RevealText,
+        string? CipherText,
+        string? LibraryKeyword,
+        string? LibraryReward)
+    {
+        public static WriteValidation Fail(string error) => new(error, null, null, null, null);
+    }
 }

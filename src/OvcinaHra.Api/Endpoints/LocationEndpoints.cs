@@ -68,7 +68,9 @@ public static class LocationEndpoints
                 l.SetupNotes,
                 l.ImagePath,
                 l.PlacementPhotoPath,
-                l.StampImagePath
+                l.StampImagePath,
+                l.RemotenessScore,
+                l.RemotenessNotes
             })
             .ToListAsync();
 
@@ -97,7 +99,9 @@ public static class LocationEndpoints
                 StampImageUrl: string.IsNullOrWhiteSpace(r.StampImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locationstamps", r.Id, "small"),
                 IsLocated: effective.HasValue,
                 EffectiveLatitude: effective?.Latitude,
-                EffectiveLongitude: effective?.Longitude);
+                EffectiveLongitude: effective?.Longitude,
+                RemotenessScore: r.RemotenessScore,
+                RemotenessNotes: r.RemotenessNotes);
         }).ToList();
 
         return TypedResults.Ok(locations);
@@ -188,7 +192,9 @@ public static class LocationEndpoints
             latitude, longitude,
             loc.ImagePath, loc.PlacementPhotoPath, loc.StampImagePath, loc.NpcInfo, loc.SetupNotes,
             loc.ParentLocationId, variants,
-            StampImageUrl: string.IsNullOrWhiteSpace(loc.StampImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locationstamps", loc.Id, "small")));
+            StampImageUrl: string.IsNullOrWhiteSpace(loc.StampImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locationstamps", loc.Id, "small"),
+            RemotenessScore: loc.RemotenessScore,
+            RemotenessNotes: loc.RemotenessNotes));
     }
 
     private static async Task<Results<Ok<List<LocationQuestSummaryDto>>, NotFound>> GetQuests(
@@ -226,7 +232,9 @@ public static class LocationEndpoints
             Region = dto.Region,
             NpcInfo = dto.NpcInfo,
             SetupNotes = dto.SetupNotes,
-            ParentLocationId = dto.ParentLocationId
+            ParentLocationId = dto.ParentLocationId,
+            RemotenessScore = dto.RemotenessScore,
+            RemotenessNotes = dto.RemotenessNotes
         };
 
         db.Locations.Add(loc);
@@ -236,7 +244,9 @@ public static class LocationEndpoints
             loc.Id, loc.Name, loc.Description, loc.Details, loc.GamePotential, loc.Prompt, loc.Region, loc.LocationKind,
             loc.Coordinates?.Latitude, loc.Coordinates?.Longitude,
             loc.ImagePath, loc.PlacementPhotoPath, loc.StampImagePath, loc.NpcInfo, loc.SetupNotes,
-            loc.ParentLocationId, []);
+            loc.ParentLocationId, [],
+            RemotenessScore: loc.RemotenessScore,
+            RemotenessNotes: loc.RemotenessNotes);
 
         return TypedResults.Created($"/api/locations/{loc.Id}", result);
     }
@@ -259,6 +269,8 @@ public static class LocationEndpoints
         loc.NpcInfo = dto.NpcInfo;
         loc.SetupNotes = dto.SetupNotes;
         loc.ParentLocationId = dto.ParentLocationId;
+        loc.RemotenessScore = dto.RemotenessScore;
+        loc.RemotenessNotes = dto.RemotenessNotes;
 
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
@@ -469,6 +481,8 @@ public static class LocationEndpoints
                 l.ImagePath,
                 l.PlacementPhotoPath,
                 l.StampImagePath,
+                l.RemotenessScore,
+                l.RemotenessNotes,
                 Stashes = l.GameSecretStashes
                     .Where(gss => gss.GameId == gameId)
                     .OrderBy(gss => gss.SecretStash.Name)
@@ -541,7 +555,9 @@ public static class LocationEndpoints
                 StampImageUrl: string.IsNullOrWhiteSpace(r.StampImagePath) ? null : ImageEndpoints.ThumbUrl(http, "locationstamps", r.Id, "small"),
                 IsLocated: effective.HasValue,
                 EffectiveLatitude: effective?.Latitude,
-                EffectiveLongitude: effective?.Longitude);
+                EffectiveLongitude: effective?.Longitude,
+                RemotenessScore: r.RemotenessScore,
+                RemotenessNotes: r.RemotenessNotes);
         }).ToList();
 
         return TypedResults.Ok(dtos);
