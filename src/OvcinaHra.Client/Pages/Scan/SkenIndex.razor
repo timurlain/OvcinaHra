@@ -1,0 +1,96 @@
+@page "/sken"
+@attribute [Authorize]
+@inject NavigationManager Nav
+@using OvcinaHra.Client.Components.Sken
+
+<PageTitle>Sken · OvčinaHra</PageTitle>
+
+<div class="oh-sken">
+    <h1 style="text-align:center; color:var(--sken-forest); margin-top:8px; margin-bottom:8px;">Sken</h1>
+    <p class="text-center text-muted sken-mt-sm">Nasměruj kameru na QR kód na hrdinově glejtu.</p>
+
+    <QrScanner OnDecoded="OnDecoded" />
+
+    @if (_decodeError is not null)
+    {
+        <div class="alert alert-warning sken-mt-md" role="alert">
+            <strong>QR kód nerozpoznán.</strong>
+            <p class="mb-0 small">@_decodeError</p>
+        </div>
+    }
+
+    <div class="sken-mt-lg">
+        <button class="btn-sken btn-sken-secondary" @onclick="ToggleManual">
+            @(_manualOpen ? "Zavřít ruční zadání" : "Zadat ID ručně")
+        </button>
+    </div>
+
+    @if (_manualOpen)
+    {
+        <div class="sken-mt-md">
+            <input type="number" inputmode="numeric"
+                   class="form-control"
+                   style="min-height:48px; font-size:1.1rem;"
+                   @bind="_manualId"
+                   @bind:event="oninput"
+                   placeholder="ID hrdiny" />
+            <div class="sken-mt-sm">
+                <button class="btn-sken btn-sken-primary"
+                        @onclick="GoManual"
+                        disabled="@(_manualId is null)">
+                    Otevřít
+                </button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _manualOpen;
+    private int? _manualId;
+    private string? _decodeError;
+
+    // Matches the trailing "/{digits}" segment of a URL — covers everything
+    // we print today: hra.ovcina.cz/p/{id}, glejt.ovcina.cz/character/{id},
+    // and anything else where the personId is the last path segment.
+    private static readonly System.Text.RegularExpressions.Regex TrailingIntInPath =
+        new(@"/(\d+)/?(?:[?#].*)?$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private void OnDecoded(string text)
+    {
+        Console.WriteLine($"[sken] QR decoded: {text}");
+        var trimmed = text?.Trim() ?? string.Empty;
+
+        // Plain integer payload (legacy + manual-entry parity)
+        if (int.TryParse(trimmed, out var id))
+        {
+            _decodeError = null;
+            Nav.NavigateTo($"/p/{id}");
+            return;
+        }
+
+        // URL — extract trailing /{personId} from the path
+        var match = TrailingIntInPath.Match(trimmed);
+        if (match.Success && int.TryParse(match.Groups[1].Value, out var urlId))
+        {
+            _decodeError = null;
+            Nav.NavigateTo($"/p/{urlId}");
+            return;
+        }
+
+        // Surface the unrecognized text so the user sees something happened
+        _decodeError = trimmed.Length > 80 ? trimmed[..80] + "…" : trimmed;
+        StateHasChanged();
+    }
+
+    private void ToggleManual()
+    {
+        _manualOpen = !_manualOpen;
+        _decodeError = null;
+    }
+
+    private void GoManual()
+    {
+        if (_manualId is { } id) Nav.NavigateTo($"/p/{id}");
+    }
+}

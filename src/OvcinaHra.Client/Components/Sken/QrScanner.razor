@@ -1,0 +1,46 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div id="@_elementId" class="sken-qr-frame" style="width:100%; max-width:480px; margin:0 auto;"></div>
+
+@if (_error is not null)
+{
+    <p class="text-danger sken-mt-sm" role="alert">@_error</p>
+}
+
+@code {
+    [Parameter] public EventCallback<string> OnDecoded { get; set; }
+
+    private readonly string _elementId = $"qr-{Guid.NewGuid():N}";
+    private DotNetObjectReference<QrScanner>? _ref;
+    private string? _error;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        _ref = DotNetObjectReference.Create(this);
+        try
+        {
+            var ok = await JS.InvokeAsync<bool>("ohQr.start", _elementId, _ref);
+            if (!ok)
+            {
+                _error = "Nepodařilo se spustit kameru. Povol kameru v prohlížeči.";
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Kamera selhala: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public Task OnQrDecoded(string text) => OnDecoded.InvokeAsync(text);
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("ohQr.stop"); } catch { }
+        _ref?.Dispose();
+    }
+}

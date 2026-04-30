@@ -15,7 +15,7 @@
 <div class="@NavMenuCssClass oh-nav" @onclick="CollapseOnMobile">
     <NavSearch />
 
-    @* Always-visible: Přehled + Mapa (mode-agnostic overviews) *@
+    @* Always-visible: Přehled + Mapa + Sken (mode-agnostic player-facing surfaces) *@
     <div class="oh-nav-fixed-top">
         <NavLink class="oh-nav-item" href="" Match="NavLinkMatch.All">
             <span class="oh-nav-rail"></span>
@@ -24,6 +24,10 @@
         <NavLink class="oh-nav-item" href="map">
             <span class="oh-nav-rail"></span>
             <i class="bi bi-map-fill ni"></i><span class="oh-nav-label">Mapa</span>
+        </NavLink>
+        <NavLink class="oh-nav-item" href="sken">
+            <span class="oh-nav-rail"></span>
+            <i class="bi bi-qr-code-scan ni"></i><span class="oh-nav-label">Sken</span>
         </NavLink>
     </div>
 

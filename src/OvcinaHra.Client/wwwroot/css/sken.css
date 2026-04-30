@@ -1,0 +1,205 @@
+/* OvčinaHra Sken — touch-friendly mobile styles for the player-facing
+   /p/{personId}, /sken, and /p/{personId}/verify-stamp/{questId} pages.
+   Forest-green palette aligned with the rest of the app + glejt-style
+   big buttons (min 56px tap target). Scoped via the .oh-sken class on
+   the page root so we don't override DevExpress grids elsewhere. */
+
+.oh-sken {
+    --sken-parchment: #f4ead0;
+    --sken-parchment-dark: #e6d8a8;
+    --sken-forest: #3a4d2e;
+    --sken-forest-light: #6f8a4f;
+    --sken-bordeaux: #6e2b2b;
+    --sken-gold: #b08a3e;
+    --sken-ink: #2a2620;
+    --sken-muted: #6c6a60;
+    --sken-card: #fbf6e6;
+    --sken-success: #2d6a4f;
+    --sken-radius: 8px;
+    --sken-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 16px 12px 24px;
+    color: var(--sken-ink);
+    font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* Big buttons (mobile-first, min 56px) */
+.oh-sken .btn-sken {
+    display: block;
+    width: 100%;
+    min-height: 56px;
+    padding: 14px 16px;
+    border-radius: var(--sken-radius);
+    border: 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter 0.1s;
+    text-align: center;
+    line-height: 1.3;
+}
+.oh-sken .btn-sken:active { filter: brightness(0.92); }
+.oh-sken .btn-sken:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.oh-sken .btn-sken-primary { background: var(--sken-forest); color: var(--sken-parchment); }
+.oh-sken .btn-sken-secondary { background: var(--sken-parchment-dark); color: var(--sken-ink); }
+.oh-sken .btn-sken-danger { background: var(--sken-bordeaux); color: var(--sken-parchment); }
+.oh-sken .btn-sken-success { background: var(--sken-success); color: white; }
+.oh-sken .btn-sken-warning { background: var(--sken-gold); color: var(--sken-ink); }
+.oh-sken .btn-sken-outline {
+    background: transparent;
+    color: var(--sken-forest);
+    border: 2px solid var(--sken-forest);
+}
+
+/* Character tile — big level + class display on /p/{id} */
+.oh-sken .sken-character-tile {
+    background: var(--sken-card);
+    border: 2px solid var(--sken-gold);
+    border-radius: var(--sken-radius);
+    padding: 24px 16px;
+    text-align: center;
+    margin: 16px 0;
+}
+.oh-sken .sken-character-tile h2 {
+    margin: 0 0 8px;
+    font-size: 1.5rem;
+    color: var(--sken-forest);
+}
+.oh-sken .sken-character-tile-level {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--sken-forest);
+    margin-top: 8px;
+}
+.oh-sken .sken-character-tile-meta {
+    color: var(--sken-muted);
+    font-size: 0.95rem;
+    margin-top: 4px;
+}
+
+/* Pending vision quest row */
+.oh-sken .sken-pending-quest {
+    background: var(--sken-card);
+    border-left: 4px solid var(--sken-gold);
+    border-radius: var(--sken-radius);
+    padding: 12px 16px;
+    margin: 12px 0;
+}
+
+/* Modal — overlay + body. Scoped class names so we don't collide with
+   Bootstrap's .modal or DevExpress popups. */
+.sken-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1050;
+    padding: 16px;
+}
+.sken-modal {
+    background: #f4ead0;
+    border-radius: 8px;
+    padding: 24px 16px;
+    width: min(94vw, 380px);
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+    color: #2a2620;
+    font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+.sken-modal h3 {
+    margin-top: 0;
+    color: #3a4d2e;
+    font-size: 1.2rem;
+    margin-bottom: 12px;
+}
+
+/* Event log */
+.oh-sken .sken-event-row {
+    display: flex;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--sken-parchment-dark);
+    font-size: 0.9rem;
+}
+.oh-sken .sken-event-row:last-child { border-bottom: 0; }
+.oh-sken .sken-event-time {
+    color: var(--sken-muted);
+    font-size: 0.8rem;
+    flex-shrink: 0;
+}
+
+/* QR scanner viewport */
+.oh-sken .sken-qr-frame {
+    background: #000;
+    border-radius: var(--sken-radius);
+    overflow: hidden;
+    margin: 0 auto;
+    max-width: 480px;
+}
+
+/* Verify-stamp side-by-side */
+.oh-sken .sken-verify-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin: 16px 0;
+}
+.oh-sken .sken-verify-pair img {
+    width: 100%;
+    height: auto;
+    border-radius: var(--sken-radius);
+    background: #fff;
+    border: 1px solid var(--sken-parchment-dark);
+}
+.oh-sken .sken-verify-pair-label {
+    font-size: 0.8rem;
+    color: var(--sken-muted);
+    text-align: center;
+    margin-bottom: 4px;
+}
+
+/* Confidence pill (LLM verdict) */
+.oh-sken .sken-confidence {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+.oh-sken .sken-confidence-match { background: var(--sken-success); color: white; }
+.oh-sken .sken-confidence-no-match { background: var(--sken-bordeaux); color: white; }
+
+/* Class picker buttons — bigger than default for tap accuracy */
+.oh-sken .sken-class-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+/* Spacing helpers */
+.oh-sken .sken-stack > * + * { margin-top: 12px; }
+.oh-sken .sken-mt-sm { margin-top: 8px; }
+.oh-sken .sken-mt-md { margin-top: 16px; }
+.oh-sken .sken-mt-lg { margin-top: 24px; }
+
+/* Diagnostic — base64 capture preview, kept compact */
+.oh-sken .sken-thumb {
+    max-width: 100%;
+    max-height: 180px;
+    border-radius: var(--sken-radius);
+    object-fit: contain;
+}
+
+/* Inline alerts — Bootstrap-compatible markup tweaked for sken theme */
+.oh-sken .alert {
+    border-radius: var(--sken-radius);
+    padding: 12px 16px;
+    margin: 12px 0;
+}

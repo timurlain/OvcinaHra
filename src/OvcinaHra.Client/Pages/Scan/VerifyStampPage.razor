@@ -1,0 +1,278 @@
+@page "/p/{PersonId:int}/verify-stamp/{QuestId:int}"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+@using OvcinaHra.Client.Components.Sken
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Dtos
+
+<PageTitle>Ověřit razítko · Sken</PageTitle>
+
+<div class="oh-sken">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+        <button class="btn-sken btn-sken-secondary"
+                style="width:auto; min-height:44px; padding:8px 16px;"
+                @onclick="GoBack">
+            ← Zpět
+        </button>
+        <h2 style="margin:0; color:var(--sken-forest); font-size:1.2rem;">Ověřit razítko</h2>
+    </div>
+
+    @if (_loading)
+    {
+        <p class="text-center text-muted sken-mt-lg">Načítám…</p>
+    }
+    else if (_loadError is not null)
+    {
+        <div class="alert alert-danger" role="alert">
+            <strong>Načtení selhalo.</strong>
+            <p class="mb-0 small">@_loadError</p>
+        </div>
+        <button class="btn-sken btn-sken-secondary" @onclick="GoBack">Zpět na hrdinu</button>
+    }
+    else if (_quest is null)
+    {
+        <div class="alert alert-warning" role="alert">
+            Pokladový úkol #@QuestId nebyl pro tohoto hrdinu nalezen v čekajících.
+            Mohlo už být ověřeno, nebo nepatří této hře.
+        </div>
+        <button class="btn-sken btn-sken-secondary" @onclick="GoBack">Zpět na hrdinu</button>
+    }
+    else
+    {
+        <div class="sken-pending-quest">
+            <div><strong>@_quest.QuestName</strong></div>
+            <div class="text-muted">→ @_quest.ExpectedStashName</div>
+            @if (_quest.ExpectedLocationName is not null)
+            {
+                <div class="text-muted small">Lokace: @_quest.ExpectedLocationName</div>
+            }
+        </div>
+
+        @if (_step == Step.PickPhoto)
+        {
+            <p class="text-muted sken-mt-md">
+                Vyfoť otisk razítka v glejtu hrdiny. Systém porovná otisk s referenčním razítkem lokace.
+            </p>
+            <CameraCapture OnCaptured="OnPhotoCaptured" />
+        }
+        else if (_step == Step.Verifying)
+        {
+            <p class="text-center sken-mt-md">Ověřuji razítko…</p>
+            @if (_capturedDataUrl is not null)
+            {
+                <div style="text-align:center;" class="sken-mt-md">
+                    <img src="@_capturedDataUrl" alt="Vyfocený otisk" class="sken-thumb" />
+                </div>
+            }
+        }
+        else if (_step == Step.Result)
+        {
+            @if (_capturedDataUrl is not null)
+            {
+                <div class="sken-verify-pair">
+                    <div>
+                        <div class="sken-verify-pair-label">Vyfoceno</div>
+                        <img src="@_capturedDataUrl" alt="Vyfocený otisk" />
+                    </div>
+                    @if (_llmResponse is not null)
+                    {
+                        <div>
+                            <div class="sken-verify-pair-label">Reference</div>
+                            <div style="background:var(--sken-card); padding:12px; border-radius:var(--sken-radius); height:100%; display:flex; align-items:center; justify-content:center; text-align:center;">
+                                <span class="text-muted small">@_llmResponse.ReferenceLocationName</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (_llmResponse is not null)
+            {
+                <div class="sken-mt-md" style="text-align:center;">
+                    <span class="sken-confidence @(_llmResponse.Match ? "sken-confidence-match" : "sken-confidence-no-match")">
+                        @(_llmResponse.Match ? "✓ Razítka se shodují" : "✗ Razítka se neshodují")
+                        — @((int)Math.Round(_llmResponse.Confidence * 100))% jistota
+                    </span>
+                </div>
+                <div class="alert alert-info sken-mt-md">@_llmResponse.Reason</div>
+            }
+            else
+            {
+                <div class="alert alert-warning sken-mt-md" role="alert">
+                    <strong>Automatické ověření není dostupné.</strong>
+                    <p class="mb-0">Posuď otisk vizuálně a rozhodni ručně.</p>
+                </div>
+            }
+
+            @if (_error is not null)
+            {
+                <div class="alert alert-danger sken-mt-md" role="alert">@_error</div>
+            }
+
+            <div class="sken-stack sken-mt-md">
+                <button class="btn-sken btn-sken-success"
+                        @onclick="() => ConfirmAsync(true)"
+                        disabled="@_submitting">
+                    Potvrdit shodu
+                </button>
+                <button class="btn-sken btn-sken-danger"
+                        @onclick="() => ConfirmAsync(false)"
+                        disabled="@_submitting">
+                    Odmítnout
+                </button>
+                <button class="btn-sken btn-sken-secondary"
+                        @onclick="ResetFlow"
+                        disabled="@_submitting">
+                    Vyfotit znovu
+                </button>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public int PersonId { get; set; }
+    [Parameter] public int QuestId { get; set; }
+
+    private enum Step { PickPhoto, Verifying, Result }
+
+    private bool _loading = true;
+    private bool _submitting;
+    private string? _error;
+    private string? _loadError;
+    private PendingTreasureQuestDto? _quest;
+    private Step _step = Step.PickPhoto;
+    private string? _capturedDataUrl;
+    private VerifyStampLlmResponse? _llmResponse;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Console.WriteLine($"[sken][verify] init personId={PersonId} questId={QuestId}");
+        try
+        {
+            var pending = await Api.GetListAsync<PendingTreasureQuestDto>(
+                $"/api/scan/{PersonId}/treasure-quests/pending");
+            _quest = pending.FirstOrDefault(q => q.QuestId == QuestId);
+        }
+        catch (Exception ex)
+        {
+            // Distinguish from "quest not in pending list" — connectivity / API
+            // failures get their own banner so the organizer knows to retry,
+            // not blame the player for chasing the wrong quest.
+            Console.WriteLine($"[sken][verify] pending fetch failed: {ex.Message}");
+            _loadError = $"Nepodařilo se načíst čekající úkoly: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnPhotoCaptured(string dataUrl)
+    {
+        _capturedDataUrl = dataUrl;
+        _step = Step.Verifying;
+        _error = null;
+        StateHasChanged();
+        await VerifyAsync();
+    }
+
+    private async Task VerifyAsync()
+    {
+        if (_capturedDataUrl is null || _quest is null)
+        {
+            _llmResponse = null;
+            _step = Step.Result;
+            return;
+        }
+
+        // Strip "data:image/jpeg;base64," prefix — the API expects raw base64.
+        var commaIdx = _capturedDataUrl.IndexOf(',');
+        var base64 = commaIdx > 0 ? _capturedDataUrl[(commaIdx + 1)..] : _capturedDataUrl;
+
+        Console.WriteLine($"[sken][verify] POST /api/stamps/verify-llm bytes={base64.Length}");
+        try
+        {
+            // Without an existing /api/games/{gameId}/stamps endpoint exposed
+            // to the client, fall back to LocationId from the quest itself.
+            // The LLM endpoint resolves the reference image server-side.
+            var locationId = _quest.ExpectedLocationId ?? 0;
+            if (locationId <= 0)
+            {
+                Console.WriteLine("[sken][verify] no ExpectedLocationId on quest — manual judgment");
+                _llmResponse = null;
+            }
+            else
+            {
+                _llmResponse = await Api.PostAsync<VerifyStampLlmRequest, VerifyStampLlmResponse>(
+                    "/api/stamps/verify-llm",
+                    new VerifyStampLlmRequest(
+                        LocationId: locationId,
+                        CapturedImageBase64: base64,
+                        ContextStashId: _quest.ExpectedStashId,
+                        ContextQuestId: _quest.QuestId));
+                Console.WriteLine($"[sken][verify] LLM verdict match={_llmResponse?.Match} conf={_llmResponse?.Confidence}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[sken][verify] verify-llm threw: {ex.Message}");
+            _llmResponse = null;
+        }
+
+        _step = Step.Result;
+        StateHasChanged();
+    }
+
+    private async Task ConfirmAsync(bool approve)
+    {
+        if (_quest is null) return;
+        _submitting = true;
+        _error = null;
+        try
+        {
+            if (!approve)
+            {
+                Console.WriteLine($"[sken][verify] rejected by organizer questId={_quest.QuestId}");
+                Nav.NavigateTo($"/p/{PersonId}");
+                return;
+            }
+
+            var llmSaidNoMatch = _llmResponse is { Match: false };
+            var reason = _llmResponse?.Reason
+                ?? "Ručně potvrzeno organizátorem (LLM nedostupný).";
+
+            var dto = new VerifyTreasureQuestDto(
+                StashId: _quest.ExpectedStashId,
+                MatchConfidence: _llmResponse?.Confidence,
+                Override: llmSaidNoMatch,
+                Reason: reason);
+
+            Console.WriteLine($"[sken][verify] POST verify questId={_quest.QuestId} override={dto.Override}");
+            await Api.PostAsync<VerifyTreasureQuestDto>(
+                $"/api/scan/{PersonId}/treasure-quests/{_quest.QuestId}/verify", dto);
+
+            Nav.NavigateTo($"/p/{PersonId}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[sken][verify] confirm failed: {ex.Message}");
+            _error = $"Uložení selhalo: {ex.Message}";
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private void ResetFlow()
+    {
+        _capturedDataUrl = null;
+        _llmResponse = null;
+        _step = Step.PickPhoto;
+        _error = null;
+    }
+
+    private void GoBack() => Nav.NavigateTo($"/p/{PersonId}");
+}
