@@ -26,37 +26,39 @@
    anything, the property stays null and DevExpress falls back to its stock
    "No data" text — no behavior change for the read-only grids that
    haven't opted in yet. *@
-<DxGrid @ref="Grid"
-        Data="@Data"
-        KeyFieldName="@KeyFieldName"
-        SelectionMode="@SelectionMode"
-        AllowSelectRowByClick="@(EditMode != GridEditMode.EditCell)"
-        SelectedDataItems="@SelectedDataItems"
-        SelectedDataItemsChanged="@SelectedDataItemsChanged"
-        RowClick="@RowClick"
-        RowDoubleClick="@RowDoubleClick"
-        ShowGroupPanel="@ShowGroupPanel"
-        VirtualScrollingEnabled="true"
-        ColumnResizeMode="GridColumnResizeMode.NextColumn"
-        TextWrapEnabled="@TextWrapEnabled"
-        AutoExpandAllGroupRows="@AutoExpandAllGroupRows"
-        CustomizeElement="@OnCustomizeElement"
-        CssClass="@($"ovcina-grid {CssClass}")"
-        ContextMenus="GridContextMenus.Header"
-        ShowSearchBox="@ShowSearchBox"
-        SearchText="@SearchText"
-        SearchTextChanged="@SearchTextChanged"
-        FilterMenuButtonDisplayMode="GridFilterMenuButtonDisplayMode.Always"
-        EditMode="@(EditMode ?? GridEditMode.PopupEditForm)"
-        EditModelSaving="@EditModelSaving"
-        CustomizeEditModel="@CustomizeEditModel"
-        EmptyDataAreaTemplate="@EmptyDataAreaTemplate"
-        LayoutAutoLoading="OnLayoutLoading"
-        LayoutAutoSaving="OnLayoutSaving">
-    <Columns>
-        @Columns
-    </Columns>
-</DxGrid>
+<div class="ovcina-grid-scroll">
+    <DxGrid @ref="Grid"
+            Data="@Data"
+            KeyFieldName="@KeyFieldName"
+            SelectionMode="@SelectionMode"
+            AllowSelectRowByClick="@(EditMode != GridEditMode.EditCell)"
+            SelectedDataItems="@SelectedDataItems"
+            SelectedDataItemsChanged="@SelectedDataItemsChanged"
+            RowClick="@RowClick"
+            RowDoubleClick="@RowDoubleClick"
+            ShowGroupPanel="@ShowGroupPanel"
+            VirtualScrollingEnabled="true"
+            ColumnResizeMode="GridColumnResizeMode.NextColumn"
+            TextWrapEnabled="@TextWrapEnabled"
+            AutoExpandAllGroupRows="@AutoExpandAllGroupRows"
+            CustomizeElement="@OnCustomizeElement"
+            CssClass="@($"ovcina-grid {CssClass}")"
+            ContextMenus="GridContextMenus.Header"
+            ShowSearchBox="@ShowSearchBox"
+            SearchText="@SearchText"
+            SearchTextChanged="@SearchTextChanged"
+            FilterMenuButtonDisplayMode="GridFilterMenuButtonDisplayMode.Always"
+            EditMode="@(EditMode ?? GridEditMode.PopupEditForm)"
+            EditModelSaving="@EditModelSaving"
+            CustomizeEditModel="@CustomizeEditModel"
+            EmptyDataAreaTemplate="@EmptyDataAreaTemplate"
+            LayoutAutoLoading="OnLayoutLoading"
+            LayoutAutoSaving="OnLayoutSaving">
+        <Columns>
+            @Columns
+        </Columns>
+    </DxGrid>
+</div>
 
 @if (!string.IsNullOrEmpty(LayoutKey))
 {
