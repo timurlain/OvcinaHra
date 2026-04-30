@@ -1,0 +1,437 @@
+@page "/dovednosti/sifry"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject GameContextService GameContext
+@implements IDisposable
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h1 class="mb-0">Šifry dovedností</h1>
+        <div class="text-muted small">Buňky pro parent lokace a dobrodružné dovednosti</div>
+    </div>
+    <button class="btn btn-primary" type="button" @onclick="OpenNew" disabled="@(selectedGameId is null || parentLocations.Count == 0)">
+        <i class="bi bi-plus-lg"></i> Nová šifra
+    </button>
+</div>
+
+<div class="d-flex flex-wrap gap-2 align-items-end mb-3">
+    <label class="form-label mb-0">
+        <span class="small text-muted d-block mb-1">Hra</span>
+        <DxComboBox TData="GameListDto" TValue="int?"
+                    Data="@games"
+                    Value="@selectedGameId"
+                    ValueChanged="@OnSelectedGameChanged"
+                    TextFieldName="@nameof(GameListDto.Name)"
+                    ValueFieldName="@nameof(GameListDto.Id)"
+                    NullText="Vyber hru"
+                    CssClass="oh-cipher-filter" />
+    </label>
+    <label class="form-label mb-0">
+        <span class="small text-muted d-block mb-1">Dovednost</span>
+        <DxComboBox TData="EnumOption<AdventuringSkill>" TValue="AdventuringSkill?"
+                    Data="@skillFilterOptions"
+                    @bind-Value="@selectedSkill"
+                    TextFieldName="@nameof(EnumOption<AdventuringSkill>.Text)"
+                    ValueFieldName="@nameof(EnumOption<AdventuringSkill>.Value)"
+                    NullText="Všechny"
+                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
+                    CssClass="oh-cipher-filter" />
+    </label>
+    <button class="btn btn-outline-secondary" type="button" @onclick="LoadForSelectedGameAsync" disabled="@(selectedGameId is null || loading)">
+        <i class="bi bi-arrow-clockwise"></i> Obnovit
+    </button>
+</div>
+
+@if (error is not null)
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+@if (loading)
+{
+    <p class="text-muted">Načítám...</p>
+}
+else if (selectedGameId is null)
+{
+    <div class="alert alert-info">Vyber aktivní hru.</div>
+}
+else
+{
+    <OvcinaGrid Data="@FilteredRows" KeyFieldName="Key" LayoutKey="grid-layout-location-ciphers-v1"
+                RowClick="@(e => OpenEdit((CipherGridRow)e.Grid.GetDataItem(e.VisibleIndex)))">
+        <Columns>
+            <DxGridDataColumn FieldName="LocationName" Caption="Lokace" MinWidth="220" />
+            <DxGridDataColumn FieldName="Region" Caption="Region" Width="140px" />
+            <DxGridDataColumn FieldName="RemotenessScore" Caption="Vzdál." Width="90px" />
+            <DxGridDataColumn FieldName="SkillName" Caption="Dovednost" Width="160px" />
+            <DxGridDataColumn FieldName="TierDisplay" Caption="Stupeň" Width="160px" />
+            <DxGridDataColumn FieldName="ContentTypeDisplay" Caption="Obsah" Width="130px" />
+            <DxGridDataColumn FieldName="RevealText" Caption="Text" MinWidth="240" />
+            <DxGridDataColumn FieldName="LibraryKeyword" Caption="Heslo" Width="130px" />
+            <DxGridDataColumn FieldName="IsClaimed" Caption="Uplatněno" Width="110px">
+                <CellDisplayTemplate>
+                    @{ var row = (CipherGridRow)context.DataItem; }
+                    @(row.IsClaimed ? "Ano" : "")
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn Caption="" Width="92px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{ var row = (CipherGridRow)context.DataItem; }
+                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OpenEdit(row)">
+                        <i class="bi bi-pencil"></i> Upravit
+                    </button>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+        </Columns>
+    </OvcinaGrid>
+}
+
+<DxPopup AllowResize="true" @bind-Visible="@isEditorVisible" HeaderText="@editorTitle" Width="760px">
+    <BodyContentTemplate Context="popupContext">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Lokace" ColSpanMd="12">
+                <DxComboBox TData="LocationListDto" TValue="int"
+                            Data="@parentLocations"
+                            @bind-Value="@edit.LocationId"
+                            TextFieldName="@nameof(LocationListDto.Name)"
+                            ValueFieldName="@nameof(LocationListDto.Id)"
+                            SearchMode="ListSearchMode.AutoSearch" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Dovednost" ColSpanMd="6">
+                <DxComboBox TData="EnumOption<AdventuringSkill>" TValue="AdventuringSkill"
+                            Data="@skillOptions"
+                            @bind-Value="@edit.Skill"
+                            TextFieldName="@nameof(EnumOption<AdventuringSkill>.Text)"
+                            ValueFieldName="@nameof(EnumOption<AdventuringSkill>.Value)" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Stupeň" ColSpanMd="6">
+                <DxComboBox TData="EnumOption<CipherTier>" TValue="CipherTier"
+                            Data="@tierOptions"
+                            @bind-Value="@edit.Tier"
+                            TextFieldName="@nameof(EnumOption<CipherTier>.Text)"
+                            ValueFieldName="@nameof(EnumOption<CipherTier>.Value)" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Obsah" ColSpanMd="6">
+                <DxComboBox TData="EnumOption<CipherContentType>" TValue="CipherContentType"
+                            Data="@contentOptions"
+                            @bind-Value="@edit.ContentType"
+                            TextFieldName="@nameof(EnumOption<CipherContentType>.Text)"
+                            ValueFieldName="@nameof(EnumOption<CipherContentType>.Value)" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Navázaný quest" ColSpanMd="6">
+                <DxComboBox TData="QuestListDto" TValue="int?"
+                            Data="@quests"
+                            @bind-Value="@edit.LinkedQuestId"
+                            TextFieldName="@nameof(QuestListDto.Name)"
+                            ValueFieldName="@nameof(QuestListDto.Id)"
+                            NullText="Bez questu"
+                            ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
+                            SearchMode="ListSearchMode.AutoSearch" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Odhalený text" ColSpanMd="12">
+                <DxMemo @bind-Text="@edit.RevealText" Rows="3" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Šifra" ColSpanMd="12">
+                <DxTextBox @bind-Text="@edit.CipherText" NullText="XOXTAJNYTEXTXOX" />
+                <div class="form-text">Když pole necháš prázdné, server použije normalizovaný odhalený text a obalí ho XOX.</div>
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Knihovní heslo" ColSpanMd="6">
+                <DxTextBox @bind-Text="@edit.LibraryKeyword" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Knihovní odměna" ColSpanMd="6">
+                <DxTextBox @bind-Text="@edit.LibraryReward" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Číslo pytlíku" ColSpanMd="6">
+                <DxSpinEdit TValue="int?" @bind-Value="@edit.LinkedStashNumber" MinValue="1" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Poznámky" ColSpanMd="12">
+                <DxMemo @bind-Text="@edit.OrganizerNotes" Rows="2" />
+            </DxFormLayoutItem>
+        </DxFormLayout>
+
+        @if (editorError is not null)
+        {
+            <div class="alert alert-danger mt-2">@editorError</div>
+        }
+
+        <div class="d-flex gap-2 mt-3">
+            @if (edit.Id is > 0)
+            {
+                <button class="btn btn-outline-danger" type="button" @onclick="DeleteAsync" disabled="@saving">Smazat</button>
+            }
+            <div class="flex-grow-1"></div>
+            <button class="btn btn-secondary" type="button" @onclick="() => isEditorVisible = false" disabled="@saving">Zrušit</button>
+            <button class="btn btn-primary" type="button" @onclick="SaveAsync" disabled="@saving">Uložit</button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    private readonly List<EnumOption<AdventuringSkill>> skillOptions =
+        AdventuringSkillExtensions.All.Select(s => new EnumOption<AdventuringSkill>(s, s.GetDisplayName())).ToList();
+    private readonly List<EnumOption<AdventuringSkill>> skillFilterOptions =
+        AdventuringSkillExtensions.All.Select(s => new EnumOption<AdventuringSkill>(s, s.GetDisplayName())).ToList();
+    private readonly List<EnumOption<CipherTier>> tierOptions =
+        Enum.GetValues<CipherTier>().Where(t => t != CipherTier.Empty).Select(t => new EnumOption<CipherTier>(t, t.GetDisplayName())).ToList();
+    private readonly List<EnumOption<CipherContentType>> contentOptions =
+        Enum.GetValues<CipherContentType>().Where(t => t != CipherContentType.Nic).Select(t => new EnumOption<CipherContentType>(t, t.GetDisplayName())).ToList();
+
+    private List<GameListDto> games = [];
+    private List<LocationListDto> locations = [];
+    private List<LocationListDto> parentLocations = [];
+    private List<QuestListDto> quests = [];
+    private List<LocationCipherDto> ciphers = [];
+    private int? selectedGameId;
+    private AdventuringSkill? selectedSkill;
+    private bool loading = true;
+    private bool saving;
+    private bool isEditorVisible;
+    private string? error;
+    private string? editorError;
+    private string editorTitle = "Šifra";
+    private CipherEditModel edit = new();
+
+    private List<CipherGridRow> Rows => parentLocations
+        .SelectMany(location => AdventuringSkillExtensions.All.Select(skill =>
+        {
+            var cipher = ciphers.FirstOrDefault(c => c.LocationId == location.Id && c.Skill == skill);
+            return CipherGridRow.From(location, skill, cipher);
+        }))
+        .OrderBy(r => r.LocationName)
+        .ThenBy(r => r.Skill)
+        .ToList();
+
+    private List<CipherGridRow> FilteredRows => selectedSkill is AdventuringSkill skill
+        ? Rows.Where(r => r.Skill == skill).ToList()
+        : Rows;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GameContext.InitializeAsync();
+        GameContext.OnGameChanged += OnGameChanged;
+        games = await Api.GetListAsync<GameListDto>("/api/games");
+        selectedGameId = GameContext.SelectedGameId ?? games.FirstOrDefault()?.Id;
+        await LoadForSelectedGameAsync();
+    }
+
+    private async Task OnSelectedGameChanged(int? value)
+    {
+        selectedGameId = value;
+        await LoadForSelectedGameAsync();
+    }
+
+    private async Task LoadForSelectedGameAsync()
+    {
+        loading = true;
+        error = null;
+        try
+        {
+            if (selectedGameId is not int gameId)
+            {
+                locations = [];
+                parentLocations = [];
+                quests = [];
+                ciphers = [];
+                return;
+            }
+
+            locations = await Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gameId}");
+            parentLocations = locations
+                .Where(l => l.ParentLocationId is null)
+                .OrderBy(l => l.Name)
+                .ToList();
+            quests = await Api.GetListAsync<QuestListDto>($"/api/quests/by-game/{gameId}");
+            ciphers = await Api.GetListAsync<LocationCipherDto>($"/api/location-ciphers/by-game/{gameId}");
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async void OnGameChanged()
+    {
+        selectedGameId = GameContext.SelectedGameId ?? selectedGameId;
+        await LoadForSelectedGameAsync();
+        StateHasChanged();
+    }
+
+    private void OpenNew()
+    {
+        var location = parentLocations.FirstOrDefault();
+        if (selectedGameId is not int gameId || location is null)
+            return;
+
+        edit = new CipherEditModel
+        {
+            GameId = gameId,
+            LocationId = location.Id,
+            Skill = selectedSkill ?? AdventuringSkill.HledaniMagie,
+            Tier = CipherTier.Micro,
+            ContentType = CipherContentType.Info
+        };
+        editorTitle = "Nová šifra";
+        editorError = null;
+        isEditorVisible = true;
+    }
+
+    private void OpenEdit(CipherGridRow row)
+    {
+        edit = new CipherEditModel
+        {
+            Id = row.Id,
+            GameId = selectedGameId ?? row.GameId,
+            LocationId = row.LocationId,
+            Skill = row.Skill,
+            Tier = row.Tier == CipherTier.Empty ? CipherTier.Micro : row.Tier,
+            ContentType = row.ContentType == CipherContentType.Nic ? CipherContentType.Info : row.ContentType,
+            RevealText = row.RevealText ?? "",
+            CipherText = row.CipherText,
+            LibraryKeyword = row.LibraryKeyword,
+            LibraryReward = row.LibraryReward,
+            LinkedQuestId = row.LinkedQuestId,
+            LinkedStashNumber = row.LinkedStashNumber,
+            OrganizerNotes = row.OrganizerNotes
+        };
+        editorTitle = row.Id == 0 ? $"Nová šifra: {row.LocationName} / {row.SkillName}" : $"Upravit: {row.LocationName} / {row.SkillName}";
+        editorError = null;
+        isEditorVisible = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        saving = true;
+        editorError = null;
+        try
+        {
+            if (edit.Id is > 0)
+            {
+                var dto = new LocationCipherUpdateDto(edit.GameId, edit.LocationId, edit.Skill, edit.Tier, edit.ContentType,
+                    edit.RevealText, edit.CipherText, edit.LibraryKeyword, edit.LibraryReward, edit.LinkedQuestId,
+                    edit.LinkedStashNumber, edit.OrganizerNotes);
+                var (ok, problem) = await Api.PutWithProblemAsync($"/api/location-ciphers/{edit.Id}", dto);
+                if (!ok)
+                {
+                    editorError = problem ?? "Šifru se nepodařilo uložit.";
+                    return;
+                }
+            }
+            else
+            {
+                var dto = new LocationCipherCreateDto(edit.GameId, edit.LocationId, edit.Skill, edit.Tier, edit.ContentType,
+                    edit.RevealText, edit.CipherText, edit.LibraryKeyword, edit.LibraryReward, edit.LinkedQuestId,
+                    edit.LinkedStashNumber, edit.OrganizerNotes);
+                var (ok, _, problem) = await Api.PostWithProblemAsync<LocationCipherCreateDto, LocationCipherDto>("/api/location-ciphers", dto);
+                if (!ok)
+                {
+                    editorError = problem ?? "Šifru se nepodařilo vytvořit.";
+                    return;
+                }
+            }
+
+            isEditorVisible = false;
+            await LoadForSelectedGameAsync();
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (edit.Id is not > 0)
+            return;
+
+        saving = true;
+        editorError = null;
+        try
+        {
+            var (ok, problem) = await Api.DeleteWithProblemAsync($"/api/location-ciphers/{edit.Id}");
+            if (!ok)
+            {
+                editorError = problem ?? "Šifru se nepodařilo smazat.";
+                return;
+            }
+
+            isEditorVisible = false;
+            await LoadForSelectedGameAsync();
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
+
+    private record EnumOption<T>(T Value, string Text);
+
+    private sealed class CipherEditModel
+    {
+        public int Id { get; set; }
+        public int GameId { get; set; }
+        public int LocationId { get; set; }
+        public AdventuringSkill Skill { get; set; } = AdventuringSkill.HledaniMagie;
+        public CipherTier Tier { get; set; } = CipherTier.Micro;
+        public CipherContentType ContentType { get; set; } = CipherContentType.Info;
+        public string RevealText { get; set; } = "";
+        public string? CipherText { get; set; }
+        public string? LibraryKeyword { get; set; }
+        public string? LibraryReward { get; set; }
+        public int? LinkedQuestId { get; set; }
+        public int? LinkedStashNumber { get; set; }
+        public string? OrganizerNotes { get; set; }
+    }
+
+    private sealed record CipherGridRow(
+        string Key,
+        int Id,
+        int GameId,
+        int LocationId,
+        string LocationName,
+        string? Region,
+        int? RemotenessScore,
+        AdventuringSkill Skill,
+        string SkillName,
+        CipherTier Tier,
+        string TierDisplay,
+        CipherContentType ContentType,
+        string ContentTypeDisplay,
+        string? RevealText,
+        string? CipherText,
+        string? LibraryKeyword,
+        string? LibraryReward,
+        int? LinkedQuestId,
+        int? LinkedStashNumber,
+        string? OrganizerNotes,
+        bool IsClaimed)
+    {
+        public static CipherGridRow From(LocationListDto location, AdventuringSkill skill, LocationCipherDto? cipher) => new(
+            $"{location.Id}:{skill}",
+            cipher?.Id ?? 0,
+            cipher?.GameId ?? 0,
+            location.Id,
+            location.Name,
+            location.Region,
+            location.RemotenessScore,
+            skill,
+            skill.GetDisplayName(),
+            cipher?.Tier ?? CipherTier.Empty,
+            cipher?.Tier.GetDisplayName() ?? "",
+            cipher?.ContentType ?? CipherContentType.Nic,
+            cipher?.ContentType.GetDisplayName() ?? "",
+            cipher?.RevealText,
+            cipher?.CipherText,
+            cipher?.LibraryKeyword,
+            cipher?.LibraryReward,
+            cipher?.LinkedQuestId,
+            cipher?.LinkedStashNumber,
+            cipher?.OrganizerNotes,
+            cipher?.IsClaimed ?? false);
+    }
+}
