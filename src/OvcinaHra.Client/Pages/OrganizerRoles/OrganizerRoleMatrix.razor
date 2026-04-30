@@ -1,8 +1,10 @@
 @page "/organizer-roles"
 @attribute [Authorize]
 @using System.Globalization
+@using Microsoft.JSInterop
 @inject ApiClient Api
 @inject GameContextService GameContext
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>Rozpis rolí</PageTitle>
@@ -13,6 +15,20 @@
         <div class="oh-orgrole-sub">@(GameContext.GameName ?? "Žádná hra")</div>
     </div>
     <div class="oh-orgrole-actions">
+        <button type="button"
+                class="btn btn-outline-secondary"
+                @onclick="DownloadCsvAsync"
+                disabled="@(GameContext.SelectedGameId is null || isCsvDownloading)">
+            @if (isCsvDownloading)
+            {
+                <span class="spinner-border spinner-border-sm"></span>
+            }
+            else
+            {
+                <i class="bi bi-download"></i>
+            }
+            Stáhnout CSV
+        </button>
         <button type="button"
                 class="btn btn-primary"
                 @onclick="OpenBulkAssign"
@@ -83,6 +99,10 @@
 @if (!string.IsNullOrWhiteSpace(bulkFillError))
 {
     <div class="alert alert-warning">@bulkFillError</div>
+}
+@if (!string.IsNullOrWhiteSpace(csvDownloadError))
+{
+    <div class="alert alert-warning">@csvDownloadError</div>
 }
 @if (!string.IsNullOrWhiteSpace(bulkFillToastMessage))
 {
@@ -425,8 +445,10 @@ else
 
     private bool loading = true;
     private bool isSaving;
+    private bool isCsvDownloading;
     private string? error;
     private string? adultsLoadError;
+    private string? csvDownloadError;
 
     private NpcRole? selectedRole;
     private int? selectedAdultPersonId;
@@ -577,6 +599,43 @@ else
         {
             adultsLoadError = $"Dospělé z registrace se nepodařilo načíst: {ex.Message}";
             Console.WriteLine($"[organizer-roles] adults load.failed gameId={gameId} message={ex.Message}");
+        }
+    }
+
+    private async Task DownloadCsvAsync()
+    {
+        if (GameContext.SelectedGameId is not int gameId)
+        {
+            csvDownloadError = "Nejdřív vyberte hru.";
+            return;
+        }
+
+        isCsvDownloading = true;
+        csvDownloadError = null;
+        try
+        {
+            Console.WriteLine($"[organizer-roles-export] download.start gameId={gameId}");
+            var (ok, file, problem) = await Api.DownloadWithProblemAsync($"/api/organizer-roles/export?gameId={gameId}&format=csv");
+            if (!ok || file is null)
+            {
+                csvDownloadError = problem ?? "CSV se nepodařilo připravit.";
+                Console.WriteLine($"[organizer-roles-export] download.failed gameId={gameId} message={csvDownloadError}");
+                return;
+            }
+
+            await using var stream = new MemoryStream(file.Bytes);
+            using var streamReference = new DotNetStreamReference(stream);
+            await JS.InvokeVoidAsync("ovcinaDownloadFile", file.FileName, file.ContentType, streamReference);
+            Console.WriteLine($"[organizer-roles-export] download.ok gameId={gameId} fileName={file.FileName} bytes={file.Bytes.Length}");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            csvDownloadError = "CSV se nepodařilo stáhnout.";
+        }
+        finally
+        {
+            isCsvDownloading = false;
         }
     }
 
