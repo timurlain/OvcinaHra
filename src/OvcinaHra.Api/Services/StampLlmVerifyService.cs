@@ -8,6 +8,7 @@ namespace OvcinaHra.Api.Services;
 
 public interface IStampLlmVerifyService
 {
+    bool IsConfigured { get; }
     Task<StampLlmVerifyResult> VerifyAsync(StampLlmVerifyJob job, CancellationToken ct = default);
 }
 
@@ -174,8 +175,10 @@ public sealed class StampLlmVerifyService : IStampLlmVerifyService, IDisposable
     private readonly ILogger<StampLlmVerifyService> _logger;
     private readonly string _model;
     private readonly int _maxTokens;
-    private readonly HttpClient _httpClient;
-    private readonly AnthropicClient _client;
+    private readonly HttpClient? _httpClient;
+    private readonly AnthropicClient? _client;
+
+    public bool IsConfigured { get; }
 
     public StampLlmVerifyService(
         IConfiguration config,
@@ -185,20 +188,28 @@ public sealed class StampLlmVerifyService : IStampLlmVerifyService, IDisposable
         _blobStorage = blobStorage;
         _logger = logger;
 
-        var apiKey = config["Anthropic:ApiKey"];
-        if (string.IsNullOrWhiteSpace(apiKey))
-            throw new InvalidOperationException("Configuration key Anthropic:ApiKey is required.");
-
         _model = config["Anthropic:Model"] ?? DefaultModel;
         _maxTokens = config.GetValue("Anthropic:MaxTokens", DefaultMaxTokens);
         var timeoutSeconds = config.GetValue("Anthropic:TimeoutSeconds", DefaultTimeoutSeconds);
 
+        var apiKey = config["Anthropic:ApiKey"];
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            IsConfigured = false;
+            _logger.LogWarning("[stamp-llm-server] config-missing graceful-503");
+            return;
+        }
+
+        IsConfigured = true;
         _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(timeoutSeconds) };
         _client = new AnthropicClient(new APIAuthentication(apiKey), _httpClient);
     }
 
     public async Task<StampLlmVerifyResult> VerifyAsync(StampLlmVerifyJob job, CancellationToken ct = default)
     {
+        if (!IsConfigured || _client is null)
+            throw new StampLlmConfigurationException();
+
         var referenceBytes = await _blobStorage.DownloadAsync(job.ReferenceBlobKey, ct);
         if (referenceBytes is null || referenceBytes.Length == 0)
         {
@@ -340,8 +351,8 @@ public sealed class StampLlmVerifyService : IStampLlmVerifyService, IDisposable
 
     public void Dispose()
     {
-        _client.Dispose();
-        _httpClient.Dispose();
+        _client?.Dispose();
+        _httpClient?.Dispose();
     }
 
     private static ParsedStampLlmResponse ParseResponse(string raw)
@@ -380,6 +391,9 @@ public class StampLlmValidationException(string title, string detail) : Exceptio
     public string Title { get; } = title;
     public string Detail { get; } = detail;
 }
+
+public sealed class StampLlmConfigurationException()
+    : Exception("Configuration key Anthropic:ApiKey is required.");
 
 public class StampLlmProviderException(
     string message,

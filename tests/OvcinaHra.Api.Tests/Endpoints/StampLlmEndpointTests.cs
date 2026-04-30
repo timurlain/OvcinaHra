@@ -110,6 +110,20 @@ public class StampLlmEndpointTests(PostgresFixture postgres) : IntegrationTestBa
     }
 
     [Fact]
+    public async Task VerifyLlm_UnknownLocation_Returns404BeforeValidatingImage()
+    {
+        var fake = new FakeStampLlmVerifyService(_ => throw new InvalidOperationException("Verifier must not run."));
+        await using var resources = await CreateClientWithFakeAsync(fake);
+
+        var response = await resources.Client.PostAsJsonAsync("/api/stamps/verify-llm",
+            new VerifyStampLlmRequest(999999, "not-base64"));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        await AssertProblemDetailsAsync(response, "Lokalita neexistuje", "999999");
+        Assert.Empty(fake.Jobs);
+    }
+
+    [Fact]
     public async Task VerifyLlm_LocationWithoutStamp_ReturnsCzechProblemDetails()
     {
         var fake = new FakeStampLlmVerifyService(_ => throw new InvalidOperationException("Verifier must not run."));
@@ -130,7 +144,7 @@ public class StampLlmEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         var fake = new FakeStampLlmVerifyService(_ => throw new StampLlmProviderException(
             "provider failed",
             432,
-            "upstream boom"));
+            "upstream boom with token sk-ant-test"));
         await using var resources = await CreateClientWithFakeAsync(fake);
         var locationId = await SeedLocationAsync(resources.Factory);
 
@@ -138,7 +152,12 @@ public class StampLlmEndpointTests(PostgresFixture postgres) : IntegrationTestBa
             new VerifyStampLlmRequest(locationId, ToDataUrl(ReadTestData("sample-stamp-captured-good.jpg"), "image/jpeg")));
 
         Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
-        await AssertProblemDetailsAsync(response, "LLM ověření selhalo", "upstream boom");
+        var problem = await AssertProblemDetailsAsync(
+            response,
+            "LLM ověření selhalo",
+            "použij ruční výběr");
+        Assert.DoesNotContain("upstream boom", problem.Detail, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("sk-ant", problem.Detail, StringComparison.OrdinalIgnoreCase);
 
         using var scope = resources.Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
@@ -146,7 +165,7 @@ public class StampLlmEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         Assert.False(audit.Match);
         Assert.Equal(0, audit.Confidence);
         Assert.Equal(432, audit.LatencyMs);
-        Assert.Equal("upstream boom", audit.RawResponse);
+        Assert.Equal("upstream boom with token sk-ant-test", audit.RawResponse);
     }
 
     [Fact]
@@ -163,13 +182,33 @@ public class StampLlmEndpointTests(PostgresFixture postgres) : IntegrationTestBa
             new VerifyStampLlmRequest(locationId, ToDataUrl(ReadTestData("sample-stamp-captured-good.jpg"), "image/jpeg")));
 
         Assert.Equal((HttpStatusCode)429, response.StatusCode);
-        await AssertProblemDetailsAsync(response, "LLM ověření je dočasně omezené", "too many requests");
+        var problem = await AssertProblemDetailsAsync(response, "LLM ověření je dočasně omezené", "ruční výběr");
+        Assert.DoesNotContain("too many requests", problem.Detail, StringComparison.OrdinalIgnoreCase);
 
         using var scope = resources.Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
         var audit = await db.StampLlmVerifications.SingleAsync();
         Assert.False(audit.Match);
         Assert.Equal(211, audit.LatencyMs);
+    }
+
+    [Fact]
+    public async Task VerifyLlm_MissingAnthropicConfiguration_Returns503()
+    {
+        var fake = new FakeStampLlmVerifyService(
+            _ => throw new InvalidOperationException("Verifier must not run."),
+            isConfigured: false);
+        await using var resources = await CreateClientWithFakeAsync(fake);
+
+        var response = await resources.Client.PostAsJsonAsync("/api/stamps/verify-llm",
+            new VerifyStampLlmRequest(999999, "not-base64"));
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        await AssertProblemDetailsAsync(
+            response,
+            "LLM ověření není v tomto prostředí nakonfigurované",
+            "Anthropic__ApiKey");
+        Assert.Empty(fake.Jobs);
     }
 
     private async Task<TestResources> CreateClientWithFakeAsync(FakeStampLlmVerifyService fake)
@@ -209,7 +248,7 @@ public class StampLlmEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         return location.Id;
     }
 
-    private static async Task AssertProblemDetailsAsync(
+    private static async Task<ProblemDetails> AssertProblemDetailsAsync(
         HttpResponseMessage response,
         string expectedTitle,
         string expectedDetailFragment)
@@ -218,6 +257,7 @@ public class StampLlmEndpointTests(PostgresFixture postgres) : IntegrationTestBa
         Assert.NotNull(problem);
         Assert.Equal(expectedTitle, problem!.Title);
         Assert.Contains(expectedDetailFragment, problem.Detail, StringComparison.OrdinalIgnoreCase);
+        return problem;
     }
 
     private static byte[] ReadTestData(string fileName)
@@ -226,9 +266,12 @@ public class StampLlmEndpointTests(PostgresFixture postgres) : IntegrationTestBa
     private static string ToDataUrl(byte[] bytes, string mediaType)
         => $"data:{mediaType};base64,{Convert.ToBase64String(bytes)}";
 
-    private sealed class FakeStampLlmVerifyService(Func<StampLlmVerifyJob, StampLlmVerifyResult> verify)
+    private sealed class FakeStampLlmVerifyService(
+        Func<StampLlmVerifyJob, StampLlmVerifyResult> verify,
+        bool isConfigured = true)
         : IStampLlmVerifyService
     {
+        public bool IsConfigured { get; } = isConfigured;
         public List<StampLlmVerifyJob> Jobs { get; } = [];
 
         public Task<StampLlmVerifyResult> VerifyAsync(StampLlmVerifyJob job, CancellationToken ct = default)

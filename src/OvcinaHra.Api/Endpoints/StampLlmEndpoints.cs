@@ -42,13 +42,21 @@ public static class StampLlmEndpoints
                 statusCode: StatusCodes.Status403Forbidden);
         }
 
+        if (!verifier.IsConfigured)
+            return AnthropicConfigurationMissing(logger);
+
         var location = await db.Locations
             .Where(l => l.Id == request.LocationId)
             .Select(l => new { l.Id, l.Name, l.StampImagePath })
             .FirstOrDefaultAsync(ct);
 
         if (location is null)
-            return BadRequest("Lokalita neexistuje", $"Lokalita s ID {request.LocationId} neexistuje.");
+        {
+            return TypedResults.Problem(
+                title: "Lokalita neexistuje",
+                detail: $"Lokalita s ID {request.LocationId} neexistuje.",
+                statusCode: StatusCodes.Status404NotFound);
+        }
 
         if (string.IsNullOrWhiteSpace(location.StampImagePath))
         {
@@ -102,19 +110,42 @@ public static class StampLlmEndpoints
         catch (StampLlmRateLimitedException ex)
         {
             await AuditFailureAsync(db, request, organizer, location.Id, ex, ct);
+            logger.LogWarning(
+                ex,
+                "[stamp-llm-server] endpoint rate-limited locationId={LocationId} rawResponse={RawResponse}",
+                location.Id,
+                ex.RawResponse);
             return TypedResults.Problem(
                 title: "LLM ověření je dočasně omezené",
-                detail: $"Anthropic API vrátilo rate limit: {ex.RawResponse}",
+                detail: "LLM ověření je dočasně omezené, použij ruční výběr.",
                 statusCode: StatusCodes.Status429TooManyRequests);
+        }
+        catch (StampLlmConfigurationException)
+        {
+            return AnthropicConfigurationMissing(logger);
         }
         catch (StampLlmProviderException ex)
         {
             await AuditFailureAsync(db, request, organizer, location.Id, ex, ct);
+            logger.LogError(
+                ex,
+                "[stamp-llm-server] endpoint provider-error locationId={LocationId} rawResponse={RawResponse}",
+                location.Id,
+                ex.RawResponse);
             return TypedResults.Problem(
                 title: "LLM ověření selhalo",
-                detail: $"Anthropic API selhalo: {ex.RawResponse}. Použij ruční výběr.",
+                detail: "LLM ověření selhalo, použij ruční výběr.",
                 statusCode: StatusCodes.Status502BadGateway);
         }
+    }
+
+    private static ProblemHttpResult AnthropicConfigurationMissing(ILogger logger)
+    {
+        logger.LogWarning("[stamp-llm-server] config-missing graceful-503");
+        return TypedResults.Problem(
+            title: "LLM ověření není v tomto prostředí nakonfigurované",
+            detail: "Nastavte proměnnou prostředí Anthropic__ApiKey pro zapnutí LLM ověřování razítek.",
+            statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 
     private static ProblemHttpResult BadRequest(string title, string detail)
