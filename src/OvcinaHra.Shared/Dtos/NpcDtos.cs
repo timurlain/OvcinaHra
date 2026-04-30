@@ -55,3 +55,16 @@ public record RegistraceAdultDto(
     int? BirthYear,
     string? Email,
     List<string>? Roles);
+
+// NPC-picker view of a registrace adult — same fields as
+// <see cref="RegistraceAdultDto"/> plus <c>HasNpcLinked</c>, true when the
+// adult is already assigned to at least one GameNpc in this game. Drives the
+// "Skrýt obsazené" toggle + ✓ marker in the assign-NPC popup.
+public record NpcAdultPickerItemDto(
+    int PersonId,
+    string FirstName,
+    string LastName,
+    int? BirthYear,
+    string? Email,
+    List<string>? Roles,
+    bool HasNpcLinked);

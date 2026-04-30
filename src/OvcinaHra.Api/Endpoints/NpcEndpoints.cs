@@ -31,13 +31,36 @@ public static class NpcEndpoints
         return group;
     }
 
-    private static async Task<Results<Ok<List<RegistraceAdultDto>>, ProblemHttpResult>> GetAvailablePlayers(
-        int gameId, RegistraceImportService registrace, CancellationToken ct)
+    private static async Task<Results<Ok<List<NpcAdultPickerItemDto>>, ProblemHttpResult>> GetAvailablePlayers(
+        int gameId, RegistraceImportService registrace, WorldDbContext db, CancellationToken ct)
     {
         try
         {
             var adults = await registrace.FetchAdultsAsync(gameId, ct);
-            return TypedResults.Ok(adults);
+
+            // Set of registrace PersonIds that already play an NPC in this
+            // game — drives the picker's ✓ marker + "Skrýt obsazené" toggle.
+            // Distinct because the same adult could in theory hold multiple
+            // NPC roles, but for the picker view one match is enough.
+            var assigned = await db.GameNpcs
+                .Where(gn => gn.GameId == gameId && gn.PlayedByPersonId != null)
+                .Select(gn => gn.PlayedByPersonId!.Value)
+                .Distinct()
+                .ToListAsync(ct);
+            var assignedSet = assigned.ToHashSet();
+
+            var items = adults
+                .Select(a => new NpcAdultPickerItemDto(
+                    a.PersonId,
+                    a.FirstName,
+                    a.LastName,
+                    a.BirthYear,
+                    a.Email,
+                    a.Roles,
+                    assignedSet.Contains(a.PersonId)))
+                .ToList();
+
+            return TypedResults.Ok(items);
         }
         catch (GameNotFoundException)
         {
