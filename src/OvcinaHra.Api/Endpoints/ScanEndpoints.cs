@@ -144,6 +144,39 @@ public static class ScanEndpoints
 
         db.CharacterEvents.Add(ev);
         TrackIdempotency(db, assignment.Id, idempotencyKey, ev);
+
+        // Issue #478 — mirror level-ups into the WorldActivity audit log so the
+        // Aktivity světa table on the cockpit surfaces them alongside placements.
+        // CharacterEvent stays the system-of-record for player progression
+        // (RecentActivityPanel polls it for the live takeover); WorldActivity
+        // is the organizer-action audit overlay. Same SaveChangesAsync below
+        // keeps the two writes transactional.
+        if (dto.EventType == CharacterEventType.LevelUp)
+        {
+            int newLevel;
+            try
+            {
+                using var doc = JsonDocument.Parse(eventData);
+                newLevel = doc.RootElement.GetProperty("level").GetInt32();
+            }
+            catch (JsonException)
+            {
+                newLevel = assignment.Events.Count(e => e.EventType == CharacterEventType.LevelUp) + 1;
+            }
+
+            db.WorldActivities.Add(new WorldActivity
+            {
+                GameId = assignment.GameId,
+                TimestampUtc = ev.Timestamp,
+                OrganizerUserId = organizer.UserId,
+                OrganizerName = organizer.Name,
+                ActivityType = WorldActivityType.CharacterLevelUp,
+                Description = $"{assignment.Character.Name} dosáhl {newLevel}. úrovně",
+                CharacterAssignmentId = assignment.Id,
+                DataJson = eventData
+            });
+        }
+
         await db.SaveChangesAsync();
 
         return TypedResults.Created($"/api/scan/{personId}/events/{ev.Id}", ToDto(ev));

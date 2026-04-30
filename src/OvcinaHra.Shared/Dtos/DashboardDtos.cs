@@ -76,3 +76,22 @@ public record TimelineRowDto(
     string? LocationName,
     int? LocationId,
     bool IsRunning);
+
+/// <summary>
+/// Issue #478 — raw WorldActivity row powering the Aktivity světa table
+/// on the Home cockpit. Unlike <see cref="DashboardActivityDto"/> (which
+/// merges WorldActivity with legacy entity-timestamp rows for the sliver
+/// feed), this DTO exposes the audit row 1:1 so organizers can verify
+/// every level-up / placement / quest completion that flowed in via the
+/// Glejt PWA or in-app workflows.
+/// </summary>
+public record WorldActivityRowDto(
+    int Id,
+    DateTime TimestampUtc,
+    string OrganizerName,
+    WorldActivityType ActivityType,
+    string Description,
+    int? LocationId,
+    string? LocationName,
+    int? CharacterAssignmentId,
+    int? QuestId);

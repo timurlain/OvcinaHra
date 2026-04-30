@@ -3512,6 +3512,32 @@
 .oh-home-skel-line-xs{height:8px;width:35%}
 @keyframes oh-home-skel{0%{background-position:200% 0}100%{background-position:-200% 0}}
 
+/* Issue #478 — Aktivity světa table on Home cockpit */
+.oh-home-world-activity{padding:14px 18px;background:var(--oh-surface,#FAF6EC);
+    border:1px solid var(--oh-border,#d8d2be);border-radius:8px}
+.oh-world-activity-scroll{max-height:420px;overflow-y:auto;border-radius:6px}
+.oh-world-activity-table{font-size:.88rem}
+.oh-world-activity-table thead th{position:sticky;top:0;background:var(--oh-surface-alt,#F2EBD8);
+    border-bottom:1px solid var(--oh-border,#d8d2be);font:700 .78rem var(--oh-font-body);
+    text-transform:uppercase;letter-spacing:.02em;color:var(--oh-text-muted,#6b6453);z-index:1}
+.oh-world-activity-table tbody tr{border-bottom:1px solid var(--oh-border,#d8d2be)}
+.oh-world-activity-table tbody tr:last-child{border-bottom:0}
+.oh-world-activity-table td{vertical-align:middle;padding:8px 10px}
+.oh-world-activity-time{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--oh-text-muted,#6b6453);
+    width:96px}
+.oh-world-activity-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;
+    border-radius:999px;font:600 .72rem var(--oh-font-body);text-transform:uppercase;
+    letter-spacing:.02em;margin-right:8px;white-space:nowrap}
+.oh-world-activity-badge i{font-size:.85rem}
+.oh-world-activity-badge--location{background:rgba(45,80,22,.1);color:#2D5016}
+.oh-world-activity-badge--levelup{background:rgba(193,154,58,.18);color:#7a5520}
+.oh-world-activity-badge--quest{background:rgba(139,30,63,.1);color:#8B1E3F}
+.oh-world-activity-badge--default{background:rgba(0,0,0,.06);color:var(--oh-text,#2a2a2a)}
+.oh-world-activity-desc{color:var(--oh-text,#2a2a2a)}
+a.oh-world-activity-desc{text-decoration:none;border-bottom:1px dotted rgba(0,0,0,.25)}
+a.oh-world-activity-desc:hover{color:#2D5016;border-bottom-color:#2D5016}
+.oh-world-activity-actor{margin-left:6px}
+
 /* No-game empty state */
 .oh-home-no-game{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
     padding:60px 20px;text-align:center;color:var(--oh-text,#2a2a2a)}

@@ -1,0 +1,141 @@
+@* Issue #478 — raw WorldActivity audit table on the Home cockpit.
+   Two columns: Time (dd/MM HH:mm) + event description with type badge.
+   Surfaces level-ups / placements / quest completions flowing in from
+   Glejt PWA + in-app workflows so organizers can verify pre-weekend. *@
+
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Dtos
+@inject ApiClient Api
+
+<section class="oh-home-world-activity" aria-labelledby="oh-home-world-activity-title">
+    <header class="oh-home-act-head">
+        <h2 id="oh-home-world-activity-title">Aktivity světa</h2>
+        @if (_rows is not null && _rows.Count > 0)
+        {
+            <span class="text-muted small">@_rows.Count záznamů</span>
+        }
+    </header>
+
+    @if (_rows is null)
+    {
+        <p class="text-muted small">Načítám…</p>
+    }
+    else if (_rows.Count == 0)
+    {
+        <p class="text-muted small fst-italic mb-0">Zatím žádné aktivity. Až
+            organizátoři začnou zapisovat postupy, umístění a dokončené questy
+            (přímo v aplikaci nebo přes Glejt), uvidíte je tady.</p>
+    }
+    else
+    {
+        <div class="oh-world-activity-scroll">
+            <table class="table table-sm oh-world-activity-table mb-0">
+                <thead>
+                    <tr>
+                        <th scope="col" class="oh-world-activity-time">Čas</th>
+                        <th scope="col">Událost</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _rows)
+                    {
+                        var route = RouteFor(row);
+                        <tr>
+                            <td class="oh-world-activity-time"
+                                title="@row.TimestampUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")">
+                                @row.TimestampUtc.ToLocalTime().ToString("dd/MM HH:mm")
+                            </td>
+                            <td>
+                                <span class="oh-world-activity-badge oh-world-activity-badge--@BadgeTone(row.ActivityType)">
+                                    <i class="bi @IconFor(row.ActivityType)"></i>
+                                    @TypeLabel(row.ActivityType)
+                                </span>
+                                @if (route is not null)
+                                {
+                                    <a href="@route" class="oh-world-activity-desc">@row.Description</a>
+                                }
+                                else
+                                {
+                                    <span class="oh-world-activity-desc">@row.Description</span>
+                                }
+                                <span class="oh-world-activity-actor text-muted small">· @row.OrganizerName</span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    private List<WorldActivityRowDto>? _rows;
+    private int? _loadedGameId;
+
+    [Parameter] public int? GameId { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (GameId is null)
+        {
+            _rows = null;
+            _loadedGameId = null;
+            return;
+        }
+
+        if (_loadedGameId == GameId.Value && _rows is not null) return;
+        _loadedGameId = GameId.Value;
+        await LoadAsync(GameId.Value);
+    }
+
+    private async Task LoadAsync(int gameId)
+    {
+        try
+        {
+            var rows = await Api.GetListAsync<WorldActivityRowDto>(
+                $"/api/dashboard/world-activity?gameId={gameId}&take=100");
+            _rows = rows ?? [];
+        }
+        catch (Exception)
+        {
+            // ApiClient already logs; keep prior _rows so a transient flake
+            // doesn't blank the table mid-session.
+            _rows ??= [];
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static string TypeLabel(WorldActivityType type) => type switch
+    {
+        WorldActivityType.LocationPlaced => "Umístění lokace",
+        WorldActivityType.CharacterLevelUp => "Postup postavy",
+        WorldActivityType.QuestCompleted => "Dokončený quest",
+        _ => "Aktivita"
+    };
+
+    private static string IconFor(WorldActivityType type) => type switch
+    {
+        WorldActivityType.LocationPlaced => "bi-geo-alt-fill",
+        WorldActivityType.CharacterLevelUp => "bi-stars",
+        WorldActivityType.QuestCompleted => "bi-patch-check-fill",
+        _ => "bi-circle"
+    };
+
+    private static string BadgeTone(WorldActivityType type) => type switch
+    {
+        WorldActivityType.LocationPlaced => "location",
+        WorldActivityType.CharacterLevelUp => "levelup",
+        WorldActivityType.QuestCompleted => "quest",
+        _ => "default"
+    };
+
+    private static string? RouteFor(WorldActivityRowDto row)
+    {
+        // Character assignments don't have a per-id detail route yet (the
+        // CharacterList page is the only character surface), so we only
+        // link Location + Quest activity rows.
+        if (row.LocationId.HasValue) return $"/locations/{row.LocationId.Value}";
+        if (row.QuestId.HasValue) return $"/quests/{row.QuestId.Value}";
+        return null;
+    }
+}
