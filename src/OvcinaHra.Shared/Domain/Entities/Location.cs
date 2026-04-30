@@ -19,6 +19,8 @@ public class Location
     public string? GamePotential { get; set; }
     public string? Region { get; set; }
     public string? Prompt { get; set; }
+    public int? RemotenessScore { get; set; }
+    public string? RemotenessNotes { get; set; }
 
     /// <summary>
     /// If set, this location is a variant of the parent (hobbit quest, state change, etc.).

@@ -1,0 +1,248 @@
+@page "/knihovna/hesla"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject GameContextService GameContext
+@implements IDisposable
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h1 class="mb-0">Knihovna hesel</h1>
+        <div class="text-muted small">@GameContext.GameName</div>
+    </div>
+    <button class="btn btn-outline-secondary" type="button" @onclick="LoadAsync" disabled="@loading">
+        <i class="bi bi-arrow-clockwise"></i> Obnovit
+    </button>
+</div>
+
+<div class="d-flex flex-wrap gap-3 align-items-center mb-3">
+    <DxCheckBox Checked="@onlyUnclaimed" CheckedChanged="@((bool value) => OnOnlyUnclaimedChanged(value))">Jen neuplatněná</DxCheckBox>
+    <button class="btn btn-primary" type="button" @onclick="OpenClaim" disabled="@(GameContext.SelectedGameId is null)">
+        <i class="bi bi-key-fill"></i> Uplatnit heslo
+    </button>
+</div>
+
+@if (error is not null)
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+@if (lastReward is not null)
+{
+    <div class="alert alert-success">
+        <div class="fw-semibold">@lastReason</div>
+        <div>@lastReward</div>
+    </div>
+}
+
+@if (loading)
+{
+    <p class="text-muted">Načítám...</p>
+}
+else if (vouchers.Count == 0)
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-key fs-1 d-block mb-2"></i>
+        <p>Žádná hesla pro tuto hru.</p>
+    </div>
+}
+else
+{
+    <OvcinaGrid Data="@vouchers" KeyFieldName="Id" LayoutKey="grid-layout-library-vouchers-v1"
+                RowClick="@(e => OpenClaimFromVoucher((LibraryVoucherDto)e.Grid.GetDataItem(e.VisibleIndex)))">
+        <Columns>
+            <DxGridDataColumn FieldName="LibraryKeyword" Caption="Heslo" Width="150px" />
+            <DxGridDataColumn FieldName="LocationName" Caption="Lokace" MinWidth="220" />
+            <DxGridDataColumn FieldName="SkillName" Caption="Dovednost" Width="160px" />
+            <DxGridDataColumn FieldName="LibraryReward" Caption="Odměna" MinWidth="260" />
+            <DxGridDataColumn FieldName="IsClaimed" Caption="Stav" Width="140px">
+                <CellDisplayTemplate>
+                    @{ var row = (LibraryVoucherDto)context.DataItem; }
+                    @if (row.IsClaimed)
+                    {
+                        <span class="badge text-bg-secondary">Uplatněno</span>
+                    }
+                    else
+                    {
+                        <span class="badge text-bg-success">Volné</span>
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="ClaimedByCharacterName" Caption="Hrdina" Width="180px" />
+            <DxGridDataColumn FieldName="ClaimedAtUtc" Caption="Čas" Width="120px">
+                <CellDisplayTemplate>
+                    @{ var row = (LibraryVoucherDto)context.DataItem; }
+                    @FormatLocalTime(row.ClaimedAtUtc)
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn Caption="" Width="110px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{ var row = (LibraryVoucherDto)context.DataItem; }
+                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OpenClaimFromVoucher(row)" disabled="@row.IsClaimed">
+                        <i class="bi bi-key"></i> Uplatnit
+                    </button>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+        </Columns>
+    </OvcinaGrid>
+}
+
+<DxPopup @bind-Visible="@isClaimVisible" HeaderText="Uplatnit heslo" Width="520px">
+    <BodyContentTemplate Context="popupContext">
+        <DxFormLayout>
+            <DxFormLayoutItem Caption="Heslo" ColSpanMd="12">
+                <DxTextBox @bind-Text="@claimKeyword" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="Hrdina" ColSpanMd="12">
+                <DxComboBox TData="CharacterListDto" TValue="int?"
+                            Data="@characters"
+                            @bind-Value="@claimCharacterId"
+                            TextFieldName="@nameof(CharacterListDto.Name)"
+                            ValueFieldName="@nameof(CharacterListDto.Id)"
+                            SearchMode="ListSearchMode.AutoSearch"
+                            NullText="Vyber hrdinu" />
+            </DxFormLayoutItem>
+            <DxFormLayoutItem Caption="" ColSpanMd="12">
+                <DxCheckBox @bind-Checked="@locationStampVerified">Razítko lokace ověřeno</DxCheckBox>
+            </DxFormLayoutItem>
+        </DxFormLayout>
+
+        @if (claimError is not null)
+        {
+            <div class="alert alert-danger mt-2">@claimError</div>
+        }
+
+        <div class="d-flex gap-2 justify-content-end mt-3">
+            <button class="btn btn-secondary" type="button" @onclick="() => isClaimVisible = false" disabled="@saving">Zrušit</button>
+            <button class="btn btn-primary" type="button" @onclick="ClaimAsync" disabled="@(saving || claimCharacterId is null)">
+                Uplatnit
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    private List<LibraryVoucherDto> vouchers = [];
+    private List<CharacterListDto> characters = [];
+    private bool loading = true;
+    private bool saving;
+    private bool onlyUnclaimed = true;
+    private bool isClaimVisible;
+    private bool locationStampVerified = true;
+    private string claimKeyword = "";
+    private int? claimCharacterId;
+    private string? error;
+    private string? claimError;
+    private string? lastReward;
+    private string? lastReason;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GameContext.InitializeAsync();
+        GameContext.OnGameChanged += OnGameChanged;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        error = null;
+        try
+        {
+            if (GameContext.SelectedGameId is not int gameId)
+            {
+                vouchers = [];
+                characters = [];
+                return;
+            }
+
+            vouchers = await Api.GetListAsync<LibraryVoucherDto>($"/api/library-vouchers?gameId={gameId}&onlyUnclaimed={onlyUnclaimed.ToString().ToLowerInvariant()}");
+            characters = (await Api.GetListAsync<CharacterListDto>($"/api/characters?gameId={gameId}"))
+                .Where(c => c.IsPlayedCharacter)
+                .OrderBy(c => c.Name)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task OnOnlyUnclaimedChanged(bool value)
+    {
+        onlyUnclaimed = value;
+        await LoadAsync();
+    }
+
+    private void OpenClaim()
+    {
+        claimKeyword = "";
+        claimCharacterId = characters.FirstOrDefault()?.Id;
+        locationStampVerified = true;
+        claimError = null;
+        isClaimVisible = true;
+    }
+
+    private void OpenClaimFromVoucher(LibraryVoucherDto voucher)
+    {
+        if (voucher.IsClaimed)
+            return;
+
+        claimKeyword = voucher.LibraryKeyword;
+        claimCharacterId = characters.FirstOrDefault()?.Id;
+        locationStampVerified = true;
+        claimError = null;
+        isClaimVisible = true;
+    }
+
+    private async Task ClaimAsync()
+    {
+        if (GameContext.SelectedGameId is not int gameId || claimCharacterId is not int characterId)
+            return;
+
+        saving = true;
+        claimError = null;
+        lastReward = null;
+        lastReason = null;
+        try
+        {
+            var dto = new CipherClaimRequestDto(claimKeyword, locationStampVerified, characterId);
+            var (ok, result, problem) = await Api.PostWithProblemAsync<CipherClaimRequestDto, CipherClaimResultDto>(
+                $"/api/library-vouchers/claim?gameId={gameId}", dto);
+            if (!ok || result is null)
+            {
+                claimError = problem ?? "Heslo se nepodařilo uplatnit.";
+                return;
+            }
+
+            if (!result.Success)
+            {
+                claimError = result.Reason;
+                return;
+            }
+
+            lastReason = result.Reason;
+            lastReward = result.Reward;
+            isClaimVisible = false;
+            await LoadAsync();
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async void OnGameChanged()
+    {
+        await LoadAsync();
+        StateHasChanged();
+    }
+
+    private static string FormatLocalTime(DateTime? value) =>
+        value is null ? "" : value.Value.ToLocalTime().ToString("dd/MM HH:mm");
+
+    public void Dispose() => GameContext.OnGameChanged -= OnGameChanged;
+}

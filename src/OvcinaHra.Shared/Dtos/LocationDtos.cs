@@ -28,7 +28,9 @@ public record LocationListDto(
     string? StampImageUrl = null,
     bool IsLocated = false,
     decimal? EffectiveLatitude = null,
-    decimal? EffectiveLongitude = null)
+    decimal? EffectiveLongitude = null,
+    int? RemotenessScore = null,
+    string? RemotenessNotes = null)
 {
     [JsonIgnore]
     public string LocationKindDisplay => LocationKind.GetDisplayName();
@@ -104,7 +106,9 @@ public record LocationDetailDto(
     string? SetupNotes,
     int? ParentLocationId,
     List<LocationVariantDto> Variants,
-    string? StampImageUrl = null);
+    string? StampImageUrl = null,
+    int? RemotenessScore = null,
+    string? RemotenessNotes = null);
 
 public record LocationVariantDto(int Id, string Name, LocationKind LocationKind);
 
@@ -120,7 +124,9 @@ public record CreateLocationDto(
     string? Region = null,
     string? NpcInfo = null,
     string? SetupNotes = null,
-    int? ParentLocationId = null);
+    int? ParentLocationId = null,
+    int? RemotenessScore = null,
+    string? RemotenessNotes = null);
 
 public record UpdateLocationDto(
     string Name,
@@ -134,7 +140,9 @@ public record UpdateLocationDto(
     string? Region = null,
     string? NpcInfo = null,
     string? SetupNotes = null,
-    int? ParentLocationId = null);
+    int? ParentLocationId = null,
+    int? RemotenessScore = null,
+    string? RemotenessNotes = null);
 
 public record GameLocationDto(int GameId, int LocationId);
 
