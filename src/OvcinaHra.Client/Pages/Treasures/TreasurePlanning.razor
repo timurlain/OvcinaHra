@@ -23,6 +23,13 @@
             @if (_isLoadingPreview) { <span class="spinner-border spinner-border-sm me-1"></span> }
             <i class="bi bi-arrow-down-circle me-1"></i> Doplnit vše zbývající k schování do zásobníku
         </button>
+        <button class="btn btn-outline-danger btn-sm" type="button"
+                @onclick="() => isUnloadConfirmVisible = true"
+                disabled="@(isUnloading || (summary?.Placed ?? 0) == 0)"
+                title="Vrátí všechny umístěné poklady zpět do zásobníku.">
+            @if (isUnloading) { <span class="spinner-border spinner-border-sm me-1"></span> }
+            <i class="bi bi-box-arrow-in-down me-1"></i> Vrátit umístěné poklady
+        </button>
         <button class="btn btn-primary btn-sm" type="button" @onclick="OpenAddToPoolModal">
             <i class="bi bi-plus-circle me-1"></i> Přidat do zásobníku
         </button>
@@ -915,6 +922,24 @@ else
     </BodyContentTemplate>
 </DxPopup>
 
+<DxPopup @bind-Visible="@isUnloadConfirmVisible" HeaderText="Vrátit poklady do zásobníku?" Width="460px">
+    <BodyContentTemplate Context="popupContext">
+        <p>
+            Opravdu vrátit všech <strong>@(summary?.Placed ?? 0)</strong> umístěných předmětů zpět do zásobníku?
+            Umístěné poklady se smažou.
+        </p>
+        <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" type="button"
+                    @onclick="() => isUnloadConfirmVisible = false" disabled="@isUnloading">Zrušit</button>
+            <button class="btn btn-danger" type="button"
+                    @onclick="UnloadTreasuresAsync" disabled="@isUnloading">
+                @if (isUnloading) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Vrátit
+            </button>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
 @* Result banner — rendered after the API call returns. Dismissible via the
    button. Shows over-allocated items as a follow-up note. *@
 @if (_refillResult is not null)
@@ -957,6 +982,25 @@ else
         <i class="bi bi-wifi-off"></i>
         <span>Doplnění se nepodařilo: @_refillError</span>
         <button type="button" class="btn-close ms-auto" aria-label="Zavřít" @onclick="() => _refillError = null"></button>
+    </div>
+}
+@if (_unloadResult is not null)
+{
+    <div class="alert alert-success d-flex align-items-start gap-2 mt-2">
+        <i class="bi bi-check2-circle fs-5"></i>
+        <div class="flex-fill">
+            <strong>Vráceno @_unloadResult.ItemsReturned předmětů do zásobníku.</strong>
+            <div class="small text-muted">Smazáno @_unloadResult.QuestsRemoved umístěných pokladů.</div>
+        </div>
+        <button type="button" class="btn-close" aria-label="Zavřít" @onclick="() => _unloadResult = null"></button>
+    </div>
+}
+@if (_unloadError is not null)
+{
+    <div class="alert alert-danger d-flex align-items-center gap-2 mt-2">
+        <i class="bi bi-wifi-off"></i>
+        <span>Vrácení pokladů se nepodařilo: @_unloadError</span>
+        <button type="button" class="btn-close ms-auto" aria-label="Zavřít" @onclick="() => _unloadError = null"></button>
     </div>
 }
 
@@ -1535,6 +1579,10 @@ else
     private RefillPoolResponse? _refillPreview;
     private RefillPoolResponse? _refillResult;
     private string? _refillError;
+    private bool isUnloadConfirmVisible;
+    private bool isUnloading;
+    private UnloadTreasuresResponse? _unloadResult;
+    private string? _unloadError;
     private int? poolItemId;
     private int poolItemCount = 1;
     private string? poolError;
@@ -1631,6 +1679,8 @@ else
         treasuresRegionFilter = null;
         quickAllocation = null;
         allocationError = null;
+        _unloadResult = null;
+        _unloadError = null;
         await LoadAllAsync();
         await PlaceMarkersIfReadyAsync();
         StateHasChanged();
@@ -2587,6 +2637,37 @@ else
             isRefillConfirmVisible = false;
             isRefilling = false;
             _refillPreview = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task UnloadTreasuresAsync()
+    {
+        _unloadError = null;
+        _unloadResult = null;
+        isUnloading = true;
+        try
+        {
+            var (ok, value, problem) = await Api.PostWithProblemAsync<object, UnloadTreasuresResponse>(
+                $"/api/treasure-planning/unload/{gameId}",
+                new { });
+            if (!ok)
+            {
+                _unloadError = problem ?? "Server odmítl požadavek bez podrobností.";
+            }
+            else
+            {
+                _unloadResult = value;
+                selectedPool.Clear();
+                CancelCompositeBundle();
+                await LoadAllAsync();
+            }
+        }
+        catch (Exception ex) { _unloadError = ex.Message; }
+        finally
+        {
+            isUnloadConfirmVisible = false;
+            isUnloading = false;
             StateHasChanged();
         }
     }
