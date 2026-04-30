@@ -1649,28 +1649,21 @@ else
         poolRemoveError = null;
         var poolTask       = Api.GetListAsync<TreasurePoolItemDto>($"/api/treasure-planning/pool/{gameId}");
         var cardsTask      = Api.GetListAsync<TreasurePlanningLocationDto>($"/api/treasure-planning/locations/{gameId}");
-        var missingTask    = Api.GetListAsync<MissingTreasureLocationDto>($"/api/treasure-planning/missing?gameId={gameId}&threshold={MissingTreasureThreshold}");
         var locationsTask  = Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gameId}");
         var questTask      = Api.GetListAsync<TreasureQuestListDto>($"/api/treasure-quests/by-game/{gameId}");
         var summaryTask    = Api.GetAsync<TreasureSummaryDto>($"/api/treasure-planning/summary/{gameId}");
         var unlimitedTask  = Api.GetListAsync<UnlimitedItemDto>($"/api/treasure-planning/unlimited/{gameId}");
 
-        await Task.WhenAll(poolTask, cardsTask, missingTask, locationsTask, questTask, summaryTask, unlimitedTask);
+        await Task.WhenAll(poolTask, cardsTask, locationsTask, questTask, summaryTask, unlimitedTask);
 
         poolItems      = poolTask.Result;
         locationCards  = cardsTask.Result;
-        missingTreasureLocations = missingTask.Result;
+        missingTreasureLocations = BuildMissingTreasureLocations();
         locations      = locationsTask.Result;
         allQuests      = questTask.Result;
         summary        = summaryTask.Result;
         unlimitedItems = unlimitedTask.Result;
         Console.WriteLine($"[treasure-alloc] missing-view loaded gameId={gameId} threshold={MissingTreasureThreshold} matched={missingTreasureLocations.Count}");
-        LogTreasureAlloc("missing-view loaded", new
-        {
-            gameId,
-            threshold = MissingTreasureThreshold,
-            matched = missingTreasureLocations.Count
-        });
 
         // Prune selection of items that left the pool.
         var poolIds = poolItems.Select(p => p.Id).ToHashSet();
@@ -1770,6 +1763,22 @@ else
 
     private static string MissingRegionLabel(MissingTreasureLocationDto location) =>
         string.IsNullOrWhiteSpace(location.Region) ? NoRegionLabel : location.Region.Trim();
+
+    private List<MissingTreasureLocationDto> BuildMissingTreasureLocations() =>
+        locationCards
+            .Where(l => l.TotalItems < MissingTreasureThreshold)
+            .OrderBy(l => l.TotalItems)
+            .ThenBy(l => string.IsNullOrWhiteSpace(l.Region))
+            .ThenBy(GetRegionLabel)
+            .ThenBy(l => l.LocationName)
+            .Select(l => new MissingTreasureLocationDto(
+                l.LocationId,
+                l.LocationName,
+                string.IsNullOrWhiteSpace(l.Region) ? null : l.Region.Trim(),
+                l.TotalItems,
+                MissingTreasureThreshold,
+                MissingTreasureThreshold - l.TotalItems))
+            .ToList();
 
     private static string GetRegionSortKey(string region) =>
         region == NoRegionLabel ? "\uFFFF" : region;
@@ -1934,13 +1943,6 @@ else
         allocationError = null;
         quickAllocation = null;
         Console.WriteLine($"[treasure-alloc] missing-view jump locationId={location.LocationId}");
-        LogTreasureAlloc("missing-view jump", new
-        {
-            gameId,
-            locationId = location.LocationId,
-            location.LocationName,
-            threshold = MissingTreasureThreshold
-        });
 
         if (treasuresView != "cards")
         {
