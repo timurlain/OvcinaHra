@@ -31,6 +31,7 @@ public static class TreasurePlanningEndpoints
 
         // Location cards with treasure counts
         group.MapGet("/locations/{gameId:int}", GetLocationCards);
+        group.MapGet("/missing", GetMissingLocations);
 
         // Summary
         group.MapGet("/summary/{gameId:int}", GetSummary);
@@ -120,7 +121,10 @@ public static class TreasurePlanningEndpoints
 
         var ti = new TreasureItem
         {
-            ItemId = dto.ItemId, GameId = dto.GameId, Count = dto.Count, TreasureQuestId = null
+            ItemId = dto.ItemId,
+            GameId = dto.GameId,
+            Count = dto.Count,
+            TreasureQuestId = null
         };
         db.TreasureItems.Add(ti);
         await db.SaveChangesAsync();
@@ -208,6 +212,58 @@ public static class TreasurePlanningEndpoints
         HttpContext http)
     {
         var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.TreasurePlanningEndpoints");
+        var result = await BuildLocationCardsAsync(gameId, db, logger, http);
+        return TypedResults.Ok(result);
+    }
+
+    private static async Task<Results<Ok<List<MissingTreasureLocationDto>>, ValidationProblem>> GetMissingLocations(
+        int gameId,
+        int? threshold,
+        WorldDbContext db,
+        ILoggerFactory loggerFactory,
+        HttpContext http)
+    {
+        var effectiveThreshold = threshold ?? 1;
+        if (effectiveThreshold < 0)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["Threshold"] = ["Prahová hodnota nesmí být záporná."]
+            });
+        }
+
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.TreasurePlanningEndpoints");
+        var locationCards = await BuildLocationCardsAsync(gameId, db, logger, http, includeAssignedTreasures: false);
+        var missing = locationCards
+            .Where(l => l.TotalItems < effectiveThreshold)
+            .OrderBy(l => l.TotalItems)
+            .ThenBy(l => string.IsNullOrWhiteSpace(l.Region))
+            .ThenBy(l => l.Region)
+            .ThenBy(l => l.LocationName)
+            .Select(l => new MissingTreasureLocationDto(
+                l.LocationId,
+                l.LocationName,
+                l.Region,
+                l.TotalItems,
+                effectiveThreshold,
+                effectiveThreshold - l.TotalItems))
+            .ToList();
+
+        logger.LogInformation(
+            "[treasure-alloc] missing-view loaded gameId={GameId} threshold={Threshold} matched={Matched}",
+            gameId,
+            effectiveThreshold,
+            missing.Count);
+        return TypedResults.Ok(missing);
+    }
+
+    private static async Task<List<TreasurePlanningLocationDto>> BuildLocationCardsAsync(
+        int gameId,
+        WorldDbContext db,
+        ILogger logger,
+        HttpContext http,
+        bool includeAssignedTreasures = true)
+    {
         var assignedLocationIds = await db.GameLocations
             .Where(gl => gl.GameId == gameId)
             .Select(gl => gl.LocationId)
@@ -246,12 +302,16 @@ public static class TreasurePlanningEndpoints
             .Where(l => !l.ParentLocationId.HasValue)
             .ToList();
 
-        // Get all treasure quests for this game with their items
-        var quests = await db.TreasureQuests
-            .Where(tq => tq.GameId == gameId)
-            .Include(tq => tq.TreasureItems)
-            .ThenInclude(ti => ti.Item)
-            .ToListAsync();
+        var quests = includeAssignedTreasures
+            ? await db.TreasureQuests
+                .Where(tq => tq.GameId == gameId)
+                .Include(tq => tq.TreasureItems)
+                .ThenInclude(ti => ti.Item)
+                .ToListAsync()
+            : await db.TreasureQuests
+                .Where(tq => tq.GameId == gameId)
+                .Include(tq => tq.TreasureItems)
+                .ToListAsync();
 
         var result = parentLocations.Select(loc =>
         {
@@ -274,31 +334,35 @@ public static class TreasurePlanningEndpoints
                 var sQuests = quests.Where(q => q.SecretStashId == gs.SecretStashId).ToList();
                 return new StashSummaryDto(gs.SecretStashId, gs.SecretStash.Name, sQuests.SelectMany(q => q.TreasureItems).Sum(ti => ti.Count));
             }).ToList();
-            var allAssignedTreasures = allQuests
-                .OrderBy(q => q.Difficulty)
-                .ThenBy(q => q.Title)
-                .SelectMany(q => q.TreasureItems
-                    .OrderBy(ti => ti.Item.Name)
-                    .Select(ti => new TreasurePlanningAssignedTreasureDto(
-                        ti.Id,
-                        q.Id,
-                        q.Title,
-                        q.Difficulty,
-                        ti.ItemId,
-                        ti.Item.Name,
-                        ti.Count,
-                        ItemThumbnailUrl(http, ti.ItemId, ti.Item.ImagePath))))
-                .GroupBy(ti => new { ti.QuestId, ti.Difficulty, ti.ItemId, ti.ItemName, ti.ItemThumbnailUrl })
-                .Select(g => new TreasurePlanningAssignedTreasureDto(
-                    g.Min(ti => ti.TreasureItemId),
-                    g.Key.QuestId,
-                    g.First().QuestTitle,
-                    g.Key.Difficulty,
-                    g.Key.ItemId,
-                    g.Key.ItemName,
-                    g.Sum(ti => ti.Count),
-                    g.Key.ItemThumbnailUrl))
-                .ToList();
+            List<TreasurePlanningAssignedTreasureDto> allAssignedTreasures = [];
+            if (includeAssignedTreasures)
+            {
+                allAssignedTreasures = allQuests
+                    .OrderBy(q => q.Difficulty)
+                    .ThenBy(q => q.Title)
+                    .SelectMany(q => q.TreasureItems
+                        .OrderBy(ti => ti.Item.Name)
+                        .Select(ti => new TreasurePlanningAssignedTreasureDto(
+                            ti.Id,
+                            q.Id,
+                            q.Title,
+                            q.Difficulty,
+                            ti.ItemId,
+                            ti.Item.Name,
+                            ti.Count,
+                            ItemThumbnailUrl(http, ti.ItemId, ti.Item.ImagePath))))
+                    .GroupBy(ti => new { ti.QuestId, ti.Difficulty, ti.ItemId, ti.ItemName, ti.ItemThumbnailUrl })
+                    .Select(g => new TreasurePlanningAssignedTreasureDto(
+                        g.Min(ti => ti.TreasureItemId),
+                        g.Key.QuestId,
+                        g.First().QuestTitle,
+                        g.Key.Difficulty,
+                        g.Key.ItemId,
+                        g.Key.ItemName,
+                        g.Sum(ti => ti.Count),
+                        g.Key.ItemThumbnailUrl))
+                    .ToList();
+            }
             var assignedTreasures = allAssignedTreasures.Take(4).ToList();
 
             return new TreasurePlanningLocationDto(
@@ -319,7 +383,7 @@ public static class TreasurePlanningEndpoints
                 AssignedTreasureCount: allAssignedTreasures.Count);
         }).ToList();
 
-        return TypedResults.Ok(result);
+        return result;
     }
 
     private static async Task<Ok<TreasureSummaryDto>> GetSummary(int gameId, WorldDbContext db)
@@ -550,8 +614,12 @@ public static class TreasurePlanningEndpoints
             // Create the quest
             var quest = new TreasureQuest
             {
-                Title = dto.Title, Clue = dto.Clue, Difficulty = dto.Difficulty,
-                LocationId = targetLocationId, SecretStashId = targetSecretStashId, GameId = dto.GameId
+                Title = dto.Title,
+                Clue = dto.Clue,
+                Difficulty = dto.Difficulty,
+                LocationId = targetLocationId,
+                SecretStashId = targetSecretStashId,
+                GameId = dto.GameId
             };
             db.TreasureQuests.Add(quest);
             LogTreasureAlloc(logger, LogLevel.Information, "assign-before-save", new
@@ -619,7 +687,10 @@ public static class TreasurePlanningEndpoints
                 {
                     db.TreasureItems.Add(new TreasureItem
                     {
-                        ItemId = ui.ItemId, GameId = dto.GameId, Count = ui.Count, TreasureQuestId = quest.Id
+                        ItemId = ui.ItemId,
+                        GameId = dto.GameId,
+                        Count = ui.Count,
+                        TreasureQuestId = quest.Id
                     });
                 }
             }

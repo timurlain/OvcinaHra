@@ -2,7 +2,9 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Diagnostics;
+using System.Globalization;
 using System.Security.Claims;
+using System.Text.RegularExpressions;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Dtos;
@@ -10,18 +12,21 @@ using SixLabors.ImageSharp;
 
 namespace OvcinaHra.Api.Endpoints;
 
-public static class ImageEndpoints
+public static partial class ImageEndpoints
 {
     // "locationstamps" and "locationplacements" are logical aliases keyed by
     // Location.Id. They write Location.StampImagePath / PlacementPhotoPath but
     // keep independent thumbnail cache keys from the main location image.
-    private static readonly HashSet<string> ValidEntityTypes = ["locations", "locationstamps", "locationplacements", "items", "monsters", "secretstashes", "npcs", "buildings", "characters", "kingdoms", "spells", "quests"];
+    private static readonly HashSet<string> ValidEntityTypes = ["locations", "locationstamps", "locationplacements", "items", "monsters", "secretstashes", "npcs", "buildings", "characters", "kingdoms", "spells", "quests", "personal-quests"];
     private static readonly HashSet<string> ServerTimedImageUploadEntityTypes =
         new(StringComparer.Ordinal) { "locations", "locationstamps", "items", "npcs", "kingdoms" };
     private static readonly HashSet<string> AllowedContentTypes = ["image/jpeg", "image/png", "image/webp"];
     private const long MaxFileSize = 5 * 1024 * 1024; // 5 MB
     private const int LocationStampMinimumPixels = 200;
     private const double LocationStampAspectTolerance = 0.10;
+    private const int CapturedAtMaxLength = 64;
+    [GeneratedRegex(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$", RegexOptions.CultureInvariant)]
+    private static partial Regex CapturedAtIsoRegex();
 
     public static RouteGroupBuilder MapImageEndpoints(this IEndpointRouteBuilder routes)
     {
@@ -191,6 +196,19 @@ public static class ImageEndpoints
                 return TypedResults.NotFound();
             }
 
+            var metadataResult = await ReadUploadMetadataAsync(http, ct);
+            if (metadataResult.Problem is not null)
+            {
+                logger.LogInformation(
+                    "[image-upload-server] metadata.validation-failed capturedAt={CapturedAt} reason={Reason}",
+                    metadataResult.CapturedAtForLog,
+                    metadataResult.FailureReason);
+                LogPlacementImageExit(logger, isPlacementUpload, entityId, gameId, userId, 400, detail: $"capturedAt:{metadataResult.FailureReason}");
+                LogImageUploadServerExit(logger, isServerTimedImageUpload, http, entityType, entityId, userId, serverTimer, 400, detail: $"capturedAt:{metadataResult.FailureReason}");
+                return TypedResults.BadRequest(metadataResult.Problem);
+            }
+
+            var metadata = metadataResult.Metadata;
             var isPlacement = string.Equals(field, "placement", StringComparison.OrdinalIgnoreCase);
             var suffix = isPlacement ? "placement" : "image";
             var ext = file.ContentType switch
@@ -376,7 +394,7 @@ public static class ImageEndpoints
             }
             LogPlacementImageExit(logger, isPlacementUpload, entityId, gameId, userId, 200, blobKey, url);
             LogImageUploadServerExit(logger, isServerTimedImageUpload, http, entityType, entityId, userId, serverTimer, 200, blobKey);
-            return TypedResults.Ok(new ImageUploadResult(blobKey, url));
+            return TypedResults.Ok(new ImageUploadResult(blobKey, url, metadata));
         }
         catch (Exception ex) when (isPlacementUpload && ex is not OperationCanceledException)
         {
@@ -409,6 +427,78 @@ public static class ImageEndpoints
             LogImageUploadServerExit(logger, isServerTimedImageUpload, http, entityType, entityId, userId, serverTimer, 500, detail: ex.Message);
             throw;
         }
+    }
+
+    private static async Task<UploadMetadataReadResult> ReadUploadMetadataAsync(HttpContext http, CancellationToken ct)
+    {
+        var form = await http.Request.ReadFormAsync(ct);
+        var gpsLatitude = ReadNullableDouble(form, "gpsLatitude");
+        var gpsLongitude = ReadNullableDouble(form, "gpsLongitude");
+        var capturedAt = ReadNullableString(form, "capturedAt");
+
+        var capturedAtValidationFailure = ValidateCapturedAt(capturedAt);
+        if (capturedAtValidationFailure is not null)
+        {
+            return new UploadMetadataReadResult(
+                null,
+                ImageFieldValidationProblem("capturedAt", "Neplatný formát data v poli capturedAt."),
+                capturedAtValidationFailure,
+                TruncateForLog(capturedAt));
+        }
+
+        if (gpsLatitude is null && gpsLongitude is null && capturedAt is null)
+            return new UploadMetadataReadResult(null, null, null, null);
+
+        return new UploadMetadataReadResult(new ImageUploadMetadataDto(gpsLatitude, gpsLongitude, capturedAt), null, null, null);
+    }
+
+    private static string? ValidateCapturedAt(string? capturedAt)
+    {
+        if (capturedAt is null)
+            return null;
+
+        if (capturedAt.Length > CapturedAtMaxLength)
+            return "too-long";
+
+        if (!CapturedAtIsoRegex().IsMatch(capturedAt))
+            return "invalid-format";
+
+        return DateTime.TryParseExact(
+            capturedAt,
+            "yyyy-MM-dd'T'HH:mm:ss",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out _)
+            ? null
+            : "invalid-format";
+    }
+
+    private static double? ReadNullableDouble(IFormCollection form, string key)
+    {
+        var value = ReadNullableString(form, key);
+        if (value is null)
+            return null;
+
+        return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : null;
+    }
+
+    private static string? ReadNullableString(IFormCollection form, string key)
+    {
+        if (!form.TryGetValue(key, out var values))
+            return null;
+
+        var value = values.ToString();
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static string? TruncateForLog(string? value)
+    {
+        if (value is null || value.Length <= 96)
+            return value;
+
+        return value[..96] + "...";
     }
 
     /// <summary>
@@ -580,6 +670,12 @@ public static class ImageEndpoints
             .ToListAsync(ct))
             targets.Add(("quests", row.Id, row.BlobKey));
 
+        foreach (var row in await db.PersonalQuests
+            .Where(q => q.ImagePath != null && q.ImagePath != "")
+            .Select(q => new { q.Id, BlobKey = q.ImagePath! })
+            .ToListAsync(ct))
+            targets.Add(("personal-quests", row.Id, row.BlobKey));
+
         var presets = Enum.GetValues<ThumbnailPreset>();
         var attempted = 0;
         var done = 0;
@@ -739,6 +835,10 @@ public static class ImageEndpoints
                 var quest = await db.Quests.FindAsync(entityId);
                 if (quest is not null) quest.ImagePath = blobKey;
                 break;
+            case "personal-quests":
+                var personalQuest = await db.PersonalQuests.FindAsync(entityId);
+                if (personalQuest is not null) personalQuest.ImagePath = blobKey;
+                break;
         }
 
         return await db.SaveChangesAsync();
@@ -837,6 +937,9 @@ public static class ImageEndpoints
             "quests" => await db.Quests.Where(q => q.Id == entityId)
                 .Select(q => new ValueTuple<string?, string?, string?>(q.ImagePath, null, null))
                 .FirstOrDefaultAsync(),
+            "personal-quests" => await db.PersonalQuests.Where(q => q.Id == entityId)
+                .Select(q => new ValueTuple<string?, string?, string?>(q.ImagePath, null, null))
+                .FirstOrDefaultAsync(),
             _ => (null, null, null)
         };
     }
@@ -875,6 +978,22 @@ public static class ImageEndpoints
         Status = StatusCodes.Status400BadRequest
     };
 
+    private static ProblemDetails ImageFieldValidationProblem(string field, string detail)
+    {
+        var problem = ImageValidationProblem(detail);
+        problem.Extensions["errors"] = new Dictionary<string, string[]>
+        {
+            [field] = [detail]
+        };
+        return problem;
+    }
+
+    private sealed record UploadMetadataReadResult(
+        ImageUploadMetadataDto? Metadata,
+        ProblemDetails? Problem,
+        string? FailureReason,
+        string? CapturedAtForLog);
+
     private static async Task<bool> EntityExists(WorldDbContext db, string entityType, int entityId)
     {
         return entityType switch
@@ -891,6 +1010,7 @@ public static class ImageEndpoints
             "kingdoms" => await db.Kingdoms.AnyAsync(k => k.Id == entityId),
             "spells" => await db.Spells.AnyAsync(s => s.Id == entityId),
             "quests" => await db.Quests.AnyAsync(q => q.Id == entityId),
+            "personal-quests" => await db.PersonalQuests.AnyAsync(q => q.Id == entityId),
             _ => false
         };
     }

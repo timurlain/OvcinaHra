@@ -1,0 +1,271 @@
+@page "/aktivity"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject GameContextService GameContext
+@implements IDisposable
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Dtos
+
+@* Full-page WorldChange audit log — same source as the cockpit
+   "Co se nedávno dělo" sliver, but uncapped and rendered through
+   OvcinaGrid so organizers can filter, group, search, and sort the
+   whole roll. *@
+
+<PageTitle>Aktivita ve světě</PageTitle>
+
+<div class="oh-act-page-head">
+    <h1>Aktivita ve světě</h1>
+    @if (_rows is not null)
+    {
+        @* Default cap is 500 (max 2000); when the audit grows past 500
+           we'd silently mislead organizers ("500 záznamů" vs the real total),
+           so always frame the count as "Posledních N" — same wording at the
+           cap or below. *@
+        <span class="text-muted small">Posledních @_rows.Count záznamů</span>
+    }
+    <div class="oh-act-page-tools">
+        <button type="button" class="btn btn-sm btn-outline-secondary"
+                title="Obnovit" aria-label="Obnovit"
+                disabled="@_isRefreshing"
+                @onclick="OnRefreshAsync">
+            <i class="bi @(_isRefreshing ? "bi-arrow-repeat oh-spin" : "bi-arrow-clockwise")"></i>
+            <span class="d-none d-md-inline ms-1">Obnovit</span>
+        </button>
+    </div>
+</div>
+
+@if (GameContext.SelectedGameId is null)
+{
+    <div class="oh-act-empty">
+        <i class="bi bi-controller fs-1 d-block mb-2"></i>
+        <p class="text-muted">Vyber hru v levém panelu, ať máš co sledovat.</p>
+    </div>
+}
+else if (_rows is null)
+{
+    <p class="text-muted">Načítám…</p>
+}
+else if (_rows.Count == 0)
+{
+    <div class="oh-act-empty">
+        <i class="bi bi-inbox fs-1 d-block mb-2 text-muted"></i>
+        <p class="text-muted">Zatím žádné zaznamenané změny.</p>
+    </div>
+}
+else
+{
+    <OvcinaGrid Data="@_rows"
+                KeyFieldName="@nameof(WorldChangeRowDto.Id)"
+                LayoutKey="grid-layout-world-activity-v1"
+                ShowGroupPanel="true"
+                ShowSearchBox="true"
+                AutoExpandAllGroupRows="true"
+                CssClass="oh-act-grid"
+                RowClick="@OnRowClick">
+        <Columns>
+            <DxGridDataColumn FieldName="@nameof(WorldChangeRowDto.ChangedAtUtc)"
+                              Caption="Čas"
+                              Width="160px"
+                              SortIndex="0"
+                              SortOrder="GridColumnSortOrder.Descending">
+                <CellDisplayTemplate>
+                    @{
+                        var row = (WorldChangeRowDto)context.DataItem;
+                    }
+                    <span title="@row.ChangedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")">
+                        @row.ChangedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
+                    </span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            <DxGridDataColumn FieldName="@nameof(WorldChangeRowDto.EntityType)"
+                              Caption="Typ"
+                              Width="140px">
+                <CellDisplayTemplate>
+                    @{
+                        var row = (WorldChangeRowDto)context.DataItem;
+                    }
+                    <span class="oh-act-type-pill" title="@row.EntityType">
+                        <i class="bi @IconFor(row.EntityType)"></i>
+                        @TypeLabel(row.EntityType)
+                    </span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            <DxGridDataColumn FieldName="@nameof(WorldChangeRowDto.Operation)"
+                              Caption="Operace"
+                              Width="120px">
+                <CellDisplayTemplate>
+                    @{
+                        var row = (WorldChangeRowDto)context.DataItem;
+                    }
+                    <span class="oh-act-op-badge oh-act-op-badge--@OpBadgeTone(row.Operation)">
+                        @OpVerb(row.Operation)
+                    </span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            <DxGridDataColumn FieldName="@nameof(WorldChangeRowDto.EntityName)"
+                              Caption="Název"
+                              MinWidth="240">
+                <CellDisplayTemplate>
+                    @{
+                        var row = (WorldChangeRowDto)context.DataItem;
+                        var route = RouteFor(row);
+                    }
+                    @if (route is not null)
+                    {
+                        <a href="@route" class="oh-act-name-link"
+                           @onclick:stopPropagation="true">@row.EntityName</a>
+                    }
+                    else
+                    {
+                        <span>@row.EntityName</span>
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+
+            <DxGridDataColumn FieldName="@nameof(WorldChangeRowDto.ActorDisplayName)"
+                              Caption="Aktér"
+                              Width="180px" />
+        </Columns>
+    </OvcinaGrid>
+}
+
+@code {
+    private List<WorldChangeRowDto>? _rows;
+    private int? _loadedGameId;
+    private bool _isRefreshing;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GameContext.InitializeAsync();
+        GameContext.OnGameChanged += HandleGameChanged;
+        await LoadAsync();
+    }
+
+    private void HandleGameChanged() => _ = LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        var gameId = GameContext.SelectedGameId;
+        if (gameId is null)
+        {
+            _rows = null;
+            _loadedGameId = null;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (_loadedGameId == gameId.Value && _rows is not null) return;
+        _loadedGameId = gameId.Value;
+
+        try
+        {
+            var rows = await Api.GetListAsync<WorldChangeRowDto>(
+                $"/api/dashboard/world-change?gameId={gameId.Value}&take=500");
+            _rows = rows;
+        }
+        catch (Exception)
+        {
+            // ApiClient already logs the failure; keep prior _rows if any
+            // so a transient flake doesn't blank the table mid-session.
+            _rows ??= [];
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnRefreshAsync()
+    {
+        if (GameContext.SelectedGameId is not { } gameId || _isRefreshing) return;
+        _isRefreshing = true;
+        try
+        {
+            // Force a reload even if the game didn't change.
+            _loadedGameId = null;
+            await LoadAsync();
+        }
+        finally
+        {
+            _isRefreshing = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void OnRowClick(GridRowClickEventArgs e)
+    {
+        var row = (WorldChangeRowDto)e.Grid.GetDataItem(e.VisibleIndex);
+        var route = RouteFor(row);
+        if (route is not null) Nav.NavigateTo(route);
+    }
+
+    private static string OpVerb(WorldChangeOperation operation) => operation switch
+    {
+        WorldChangeOperation.Created => "vytvořil",
+        WorldChangeOperation.Updated => "upravil",
+        WorldChangeOperation.Deleted => "smazal",
+        _ => "?"
+    };
+
+    private static string OpBadgeTone(WorldChangeOperation operation) => operation switch
+    {
+        WorldChangeOperation.Created => "created",
+        WorldChangeOperation.Updated => "updated",
+        WorldChangeOperation.Deleted => "deleted",
+        _ => "default"
+    };
+
+    // EntityType comes straight from the audit log (typically the EF entity
+    // class name — "Location", "Character", "Quest", etc.). The label table
+    // keeps the common ones Czech for organizer eyes; anything not listed
+    // falls through as the raw class name (catches new entity types we
+    // wire later without code changes here).
+    private static string TypeLabel(string entityType) => entityType switch
+    {
+        "Location" => "Lokace",
+        "Character" => "Postava",
+        "CharacterAssignment" => "Hrdina",
+        "Quest" => "Quest",
+        "Item" => "Předmět",
+        "Skill" => "Dovednost",
+        "Spell" => "Kouzlo",
+        "Building" => "Stavba",
+        "Npc" => "Postava NPC",
+        "GameEvent" => "Událost",
+        "GameTimeSlot" => "Časový úsek",
+        "TreasureQuest" => "Poklad",
+        "SecretStash" => "Skrýše",
+        "OrganizerRoleAssignment" => "Rozpis rolí",
+        _ => entityType
+    };
+
+    private static string IconFor(string entityType) => entityType switch
+    {
+        "Location" => "bi-geo-alt",
+        "Character" or "CharacterAssignment" => "bi-person",
+        "Quest" => "bi-flag",
+        "Item" => "bi-box",
+        "Skill" => "bi-lightning-charge",
+        "Spell" => "bi-stars",
+        "Building" => "bi-house",
+        "Npc" => "bi-person-badge",
+        "GameEvent" => "bi-calendar-event",
+        "GameTimeSlot" => "bi-clock",
+        "TreasureQuest" => "bi-safe",
+        "SecretStash" => "bi-bag",
+        "OrganizerRoleAssignment" => "bi-people",
+        _ => "bi-circle"
+    };
+
+    private static string? RouteFor(WorldChangeRowDto row) => row.EntityType switch
+    {
+        "Location" => $"/locations/{row.EntityId}",
+        "Quest" => $"/quests/{row.EntityId}",
+        "Item" => $"/items/{row.EntityId}",
+        "Building" => $"/buildings/{row.EntityId}",
+        _ => null
+    };
+
+    public void Dispose() => GameContext.OnGameChanged -= HandleGameChanged;
+}

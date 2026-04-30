@@ -1,81 +1,120 @@
 @using OvcinaHra.Shared.Domain.Enums
 @using OvcinaHra.Shared.Extensions
 
-@* Issue #207 — left rail with map layers. Lokace expands to per-kind
-   sub-chips so the user can hide individual LocationKinds. Layer +
-   per-kind state hydrates from / saves to localStorage via MapPage. *@
+@* Issue #465 — compact Vrstvy dropdown. It keeps the existing layer state
+   callbacks owned by MapPage while moving overlay toggles off the map face. *@
 
-<aside class="oh-map-layer-rail" aria-label="Vrstvy mapy">
-    <h2 class="oh-map-layer-title">Vrstvy</h2>
-    <label class="oh-map-layer-row">
-        <input type="checkbox" checked="@LocationsVisible"
-               @onchange="@(e => OnVisibilityChange.InvokeAsync(("loc", (bool)e.Value!)))" />
-        <span class="oh-map-layer-dot oh-map-layer-loc"></span>
-        <span class="oh-map-layer-lbl">Lokace</span>
-        <span class="oh-map-layer-num text-muted">@LocationsCount</span>
-    </label>
+<div class="oh-map-layers-control" aria-label="Vrstvy mapy">
+    <button id="@_buttonId"
+            type="button"
+            class="oh-map-layers-button @(_open ? "is-active" : "")"
+            aria-expanded="@_open.ToString().ToLowerInvariant()"
+            aria-controls="@_panelId"
+            aria-label="Vrstvy mapy"
+            @onclick="ToggleOpen"
+            @onclick:stopPropagation="true"
+            @onmouseenter="ShowTooltip"
+            @onmouseleave="HideTooltip"
+            @onfocus="ShowTooltip"
+            @onblur="HideTooltip">
+        <i class="bi bi-layers"></i>
+        <span>Vrstvy</span>
+    </button>
 
-    @* Per-kind sub-chips — only when the master Lokace layer is on. *@
-    @if (LocationsVisible)
+    <DxFlyout @bind-IsOpen="@_tooltipOpen"
+              PositionTarget="@($"#{_buttonId}")"
+              Position="FlyoutPosition.Bottom"
+              BodyText="Zobrazit vrstvy mapy"
+              HeaderVisible="false"
+              CloseOnOutsideClick="false"
+              Width="190px" />
+
+    @if (_open)
     {
-        <ul class="oh-map-kind-list">
-            @foreach (var kind in KindOrder)
+        <div id="@_panelId" class="oh-map-layers-panel" role="group" aria-label="Vrstvy mapy"
+             @onclick:stopPropagation="true">
+            <h2 class="oh-map-layer-title">Vrstvy</h2>
+            <label class="oh-map-layer-row">
+                <input type="checkbox" checked="@LocationsVisible"
+                       @onchange="@(e => ToggleVisibilityAsync("Lokace", "loc", (bool)e.Value!))" />
+                <span class="oh-map-layer-dot oh-map-layer-loc"></span>
+                <span class="oh-map-layer-lbl">Lokace</span>
+                <span class="oh-map-layer-num text-muted">@LocationsCount</span>
+            </label>
+
+            @if (LocationsVisible)
             {
-                var isHidden = HiddenKinds.Contains(kind);
-                var count = LocationsByKind?.GetValueOrDefault(kind) ?? 0;
-                var dataKind = kind.ToString().ToLowerInvariant();
-                <li>
-                    <button type="button"
-                            class="oh-map-kind-row @(isHidden ? "is-hidden" : "")"
-                            aria-pressed="@(isHidden ? "false" : "true")"
-                            title="@(isHidden ? "Zobrazit" : "Skrýt") — @kind.GetDisplayName()"
-                            @onclick="@(() => OnKindToggle.InvokeAsync(kind))">
-                        <span class="oh-map-kind-dot" data-kind="@dataKind"></span>
-                        <span class="oh-map-kind-lbl">@kind.GetDisplayName()</span>
-                        <span class="oh-map-kind-num">@count</span>
-                    </button>
-                </li>
+                <ul class="oh-map-kind-list">
+                    @foreach (var kind in KindOrder)
+                    {
+                        var isHidden = HiddenKinds.Contains(kind);
+                        var count = LocationsByKind?.GetValueOrDefault(kind) ?? 0;
+                        var dataKind = kind.ToString().ToLowerInvariant();
+                        <li>
+                            <button type="button"
+                                    class="oh-map-kind-row @(isHidden ? "is-hidden" : "")"
+                                    aria-pressed="@(isHidden ? "false" : "true")"
+                                    title="@(isHidden ? "Zobrazit" : "Skrýt") — @kind.GetDisplayName()"
+                                    @onclick="@(() => OnKindToggle.InvokeAsync(kind))">
+                                <span class="oh-map-kind-dot" data-kind="@dataKind"></span>
+                                <span class="oh-map-kind-lbl">@kind.GetDisplayName()</span>
+                                <span class="oh-map-kind-num">@count</span>
+                            </button>
+                        </li>
+                    }
+                </ul>
             }
-        </ul>
+
+            <label class="oh-map-layer-row">
+                <input type="checkbox" checked="@StashesVisible"
+                       @onchange="@(e => ToggleVisibilityAsync("Skrýše", "stash", (bool)e.Value!))" />
+                <span class="oh-map-layer-dot oh-map-layer-stash"></span>
+                <span class="oh-map-layer-lbl">Skrýše &amp; Poklady</span>
+                <span class="oh-map-layer-num text-muted">@StashesCount</span>
+            </label>
+
+            <label class="oh-map-layer-row">
+                <input type="checkbox" checked="@ShowRegionsOnMap"
+                       @onchange="@(e => ToggleRegionLabelsAsync((bool)e.Value!))" />
+                <span class="oh-map-layer-dot oh-map-layer-region"></span>
+                <span class="oh-map-layer-lbl">Zobrazit oblasti</span>
+            </label>
+
+            <label class="oh-map-layer-row">
+                <input type="checkbox" checked="@ShowDoneLocations"
+                       @onchange="@(e => ToggleDoneLocationsAsync((bool)e.Value!))" />
+                <span class="oh-map-layer-dot oh-map-layer-done"></span>
+                <span class="oh-map-layer-lbl">Hotové lokace</span>
+            </label>
+
+            <label class="oh-map-layer-row">
+                <input type="checkbox" checked="@OverlaysVisible"
+                       @onchange="@(e => ToggleOverlayAsync((bool)e.Value!))" />
+                <span class="oh-map-layer-dot oh-map-layer-overlay"></span>
+                <span class="oh-map-layer-lbl">Překryv hráčů</span>
+            </label>
+
+            @if (OrganizerOverlayEnabled)
+            {
+                <label class="oh-map-layer-row">
+                    <input type="checkbox" checked="@OrganizerOverlayVisible"
+                           @onchange="@(e => ToggleOrganizerOverlayAsync((bool)e.Value!))" />
+                    <span class="oh-map-layer-dot oh-map-layer-organizer-overlay"></span>
+                    <span class="oh-map-layer-lbl">Překryv organizátorů</span>
+                </label>
+            }
+
+            <p class="oh-map-layer-hint text-muted small">
+                <i class="bi bi-cursor"></i>
+                <strong>Ctrl + klik</strong> na mapu umístí dosud neumístěnou lokaci.
+            </p>
+            <p class="oh-map-layer-hint text-muted small">
+                <i class="bi bi-arrows-move"></i>
+                <strong>Ctrl + Shift + klik</strong> přesune libovolnou lokaci sem.
+            </p>
+        </div>
     }
-
-    <label class="oh-map-layer-row">
-        <input type="checkbox" checked="@StashesVisible"
-               @onchange="@(e => OnVisibilityChange.InvokeAsync(("stash", (bool)e.Value!)))" />
-        <span class="oh-map-layer-dot oh-map-layer-stash"></span>
-        <span class="oh-map-layer-lbl">Skrýše &amp; Poklady</span>
-        <span class="oh-map-layer-num text-muted">@StashesCount</span>
-    </label>
-
-    <label class="oh-map-layer-row">
-        <input type="checkbox" checked="@OverlaysVisible"
-               @onchange="@(e => OnOverlayVisibilityChange.InvokeAsync((bool)e.Value!))" />
-        <span class="oh-map-layer-dot oh-map-layer-overlay"></span>
-        <span class="oh-map-layer-lbl">Překryv hráčů</span>
-    </label>
-
-    @if (OrganizerOverlayEnabled)
-    {
-        <label class="oh-map-layer-row">
-            <input type="checkbox" checked="@OrganizerOverlayVisible"
-                   @onchange="@(e => OnOrganizerOverlayVisibilityChange.InvokeAsync((bool)e.Value!))" />
-            <span class="oh-map-layer-dot oh-map-layer-organizer-overlay"></span>
-            <span class="oh-map-layer-lbl">Překryv organizátorů</span>
-        </label>
-    }
-
-    <p class="oh-map-layer-hint text-muted small fst-italic">
-        Setkání questů přibydou, jakmile budou mít body na mapě.
-    </p>
-    <p class="oh-map-layer-hint text-muted small">
-        <i class="bi bi-cursor"></i>
-        <strong>Ctrl + klik</strong> na mapu umístí dosud neumístěnou lokaci.
-    </p>
-    <p class="oh-map-layer-hint text-muted small">
-        <i class="bi bi-arrows-move"></i>
-        <strong>Ctrl + Shift + klik</strong> přesune libovolnou lokaci sem.
-    </p>
-</aside>
+</div>
 
 @code {
     [Parameter] public bool LocationsVisible { get; set; } = true;
@@ -83,16 +122,24 @@
     [Parameter] public bool OverlaysVisible { get; set; } = true;
     [Parameter] public bool OrganizerOverlayEnabled { get; set; }
     [Parameter] public bool OrganizerOverlayVisible { get; set; } = true;
+    [Parameter] public bool ShowRegionsOnMap { get; set; }
+    [Parameter] public bool ShowDoneLocations { get; set; }
     [Parameter] public int LocationsCount { get; set; }
     [Parameter] public int StashesCount { get; set; }
     [Parameter] public EventCallback<(string Layer, bool Visible)> OnVisibilityChange { get; set; }
     [Parameter] public EventCallback<bool> OnOverlayVisibilityChange { get; set; }
     [Parameter] public EventCallback<bool> OnOrganizerOverlayVisibilityChange { get; set; }
+    [Parameter] public EventCallback<bool> OnRegionLabelsChange { get; set; }
+    [Parameter] public EventCallback<bool> OnDoneLocationsChange { get; set; }
     [Parameter] public IReadOnlyDictionary<LocationKind, int>? LocationsByKind { get; set; }
     [Parameter] public HashSet<LocationKind> HiddenKinds { get; set; } = new();
     [Parameter] public EventCallback<LocationKind> OnKindToggle { get; set; }
 
-    // Display order — common kinds on top, rare ones at the bottom.
+    private readonly string _buttonId = $"oh-map-layers-btn-{Guid.NewGuid():N}";
+    private readonly string _panelId = $"oh-map-layers-panel-{Guid.NewGuid():N}";
+    private bool _open;
+    private bool _tooltipOpen;
+
     private static readonly LocationKind[] KindOrder =
     [
         LocationKind.Village,
@@ -103,4 +150,50 @@
         LocationKind.Dungeon,
         LocationKind.PointOfInterest,
     ];
+
+    private void ToggleOpen()
+    {
+        _open = !_open;
+        _tooltipOpen = false;
+        Console.WriteLine($"[map-layers] layers-control {(_open ? "opened" : "closed")}");
+    }
+
+    private void ShowTooltip()
+    {
+        if (!_open)
+            _tooltipOpen = true;
+    }
+
+    private void HideTooltip()
+        => _tooltipOpen = false;
+
+    private async Task ToggleVisibilityAsync(string name, string layer, bool visible)
+    {
+        Console.WriteLine($"[map-layers] layer-toggle changed name={name} enabled={visible.ToString().ToLowerInvariant()}");
+        await OnVisibilityChange.InvokeAsync((layer, visible));
+    }
+
+    private async Task ToggleOverlayAsync(bool visible)
+    {
+        Console.WriteLine($"[map-layers] layer-toggle changed name=Překryv hráčů enabled={visible.ToString().ToLowerInvariant()}");
+        await OnOverlayVisibilityChange.InvokeAsync(visible);
+    }
+
+    private async Task ToggleOrganizerOverlayAsync(bool visible)
+    {
+        Console.WriteLine($"[map-layers] layer-toggle changed name=Překryv organizátorů enabled={visible.ToString().ToLowerInvariant()}");
+        await OnOrganizerOverlayVisibilityChange.InvokeAsync(visible);
+    }
+
+    private async Task ToggleRegionLabelsAsync(bool visible)
+    {
+        Console.WriteLine($"[map-layers] layer-toggle changed name=Oblasti enabled={visible.ToString().ToLowerInvariant()}");
+        await OnRegionLabelsChange.InvokeAsync(visible);
+    }
+
+    private async Task ToggleDoneLocationsAsync(bool visible)
+    {
+        Console.WriteLine($"[map-layers] layer-toggle changed name=Hotové enabled={visible.ToString().ToLowerInvariant()}");
+        await OnDoneLocationsChange.InvokeAsync(visible);
+    }
 }

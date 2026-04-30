@@ -37,16 +37,14 @@ public record DashboardIssueDto(
 public record DashboardIssuesDto(IReadOnlyList<DashboardIssueDto> Issues);
 
 /// <summary>
-/// One row in the RecentActivityFeed. WorldActivity rows are real organizer
-/// recordings; legacy rows still come from entity timestamps until more
-/// activity types are wired through the same table.
+/// One row in the RecentActivityFeed, backed by the WorldChange audit log.
 /// </summary>
 public record DashboardActivityDto(
     string EntityType,
     int EntityId,
     string EntityName,
     string? ThumbnailUrl,
-    string Verb,        /* vytvořil | upravil | smazal — currently always "upravil" */
+    string Verb,        /* vytvořil | upravil | smazal */
     string ActorName,
     DateTime OccurredUtc);
 
@@ -76,3 +74,37 @@ public record TimelineRowDto(
     string? LocationName,
     int? LocationId,
     bool IsRunning);
+
+/// <summary>
+/// Issue #478 — raw WorldActivity row powering the Aktivity světa table
+/// on the Home cockpit. Unlike <see cref="DashboardActivityDto"/> (which
+/// merges WorldActivity with legacy entity-timestamp rows for the sliver
+/// feed), this DTO exposes the audit row 1:1 so organizers can verify
+/// every level-up / placement / quest completion that flowed in via the
+/// Glejt PWA or in-app workflows.
+/// </summary>
+public record WorldActivityRowDto(
+    int Id,
+    DateTime TimestampUtc,
+    string OrganizerName,
+    WorldActivityType ActivityType,
+    string Description,
+    int? LocationId,
+    string? LocationName,
+    int? CharacterAssignmentId,
+    int? QuestId);
+
+/// <summary>
+/// Raw WorldChange audit row for the full /aktivity page. Same source as
+/// the home-cockpit "Co se nedávno dělo" sliver, but uncapped, paged, and
+/// filterable client-side via DxGrid (filter row + group panel + search).
+/// </summary>
+public record WorldChangeRowDto(
+    int Id,
+    int? GameId,
+    string EntityType,
+    int EntityId,
+    string EntityName,
+    WorldChangeOperation Operation,
+    string ActorDisplayName,
+    DateTime ChangedAtUtc);

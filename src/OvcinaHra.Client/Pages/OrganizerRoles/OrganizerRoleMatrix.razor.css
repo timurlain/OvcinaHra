@@ -28,6 +28,7 @@
     gap: 12px;
     align-items: end;
     margin-bottom: 16px;
+    min-width: 0;
 }
 
 .oh-orgrole-filters label,
@@ -35,6 +36,7 @@
     display: grid;
     gap: 4px;
     font-weight: 600;
+    min-width: 0;
 }
 
 .oh-orgrole-view-buttons {
@@ -94,7 +96,11 @@
 }
 
 .oh-orgrole-matrix-wrap {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     overflow: auto;
+    -webkit-overflow-scrolling: touch;
     border: 1px solid var(--bs-border-color);
     max-height: calc(100vh - 260px);
     background: var(--bs-body-bg);
@@ -286,6 +292,12 @@
     color: #6f4e00;
     font-size: 0.72rem;
     font-weight: 700;
+}
+
+@media (max-width: 1100px) {
+    .oh-orgrole-filters {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
 }
 
 @media (max-width: 900px) {

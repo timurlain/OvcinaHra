@@ -24,6 +24,13 @@ public class DashboardEndpointsTests(PostgresFixture postgres)
         return (await response.Content.ReadFromJsonAsync<GameDetailDto>())!;
     }
 
+    private async Task ClearWorldChangesAsync()
+    {
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        await db.WorldChanges.ExecuteDeleteAsync();
+    }
+
     [Fact]
     public async Task Stats_EmptyGame_ReturnsAllZeros()
     {
@@ -180,6 +187,7 @@ public class DashboardEndpointsTests(PostgresFixture postgres)
     public async Task Activity_NoEdits_ReturnsEmpty()
     {
         var game = await CreateGameAsync();
+        await ClearWorldChangesAsync();
 
         var rows = await Client.GetFromJsonAsync<List<DashboardActivityDto>>(
             $"/api/dashboard/activity?gameId={game.Id}");
@@ -189,7 +197,267 @@ public class DashboardEndpointsTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task Activity_WorldActivityLocationPlacement_ReturnsActorLocationAndThumbnail()
+    public async Task Activity_WorldChanges_ReturnsNewestScopedRows()
+    {
+        var game = await CreateGameAsync();
+        var otherGame = await CreateGameAsync();
+        await ClearWorldChangesAsync();
+
+        var now = DateTime.UtcNow;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            db.WorldChanges.AddRange(
+                new WorldChange
+                {
+                    GameId = game.Id,
+                    EntityType = nameof(Location),
+                    EntityId = 10,
+                    EntityName = "Starý brod",
+                    Operation = WorldChangeOperation.Updated,
+                    ActorUserId = "test-user",
+                    ActorDisplayName = "Test Organizátor",
+                    ChangedAtUtc = now
+                },
+                new WorldChange
+                {
+                    GameId = null,
+                    EntityType = nameof(Item),
+                    EntityId = 20,
+                    EntityName = "Hojivý lektvar",
+                    Operation = WorldChangeOperation.Created,
+                    ActorUserId = "system",
+                    ActorDisplayName = "System",
+                    ChangedAtUtc = now.AddMinutes(1)
+                },
+                new WorldChange
+                {
+                    GameId = otherGame.Id,
+                    EntityType = nameof(Npc),
+                    EntityId = 30,
+                    EntityName = "Cizí NPC",
+                    Operation = WorldChangeOperation.Deleted,
+                    ActorUserId = "other",
+                    ActorDisplayName = "Other",
+                    ChangedAtUtc = now.AddMinutes(2)
+                });
+            await db.SaveChangesAsync();
+        }
+
+        var rows = await Client.GetFromJsonAsync<List<DashboardActivityDto>>(
+            $"/api/dashboard/activity?gameId={game.Id}");
+
+        Assert.NotNull(rows);
+        Assert.Collection(rows,
+            row =>
+            {
+                Assert.Equal("item", row.EntityType);
+                Assert.Equal(20, row.EntityId);
+                Assert.Equal("Hojivý lektvar", row.EntityName);
+                Assert.Equal("System", row.ActorName);
+                Assert.Equal("vytvořil", row.Verb);
+                Assert.Null(row.ThumbnailUrl);
+            },
+            row =>
+            {
+                Assert.Equal("location", row.EntityType);
+                Assert.Equal(10, row.EntityId);
+                Assert.Equal("Starý brod", row.EntityName);
+                Assert.Equal("Test Organizátor", row.ActorName);
+                Assert.Equal("upravil", row.Verb);
+            });
+    }
+
+    // /aktivity full-page log — uncapped paged feed of raw WorldChange rows
+    // for the active game (plus catalog-wide where GameId is null), DESC by
+    // ChangedAtUtc, no merge/projection so the client can DxGrid-filter the
+    // entire roll. Cross-game rows must NOT leak.
+    [Fact]
+    public async Task WorldChange_ReturnsRawRowsScopedToGameAndCatalog()
+    {
+        var game = await CreateGameAsync();
+        var otherGame = await CreateGameAsync();
+        await ClearWorldChangesAsync();
+
+        var now = DateTime.UtcNow;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            db.WorldChanges.AddRange(
+                new WorldChange
+                {
+                    GameId = game.Id,
+                    EntityType = nameof(Location),
+                    EntityId = 10,
+                    EntityName = "Starý brod",
+                    Operation = WorldChangeOperation.Updated,
+                    ActorUserId = "u1",
+                    ActorDisplayName = "Drozd",
+                    ChangedAtUtc = now
+                },
+                new WorldChange
+                {
+                    GameId = null,
+                    EntityType = nameof(Item),
+                    EntityId = 20,
+                    EntityName = "Hojivý lektvar",
+                    Operation = WorldChangeOperation.Created,
+                    ActorUserId = "system",
+                    ActorDisplayName = "System",
+                    ChangedAtUtc = now.AddMinutes(1)
+                },
+                new WorldChange
+                {
+                    GameId = otherGame.Id,
+                    EntityType = nameof(Npc),
+                    EntityId = 30,
+                    EntityName = "Cizí NPC",
+                    Operation = WorldChangeOperation.Deleted,
+                    ActorUserId = "other",
+                    ActorDisplayName = "Other",
+                    ChangedAtUtc = now.AddMinutes(2)
+                });
+            await db.SaveChangesAsync();
+        }
+
+        var rows = await Client.GetFromJsonAsync<List<WorldChangeRowDto>>(
+            $"/api/dashboard/world-change?gameId={game.Id}");
+
+        Assert.NotNull(rows);
+        Assert.Equal(2, rows.Count);
+
+        // Newest first, catalog-wide row (GameId == null) precedes the game-scoped one.
+        Assert.Equal(nameof(Item), rows[0].EntityType);
+        Assert.Null(rows[0].GameId);
+        Assert.Equal(WorldChangeOperation.Created, rows[0].Operation);
+        Assert.Equal("System", rows[0].ActorDisplayName);
+
+        Assert.Equal(nameof(Location), rows[1].EntityType);
+        Assert.Equal(game.Id, rows[1].GameId);
+        Assert.Equal(WorldChangeOperation.Updated, rows[1].Operation);
+        Assert.Equal("Drozd", rows[1].ActorDisplayName);
+        Assert.Equal("Starý brod", rows[1].EntityName);
+    }
+
+    [Fact]
+    public async Task WorldChange_NonExistentGame_Returns404()
+    {
+        // §1 — REST 404 before 200-with-empty so orchestrator typos
+        // surface instead of being masked.
+        var response = await Client.GetAsync("/api/dashboard/world-change?gameId=999999");
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task WorldChange_TakeParameter_CapsResultCount()
+    {
+        var game = await CreateGameAsync();
+        await ClearWorldChangesAsync();
+
+        var now = DateTime.UtcNow;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            for (var i = 0; i < 5; i++)
+            {
+                db.WorldChanges.Add(new WorldChange
+                {
+                    GameId = game.Id,
+                    EntityType = nameof(Location),
+                    EntityId = 100 + i,
+                    EntityName = $"L{i}",
+                    Operation = WorldChangeOperation.Updated,
+                    ActorUserId = "u1",
+                    ActorDisplayName = "Drozd",
+                    ChangedAtUtc = now.AddMinutes(i)
+                });
+            }
+            await db.SaveChangesAsync();
+        }
+
+        var rows = await Client.GetFromJsonAsync<List<WorldChangeRowDto>>(
+            $"/api/dashboard/world-change?gameId={game.Id}&take=2");
+
+        Assert.NotNull(rows);
+        Assert.Equal(2, rows.Count);
+        // Newest 2 in DESC order — i=4 then i=3.
+        Assert.Equal("L4", rows[0].EntityName);
+        Assert.Equal("L3", rows[1].EntityName);
+    }
+
+    [Fact]
+    public async Task WorldChangeInterceptor_ApiCreateGame_RecordsAuthenticatedActor()
+    {
+        var game = await CreateGameAsync();
+
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        var row = await db.WorldChanges.SingleAsync(c =>
+            c.EntityType == nameof(Game) && c.EntityId == game.Id);
+
+        Assert.Equal(game.Id, row.GameId);
+        Assert.Equal("Cockpit", row.EntityName);
+        Assert.Equal(WorldChangeOperation.Created, row.Operation);
+        Assert.Equal("test-user", row.ActorUserId);
+        Assert.Equal("Test Organizátor", row.ActorDisplayName);
+    }
+
+    [Fact]
+    public async Task WorldChangeInterceptor_BackgroundSave_UsesSystemActor()
+    {
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            db.Locations.Add(new Location
+            {
+                Name = "Bez kontextu",
+                LocationKind = LocationKind.Wilderness
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var assertScope = Factory.Services.CreateScope();
+        var assertDb = assertScope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        var row = await assertDb.WorldChanges.SingleAsync(c => c.EntityType == nameof(Location));
+
+        Assert.Equal(WorldChangeOperation.Created, row.Operation);
+        Assert.Equal("system", row.ActorUserId);
+        Assert.Equal("System", row.ActorDisplayName);
+    }
+
+    [Fact]
+    public async Task WorldChangeInterceptor_ExplicitTransaction_SkipsAuditWithoutBlockingUserData()
+    {
+        await ClearWorldChangesAsync();
+
+        int locationId;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            await using var tx = await db.Database.BeginTransactionAsync();
+            var location = new Location
+            {
+                Name = "Transakční paseka",
+                LocationKind = LocationKind.Wilderness
+            };
+            db.Locations.Add(location);
+            await db.SaveChangesAsync();
+            locationId = location.Id;
+            await tx.CommitAsync();
+        }
+
+        using var assertScope = Factory.Services.CreateScope();
+        var assertDb = assertScope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        Assert.True(await assertDb.Locations.AnyAsync(l => l.Id == locationId));
+        Assert.False(await assertDb.WorldChanges.AnyAsync(c =>
+            c.EntityType == nameof(Location) && c.EntityId == locationId));
+    }
+
+    // Issue #478 — raw WorldActivity table on the cockpit. Returns audit
+    // rows 1:1 (no merge with legacy entity timestamps), ordered DESC,
+    // includes Location.Name when present.
+    [Fact]
+    public async Task WorldActivity_ReturnsRawRowsOrderedDesc()
     {
         var game = await CreateGameAsync();
         int locationId;
@@ -198,39 +466,91 @@ public class DashboardEndpointsTests(PostgresFixture postgres)
             var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
             var location = new Location
             {
-                Name = "Starý brod",
-                LocationKind = LocationKind.Village,
-                PlacementPhotoPath = "locationplacements/1/image.png"
+                Name = "Aradhrynd",
+                LocationKind = LocationKind.Town
             };
             db.Locations.Add(location);
             await db.SaveChangesAsync();
-            location.PlacementPhotoPath = $"locationplacements/{location.Id}/image.png";
             db.GameLocations.Add(new GameLocation { GameId = game.Id, LocationId = location.Id });
-            db.WorldActivities.Add(new WorldActivity
-            {
-                GameId = game.Id,
-                TimestampUtc = DateTime.UtcNow.AddMinutes(-1),
-                OrganizerUserId = "test-user",
-                OrganizerName = "Test Organizátor",
-                ActivityType = WorldActivityType.LocationPlaced,
-                Description = $"Umístěna lokace: {location.Name}",
-                LocationId = location.Id,
-                DataJson = "{}"
-            });
+            db.WorldActivities.AddRange(
+                new WorldActivity
+                {
+                    GameId = game.Id,
+                    TimestampUtc = DateTime.UtcNow.AddMinutes(-10),
+                    OrganizerUserId = "u1",
+                    OrganizerName = "Drozd",
+                    ActivityType = WorldActivityType.LocationPlaced,
+                    Description = $"Umístěna lokace: {location.Name}",
+                    LocationId = location.Id,
+                    DataJson = "{}"
+                },
+                new WorldActivity
+                {
+                    GameId = game.Id,
+                    TimestampUtc = DateTime.UtcNow.AddMinutes(-1),
+                    OrganizerUserId = "u2",
+                    OrganizerName = "Tasha",
+                    ActivityType = WorldActivityType.CharacterLevelUp,
+                    Description = "Beorn dosáhl 3. úrovně",
+                    DataJson = "{\"level\":3}"
+                });
             await db.SaveChangesAsync();
             locationId = location.Id;
         }
 
-        var rows = await Client.GetFromJsonAsync<List<DashboardActivityDto>>(
-            $"/api/dashboard/activity?gameId={game.Id}");
+        var rows = await Client.GetFromJsonAsync<List<WorldActivityRowDto>>(
+            $"/api/dashboard/world-activity?gameId={game.Id}");
 
-        var row = Assert.Single(rows!);
-        Assert.Equal("location", row.EntityType);
-        Assert.Equal(locationId, row.EntityId);
-        Assert.Equal("Starý brod", row.EntityName);
-        Assert.Equal("Test Organizátor", row.ActorName);
-        Assert.Equal("umístil", row.Verb);
-        Assert.Contains($"/api/images/locationplacements/{locationId}/thumb", row.ThumbnailUrl!);
+        Assert.NotNull(rows);
+        Assert.Equal(2, rows.Count);
+
+        // Newest first.
+        Assert.Equal(WorldActivityType.CharacterLevelUp, rows[0].ActivityType);
+        Assert.Equal("Tasha", rows[0].OrganizerName);
+        Assert.Null(rows[0].LocationId);
+        Assert.Null(rows[0].LocationName);
+
+        Assert.Equal(WorldActivityType.LocationPlaced, rows[1].ActivityType);
+        Assert.Equal("Drozd", rows[1].OrganizerName);
+        Assert.Equal(locationId, rows[1].LocationId);
+        Assert.Equal("Aradhrynd", rows[1].LocationName);
+    }
+
+    [Fact]
+    public async Task WorldActivity_NonExistentGame_Returns404()
+    {
+        // §1 — REST 404 before 200-with-empty so orchestrator bugs
+        // (typo'd gameId, stale URL) surface instead of being masked.
+        var response = await Client.GetAsync("/api/dashboard/world-activity?gameId=999999");
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task WorldActivity_OtherGame_IsExcluded()
+    {
+        var gameA = await CreateGameAsync();
+        var gameB = await CreateGameAsync();
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            db.WorldActivities.Add(new WorldActivity
+            {
+                GameId = gameB.Id,
+                TimestampUtc = DateTime.UtcNow,
+                OrganizerUserId = "u1",
+                OrganizerName = "Other",
+                ActivityType = WorldActivityType.QuestCompleted,
+                Description = "Quest done in other game",
+                DataJson = "{}"
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var rows = await Client.GetFromJsonAsync<List<WorldActivityRowDto>>(
+            $"/api/dashboard/world-activity?gameId={gameA.Id}");
+
+        Assert.NotNull(rows);
+        Assert.Empty(rows);
     }
 
     [Fact]

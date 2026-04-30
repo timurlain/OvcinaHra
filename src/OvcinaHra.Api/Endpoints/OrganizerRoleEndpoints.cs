@@ -1,11 +1,15 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using System.Diagnostics;
+using System.Globalization;
 using System.Security.Claims;
+using System.Text;
 using OvcinaHra.Api.Data;
+using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
+using OvcinaHra.Shared.Extensions;
 
 namespace OvcinaHra.Api.Endpoints;
 
@@ -15,6 +19,8 @@ public static class OrganizerRoleEndpoints
     private const int PersonNameMaxLength = 200;
     private const int PersonEmailMaxLength = 200;
     private const int NotesMaxLength = 1000;
+    private static readonly CultureInfo CzechCulture = CultureInfo.GetCultureInfo("cs-CZ");
+    private static readonly TimeZoneInfo PragueTimeZone = ResolvePragueTimeZone();
 
     public static RouteGroupBuilder MapOrganizerRoleEndpoints(this IEndpointRouteBuilder routes)
     {
@@ -30,6 +36,9 @@ public static class OrganizerRoleEndpoints
             .WithTags("OrganizerRoles")
             .RequireAuthorization();
         routes.MapPost("/api/organizer-roles/bulk-fill-remaining", BulkFillRemaining)
+            .WithTags("OrganizerRoles")
+            .RequireAuthorization();
+        routes.MapGet("/api/organizer-roles/export", ExportCsv)
             .WithTags("OrganizerRoles")
             .RequireAuthorization();
 
@@ -99,6 +108,82 @@ public static class OrganizerRoleEndpoints
             assignments.Count);
 
         return TypedResults.Ok(new OrganizerRoleMatrixDto(gameId, slots, npcs, assignments));
+    }
+
+    private static async Task<IResult> ExportCsv(
+        int gameId,
+        string? format,
+        WorldDbContext db,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        var logger = loggerFactory.CreateLogger(LoggerCategory);
+        var timer = Stopwatch.StartNew();
+        var requestedFormat = string.IsNullOrWhiteSpace(format) ? "csv" : format.Trim();
+        if (!string.Equals(requestedFormat, "csv", StringComparison.OrdinalIgnoreCase))
+        {
+            return Problem(
+                "Podporovaný formát exportu je csv.",
+                "Nepodporovaný formát exportu",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var game = await db.Games
+            .AsNoTracking()
+            .Where(g => g.Id == gameId)
+            .Select(g => new { g.Id, g.Name })
+            .SingleOrDefaultAsync(ct);
+        if (game is null)
+        {
+            logger.LogInformation("[organizer-roles-export] game_not_found gameId={GameId} format={Format}", gameId, requestedFormat);
+            return TypedResults.NotFound();
+        }
+
+        var slots = await db.GameTimeSlots
+            .AsNoTracking()
+            .Where(s => s.GameId == gameId)
+            .OrderBy(s => s.StartTime)
+            .Select(s => new OrganizerRoleExportSlot(
+                s.Id,
+                s.StartTime,
+                s.Duration,
+                s.InGameYear,
+                s.Stage))
+            .ToListAsync(ct);
+
+        var assignments = await db.OrganizerRoleAssignments
+            .AsNoTracking()
+            .Where(a => a.GameId == gameId)
+            .OrderBy(a => a.PersonName)
+            .ThenBy(a => a.PersonEmail)
+            .ThenBy(a => a.TimeSlot.StartTime)
+            .ThenBy(a => a.Npc.Name)
+            .Select(a => new OrganizerRoleExportAssignment(
+                a.GameTimeSlotId,
+                a.NpcId,
+                a.Npc.Name,
+                a.Npc.Role,
+                a.PersonId,
+                a.PersonName,
+                a.PersonEmail))
+            .ToListAsync(ct);
+
+        var csvBytes = BuildOrganizerRoleCsv(slots, assignments, out var rowCount);
+        var fileName = ExportFilenameBuilder.BuildExportFilename(
+            "OrganizerRoles",
+            game.Name,
+            includeDate: true,
+            extension: "csv");
+
+        timer.Stop();
+        logger.LogInformation(
+            "[organizer-roles-export] requested gameId={GameId} format={Format} rowCount={RowCount} elapsedMs={ElapsedMs}",
+            gameId,
+            requestedFormat,
+            rowCount,
+            timer.ElapsedMilliseconds);
+
+        return TypedResults.File(csvBytes, "text/csv; charset=utf-8", fileName);
     }
 
     private static async Task<Results<Ok<OrganizerRoleMeDto>, NotFound, UnauthorizedHttpResult>> GetMine(
@@ -868,6 +953,135 @@ public static class OrganizerRoleEndpoints
             .SingleOrDefaultAsync(ct);
     }
 
+    private static byte[] BuildOrganizerRoleCsv(
+        IReadOnlyList<OrganizerRoleExportSlot> slots,
+        IReadOnlyList<OrganizerRoleExportAssignment> assignments,
+        out int rowCount)
+    {
+        var builder = new StringBuilder();
+        AppendCsvRow(
+            builder,
+            [
+                "Dospělý",
+                "E-mail",
+                "Slot",
+                "Začátek",
+                "Konec",
+                "Fáze",
+                "NPC role",
+                "Role tag"
+            ]);
+
+        rowCount = 0;
+        var assignmentsByAdultSlot = assignments
+            .GroupBy(a => (a.PersonId, a.GameTimeSlotId))
+            .ToDictionary(g => g.Key, g => g
+                .OrderBy(a => a.NpcName, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(a => a.NpcId)
+                .ToList());
+
+        var adults = assignments
+            .GroupBy(a => a.PersonId)
+            .Select(g => new OrganizerRoleExportAdult(
+                g.Key,
+                g.Select(a => a.PersonName).FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)) ?? "",
+                g.Select(a => a.PersonEmail).FirstOrDefault(email => !string.IsNullOrWhiteSpace(email))))
+            .OrderBy(a => a.PersonName, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(a => a.PersonEmail, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
+        foreach (var adult in adults)
+        {
+            foreach (var slot in slots)
+            {
+                assignmentsByAdultSlot.TryGetValue((adult.PersonId, slot.Id), out var slotAssignments);
+                AppendCsvRow(
+                    builder,
+                    [
+                        adult.PersonName,
+                        adult.PersonEmail ?? "",
+                        FormatSlotLabel(slot),
+                        FormatPragueDateTime(slot.StartTime),
+                        FormatPragueDateTime(slot.StartTime + slot.Duration),
+                        slot.Stage.GetDisplayName(),
+                        FormatNpcRoles(slotAssignments),
+                        FormatRoleTags(slotAssignments)
+                    ]);
+                rowCount++;
+            }
+        }
+
+        var preamble = Encoding.UTF8.GetPreamble();
+        var body = Encoding.UTF8.GetBytes(builder.ToString());
+        var bytes = new byte[preamble.Length + body.Length];
+        Buffer.BlockCopy(preamble, 0, bytes, 0, preamble.Length);
+        Buffer.BlockCopy(body, 0, bytes, preamble.Length, body.Length);
+        return bytes;
+    }
+
+    private static void AppendCsvRow(StringBuilder builder, IEnumerable<string?> values)
+    {
+        var isFirst = true;
+        foreach (var value in values)
+        {
+            if (!isFirst)
+                builder.Append(';');
+
+            builder.Append('"');
+            builder.Append((value ?? "").Replace("\"", "\"\"", StringComparison.Ordinal));
+            builder.Append('"');
+            isFirst = false;
+        }
+
+        builder.AppendLine();
+    }
+
+    private static string FormatSlotLabel(OrganizerRoleExportSlot slot)
+    {
+        var year = slot.InGameYear is int inGameYear ? $"Rok {inGameYear}, " : "";
+        return $"{slot.Stage.GetDisplayName()}: {year}{FormatPragueDateTime(slot.StartTime)}";
+    }
+
+    private static string FormatPragueDateTime(DateTime value) =>
+        ToPragueTime(value).ToString("d.M.yyyy H:mm", CzechCulture);
+
+    private static DateTime ToPragueTime(DateTime value)
+    {
+        var utc = value.Kind switch
+        {
+            DateTimeKind.Utc => value,
+            DateTimeKind.Local => value.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+        };
+        return TimeZoneInfo.ConvertTimeFromUtc(utc, PragueTimeZone);
+    }
+
+    private static string FormatNpcRoles(IReadOnlyList<OrganizerRoleExportAssignment>? assignments) =>
+        assignments is null || assignments.Count == 0
+            ? ""
+            : string.Join(", ", assignments.Select(a => a.NpcName).Distinct(StringComparer.CurrentCultureIgnoreCase));
+
+    private static string FormatRoleTags(IReadOnlyList<OrganizerRoleExportAssignment>? assignments) =>
+        assignments is null || assignments.Count == 0
+            ? ""
+            : string.Join(
+                ", ",
+                assignments
+                    .Select(a => a.Role.GetDisplayName())
+                    .Distinct(StringComparer.CurrentCultureIgnoreCase));
+
+    private static TimeZoneInfo ResolvePragueTimeZone()
+    {
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById("Europe/Prague");
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById("Central Europe Standard Time");
+        }
+    }
+
     private sealed record OrganizerRoleMineAssignmentRow(
         int GameTimeSlotId,
         int NpcId,
@@ -875,6 +1089,27 @@ public static class OrganizerRoleEndpoints
         NpcRole Role,
         string? Description,
         string? Notes,
+        int PersonId,
+        string PersonName,
+        string? PersonEmail);
+
+    private sealed record OrganizerRoleExportSlot(
+        int Id,
+        DateTime StartTime,
+        TimeSpan Duration,
+        int? InGameYear,
+        GameTimePhase Stage);
+
+    private sealed record OrganizerRoleExportAssignment(
+        int GameTimeSlotId,
+        int NpcId,
+        string NpcName,
+        NpcRole Role,
+        int PersonId,
+        string PersonName,
+        string? PersonEmail);
+
+    private sealed record OrganizerRoleExportAdult(
         int PersonId,
         string PersonName,
         string? PersonEmail);

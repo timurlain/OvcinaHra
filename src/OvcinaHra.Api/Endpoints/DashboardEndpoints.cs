@@ -7,9 +7,9 @@ using OvcinaHra.Shared.Dtos;
 namespace OvcinaHra.Api.Endpoints;
 
 /// <summary>
-/// Issue #158 — server-side fan-out for the Home cockpit. Four routes,
-/// each returns one of the Dashboard*Dto records and powers a single
-/// section of the cockpit. The cockpit fires them in parallel client-side.
+/// Issue #158 — server-side fan-out for the Home cockpit. Each route
+/// returns one of the Dashboard*Dto records and powers a single section
+/// of the cockpit. The cockpit fires them in parallel client-side.
 /// </summary>
 public static class DashboardEndpoints
 {
@@ -20,6 +20,8 @@ public static class DashboardEndpoints
         group.MapGet("/stats", GetStats);
         group.MapGet("/issues", GetIssues);
         group.MapGet("/activity", GetActivity);
+        group.MapGet("/world-activity", GetWorldActivity);
+        group.MapGet("/world-change", GetWorldChange);
         group.MapGet("/timeline", GetTimeline);
         group.MapGet("/events/recent", GetRecentEvents);
 
@@ -108,91 +110,124 @@ public static class DashboardEndpoints
         count == 0 ? "low" : count < 5 ? "low" : count < 15 ? "mid" : "high";
 
     /// <summary>
-    /// Powers RecentActivityFeed — real WorldActivity recordings first,
-    /// followed by legacy per-entity timestamp rows until every workflow
-    /// records through WorldActivity.
+    /// Powers RecentActivityFeed from the best-effort WorldChange audit log.
     /// </summary>
     private static async Task<Ok<List<DashboardActivityDto>>> GetActivity(
-        int gameId, WorldDbContext db, HttpContext http, int? limit = 10)
+        int gameId, WorldDbContext db, int? limit = 10)
     {
         var take = Math.Clamp(limit ?? 10, 1, 50);
 
-        var activityRows = await db.WorldActivities
-            .Where(a => a.GameId == gameId)
-            .OrderByDescending(a => a.TimestampUtc)
+        var changes = await db.WorldChanges
+            .AsNoTracking()
+            .Where(c => c.GameId == gameId || c.GameId == null)
+            .OrderByDescending(c => c.ChangedAtUtc)
+            .ThenByDescending(c => c.Id)
             .Take(take)
-            .Select(a => new
+            .Select(c => new
             {
-                a.Id,
-                a.LocationId,
-                a.Description,
-                a.OrganizerName,
-                a.TimestampUtc,
-                a.ActivityType,
-                LocationName = a.Location != null ? a.Location.Name : null,
-                PlacementPhotoPath = a.Location != null ? a.Location.PlacementPhotoPath : null
+                c.EntityType,
+                c.EntityId,
+                c.EntityName,
+                c.Operation,
+                c.ActorDisplayName,
+                c.ChangedAtUtc
             })
             .ToListAsync();
 
-        var activities = activityRows.Select(a => new DashboardActivityDto(
-            a.LocationId.HasValue ? "location" : "activity",
-            a.LocationId ?? a.Id,
-            a.LocationName ?? a.Description,
-            a.LocationId.HasValue && !string.IsNullOrWhiteSpace(a.PlacementPhotoPath)
-                ? ImageEndpoints.ThumbUrl(http, "locationplacements", a.LocationId.Value, "small")
-                : null,
-            ActivityVerb(a.ActivityType),
-            a.OrganizerName,
-            a.TimestampUtc)).ToList();
+        var rows = changes.Select(c => new DashboardActivityDto(
+            c.EntityType.ToLowerInvariant(),
+            c.EntityId,
+            c.EntityName,
+            null,
+            ChangeVerb(c.Operation),
+            c.ActorDisplayName,
+            c.ChangedAtUtc)).ToList();
 
-        // Per-entity slices, each ordered DESC and capped at `take` so the
-        // merged result has enough material to slice the global top-N from.
-        // Sequential awaits — single DbContext can't serve concurrent queries.
-        var characters = await db.CharacterAssignments
-            .Where(a => a.GameId == gameId)
-            .OrderByDescending(a => a.Character.UpdatedAtUtc)
-            .Take(take)
-            .Select(a => new DashboardActivityDto(
-                "character", a.CharacterId, a.Character.Name,
-                null, "upravil", "—", a.Character.UpdatedAtUtc))
-            .ToListAsync();
-
-        var events = await db.GameEvents
-            .Where(e => e.GameId == gameId)
-            .OrderByDescending(e => e.UpdatedAtUtc)
-            .Take(take)
-            .Select(e => new DashboardActivityDto(
-                "event", e.Id, e.Name,
-                null, "upravil", "—", e.UpdatedAtUtc))
-            .ToListAsync();
-
-        var npcs = await db.GameNpcs
-            .Where(gn => gn.GameId == gameId)
-            .OrderByDescending(gn => gn.Npc.UpdatedAtUtc)
-            .Take(take)
-            .Select(gn => new DashboardActivityDto(
-                "npc", gn.NpcId, gn.Npc.Name,
-                null, "upravil", "—", gn.Npc.UpdatedAtUtc))
-            .ToListAsync();
-
-        var merged = characters
-            .Concat(activities)
-            .Concat(events)
-            .Concat(npcs)
-            .OrderByDescending(x => x.OccurredUtc)
-            .Take(take)
-            .ToList();
-
-        return TypedResults.Ok(merged);
+        return TypedResults.Ok(rows);
     }
 
-    private static string ActivityVerb(WorldActivityType type) => type switch
+    private static string ChangeVerb(WorldChangeOperation operation) => operation switch
     {
-        WorldActivityType.LocationPlaced => "umístil",
-        WorldActivityType.CharacterLevelUp => "zapsal level",
-        WorldActivityType.QuestCompleted => "dokončil quest",
-        _ => "zapsal"
+        WorldChangeOperation.Created => "vytvořil",
+        WorldChangeOperation.Updated => "upravil",
+        WorldChangeOperation.Deleted => "smazal",
+        _ => "upravil"
     };
+
+    /// <summary>
+    /// Issue #478 — raw WorldActivity rows for the Aktivity světa table on
+    /// the Home cockpit. Returns the audit log 1:1 (no merge with legacy
+    /// entity-timestamp rows) so organizers can verify what's flowing in
+    /// from the Glejt PWA + in-app workflows pre-weekend. Default 100 rows,
+    /// max 500. 404 when the game doesn't exist (per §1 — REST 404 before
+    /// 200-with-empty masking orchestrator bugs).
+    /// </summary>
+    private static async Task<Results<Ok<List<WorldActivityRowDto>>, NotFound>> GetWorldActivity(
+        int gameId, WorldDbContext db, int? take = 100)
+    {
+        var n = Math.Clamp(take ?? 100, 1, 500);
+
+        if (!await db.Games.AnyAsync(g => g.Id == gameId))
+            return TypedResults.NotFound();
+
+        var rows = await db.WorldActivities
+            .Where(a => a.GameId == gameId)
+            .OrderByDescending(a => a.TimestampUtc)
+            .Take(n)
+            .Select(a => new WorldActivityRowDto(
+                a.Id,
+                a.TimestampUtc,
+                a.OrganizerName,
+                a.ActivityType,
+                a.Description,
+                a.LocationId,
+                a.Location != null ? a.Location.Name : null,
+                a.CharacterAssignmentId,
+                a.QuestId))
+            .ToListAsync();
+
+        return TypedResults.Ok(rows);
+    }
+
+    /// <summary>
+    /// Powers the /aktivity full-page log — uncapped, paged WorldChange
+    /// audit rows scoped to the active game (plus catalog-wide rows where
+    /// <c>GameId</c> is null), ordered DESC by <c>ChangedAtUtc</c>. Same
+    /// source as the cockpit "Co se nedávno dělo" sliver
+    /// (<see cref="GetActivity"/>) but without the 10-row cap, so the
+    /// client can DxGrid-filter / group / search the whole roll. Default
+    /// 500 rows / max 2000 — keeps the page responsive without forcing
+    /// server-side paging on a table the audit log never grows past
+    /// game-month size. 404 when the game doesn't exist (per §1 — REST
+    /// 404 before 200-with-empty so orchestrator typos surface fast).
+    /// </summary>
+    private static async Task<Results<Ok<List<WorldChangeRowDto>>, NotFound>> GetWorldChange(
+        int gameId, WorldDbContext db, int? take = 500)
+    {
+        var n = Math.Clamp(take ?? 500, 1, 2000);
+
+        if (!await db.Games.AnyAsync(g => g.Id == gameId))
+            return TypedResults.NotFound();
+
+        var rows = await db.WorldChanges
+            .AsNoTracking()
+            .Where(c => c.GameId == gameId || c.GameId == null)
+            .OrderByDescending(c => c.ChangedAtUtc)
+            .ThenByDescending(c => c.Id)
+            .Take(n)
+            .Select(c => new WorldChangeRowDto(
+                c.Id,
+                c.GameId,
+                c.EntityType,
+                c.EntityId,
+                c.EntityName,
+                c.Operation,
+                c.ActorDisplayName,
+                c.ChangedAtUtc))
+            .ToListAsync();
+
+        return TypedResults.Ok(rows);
+    }
 
     /// <summary>
     /// Powers TimelinePreview — upcoming and currently-running GameTimeSlot

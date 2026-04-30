@@ -80,6 +80,40 @@ else
             </div>
         </div>
 
+        <div class="oh-tp-missing-card @(missingTreasureLocations.Count == 0 ? "complete" : "")">
+            <div class="oh-tp-missing-head">
+                <div>
+                    <h5><i class="bi bi-exclamation-diamond"></i> Lokace bez pokladů</h5>
+                    <span>Prahová hodnota: @MissingTreasureThreshold poklad</span>
+                </div>
+                <span class="oh-tp-missing-count">@missingTreasureLocations.Count</span>
+            </div>
+            @if (missingTreasureLocations.Count == 0)
+            {
+                <div class="oh-tp-missing-empty">Všechny lokace mají poklady ✓</div>
+            }
+            else
+            {
+                <div class="oh-tp-missing-list">
+                    @foreach (var loc in missingTreasureLocations)
+                    {
+                        <div class="oh-tp-missing-row" @key="loc.LocationId">
+                            <div class="oh-tp-missing-main">
+                                <strong>@loc.LocationName</strong>
+                                <span>@MissingRegionLabel(loc)</span>
+                            </div>
+                            <span class="oh-tp-missing-total">@loc.TotalItems / @loc.Threshold</span>
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-primary"
+                                    @onclick="() => JumpToMissingLocationAsync(loc)">
+                                <i class="bi bi-crosshair me-1"></i>Přiřadit poklad
+                            </button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
         @* ================== ZONE 2 — Workspace ================== *@
         <div class="oh-tp-workspace" @onclick="CollapseQuickAllocationStepper">
 
@@ -249,7 +283,7 @@ else
             </div>
 
             @* RIGHT: assignment panel *@
-            <div class="oh-tp-assign-panel">
+            <div class="oh-tp-assign-panel" id="oh-tp-assign-panel">
                 <div class="oh-tp-placement-phase">
                     <span class="oh-tp-placement-phase-lbl">Fáze umístění</span>
                     <div class="oh-tl-seg" role="group" aria-label="Fáze, do které se ukládají nové poklady">
@@ -972,11 +1006,13 @@ else
 
 @code {
     private static readonly JsonSerializerOptions TreasureAllocLogJsonOptions = new(JsonSerializerDefaults.Web);
+    private const int MissingTreasureThreshold = 1;
     private const string NoRegionLabel = "Bez regionu";
 
     // ===== Data =====
     private List<TreasurePoolItemDto> poolItems = [];
     private List<TreasurePlanningLocationDto> locationCards = [];
+    private List<MissingTreasureLocationDto> missingTreasureLocations = [];
     private List<LocationListDto> locations = [];
     private List<TreasureQuestListDto> allQuests = [];
     private List<UnlimitedItemDto> unlimitedItems = [];
@@ -1672,10 +1708,12 @@ else
 
         poolItems      = poolTask.Result;
         locationCards  = cardsTask.Result;
+        missingTreasureLocations = BuildMissingTreasureLocations();
         locations      = locationsTask.Result;
         allQuests      = questTask.Result;
         summary        = summaryTask.Result;
         unlimitedItems = unlimitedTask.Result;
+        Console.WriteLine($"[treasure-alloc] missing-view loaded gameId={gameId} threshold={MissingTreasureThreshold} matched={missingTreasureLocations.Count}");
 
         // Prune selection of items that left the pool.
         var poolIds = poolItems.Select(p => p.Id).ToHashSet();
@@ -1772,6 +1810,25 @@ else
 
     private static string GetRegionLabel(TreasurePlanningLocationDto location) =>
         string.IsNullOrWhiteSpace(location.Region) ? NoRegionLabel : location.Region.Trim();
+
+    private static string MissingRegionLabel(MissingTreasureLocationDto location) =>
+        string.IsNullOrWhiteSpace(location.Region) ? NoRegionLabel : location.Region.Trim();
+
+    private List<MissingTreasureLocationDto> BuildMissingTreasureLocations() =>
+        locationCards
+            .Where(l => l.TotalItems < MissingTreasureThreshold)
+            .OrderBy(l => l.TotalItems)
+            .ThenBy(l => string.IsNullOrWhiteSpace(l.Region))
+            .ThenBy(GetRegionLabel)
+            .ThenBy(l => l.LocationName)
+            .Select(l => new MissingTreasureLocationDto(
+                l.LocationId,
+                l.LocationName,
+                string.IsNullOrWhiteSpace(l.Region) ? null : l.Region.Trim(),
+                l.TotalItems,
+                MissingTreasureThreshold,
+                MissingTreasureThreshold - l.TotalItems))
+            .ToList();
 
     private static string GetRegionSortKey(string region) =>
         region == NoRegionLabel ? "\uFFFF" : region;
@@ -1928,6 +1985,27 @@ else
 
     // ===== Handlers from MapView =====
     private Task HandlePieClick(int locationId) => HandleLocationTargetClick(locationId);
+
+    private async Task JumpToMissingLocationAsync(MissingTreasureLocationDto location)
+    {
+        focusedLocationId = location.LocationId;
+        focusTab = "pridat";
+        allocationError = null;
+        quickAllocation = null;
+        Console.WriteLine($"[treasure-alloc] missing-view jump locationId={location.LocationId}");
+
+        if (treasuresView != "cards")
+        {
+            await SetTreasuresViewAsync("cards");
+        }
+
+        StateHasChanged();
+        try
+        {
+            await JS.InvokeVoidAsync("ovcinaDnd.scrollIntoViewById", "oh-tp-assign-panel");
+        }
+        catch { /* best-effort scroll — ignore if JS host missing */ }
+    }
 
     private async Task HandleLocationTargetClick(int locationId)
     {

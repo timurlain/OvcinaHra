@@ -821,6 +821,7 @@ else
     private string? placementError;
     private string? placementToastMessage;
     private PhotoGpsCoordinates? placementPhotoGps;
+    private string? placementPhotoCapturedAt;
     private double? placementPhotoGpsDistanceMeters;
     private bool placementGpsPromptVisible;
     private bool placementGpsUpdating;
@@ -841,6 +842,12 @@ else
     {
         public double Lat { get; set; }
         public double Lng { get; set; }
+    }
+
+    private sealed class PhotoExifMetadata
+    {
+        public PhotoGpsCoordinates? Gps { get; set; }
+        public string? CapturedAt { get; set; }
     }
 
     // Toolbar filter state
@@ -1133,7 +1140,7 @@ else
             return;
         }
 
-        await EvaluatePlacementPhotoGpsAsync(originalDataUrl);
+        await EvaluatePlacementPhotoMetadataAsync(originalDataUrl);
 
         // Client-side canvas resize. Phone cameras emit 10–20 MB JPEGs that
         // exceed the server's 5 MB multipart limit; resize re-encodes as
@@ -1180,28 +1187,31 @@ else
         Console.WriteLine($"[loc-placement] wizard.photo-resized gameId={gameId} originalSize={placementPhotoFile.Size} resizedSize={resizedBytes.LongLength}");
     }
 
-    private async Task EvaluatePlacementPhotoGpsAsync(string originalDataUrl)
+    private async Task EvaluatePlacementPhotoMetadataAsync(string originalDataUrl)
     {
-        PhotoGpsCoordinates? gps;
+        PhotoExifMetadata? metadata;
         try
         {
-            gps = await JS.InvokeAsync<PhotoGpsCoordinates?>("ovcinaExif.readGpsFromDataUrl", originalDataUrl);
+            metadata = await JS.InvokeAsync<PhotoExifMetadata?>("ovcinaExif.readMetadataFromDataUrl", originalDataUrl);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[loc-placement] exif read result=parse-failed gameId={gameId} detail={ex.Message}");
+            Console.WriteLine($"[image-upload] exif.read result=parse-failed surface=placement gameId={gameId} detail={ex.Message}");
             return;
         }
 
+        var gps = metadata?.Gps;
+        placementPhotoCapturedAt = metadata?.CapturedAt;
+        Console.WriteLine(
+            $"[image-upload] exif.read result={(gps is not null ? "found-gps" : "no-gps")} " +
+            $"surface=placement gameId={gameId} capturedAt={(!string.IsNullOrWhiteSpace(placementPhotoCapturedAt)).ToString().ToLowerInvariant()}");
+
         if (gps is null)
         {
-            Console.WriteLine($"[loc-placement] exif read result=no-gps gameId={gameId}");
             return;
         }
 
         placementPhotoGps = gps;
-        Console.WriteLine($"[loc-placement] exif read result=found-gps gameId={gameId}");
-        Console.WriteLine($"[loc-placement] exif gps-coords lat={FormatPlacementGpsCoord(gps.Lat)} lng={FormatPlacementGpsCoord(gps.Lng)}");
 
         var selected = SelectedPlacementLocation;
         if (selected is null)
@@ -1301,6 +1311,7 @@ else
     private void ResetPlacementGpsState()
     {
         placementPhotoGps = null;
+        placementPhotoCapturedAt = null;
         placementPhotoGpsDistanceMeters = null;
         placementGpsPromptVisible = false;
         placementGpsUpdating = false;
@@ -1358,6 +1369,13 @@ else
                 string.IsNullOrWhiteSpace(placementPhotoFile.Name) ? "placement" : placementPhotoFile.Name,
                 "jpg");
             content.Add(fileContent, "file", uploadFilename);
+            if (placementPhotoGps is not null)
+            {
+                content.Add(new StringContent(placementPhotoGps.Lat.ToString(CultureInfo.InvariantCulture)), "gpsLatitude");
+                content.Add(new StringContent(placementPhotoGps.Lng.ToString(CultureInfo.InvariantCulture)), "gpsLongitude");
+            }
+            if (!string.IsNullOrWhiteSpace(placementPhotoCapturedAt))
+                content.Add(new StringContent(placementPhotoCapturedAt), "capturedAt");
 
             var (uploadOk, uploadResult, uploadProblem, uploadStatus) =
                 await Api.PostMultipartWithProblemAsync<ImageUploadResult>(

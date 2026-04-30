@@ -1,0 +1,203 @@
+@* Issue #478 — raw WorldActivity audit table on the Home cockpit.
+   Two columns: Time (dd/MM HH:mm) + event description with type badge.
+   Surfaces level-ups / placements / quest completions flowing in from
+   Glejt PWA + in-app workflows so organizers can verify pre-weekend.
+   Auto-refreshes every 15s and exposes a manual refresh button so
+   the table picks up scans that land while the cockpit is open. *@
+
+@using OvcinaHra.Shared.Domain.Enums
+@using OvcinaHra.Shared.Dtos
+@inject ApiClient Api
+@implements IAsyncDisposable
+
+<section class="oh-home-world-activity" aria-labelledby="oh-home-world-activity-title">
+    <header class="oh-home-act-head oh-home-recent-head">
+        <h2 id="oh-home-world-activity-title">Aktivity světa</h2>
+        <div class="oh-world-activity-tools">
+            @if (_rows is not null && _rows.Count > 0)
+            {
+                <span class="text-muted small">@_rows.Count záznamů</span>
+            }
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    title="Obnovit"
+                    aria-label="Obnovit"
+                    disabled="@_isRefreshing"
+                    @onclick="OnManualRefreshAsync">
+                <i class="bi @(_isRefreshing ? "bi-arrow-repeat oh-spin" : "bi-arrow-clockwise")"></i>
+            </button>
+        </div>
+    </header>
+
+    @if (_rows is null)
+    {
+        <p class="text-muted small">Načítám…</p>
+    }
+    else if (_rows.Count == 0)
+    {
+        <p class="text-muted small fst-italic mb-0">Zatím žádné aktivity. Až
+            organizátoři začnou zapisovat postupy, umístění a dokončené questy
+            (přímo v aplikaci nebo přes Glejt), uvidíte je tady.</p>
+    }
+    else
+    {
+        <div class="oh-world-activity-scroll">
+            <table class="table table-sm oh-world-activity-table mb-0">
+                <thead>
+                    <tr>
+                        <th scope="col" class="oh-world-activity-time">Čas</th>
+                        <th scope="col">Událost</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _rows)
+                    {
+                        var route = RouteFor(row);
+                        <tr>
+                            <td class="oh-world-activity-time"
+                                title="@row.TimestampUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")">
+                                @row.TimestampUtc.ToLocalTime().ToString("dd/MM HH:mm")
+                            </td>
+                            <td>
+                                <span class="oh-world-activity-badge oh-world-activity-badge--@BadgeTone(row.ActivityType)">
+                                    <i class="bi @IconFor(row.ActivityType)"></i>
+                                    @TypeLabel(row.ActivityType)
+                                </span>
+                                @if (route is not null)
+                                {
+                                    <a href="@route" class="oh-world-activity-desc">@row.Description</a>
+                                }
+                                else
+                                {
+                                    <span class="oh-world-activity-desc">@row.Description</span>
+                                }
+                                <span class="oh-world-activity-actor text-muted small">· @row.OrganizerName</span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(15);
+
+    private List<WorldActivityRowDto>? _rows;
+    private int? _activeGameId;
+    private CancellationTokenSource? _pollCts;
+    private bool _isRefreshing;
+
+    [Parameter] public int? GameId { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (GameId is null)
+        {
+            StopPolling();
+            _rows = null;
+            _activeGameId = null;
+            return;
+        }
+
+        if (_activeGameId == GameId.Value && _pollCts is not null) return;
+
+        StopPolling();
+        _activeGameId = GameId.Value;
+        _rows = null;
+        _pollCts = new CancellationTokenSource();
+        await LoadAsync(GameId.Value, _pollCts.Token);
+        _ = PollAsync(GameId.Value, _pollCts.Token);
+    }
+
+    private async Task PollAsync(int gameId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(PollInterval, cancellationToken);
+                await LoadAsync(gameId, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task LoadAsync(int gameId, CancellationToken cancellationToken)
+    {
+        var rows = await Api.GetListAsync<WorldActivityRowDto>(
+            $"/api/dashboard/world-activity?gameId={gameId}&take=100",
+            cancellationToken);
+        if (cancellationToken.IsCancellationRequested) return;
+        _rows = rows;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnManualRefreshAsync()
+    {
+        if (_activeGameId is null || _isRefreshing) return;
+        _isRefreshing = true;
+        try
+        {
+            var token = _pollCts?.Token ?? CancellationToken.None;
+            await LoadAsync(_activeGameId.Value, token);
+        }
+        finally
+        {
+            _isRefreshing = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void StopPolling()
+    {
+        _pollCts?.Cancel();
+        _pollCts?.Dispose();
+        _pollCts = null;
+    }
+
+    private static string TypeLabel(WorldActivityType type) => type switch
+    {
+        WorldActivityType.LocationPlaced => "Umístění lokace",
+        WorldActivityType.CharacterLevelUp => "Postup postavy",
+        WorldActivityType.QuestCompleted => "Dokončený quest",
+        WorldActivityType.CharacterLevelReverted => "Vrácená úroveň",
+        _ => "Aktivita"
+    };
+
+    private static string IconFor(WorldActivityType type) => type switch
+    {
+        WorldActivityType.LocationPlaced => "bi-geo-alt-fill",
+        WorldActivityType.CharacterLevelUp => "bi-stars",
+        WorldActivityType.QuestCompleted => "bi-patch-check-fill",
+        WorldActivityType.CharacterLevelReverted => "bi-arrow-counterclockwise",
+        _ => "bi-circle"
+    };
+
+    private static string BadgeTone(WorldActivityType type) => type switch
+    {
+        WorldActivityType.LocationPlaced => "location",
+        WorldActivityType.CharacterLevelUp => "levelup",
+        WorldActivityType.QuestCompleted => "quest",
+        WorldActivityType.CharacterLevelReverted => "reverted",
+        _ => "default"
+    };
+
+    private static string? RouteFor(WorldActivityRowDto row)
+    {
+        // Character assignments don't have a per-id detail route yet (the
+        // CharacterList page is the only character surface), so we only
+        // link Location + Quest activity rows.
+        if (row.LocationId.HasValue) return $"/locations/{row.LocationId.Value}";
+        if (row.QuestId.HasValue) return $"/quests/{row.QuestId.Value}";
+        return null;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        StopPolling();
+        return ValueTask.CompletedTask;
+    }
+}

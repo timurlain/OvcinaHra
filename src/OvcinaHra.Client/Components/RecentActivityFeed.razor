@@ -1,9 +1,9 @@
-@* Issue #158 + #383 — recent organizer activity. WorldActivity rows use
-   real actor/timestamp data; older entity timestamp rows remain as fallback. *@
+@* Issue #247 — recent organizer activity from the WorldChange audit log. *@
 
 <section class="oh-home-act" aria-labelledby="oh-home-act-title">
-    <header class="oh-home-act-head">
+    <header class="oh-home-act-head oh-home-recent-head">
         <h2 id="oh-home-act-title">Co se nedávno dělo</h2>
+        <a href="/aktivity" class="oh-home-act-more">Zobrazit vše →</a>
     </header>
     @if (Rows is null)
     {
@@ -51,18 +51,38 @@
     private static string RouteFor(DashboardActivityDto r) => r.EntityType switch
     {
         "character" => $"/characters/{r.EntityId}",
-        "event"     => $"/timeline",
+        "building" => $"/buildings/{r.EntityId}",
+        "buildingrecipe" => "/buildings",
+        "craftingrecipe" => $"/recipes/{r.EntityId}",
+        "game" => "/games",
+        "gametimeslot" => "/timeline",
+        "item" => $"/items/{r.EntityId}",
         "location"  => $"/locations/{r.EntityId}",
+        "monster" => $"/monsters/{r.EntityId}",
         "npc"       => $"/npcs/{r.EntityId}",
+        "organizerroleassignment" => "/organizer-roles",
+        "personalquest" => "/personal-quests",
+        "quest" => $"/quests/{r.EntityId}",
+        "treasurequest" => "/treasures",
         _           => "/",
     };
 
     private static string IconFor(string entityType) => entityType switch
     {
         "character" => "bi-person",
-        "event"     => "bi-calendar-event",
+        "building" => "bi-house-door",
+        "buildingrecipe" => "bi-hammer",
+        "craftingrecipe" => "bi-flask",
+        "game" => "bi-controller",
+        "gametimeslot" => "bi-clock",
+        "item" => "bi-box-seam",
         "location"  => "bi-geo-alt",
+        "monster" => "bi-bug",
         "npc"       => "bi-person-badge",
+        "organizerroleassignment" => "bi-person-check",
+        "personalquest" => "bi-journal-bookmark",
+        "quest" => "bi-scroll",
+        "treasurequest" => "bi-gem",
         _           => "bi-circle",
     };
 
@@ -78,11 +98,17 @@
 
     private static string TimeAgo(DateTime utc)
     {
-        var delta = DateTime.UtcNow - utc;
+        var utcTime = utc.Kind switch
+        {
+            DateTimeKind.Local => utc.ToUniversalTime(),
+            DateTimeKind.Unspecified => DateTime.SpecifyKind(utc, DateTimeKind.Utc),
+            _ => utc
+        };
+        var delta = DateTime.UtcNow - utcTime;
         if (delta.TotalMinutes < 1) return "před chvílí";
         if (delta.TotalMinutes < 60) return $"před {(int)delta.TotalMinutes} min";
         if (delta.TotalHours  < 24) return $"před {(int)delta.TotalHours} h";
         if (delta.TotalDays   < 30) return $"před {(int)delta.TotalDays} dny";
-        return utc.ToLocalTime().ToString("d. M.");
+        return utcTime.ToLocalTime().ToString("d. M.");
     }
 }

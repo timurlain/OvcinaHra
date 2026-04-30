@@ -1,7 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc;
+using OvcinaHra.Api.Endpoints;
 using OvcinaHra.Api.Tests.Fixtures;
+using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
 
@@ -347,5 +349,16 @@ public class BuildingRecipeEndpointTests(PostgresFixture postgres) : Integration
         Assert.Contains("75", withRow.RecipeSummary);
         Assert.Contains("4", withRow.RecipeSummary);
         Assert.Null(noRow.RecipeSummary);
+    }
+
+    [Theory]
+    [InlineData(1, "1 groš")]
+    [InlineData(2, "2 groše")]
+    [InlineData(5, "5 grošů")]
+    public void BuildRecipeSummary_DeclinesCurrency(int moneyCost, string expected)
+    {
+        var summary = BuildingRecipeEndpoints.BuildRecipeSummary(new BuildingRecipe { MoneyCost = moneyCost });
+
+        Assert.Equal(expected, summary);
     }
 }

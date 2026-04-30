@@ -24,4 +24,16 @@ public class ExportFilenameBuilderTests
 
         Assert.Equal("SeznamKouzel_Zlutoucky-kun-Cerny-les.pdf", fileName);
     }
+
+    [Fact]
+    public void BuildExportFilename_AllowsCsvExtension()
+    {
+        var fileName = ExportFilenameBuilder.BuildExportFilename(
+            "OrganizerRoles",
+            "Balinova pozvánka",
+            includeDate: true,
+            extension: "csv");
+
+        Assert.Equal($"OrganizerRoles_Balinova-pozvanka_{DateTime.Today:yyyy-MM-dd}.csv", fileName);
+    }
 }

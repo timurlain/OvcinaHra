@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using OvcinaHra.Api.Tests.Fixtures;
 using OvcinaHra.Shared.Domain.Enums;
@@ -302,6 +303,50 @@ public class OrganizerRoleEndpointTests(PostgresFixture postgres) : IntegrationT
         Assert.Contains("výchozí role", problem.Detail ?? "");
     }
 
+    [Fact]
+    public async Task ExportCsv_ReturnsUtf8BomSemicolonCsvForAdultSlots()
+    {
+        var game = await CreateGameAsync("Balinova pozvánka");
+        var firstSlot = await CreateSlotAsync(game.Id, hour: 10, GameTimePhase.Early);
+        var secondSlot = await CreateSlotAsync(game.Id, hour: 11, GameTimePhase.Midgame);
+        var merchant = await CreateNpcAsync("Kupec Čenda", NpcRole.Merchant);
+        var monster = await CreateNpcAsync("Vlkodlak", NpcRole.Monster);
+        await AssignNpcAsync(game.Id, merchant.Id);
+        await AssignNpcAsync(game.Id, monster.Id);
+        await Client.PutAsJsonAsync(
+            $"/api/games/{game.Id}/organizer-role-assignments/slots/{firstSlot.Id}/npcs/{merchant.Id}",
+            new UpsertOrganizerRoleAssignmentDto(501, "Pavel Dospělý", "pavel@example.com"));
+        await Client.PutAsJsonAsync(
+            $"/api/games/{game.Id}/organizer-role-assignments/slots/{firstSlot.Id}/npcs/{monster.Id}",
+            new UpsertOrganizerRoleAssignmentDto(501, "Pavel Dospělý", "pavel@example.com"));
+        await Client.PutAsJsonAsync(
+            $"/api/games/{game.Id}/organizer-role-assignments/slots/{secondSlot.Id}/npcs/{merchant.Id}",
+            new UpsertOrganizerRoleAssignmentDto(777, "Jana Žlutá", "jana@example.com"));
+
+        var response = await Client.GetAsync($"/api/organizer-roles/export?gameId={game.Id}&format=csv");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("text/csv", response.Content.Headers.ContentType?.MediaType);
+        Assert.Contains("utf-8", (response.Content.Headers.ContentType?.CharSet ?? "").ToLowerInvariant());
+        Assert.Equal(
+            $"OrganizerRoles_Balinova-pozvanka_{DateTime.Today:yyyy-MM-dd}.csv",
+            response.Content.Headers.ContentDisposition?.FileNameStar
+                ?? response.Content.Headers.ContentDisposition?.FileName?.Trim('"'));
+
+        var bytes = await response.Content.ReadAsByteArrayAsync();
+        Assert.True(bytes.AsSpan().StartsWith(Encoding.UTF8.GetPreamble()));
+        var csv = Encoding.UTF8.GetString(bytes[Encoding.UTF8.GetPreamble().Length..]);
+        var lines = csv.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(5, lines.Length);
+        Assert.Equal("\"Dospělý\";\"E-mail\";\"Slot\";\"Začátek\";\"Konec\";\"Fáze\";\"NPC role\";\"Role tag\"", lines[0]);
+        Assert.Contains(
+            "\"Pavel Dospělý\";\"pavel@example.com\";\"Rozvoj hry: Rok 1247, 1.5.2026 12:00\";\"1.5.2026 12:00\";\"1.5.2026 13:00\";\"Rozvoj hry\";\"Kupec Čenda, Vlkodlak\";\"Obchodník, Nestvůra\"",
+            lines);
+        Assert.Contains(
+            "\"Jana Žlutá\";\"jana@example.com\";\"Rozvoj hry: Rok 1247, 1.5.2026 12:00\";\"1.5.2026 12:00\";\"1.5.2026 13:00\";\"Rozvoj hry\";\"\";\"\"",
+            lines);
+    }
+
     private async Task<(GameDetailDto Game, NpcDetailDto Npc, List<GameTimeSlotDto> Slots)> CreateGameWithNpcAndSlotsAsync(int slotCount)
     {
         var game = await CreateGameAsync();
@@ -317,11 +362,11 @@ public class OrganizerRoleEndpointTests(PostgresFixture postgres) : IntegrationT
         return (game, npc, slots);
     }
 
-    private async Task<GameDetailDto> CreateGameAsync()
+    private async Task<GameDetailDto> CreateGameAsync(string name = "Rozpis rolí")
     {
         var response = await Client.PostAsJsonAsync(
             "/api/games",
-            new CreateGameDto("Rozpis rolí", 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
+            new CreateGameDto(name, 1, new DateOnly(2026, 5, 1), new DateOnly(2026, 5, 3)));
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<GameDetailDto>())!;
     }
@@ -341,7 +386,10 @@ public class OrganizerRoleEndpointTests(PostgresFixture postgres) : IntegrationT
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
 
-    private async Task<GameTimeSlotDto> CreateSlotAsync(int gameId, int hour)
+    private async Task<GameTimeSlotDto> CreateSlotAsync(
+        int gameId,
+        int hour,
+        GameTimePhase stage = GameTimePhase.Start)
     {
         var response = await Client.PostAsJsonAsync(
             "/api/timeline/slots",
@@ -349,7 +397,8 @@ public class OrganizerRoleEndpointTests(PostgresFixture postgres) : IntegrationT
                 GameId: gameId,
                 StartTime: new DateTime(2026, 5, 1, hour, 0, 0, DateTimeKind.Utc),
                 DurationHours: 1,
-                InGameYear: 1247));
+                InGameYear: 1247,
+                Stage: stage));
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<GameTimeSlotDto>())!;
     }

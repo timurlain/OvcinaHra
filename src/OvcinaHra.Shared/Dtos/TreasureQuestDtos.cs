@@ -68,6 +68,14 @@ public record TreasurePlanningLocationDto(
     List<TreasurePlanningAssignedTreasureDto>? AssignedTreasures = null,
     int AssignedTreasureCount = 0);
 
+public record MissingTreasureLocationDto(
+    int LocationId,
+    string LocationName,
+    string? Region,
+    int TotalItems,
+    int Threshold,
+    int MissingCount);
+
 public record TreasurePlanningAssignedTreasureDto(
     int TreasureItemId,
     int QuestId,

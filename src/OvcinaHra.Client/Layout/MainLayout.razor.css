@@ -7,6 +7,7 @@
 
 main {
     flex: 1;
+    min-width: 0;
     background-color: var(--oh-surface-alt);
 }
 
@@ -24,6 +25,11 @@ main {
     height: 3.5rem;
     display: flex;
     align-items: center;
+    min-width: 0;
+}
+
+article {
+    min-width: 0;
 }
 
     .top-row ::deep a, .top-row ::deep .btn-link {
