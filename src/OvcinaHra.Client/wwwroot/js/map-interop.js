@@ -1223,7 +1223,7 @@ window.ovcinaMap._kindIconFor = function (kindRaw) {
     return this._kindIcon[k] || 'bi-geo-alt-fill';
 };
 
-window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind, treasureCount, treasurePhase, region, showRegion) {
+window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind, treasureCount, treasurePhase, region, showRegion, isPlacementDone, showDone) {
     if (!this._map) {
         if (this._pinDiag()) console.warn('[pin-diag] addLocationPin called but no map — id=' + id);
         return;
@@ -1258,8 +1258,10 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind, treasureCo
     count = Math.max(0, Math.trunc(count));
     var phaseText = treasurePhase || '';
     var regionText = showRegion && region ? String(region).trim() : '';
+    var showDoneBadge = !!showDone && !!isPlacementDone;
     var kindKey = (kind || 'wilderness').toLowerCase();
     pin.setAttribute('data-kind', kindKey);
+    if (count > 0) pin.classList.add('oh-map-pin-has-count');
     // Issue #273 — graduated label-visibility-by-zoom. Each pin advertises
     // its minzoom; the zoomend handler in init() flips `oh-pin-label-on`
     // when map.getZoom() >= this value. Initial state set inline below
@@ -1270,6 +1272,7 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind, treasureCo
     var markerTitle = name || '';
     if (regionText) markerTitle += (markerTitle ? ' · ' : '') + regionText;
     if (count > 0) markerTitle += (markerTitle ? ' · ' : '') + count + ' pokladů' + (phaseText ? ' (' + phaseText + ')' : '');
+    if (showDoneBadge) markerTitle += (markerTitle ? ' · ' : '') + 'Hotová lokace';
     wrapper.title = markerTitle;
     // Issue #257 — tear-drop pin chrome. The bubble (oh-map-pin-bg) carries
     // the per-kind background and the downward triangle tail (::after); the
@@ -1292,6 +1295,13 @@ window.ovcinaMap.addLocationPin = function (id, lat, lon, name, kind, treasureCo
         countBadge.textContent = String(count);
         countBadge.title = count + ' pokladů' + (phaseText ? ' (' + phaseText + ')' : '');
         pin.appendChild(countBadge);
+    }
+    if (showDoneBadge) {
+        var doneBadge = document.createElement('i');
+        doneBadge.className = 'oh-map-pin-done bi bi-check-circle-fill';
+        doneBadge.title = 'Hotová lokace';
+        doneBadge.setAttribute('aria-hidden', 'true');
+        pin.appendChild(doneBadge);
     }
     if (name) {
         var label = document.createElement('div');
