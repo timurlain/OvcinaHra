@@ -93,3 +93,18 @@ public record WorldActivityRowDto(
     string? LocationName,
     int? CharacterAssignmentId,
     int? QuestId);
+
+/// <summary>
+/// Raw WorldChange audit row for the full /aktivity page. Same source as
+/// the home-cockpit "Co se nedávno dělo" sliver, but uncapped, paged, and
+/// filterable client-side via DxGrid (filter row + group panel + search).
+/// </summary>
+public record WorldChangeRowDto(
+    int Id,
+    int? GameId,
+    string EntityType,
+    int EntityId,
+    string EntityName,
+    WorldChangeOperation Operation,
+    string ActorDisplayName,
+    DateTime ChangedAtUtc);
