@@ -309,6 +309,34 @@ public class DashboardEndpointsTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task WorldChangeInterceptor_ExplicitTransaction_SkipsAuditWithoutBlockingUserData()
+    {
+        await ClearWorldChangesAsync();
+
+        int locationId;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            await using var tx = await db.Database.BeginTransactionAsync();
+            var location = new Location
+            {
+                Name = "Transakční paseka",
+                LocationKind = LocationKind.Wilderness
+            };
+            db.Locations.Add(location);
+            await db.SaveChangesAsync();
+            locationId = location.Id;
+            await tx.CommitAsync();
+        }
+
+        using var assertScope = Factory.Services.CreateScope();
+        var assertDb = assertScope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        Assert.True(await assertDb.Locations.AnyAsync(l => l.Id == locationId));
+        Assert.False(await assertDb.WorldChanges.AnyAsync(c =>
+            c.EntityType == nameof(Location) && c.EntityId == locationId));
+    }
+
+    [Fact]
     public async Task Timeline_PastSlot_IsExcluded()
     {
         var game = await CreateGameAsync();

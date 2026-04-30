@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Security.Claims;
+using System.Transactions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -90,6 +91,14 @@ public class WorldChangeAuditInterceptor(
 
         try
         {
+            if (db.Database.CurrentTransaction is not null || Transaction.Current is not null)
+            {
+                logger.LogWarning(
+                    "[world-change-audit] interceptor.skip-active-transaction pendingCount={PendingCount}",
+                    pending.Count);
+                return await base.SavedChangesAsync(eventData, result, cancellationToken);
+            }
+
             var rows = pending
                 .Select(BuildWorldChange)
                 .Where(c => c is not null)
