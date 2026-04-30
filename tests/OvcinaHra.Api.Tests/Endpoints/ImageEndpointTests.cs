@@ -78,6 +78,52 @@ public class ImageEndpointTests(PostgresFixture postgres) : IntegrationTestBase(
     }
 
     [Fact]
+    public async Task Upload_WithInvalidCapturedAt_ReturnsCzechProblemDetails()
+    {
+        var locResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Foto se špatným datem", LocationKind.Village, 49.5m, 17.1m));
+        var loc = await locResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+
+        using var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(ValidPng);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        content.Add(fileContent, "file", "photo.png");
+        content.Add(new StringContent("NotADate"), "capturedAt");
+
+        var response = await Client.PostAsync($"/api/images/locations/{loc!.Id}", content);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal((int)HttpStatusCode.BadRequest, problem.Status);
+        Assert.Contains("Neplatný formát data", problem.Detail);
+        Assert.Contains("capturedAt", problem.Detail);
+    }
+
+    [Fact]
+    public async Task Upload_WithTooLongCapturedAt_ReturnsCzechProblemDetails()
+    {
+        var locResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Foto s dlouhým datem", LocationKind.Village, 49.5m, 17.1m));
+        var loc = await locResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+
+        using var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(ValidPng);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        content.Add(fileContent, "file", "photo.png");
+        content.Add(new StringContent(new string('1', 65)), "capturedAt");
+
+        var response = await Client.PostAsync($"/api/images/locations/{loc!.Id}", content);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal((int)HttpStatusCode.BadRequest, problem.Status);
+        Assert.Contains("Neplatný formát data", problem.Detail);
+        Assert.Contains("capturedAt", problem.Detail);
+    }
+
+    [Fact]
     public async Task Upload_LocationStamp_PersistsStampPathAndFullSasUrl()
     {
         var locResponse = await Client.PostAsJsonAsync("/api/locations",
