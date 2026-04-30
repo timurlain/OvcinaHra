@@ -95,6 +95,8 @@ public record TreasureSummaryDto(
     int PoolRemaining, int Placed,
     int StartCount, int EarlyCount, int MidgameCount, int LategameCount);
 
+public record UnloadTreasuresResponse(int QuestsRemoved, int ItemsReturned);
+
 public record UnlimitedItemDto(int ItemId, string ItemName, ItemType ItemType);
 
 public record AvailablePoolItemDto(int ItemId, string DisplayName, int Remaining, int StockCount);

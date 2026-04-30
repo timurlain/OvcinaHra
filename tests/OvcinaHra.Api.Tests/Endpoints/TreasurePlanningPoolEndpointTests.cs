@@ -439,6 +439,50 @@ public class TreasurePlanningPoolEndpointTests(PostgresFixture postgres) : Integ
     }
 
     [Fact]
+    public async Task UnloadTreasures_ReturnsPlacedTreasureToPoolAndDeletesQuests()
+    {
+        var game = await CreateGameAsync();
+        var location = await CreateLocationAsync();
+        var stash = await CreateSecretStashAsync("Truhla u pařezu");
+        await AssignStashToGameAsync(game.Id, stash.Id, location.Id);
+        var item = await CreateItemAsync("Bronz");
+        await AssignItemToGameAsync(game.Id, item.Id);
+        var pool = await AddPoolItemAsync(game.Id, item.Id, count: 5);
+
+        var locationAssign = await Client.PostAsJsonAsync("/api/treasure-planning/assign",
+            new AssignTreasureDto("Poklad venku", GameTimePhase.Early, game.Id,
+                LocationId: location.Id,
+                PoolItems: [new PoolItemAssignDto(pool.Id, 2)]));
+        locationAssign.EnsureSuccessStatusCode();
+
+        var stashAssign = await Client.PostAsJsonAsync("/api/treasure-planning/assign",
+            new AssignTreasureDto("Poklad ve skrýši", GameTimePhase.Midgame, game.Id,
+                SecretStashId: stash.Id,
+                PoolItems: [new PoolItemAssignDto(pool.Id, 1)]));
+        stashAssign.EnsureSuccessStatusCode();
+
+        var response = await Client.PostAsync($"/api/treasure-planning/unload/{game.Id}", null);
+        response.EnsureSuccessStatusCode();
+
+        var result = (await response.Content.ReadFromJsonAsync<UnloadTreasuresResponse>())!;
+        Assert.Equal(2, result.QuestsRemoved);
+        Assert.Equal(3, result.ItemsReturned);
+
+        var quests = await Client.GetFromJsonAsync<List<TreasureQuestListDto>>(
+            $"/api/treasure-quests/by-game/{game.Id}");
+        Assert.Empty(quests!);
+
+        var poolAfter = await Client.GetFromJsonAsync<List<TreasurePoolItemDto>>(
+            $"/api/treasure-planning/pool/{game.Id}");
+        Assert.Equal(5, poolAfter!.Where(p => p.ItemId == item.Id).Sum(p => p.Count));
+
+        var summaryAfter = await Client.GetFromJsonAsync<TreasureSummaryDto>(
+            $"/api/treasure-planning/summary/{game.Id}");
+        Assert.Equal(0, summaryAfter!.Placed);
+        Assert.Equal(5, summaryAfter.PoolRemaining);
+    }
+
+    [Fact]
     public async Task RemoveFromPool_NonExistentRow_ReturnsNotFound()
     {
         var response = await Client.DeleteAsync("/api/treasure-planning/pool/999999");

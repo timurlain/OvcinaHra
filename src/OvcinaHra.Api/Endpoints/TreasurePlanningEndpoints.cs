@@ -34,6 +34,7 @@ public static class TreasurePlanningEndpoints
 
         // Summary
         group.MapGet("/summary/{gameId:int}", GetSummary);
+        group.MapPost("/unload/{gameId:int}", UnloadTreasures);
 
         // Available items for pool (with remaining stock)
         group.MapGet("/available-items/{gameId:int}", GetAvailableItems);
@@ -346,6 +347,27 @@ public static class TreasurePlanningEndpoints
             CountByDifficulty(GameTimePhase.Early),
             CountByDifficulty(GameTimePhase.Midgame),
             CountByDifficulty(GameTimePhase.Lategame)));
+    }
+
+    private static async Task<Ok<UnloadTreasuresResponse>> UnloadTreasures(int gameId, WorldDbContext db)
+    {
+        var quests = await db.TreasureQuests
+            .Where(tq => tq.GameId == gameId)
+            .Include(tq => tq.TreasureItems)
+            .ToListAsync();
+
+        var treasureItems = quests.SelectMany(tq => tq.TreasureItems).ToList();
+        var itemsReturned = treasureItems.Sum(ti => ti.Count);
+
+        foreach (var item in treasureItems)
+        {
+            item.TreasureQuestId = null;
+        }
+
+        db.TreasureQuests.RemoveRange(quests);
+        await db.SaveChangesAsync();
+
+        return TypedResults.Ok(new UnloadTreasuresResponse(quests.Count, itemsReturned));
     }
 
     private static async Task<Results<Created<TreasureQuestDetailDto>, ValidationProblem>> AssignTreasure(
