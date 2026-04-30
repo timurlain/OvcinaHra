@@ -5,7 +5,7 @@ public record BuildingListDto(
     int? LocationId, string? LocationName, bool IsPrebuilt,
     string? ImagePath = null, string? ImageUrl = null,
     // Issue #142 — per-game construction recipe summary. Populated by the
-    // by-game endpoint with a compact "3× ingrediencí · 50 zlaťáků · 1 dovednost"
+    // by-game endpoint with a compact "3× ingrediencí · 50 grošů · 1 dovednost"
     // string for display in the grid; catalog endpoint leaves null.
     string? RecipeSummary = null,
     // Issue #208 — building's own "build recipe" pair (cost → effect). Null
