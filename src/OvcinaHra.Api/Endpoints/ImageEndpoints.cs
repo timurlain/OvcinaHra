@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Diagnostics;
+using System.Globalization;
 using System.Security.Claims;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Services;
@@ -191,6 +192,7 @@ public static class ImageEndpoints
                 return TypedResults.NotFound();
             }
 
+            var metadata = await ReadUploadMetadataAsync(http, ct);
             var isPlacement = string.Equals(field, "placement", StringComparison.OrdinalIgnoreCase);
             var suffix = isPlacement ? "placement" : "image";
             var ext = file.ContentType switch
@@ -376,7 +378,7 @@ public static class ImageEndpoints
             }
             LogPlacementImageExit(logger, isPlacementUpload, entityId, gameId, userId, 200, blobKey, url);
             LogImageUploadServerExit(logger, isServerTimedImageUpload, http, entityType, entityId, userId, serverTimer, 200, blobKey);
-            return TypedResults.Ok(new ImageUploadResult(blobKey, url));
+            return TypedResults.Ok(new ImageUploadResult(blobKey, url, metadata));
         }
         catch (Exception ex) when (isPlacementUpload && ex is not OperationCanceledException)
         {
@@ -409,6 +411,39 @@ public static class ImageEndpoints
             LogImageUploadServerExit(logger, isServerTimedImageUpload, http, entityType, entityId, userId, serverTimer, 500, detail: ex.Message);
             throw;
         }
+    }
+
+    private static async Task<ImageUploadMetadataDto?> ReadUploadMetadataAsync(HttpContext http, CancellationToken ct)
+    {
+        var form = await http.Request.ReadFormAsync(ct);
+        var gpsLatitude = ReadNullableDouble(form, "gpsLatitude");
+        var gpsLongitude = ReadNullableDouble(form, "gpsLongitude");
+        var capturedAt = ReadNullableString(form, "capturedAt");
+
+        if (gpsLatitude is null && gpsLongitude is null && capturedAt is null)
+            return null;
+
+        return new ImageUploadMetadataDto(gpsLatitude, gpsLongitude, capturedAt);
+    }
+
+    private static double? ReadNullableDouble(IFormCollection form, string key)
+    {
+        var value = ReadNullableString(form, key);
+        if (value is null)
+            return null;
+
+        return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : null;
+    }
+
+    private static string? ReadNullableString(IFormCollection form, string key)
+    {
+        if (!form.TryGetValue(key, out var values))
+            return null;
+
+        var value = values.ToString();
+        return string.IsNullOrWhiteSpace(value) ? null : value;
     }
 
     /// <summary>

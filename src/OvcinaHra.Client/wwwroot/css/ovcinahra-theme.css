@@ -3848,6 +3848,9 @@
 .oh-map-region-toggle input{width:13px;height:13px;margin:0;accent-color:#2D5016}
 .oh-map-region-toggle:hover{background:rgba(45,80,22,.08);color:#2D5016}
 .oh-map-region-toggle.is-active{background:#2D5016;color:#fff}
+.oh-map-done-toggle input{accent-color:#1F8F3A}
+.oh-map-done-toggle:hover{background:rgba(31,143,58,.08);color:#1F8F3A}
+.oh-map-done-toggle.is-active{background:#1F8F3A;color:#fff}
 @media (max-width: 900px){
     .oh-map-treasure-filter{top:48px;right:8px;max-width:calc(100% - 16px)}
 }
@@ -3899,6 +3902,10 @@
     border-radius:99px;padding:0 4px;font:700 .65rem var(--oh-font-body);
     border:1.5px solid var(--oh-border,#d8d2be);min-width:14px;text-align:center;
     box-shadow:0 1px 2px rgba(0,0,0,.18);z-index:3}
+.oh-map-pin-done{position:absolute;top:-5px;right:-6px;z-index:4;width:17px;height:17px;
+    border-radius:50%;background:#fff;color:#1F8F3A;font-size:16px;line-height:1;
+    box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.oh-map-pin.oh-map-pin-has-count .oh-map-pin-done{top:11px;right:-7px}
 /* Ctrl/Meta held over the map → crosshair cursor (visual hint that
    Ctrl+Click places an ungeocoded location and Ctrl+Shift+Click opens
    the relocation picker). Class toggled by map-interop.js keydown/keyup. */
@@ -4066,7 +4073,7 @@ body.oh-map-print-labeled .oh-map-pin .oh-map-pin-label.oh-map-pin-label-with-re
 .oh-bld-tile:hover{border-color:#2D5016;box-shadow:0 6px 14px rgba(45,80,22,.18);transform:translateY(-2px)}
 .oh-bld-tile:focus-visible{outline:3px solid #2D5016;outline-offset:2px}
 .oh-bld-tile-art{position:relative;aspect-ratio:5/7;background:#f5f0e1;overflow:hidden}
-.oh-bld-tile-art img{width:100%;height:100%;object-fit:cover;display:block}
+.oh-bld-tile-art img{width:100%;height:100%;object-fit:contain;display:block}
 .oh-bld-tile-fade{position:absolute;left:0;right:0;bottom:0;height:50%;
     background:linear-gradient(180deg,rgba(0,0,0,0) 0%,rgba(20,12,4,.8) 100%);
     pointer-events:none}
@@ -4128,7 +4135,7 @@ body.oh-map-print-labeled .oh-map-pin .oh-map-pin-label.oh-map-pin-label-with-re
 .oh-bld-karta-hero{display:grid;grid-template-columns:60fr 40fr;gap:24px;align-items:start;margin-bottom:18px}
 @media (max-width:880px){.oh-bld-karta-hero{grid-template-columns:1fr}}
 .oh-bld-karta-img-wrap{display:flex;justify-content:center}
-.oh-bld-karta-img{width:100%;max-width:380px;aspect-ratio:5/7;object-fit:cover;
+.oh-bld-karta-img{width:100%;max-width:380px;aspect-ratio:5/7;object-fit:contain;
     border-radius:6px;border:1px solid #d8d2be;background:#f5f0e1;display:block}
 .oh-bld-karta-img--placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
     background:repeating-linear-gradient(45deg,#FFF8F0 0 8px,#f4ead2 8px 9px);color:#7a5520}
@@ -4156,6 +4163,18 @@ body.oh-map-print-labeled .oh-map-pin .oh-map-pin-label.oh-map-pin-label-with-re
     border:1px solid rgba(178,98,35,.3);font:500 .825rem/1.3 var(--oh-font-body,inherit)}
 .oh-bld-delete-blocked i{color:#B26223}
 .oh-bld-delete-blocked strong{color:#3a2e1a}
+
+/* — Shared recipe ingredient picker — */
+.oh-recipe-ingredient-picker{max-width:min(100%,640px)}
+.oh-recipe-ingredient-table{width:100%;table-layout:fixed}
+.oh-recipe-ingredient-table td:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.oh-recipe-ingredient-qty{width:72px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.oh-recipe-ingredient-remove{width:40px;text-align:center}
+.oh-recipe-ingredient-add{display:grid;grid-template-columns:minmax(0,1fr) 72px 34px;gap:8px;align-items:end}
+@media (max-width:520px){
+    .oh-recipe-ingredient-picker{max-width:100%}
+    .oh-recipe-ingredient-add{grid-template-columns:minmax(0,1fr) 66px 34px}
+}
 
 /* ======================================================================
    Issue #214 — QuestWaypointEditor (Trasa tab in QuestDetail). Ordered

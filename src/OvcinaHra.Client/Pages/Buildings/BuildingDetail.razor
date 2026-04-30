@@ -61,10 +61,10 @@ else
     {
         <div class="oh-bld-karta">
             <div class="oh-bld-karta-hero">
-                <div class="oh-bld-karta-img-wrap @(string.IsNullOrEmpty(building.ImageUrl) ? "oh-bld-karta-img-wrap--placeholder" : "")">
-                    @if (!string.IsNullOrEmpty(building.ImageUrl))
+                <div class="oh-bld-karta-img-wrap @(string.IsNullOrEmpty(DetailImageUrl) ? "oh-bld-karta-img-wrap--placeholder" : "")">
+                    @if (!string.IsNullOrEmpty(DetailImageUrl))
                     {
-                        <img src="@building.ImageUrl" alt="@building.Name" class="oh-bld-karta-img" />
+                        <img src="@DetailImageUrl" alt="@building.Name" class="oh-bld-karta-img" />
                     }
                     else
                     {
@@ -197,7 +197,7 @@ else
                     @if (recipe is not null)
                     {
                         <div class="mb-2">
-                            <strong class="small">Cena v zlaťácích:</strong>
+                            <strong class="small">Cena v groších:</strong>
                             <div class="d-flex gap-2 align-items-end mt-1">
                                 <div style="width:140px">
                                     <DxSpinEdit @bind-Value="@recipeMoneyCost" MinValue="0" NullText="(žádná)"
@@ -319,6 +319,8 @@ else
     private BuildingDetailDto? building;
     private bool loading = true;
     private string? error;
+    private string? fullImageUrl;
+    private string? DetailImageUrl => fullImageUrl ?? building?.ImageUrl;
 
     private string activeTab = "karta";
 
@@ -388,6 +390,7 @@ else
     {
         loading = true;
         error = null;
+        fullImageUrl = null;
         try
         {
             building = await Api.GetAsync<BuildingDetailDto>($"/api/buildings/{Id}");
@@ -397,12 +400,27 @@ else
                 return;
             }
             ResetEditModel();
+            await LoadFullImageUrlAsync();
             await LoadLocationsAsync();
             await LoadRecipePickerDataAsync();
             await LoadRecipeAsync();
         }
         catch (Exception ex) { error = ex.Message; }
         finally { loading = false; }
+    }
+
+    private async Task LoadFullImageUrlAsync()
+    {
+        if (building is null || string.IsNullOrWhiteSpace(building.ImagePath)) return;
+        try
+        {
+            var urls = await Api.GetAsync<ImageUrlsDto>($"/api/images/buildings/{building.Id}");
+            fullImageUrl = urls?.ImageUrl ?? building.ImageUrl;
+        }
+        catch
+        {
+            fullImageUrl = building.ImageUrl;
+        }
     }
 
     private async Task LoadRecipePickerDataAsync()

@@ -51,6 +51,7 @@ public class MapEndpointsTests(PostgresFixture postgres)
                 Name = "Hradec",
                 LocationKind = LocationKind.Wilderness,
                 Region = "Severní les",
+                PlacementPhotoPath = "locations/1/placement.jpg",
                 Coordinates = new GpsCoordinates(49.5m, 17.1m),
             };
             var withoutGps = new Location
@@ -73,6 +74,7 @@ public class MapEndpointsTests(PostgresFixture postgres)
         var single = Assert.Single(data.Locations);
         Assert.Equal("Hradec", single.Name);
         Assert.Equal("Severní les", single.Region);
+        Assert.True(single.IsPlacementDone);
     }
 
     [Fact]

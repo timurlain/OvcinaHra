@@ -87,6 +87,7 @@ else if (view == "galerie")
         {
             <div class="oh-bld-action-card" @key="b.Id">
                 <BuildingTile Building="@b"
+                              ImageUrl="@GetGalleryImageUrl(b)"
                               OnClick="@(_ => Nav.NavigateTo($"/buildings/{b.Id}"))" />
                 @if (Catalog)
                 {
@@ -309,6 +310,9 @@ else
     private bool isRemoveFromGameVisible;
     private BuildingListDto? pendingRemoveBuilding;
     private string? associationError;
+    private readonly Dictionary<int, string?> galleryImageUrls = [];
+    private readonly HashSet<int> galleryImageUrlAttempts = [];
+    private int galleryImageLoadVersion;
 
     private List<BuildingListDto> filtered =>
         buildings.Where(b =>
@@ -364,6 +368,11 @@ else
                     assignedBuildingIds = linked.Select(b => b.Id).ToHashSet();
                 }
             }
+            galleryImageUrls.Clear();
+            galleryImageUrlAttempts.Clear();
+            galleryImageLoadVersion++;
+            if (view == "galerie")
+                QueueGalleryImageUrlLoad();
         }
         finally { loading = false; }
     }
@@ -374,6 +383,59 @@ else
         view = newView;
         try { await JS.InvokeVoidAsync("localStorage.setItem", "oh-building-view", view); }
         catch { /* localStorage unavailable — ignore */ }
+        if (view == "galerie")
+        {
+            QueueGalleryImageUrlLoad();
+            StateHasChanged();
+        }
+    }
+
+    private string? GetGalleryImageUrl(BuildingListDto building) =>
+        galleryImageUrls.TryGetValue(building.Id, out var url) ? url ?? building.ImageUrl : building.ImageUrl;
+
+    private void QueueGalleryImageUrlLoad()
+    {
+        var version = galleryImageLoadVersion;
+        _ = InvokeAsync(async () =>
+        {
+            await LoadGalleryImageUrlsAsync(version);
+            if (version == galleryImageLoadVersion)
+                StateHasChanged();
+        });
+    }
+
+    private async Task LoadGalleryImageUrlsAsync(int version)
+    {
+        var targets = buildings
+            .Where(b => !string.IsNullOrWhiteSpace(b.ImagePath) && !galleryImageUrlAttempts.Contains(b.Id))
+            .ToList();
+        if (targets.Count == 0) return;
+
+        foreach (var building in targets)
+            galleryImageUrlAttempts.Add(building.Id);
+
+        using var throttle = new System.Threading.SemaphoreSlim(6);
+        var loaded = await Task.WhenAll(targets.Select(async building =>
+        {
+            await throttle.WaitAsync();
+            try
+            {
+                var urls = await Api.GetAsync<ImageUrlsDto>($"/api/images/buildings/{building.Id}");
+                return (building.Id, ImageUrl: urls?.ImageUrl ?? building.ImageUrl);
+            }
+            catch
+            {
+                return (building.Id, ImageUrl: building.ImageUrl);
+            }
+            finally
+            {
+                throttle.Release();
+            }
+        }));
+        if (version != galleryImageLoadVersion) return;
+
+        foreach (var (id, imageUrl) in loaded)
+            galleryImageUrls[id] = imageUrl;
     }
 
     private void OpenCreateModal()

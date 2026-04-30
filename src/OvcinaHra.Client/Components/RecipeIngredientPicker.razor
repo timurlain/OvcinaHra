@@ -4,18 +4,18 @@
 
 @using OvcinaHra.Shared.Dtos
 
-<div class="mb-2">
+<div class="mb-2 oh-recipe-ingredient-picker">
     <strong class="small">Ingredience:</strong>
     @if (Ingredients.Count > 0)
     {
-        <table class="table table-sm mb-1">
+        <table class="table table-sm mb-1 oh-recipe-ingredient-table">
             <tbody>
                 @foreach (var ing in Ingredients)
                 {
                     <tr>
                         <td>@ing.ItemName</td>
-                        <td style="width:60px">×@ing.Quantity</td>
-                        <td style="width:40px">
+                        <td class="oh-recipe-ingredient-qty">×@ing.Quantity</td>
+                        <td class="oh-recipe-ingredient-remove">
                             <button class="btn btn-sm btn-link text-danger p-0"
                                     title="Odebrat ingredienci"
                                     aria-label="@($"Odebrat ingredienci {ing.ItemName}")"
@@ -32,13 +32,13 @@
     {
         <p class="text-muted small mb-1">Žádné ingredience.</p>
     }
-    <div class="d-flex gap-2 align-items-end">
-        <div style="flex:1">
+    <div class="oh-recipe-ingredient-add" @onkeyup="HandleAddKeyUp">
+        <div>
             <DxComboBox Data="@AvailableItems" @bind-Value="@_newItemId"
                         TextFieldName="Name" ValueFieldName="Id"
                         NullText="(přidat ingredienci)" SearchMode="ListSearchMode.AutoSearch" />
         </div>
-        <div style="width:70px">
+        <div>
             <DxSpinEdit @bind-Value="@_newQuantity" MinValue="1" />
         </div>
         <button class="btn btn-sm btn-outline-primary" style="height:34px"
@@ -81,5 +81,11 @@
         _newItemId = null;
         _newQuantity = 1;
         await OnAdd.InvokeAsync((id, qty));
+    }
+
+    private async Task HandleAddKeyUp(KeyboardEventArgs args)
+    {
+        if (args.Key is "Enter" or "NumpadEnter")
+            await AddAsync();
     }
 }
