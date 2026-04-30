@@ -21,6 +21,7 @@ public static class DashboardEndpoints
         group.MapGet("/issues", GetIssues);
         group.MapGet("/activity", GetActivity);
         group.MapGet("/world-activity", GetWorldActivity);
+        group.MapGet("/world-change", GetWorldChange);
         group.MapGet("/timeline", GetTimeline);
         group.MapGet("/events/recent", GetRecentEvents);
 
@@ -183,6 +184,46 @@ public static class DashboardEndpoints
                 a.Location != null ? a.Location.Name : null,
                 a.CharacterAssignmentId,
                 a.QuestId))
+            .ToListAsync();
+
+        return TypedResults.Ok(rows);
+    }
+
+    /// <summary>
+    /// Powers the /aktivity full-page log — uncapped, paged WorldChange
+    /// audit rows scoped to the active game (plus catalog-wide rows where
+    /// <c>GameId</c> is null), ordered DESC by <c>ChangedAtUtc</c>. Same
+    /// source as the cockpit "Co se nedávno dělo" sliver
+    /// (<see cref="GetActivity"/>) but without the 10-row cap, so the
+    /// client can DxGrid-filter / group / search the whole roll. Default
+    /// 500 rows / max 2000 — keeps the page responsive without forcing
+    /// server-side paging on a table the audit log never grows past
+    /// game-month size. 404 when the game doesn't exist (per §1 — REST
+    /// 404 before 200-with-empty so orchestrator typos surface fast).
+    /// </summary>
+    private static async Task<Results<Ok<List<WorldChangeRowDto>>, NotFound>> GetWorldChange(
+        int gameId, WorldDbContext db, int? take = 500)
+    {
+        var n = Math.Clamp(take ?? 500, 1, 2000);
+
+        if (!await db.Games.AnyAsync(g => g.Id == gameId))
+            return TypedResults.NotFound();
+
+        var rows = await db.WorldChanges
+            .AsNoTracking()
+            .Where(c => c.GameId == gameId || c.GameId == null)
+            .OrderByDescending(c => c.ChangedAtUtc)
+            .ThenByDescending(c => c.Id)
+            .Take(n)
+            .Select(c => new WorldChangeRowDto(
+                c.Id,
+                c.GameId,
+                c.EntityType,
+                c.EntityId,
+                c.EntityName,
+                c.Operation,
+                c.ActorDisplayName,
+                c.ChangedAtUtc))
             .ToListAsync();
 
         return TypedResults.Ok(rows);

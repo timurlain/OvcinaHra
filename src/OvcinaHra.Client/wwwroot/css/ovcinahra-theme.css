@@ -3485,6 +3485,9 @@
 .oh-home-act-skel{align-items:center}
 .oh-home-bottom-row > .oh-home-qlaunch:only-child{grid-column:1/-1}
 .oh-home-recent-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.oh-home-act-more{font:600 .78rem var(--oh-font-body);color:#2D5016;text-decoration:none;
+    white-space:nowrap}
+.oh-home-act-more:hover{text-decoration:underline}
 .oh-home-live-chip{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;
     background:rgba(45,80,22,.1);color:#2D5016;font:700 .7rem var(--oh-font-body);text-transform:uppercase}
 .oh-home-event-row{min-height:56px}
@@ -3552,6 +3555,28 @@
 .oh-home-skel-line-sm{height:10px;width:55%}
 .oh-home-skel-line-xs{height:8px;width:35%}
 @keyframes oh-home-skel{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+/* /aktivity full-page WorldChange audit log (header + grid styling) */
+.oh-act-page-head{display:flex;align-items:baseline;flex-wrap:wrap;gap:14px;margin:0 0 14px}
+.oh-act-page-head h1{margin:0;font:700 1.4rem var(--oh-font-heading)}
+.oh-act-page-tools{margin-left:auto;display:inline-flex;align-items:center;gap:8px}
+.oh-act-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:60px 20px;text-align:center;color:var(--oh-text-muted,#6b6453)}
+.oh-act-grid{font-size:.9rem}
+.oh-act-type-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 10px;
+    border-radius:999px;background:rgba(45,80,22,.08);color:#2D5016;
+    font:600 .78rem var(--oh-font-body);white-space:nowrap}
+.oh-act-type-pill i{font-size:.9rem}
+.oh-act-op-badge{display:inline-block;padding:2px 10px;border-radius:999px;
+    font:600 .72rem var(--oh-font-body);text-transform:uppercase;letter-spacing:.02em;
+    white-space:nowrap}
+.oh-act-op-badge--created{background:rgba(45,80,22,.14);color:#2D5016}
+.oh-act-op-badge--updated{background:rgba(178,98,35,.14);color:#7a4a17}
+.oh-act-op-badge--deleted{background:rgba(139,30,63,.12);color:#8B1E3F}
+.oh-act-op-badge--default{background:rgba(0,0,0,.06);color:var(--oh-text,#2a2a2a)}
+.oh-act-name-link{color:var(--oh-text,#2a2a2a);text-decoration:none;
+    border-bottom:1px dotted rgba(0,0,0,.25)}
+.oh-act-name-link:hover{color:#2D5016;border-bottom-color:#2D5016}
 
 /* Issue #478 — Aktivity světa table on Home cockpit */
 .oh-home-world-activity{padding:14px 18px;background:var(--oh-surface,#FAF6EC);

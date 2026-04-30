@@ -268,6 +268,123 @@ public class DashboardEndpointsTests(PostgresFixture postgres)
             });
     }
 
+    // /aktivity full-page log — uncapped paged feed of raw WorldChange rows
+    // for the active game (plus catalog-wide where GameId is null), DESC by
+    // ChangedAtUtc, no merge/projection so the client can DxGrid-filter the
+    // entire roll. Cross-game rows must NOT leak.
+    [Fact]
+    public async Task WorldChange_ReturnsRawRowsScopedToGameAndCatalog()
+    {
+        var game = await CreateGameAsync();
+        var otherGame = await CreateGameAsync();
+        await ClearWorldChangesAsync();
+
+        var now = DateTime.UtcNow;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            db.WorldChanges.AddRange(
+                new WorldChange
+                {
+                    GameId = game.Id,
+                    EntityType = nameof(Location),
+                    EntityId = 10,
+                    EntityName = "Starý brod",
+                    Operation = WorldChangeOperation.Updated,
+                    ActorUserId = "u1",
+                    ActorDisplayName = "Drozd",
+                    ChangedAtUtc = now
+                },
+                new WorldChange
+                {
+                    GameId = null,
+                    EntityType = nameof(Item),
+                    EntityId = 20,
+                    EntityName = "Hojivý lektvar",
+                    Operation = WorldChangeOperation.Created,
+                    ActorUserId = "system",
+                    ActorDisplayName = "System",
+                    ChangedAtUtc = now.AddMinutes(1)
+                },
+                new WorldChange
+                {
+                    GameId = otherGame.Id,
+                    EntityType = nameof(Npc),
+                    EntityId = 30,
+                    EntityName = "Cizí NPC",
+                    Operation = WorldChangeOperation.Deleted,
+                    ActorUserId = "other",
+                    ActorDisplayName = "Other",
+                    ChangedAtUtc = now.AddMinutes(2)
+                });
+            await db.SaveChangesAsync();
+        }
+
+        var rows = await Client.GetFromJsonAsync<List<WorldChangeRowDto>>(
+            $"/api/dashboard/world-change?gameId={game.Id}");
+
+        Assert.NotNull(rows);
+        Assert.Equal(2, rows.Count);
+
+        // Newest first, catalog-wide row (GameId == null) precedes the game-scoped one.
+        Assert.Equal(nameof(Item), rows[0].EntityType);
+        Assert.Null(rows[0].GameId);
+        Assert.Equal(WorldChangeOperation.Created, rows[0].Operation);
+        Assert.Equal("System", rows[0].ActorDisplayName);
+
+        Assert.Equal(nameof(Location), rows[1].EntityType);
+        Assert.Equal(game.Id, rows[1].GameId);
+        Assert.Equal(WorldChangeOperation.Updated, rows[1].Operation);
+        Assert.Equal("Drozd", rows[1].ActorDisplayName);
+        Assert.Equal("Starý brod", rows[1].EntityName);
+    }
+
+    [Fact]
+    public async Task WorldChange_NonExistentGame_Returns404()
+    {
+        // §1 — REST 404 before 200-with-empty so orchestrator typos
+        // surface instead of being masked.
+        var response = await Client.GetAsync("/api/dashboard/world-change?gameId=999999");
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task WorldChange_TakeParameter_CapsResultCount()
+    {
+        var game = await CreateGameAsync();
+        await ClearWorldChangesAsync();
+
+        var now = DateTime.UtcNow;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            for (var i = 0; i < 5; i++)
+            {
+                db.WorldChanges.Add(new WorldChange
+                {
+                    GameId = game.Id,
+                    EntityType = nameof(Location),
+                    EntityId = 100 + i,
+                    EntityName = $"L{i}",
+                    Operation = WorldChangeOperation.Updated,
+                    ActorUserId = "u1",
+                    ActorDisplayName = "Drozd",
+                    ChangedAtUtc = now.AddMinutes(i)
+                });
+            }
+            await db.SaveChangesAsync();
+        }
+
+        var rows = await Client.GetFromJsonAsync<List<WorldChangeRowDto>>(
+            $"/api/dashboard/world-change?gameId={game.Id}&take=2");
+
+        Assert.NotNull(rows);
+        Assert.Equal(2, rows.Count);
+        // Newest 2 in DESC order — i=4 then i=3.
+        Assert.Equal("L4", rows[0].EntityName);
+        Assert.Equal("L3", rows[1].EntityName);
+    }
+
     [Fact]
     public async Task WorldChangeInterceptor_ApiCreateGame_RecordsAuthenticatedActor()
     {
