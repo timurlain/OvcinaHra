@@ -18,7 +18,11 @@
     <h1>Aktivita ve světě</h1>
     @if (_rows is not null)
     {
-        <span class="text-muted small">@_rows.Count záznamů</span>
+        @* Default cap is 500 (max 2000); when the audit grows past 500
+           we'd silently mislead organizers ("500 záznamů" vs the real total),
+           so always frame the count as "Posledních N" — same wording at the
+           cap or below. *@
+        <span class="text-muted small">Posledních @_rows.Count záznamů</span>
     }
     <div class="oh-act-page-tools">
         <button type="button" class="btn btn-sm btn-outline-secondary"
@@ -157,9 +161,18 @@ else
         if (_loadedGameId == gameId.Value && _rows is not null) return;
         _loadedGameId = gameId.Value;
 
-        var rows = await Api.GetListAsync<WorldChangeRowDto>(
-            $"/api/dashboard/world-change?gameId={gameId.Value}&take=500");
-        _rows = rows;
+        try
+        {
+            var rows = await Api.GetListAsync<WorldChangeRowDto>(
+                $"/api/dashboard/world-change?gameId={gameId.Value}&take=500");
+            _rows = rows;
+        }
+        catch (Exception)
+        {
+            // ApiClient already logs the failure; keep prior _rows if any
+            // so a transient flake doesn't blank the table mid-session.
+            _rows ??= [];
+        }
         await InvokeAsync(StateHasChanged);
     }
 

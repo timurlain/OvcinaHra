@@ -340,6 +340,15 @@ public class DashboardEndpointsTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task WorldChange_NonExistentGame_Returns404()
+    {
+        // §1 — REST 404 before 200-with-empty so orchestrator typos
+        // surface instead of being masked.
+        var response = await Client.GetAsync("/api/dashboard/world-change?gameId=999999");
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task WorldChange_TakeParameter_CapsResultCount()
     {
         var game = await CreateGameAsync();

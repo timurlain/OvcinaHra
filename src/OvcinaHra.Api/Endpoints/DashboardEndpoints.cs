@@ -198,12 +198,16 @@ public static class DashboardEndpoints
     /// client can DxGrid-filter / group / search the whole roll. Default
     /// 500 rows / max 2000 — keeps the page responsive without forcing
     /// server-side paging on a table the audit log never grows past
-    /// game-month size.
+    /// game-month size. 404 when the game doesn't exist (per §1 — REST
+    /// 404 before 200-with-empty so orchestrator typos surface fast).
     /// </summary>
-    private static async Task<Ok<List<WorldChangeRowDto>>> GetWorldChange(
+    private static async Task<Results<Ok<List<WorldChangeRowDto>>, NotFound>> GetWorldChange(
         int gameId, WorldDbContext db, int? take = 500)
     {
         var n = Math.Clamp(take ?? 500, 1, 2000);
+
+        if (!await db.Games.AnyAsync(g => g.Id == gameId))
+            return TypedResults.NotFound();
 
         var rows = await db.WorldChanges
             .AsNoTracking()
