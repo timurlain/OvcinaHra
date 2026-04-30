@@ -153,20 +153,20 @@ else
                                 <span>@npc.NpcName</span>
                                 <small>@npc.Role.GetDisplayName()</small>
                             </th>
-                            @foreach (var slot in slots)
+                            @foreach (var run in BuildRoleCellRuns(npc))
                             {
-                                var assignment = GetAssignment(slot.Id, npc.NpcId);
-                                <td class="@CellCss(assignment)" @key="slot.Id">
+                                <td class="@MergedCellCss(CellCss(run.Assignment), run.ColSpan)" colspan="@run.ColSpan" @key="run.Key">
                                     <button type="button"
                                             class="oh-orgrole-cell-btn"
-                                            aria-label="@CellButtonLabel(slot, npc, assignment)"
-                                            @onclick="() => OpenCellEditor(slot, npc, assignment)">
-                                        @if (assignment is null)
+                                            aria-label="@CellButtonLabel(run.FirstSlot, npc, run.Assignment)"
+                                            @onclick="() => OpenCellEditor(run.FirstSlot, npc, run.Assignment)">
+                                        @if (run.Assignment is null)
                                         {
-                                            <span class="oh-orgrole-empty-cell">+</span>
+                                            <span class="oh-orgrole-empty-cell">@(run.ColSpan > 1 ? "Nepřiděleno" : "+")</span>
                                         }
                                         else
                                         {
+                                            var assignment = run.Assignment!;
                                             <span class="oh-orgrole-person">@assignment.PersonName</span>
                                             @if (!string.IsNullOrWhiteSpace(assignment.PersonEmail))
                                             {
@@ -233,21 +233,20 @@ else
                                     Doplnit zbylé sloty
                                 </button>
                             </th>
-                            @foreach (var slot in slots)
+                            @foreach (var run in BuildAdultCellRuns(adult))
                             {
-                                var slotAssignments = GetAdultAssignments(slot.Id, adult.PersonId);
-                                <td class="@AdultCellCss(slotAssignments)" @key="slot.Id">
+                                <td class="@MergedCellCss(AdultCellCss(run.Assignments), run.ColSpan)" colspan="@run.ColSpan" @key="run.Key">
                                     <button type="button"
                                             class="oh-orgrole-cell-btn"
-                                            aria-label="@AdultCellButtonLabel(slot, adult, slotAssignments)"
-                                            @onclick="() => OpenAdultCellEditor(slot, adult, slotAssignments)">
-                                        @if (slotAssignments.Count == 0)
+                                            aria-label="@AdultCellButtonLabel(run.FirstSlot, adult, run.Assignments)"
+                                            @onclick="() => OpenAdultCellEditor(run.FirstSlot, adult, run.Assignments)">
+                                        @if (run.Assignments.Count == 0)
                                         {
-                                            <span class="oh-orgrole-empty-cell">—</span>
+                                            <span class="oh-orgrole-empty-cell">@(run.ColSpan > 1 ? "Nepřiděleno" : "—")</span>
                                         }
                                         else
                                         {
-                                            @foreach (var assignment in slotAssignments)
+                                            @foreach (var assignment in run.Assignments)
                                             {
                                                 var npc = GetNpc(assignment.NpcId);
                                                 <span class="oh-orgrole-role-pill" @key="assignment.Id">
@@ -255,7 +254,7 @@ else
                                                     <small>@(npc?.Role.GetDisplayName() ?? "Role")</small>
                                                 </span>
                                             }
-                                            @if (slotAssignments.Count > 1)
+                                            @if (run.Assignments.Count > 1)
                                             {
                                                 <span class="oh-orgrole-dup">více rolí</span>
                                             }
@@ -638,6 +637,96 @@ else
             : Array.Empty<OrganizerRoleAssignmentDto>();
     }
 
+    private IReadOnlyList<RoleCellRun> BuildRoleCellRuns(OrganizerRoleNpcDto npc)
+    {
+        var runs = new List<RoleCellRun>();
+        if (slots.Count == 0)
+            return runs;
+
+        var startSlot = slots[0];
+        var current = GetAssignment(startSlot.Id, npc.NpcId);
+        var span = 1;
+
+        for (var i = 1; i < slots.Count; i++)
+        {
+            var nextSlot = slots[i];
+            var next = GetAssignment(nextSlot.Id, npc.NpcId);
+            if (SameVisibleRoleAssignment(current, next))
+            {
+                span++;
+                continue;
+            }
+
+            runs.Add(new RoleCellRun(startSlot, current, span, $"role-{npc.NpcId}-{startSlot.Id}-{span}"));
+            startSlot = nextSlot;
+            current = next;
+            span = 1;
+        }
+
+        runs.Add(new RoleCellRun(startSlot, current, span, $"role-{npc.NpcId}-{startSlot.Id}-{span}"));
+        return runs;
+    }
+
+    private IReadOnlyList<AdultCellRun> BuildAdultCellRuns(AdultOption adult)
+    {
+        var runs = new List<AdultCellRun>();
+        if (slots.Count == 0)
+            return runs;
+
+        var startSlot = slots[0];
+        var current = GetAdultAssignments(startSlot.Id, adult.PersonId).ToList();
+        var span = 1;
+
+        for (var i = 1; i < slots.Count; i++)
+        {
+            var nextSlot = slots[i];
+            var next = GetAdultAssignments(nextSlot.Id, adult.PersonId).ToList();
+            if (SameVisibleAdultAssignments(current, next))
+            {
+                span++;
+                continue;
+            }
+
+            runs.Add(new AdultCellRun(startSlot, current, span, $"adult-{adult.PersonId}-{startSlot.Id}-{span}"));
+            startSlot = nextSlot;
+            current = next;
+            span = 1;
+        }
+
+        runs.Add(new AdultCellRun(startSlot, current, span, $"adult-{adult.PersonId}-{startSlot.Id}-{span}"));
+        return runs;
+    }
+
+    private bool SameVisibleRoleAssignment(OrganizerRoleAssignmentDto? left, OrganizerRoleAssignmentDto? right)
+    {
+        if (left is null || right is null)
+            return left is null && right is null;
+
+        return left.PersonId == right.PersonId
+            && string.Equals(left.PersonName, right.PersonName, StringComparison.Ordinal)
+            && string.Equals(VisibleEmail(left), VisibleEmail(right), StringComparison.Ordinal)
+            && IsDuplicateAdultSlot(left) == IsDuplicateAdultSlot(right);
+    }
+
+    private static string? VisibleEmail(OrganizerRoleAssignmentDto assignment) =>
+        string.IsNullOrWhiteSpace(assignment.PersonEmail) ? null : assignment.PersonEmail;
+
+    private bool SameVisibleAdultAssignments(
+        IReadOnlyList<OrganizerRoleAssignmentDto> left,
+        IReadOnlyList<OrganizerRoleAssignmentDto> right)
+    {
+        if (left.Count != right.Count)
+            return false;
+
+        for (var i = 0; i < left.Count; i++)
+        {
+            if (left[i].NpcId != right[i].NpcId)
+                return false;
+        }
+
+        return true;
+    }
+
     private IOrderedEnumerable<OrganizerRoleAssignmentDto> OrderAssignments(IEnumerable<OrganizerRoleAssignmentDto> source) =>
         source.OrderBy(a => GetNpc(a.NpcId)?.Role.GetDisplayName())
             .ThenBy(a => GetNpc(a.NpcId)?.NpcName);
@@ -669,6 +758,9 @@ else
             classes.Add("has-duplicate");
         return string.Join(' ', classes);
     }
+
+    private string MergedCellCss(string baseClasses, int colSpan) =>
+        colSpan > 1 ? $"{baseClasses} is-merged" : baseClasses;
 
     private bool IsDuplicateAdultSlot(OrganizerRoleAssignmentDto assignment) =>
         duplicateAdultSlotAssignmentIds.Contains(assignment.Id);
@@ -996,4 +1088,14 @@ else
     private record RoleFilterOption(NpcRole? Value, string Display);
     private record AdultOption(int PersonId, string Name, string? Email, string Display);
     private record NpcOption(int NpcId, string Display, NpcRole Role);
+    private record RoleCellRun(
+        OrganizerRoleTimeSlotDto FirstSlot,
+        OrganizerRoleAssignmentDto? Assignment,
+        int ColSpan,
+        string Key);
+    private record AdultCellRun(
+        OrganizerRoleTimeSlotDto FirstSlot,
+        IReadOnlyList<OrganizerRoleAssignmentDto> Assignments,
+        int ColSpan,
+        string Key);
 }
