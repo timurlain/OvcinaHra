@@ -221,6 +221,47 @@ public class ImageEndpointTests(PostgresFixture postgres) : IntegrationTestBase(
     }
 
     [Fact]
+    public async Task Upload_ForPersonalQuest_ReturnsOkAndPersistsBlobKey()
+    {
+        int personalQuestId;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var quest = new PersonalQuest
+            {
+                Name = "Foto osobní quest",
+            };
+            db.PersonalQuests.Add(quest);
+            await db.SaveChangesAsync();
+            personalQuestId = quest.Id;
+        }
+
+        using var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(ValidPng);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        content.Add(fileContent, "file", "personal-quest.png");
+
+        var response = await Client.PostAsync($"/api/images/personal-quests/{personalQuestId}", content);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<ImageUploadResult>();
+        Assert.NotNull(result);
+        Assert.StartsWith($"personal-quests/{personalQuestId}/", result.BlobKey);
+
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var refreshed = await db.PersonalQuests
+                .AsNoTracking()
+                .SingleAsync(q => q.Id == personalQuestId);
+            Assert.Equal(result.BlobKey, refreshed.ImagePath);
+        }
+
+        var urls = await Client.GetFromJsonAsync<ImageUrlsDto>($"/api/images/personal-quests/{personalQuestId}");
+        Assert.Equal($"https://fake/{result.BlobKey}", urls!.ImageUrl);
+    }
+
+    [Fact]
     public async Task Upload_InvalidContentType_ReturnsBadRequest()
     {
         // Arrange — create a location

@@ -16,7 +16,7 @@ public static class ImageEndpoints
     // "locationstamps" and "locationplacements" are logical aliases keyed by
     // Location.Id. They write Location.StampImagePath / PlacementPhotoPath but
     // keep independent thumbnail cache keys from the main location image.
-    private static readonly HashSet<string> ValidEntityTypes = ["locations", "locationstamps", "locationplacements", "items", "monsters", "secretstashes", "npcs", "buildings", "characters", "kingdoms", "spells", "quests"];
+    private static readonly HashSet<string> ValidEntityTypes = ["locations", "locationstamps", "locationplacements", "items", "monsters", "secretstashes", "npcs", "buildings", "characters", "kingdoms", "spells", "quests", "personal-quests"];
     private static readonly HashSet<string> ServerTimedImageUploadEntityTypes =
         new(StringComparer.Ordinal) { "locations", "locationstamps", "items", "npcs", "kingdoms" };
     private static readonly HashSet<string> AllowedContentTypes = ["image/jpeg", "image/png", "image/webp"];
@@ -615,6 +615,12 @@ public static class ImageEndpoints
             .ToListAsync(ct))
             targets.Add(("quests", row.Id, row.BlobKey));
 
+        foreach (var row in await db.PersonalQuests
+            .Where(q => q.ImagePath != null && q.ImagePath != "")
+            .Select(q => new { q.Id, BlobKey = q.ImagePath! })
+            .ToListAsync(ct))
+            targets.Add(("personal-quests", row.Id, row.BlobKey));
+
         var presets = Enum.GetValues<ThumbnailPreset>();
         var attempted = 0;
         var done = 0;
@@ -774,6 +780,10 @@ public static class ImageEndpoints
                 var quest = await db.Quests.FindAsync(entityId);
                 if (quest is not null) quest.ImagePath = blobKey;
                 break;
+            case "personal-quests":
+                var personalQuest = await db.PersonalQuests.FindAsync(entityId);
+                if (personalQuest is not null) personalQuest.ImagePath = blobKey;
+                break;
         }
 
         return await db.SaveChangesAsync();
@@ -872,6 +882,9 @@ public static class ImageEndpoints
             "quests" => await db.Quests.Where(q => q.Id == entityId)
                 .Select(q => new ValueTuple<string?, string?, string?>(q.ImagePath, null, null))
                 .FirstOrDefaultAsync(),
+            "personal-quests" => await db.PersonalQuests.Where(q => q.Id == entityId)
+                .Select(q => new ValueTuple<string?, string?, string?>(q.ImagePath, null, null))
+                .FirstOrDefaultAsync(),
             _ => (null, null, null)
         };
     }
@@ -926,6 +939,7 @@ public static class ImageEndpoints
             "kingdoms" => await db.Kingdoms.AnyAsync(k => k.Id == entityId),
             "spells" => await db.Spells.AnyAsync(s => s.Id == entityId),
             "quests" => await db.Quests.AnyAsync(q => q.Id == entityId),
+            "personal-quests" => await db.PersonalQuests.AnyAsync(q => q.Id == entityId),
             _ => false
         };
     }
