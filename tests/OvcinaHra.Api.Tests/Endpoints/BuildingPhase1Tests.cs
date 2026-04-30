@@ -82,7 +82,7 @@ public class BuildingPhase1Tests(PostgresFixture postgres) : IntegrationTestBase
             new CreateBuildingDto(
                 "Sklepení",
                 CostMoney: 50,
-                Effect: "Skladovací kapacita pro 10 zlaťáků."));
+                Effect: "Skladovací kapacita pro 10 grošů."));
         var created = (await createResponse.Content.ReadFromJsonAsync<BuildingDetailDto>())!;
 
         var clearDto = new UpdateBuildingDto(

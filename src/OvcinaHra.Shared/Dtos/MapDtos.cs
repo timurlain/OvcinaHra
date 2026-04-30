@@ -29,6 +29,7 @@ public record MapLocationDto(
     double Lon,
     LocationKind Kind,
     string? Region,
+    bool IsPlacementDone,
     int? KingdomId,
     string? KingdomName,
     string? ThumbnailUrl,

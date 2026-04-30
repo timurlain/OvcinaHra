@@ -34,6 +34,7 @@ public sealed class MapDataService(
                 gl.Location.Name,
                 gl.Location.LocationKind,
                 gl.Location.Region,
+                gl.Location.PlacementPhotoPath,
                 Lat = gl.Location.Coordinates!.Latitude,
                 Lon = gl.Location.Coordinates!.Longitude,
                 gl.Location.ImagePath,
@@ -141,6 +142,7 @@ public sealed class MapDataService(
             (double)r.Lat, (double)r.Lon,
             r.LocationKind,
             r.Region,
+            !string.IsNullOrWhiteSpace(r.PlacementPhotoPath),
             // Kingdom not stored on Location/GameLocation today. Return null
             // so the cockpit's kingdom-tint chip stays inert until a follow-up
             // adds the relationship.

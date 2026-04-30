@@ -312,7 +312,7 @@ public static class BuildingRecipeEndpoints
 
     /// <summary>
     /// Compact recipe summary for the BuildingList by-game grid column.
-    /// Format: "3× ingrediencí · 50 zlaťáků · 1 dovednost · 2 budovy".
+    /// Format: "3× ingrediencí · 2 groše · 1 dovednost · 2 budovy".
     /// Returns null when the recipe is empty (no ingredients, no money,
     /// no skills, no prereqs) so the column shows "—" instead of noise.
     /// </summary>
@@ -321,8 +321,8 @@ public static class BuildingRecipeEndpoints
         var parts = new List<string>();
         if (r.Ingredients.Count > 0)
             parts.Add($"{r.Ingredients.Sum(i => i.Quantity)}× ingrediencí");
-        if (r.MoneyCost is > 0)
-            parts.Add($"{r.MoneyCost} zlaťáků");
+        if (r.MoneyCost is int moneyCost and > 0)
+            parts.Add($"{moneyCost} {PluralCz(moneyCost, "groš", "groše", "grošů")}");
         if (r.SkillRequirements.Count > 0)
             parts.Add($"{r.SkillRequirements.Count} {PluralCz(r.SkillRequirements.Count, "dovednost", "dovednosti", "dovedností")}");
         if (r.PrerequisiteBuildings.Count > 0)

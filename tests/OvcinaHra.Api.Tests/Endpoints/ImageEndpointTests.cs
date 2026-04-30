@@ -52,6 +52,32 @@ public class ImageEndpointTests(PostgresFixture postgres) : IntegrationTestBase(
     }
 
     [Fact]
+    public async Task Upload_WithMetadata_EchoesUploadMetadata()
+    {
+        var locResponse = await Client.PostAsJsonAsync("/api/locations",
+            new CreateLocationDto("Foto s metadaty", LocationKind.Village, 49.5m, 17.1m));
+        var loc = await locResponse.Content.ReadFromJsonAsync<LocationDetailDto>();
+
+        using var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(ValidPng);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        content.Add(fileContent, "file", "photo.png");
+        content.Add(new StringContent("49.123456"), "gpsLatitude");
+        content.Add(new StringContent("17.654321"), "gpsLongitude");
+        content.Add(new StringContent("2026-04-30T12:34:56"), "capturedAt");
+
+        var response = await Client.PostAsync($"/api/images/locations/{loc!.Id}", content);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<ImageUploadResult>();
+        Assert.NotNull(result);
+        var metadata = Assert.IsType<ImageUploadMetadataDto>(result.Metadata);
+        Assert.Equal(49.123456, metadata.GpsLatitude!.Value, precision: 6);
+        Assert.Equal(17.654321, metadata.GpsLongitude!.Value, precision: 6);
+        Assert.Equal("2026-04-30T12:34:56", metadata.CapturedAt);
+    }
+
+    [Fact]
     public async Task Upload_LocationStamp_PersistsStampPathAndFullSasUrl()
     {
         var locResponse = await Client.PostAsJsonAsync("/api/locations",
@@ -192,6 +218,47 @@ public class ImageEndpointTests(PostgresFixture postgres) : IntegrationTestBase(
         var refreshed = await Client.GetFromJsonAsync<BuildingDetailDto>($"/api/buildings/{building.Id}");
         Assert.NotNull(refreshed);
         Assert.Equal(result.BlobKey, refreshed.ImagePath);
+    }
+
+    [Fact]
+    public async Task Upload_ForPersonalQuest_ReturnsOkAndPersistsBlobKey()
+    {
+        int personalQuestId;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var quest = new PersonalQuest
+            {
+                Name = "Foto osobní quest",
+            };
+            db.PersonalQuests.Add(quest);
+            await db.SaveChangesAsync();
+            personalQuestId = quest.Id;
+        }
+
+        using var content = new MultipartFormDataContent();
+        var fileContent = new ByteArrayContent(ValidPng);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        content.Add(fileContent, "file", "personal-quest.png");
+
+        var response = await Client.PostAsync($"/api/images/personal-quests/{personalQuestId}", content);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<ImageUploadResult>();
+        Assert.NotNull(result);
+        Assert.StartsWith($"personal-quests/{personalQuestId}/", result.BlobKey);
+
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var refreshed = await db.PersonalQuests
+                .AsNoTracking()
+                .SingleAsync(q => q.Id == personalQuestId);
+            Assert.Equal(result.BlobKey, refreshed.ImagePath);
+        }
+
+        var urls = await Client.GetFromJsonAsync<ImageUrlsDto>($"/api/images/personal-quests/{personalQuestId}");
+        Assert.Equal($"https://fake/{result.BlobKey}", urls!.ImageUrl);
     }
 
     [Fact]

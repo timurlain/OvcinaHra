@@ -27,34 +27,26 @@
                             LocationsCount="@(_data?.Locations.Count ?? 0)"
                             StashesCount="@(_data?.Stashes.Count ?? 0)" />
 
-                <div class="oh-map-shell @(_railOpen ? "is-rail-open" : "")">
-                    @* Issue #216 — phone-only hamburger toggle. CSS hides
-                       the button >900px and hides the rail <900px until
-                       this flag flips. Backdrop closes the rail on tap. *@
-                    <button type="button" class="oh-map-rail-toggle"
-                            @onclick="() => _railOpen = !_railOpen"
-                            aria-label="Vrstvy mapy" title="Vrstvy mapy">
-                        <i class="bi @(_railOpen ? "bi-x-lg" : "bi-list")"></i>
-                    </button>
-                    @if (_railOpen)
-                    {
-                        <div class="oh-map-rail-backdrop" @onclick="() => _railOpen = false"></div>
-                    }
-                    <MapLayerRail LocationsVisible="@_locationsVisible"
-                                   StashesVisible="@_stashesVisible"
-                                   OverlaysVisible="@_overlaysVisible"
-                                   OrganizerOverlayEnabled="@_isOrganizer"
-                                   OrganizerOverlayVisible="@_organizerOverlayVisible"
-                                   LocationsCount="@(_data?.Locations.Count ?? 0)"
-                                   StashesCount="@(_data?.Stashes.Count ?? 0)"
-                                   LocationsByKind="@_locationsByKind"
-                                   HiddenKinds="@_hiddenKinds"
-                                   OnVisibilityChange="OnLayerVisibilityChange"
-                                   OnOverlayVisibilityChange="OnOverlayVisibilityChange"
-                                   OnOrganizerOverlayVisibilityChange="OnOrganizerOverlayVisibilityChange"
-                                   OnKindToggle="OnKindToggle" />
-
+                <div class="oh-map-shell">
                     <div class="oh-map-canvas">
+                        <MapLayerRail LocationsVisible="@_locationsVisible"
+                                       StashesVisible="@_stashesVisible"
+                                       OverlaysVisible="@_overlaysVisible"
+                                       OrganizerOverlayEnabled="@_isOrganizer"
+                                       OrganizerOverlayVisible="@_organizerOverlayVisible"
+                                       ShowRegionsOnMap="@_showRegionsOnMap"
+                                       ShowDoneLocations="@_showDoneLocations"
+                                       LocationsCount="@(_data?.Locations.Count ?? 0)"
+                                       StashesCount="@(_data?.Stashes.Count ?? 0)"
+                                       LocationsByKind="@_locationsByKind"
+                                       HiddenKinds="@_hiddenKinds"
+                                       OnVisibilityChange="OnLayerVisibilityChange"
+                                       OnOverlayVisibilityChange="OnOverlayVisibilityChange"
+                                       OnOrganizerOverlayVisibilityChange="OnOrganizerOverlayVisibilityChange"
+                                       OnRegionLabelsChange="SetRegionLabelsAsync"
+                                       OnDoneLocationsChange="SetDoneLocationsAsync"
+                                       OnKindToggle="OnKindToggle" />
+
                         <div class="oh-map-treasure-filter" role="group" aria-label="Filtr pokladů podle fáze">
                             <span class="oh-map-treasure-filter-lbl">Poklady</span>
                             @foreach (var phase in TreasureMapPhaseOptions)
@@ -66,12 +58,6 @@
                                     @phase.Label
                                 </button>
                             }
-                            <label class="oh-map-region-toggle @(_showRegionsOnMap ? "is-active" : "")">
-                                <input type="checkbox"
-                                       checked="@_showRegionsOnMap"
-                                       @onchange="SetRegionLabelsAsync" />
-                                <span>Zobrazit oblasti</span>
-                            </label>
                         </div>
                         <div class="oh-map-style-toolbar">
                             <button class="oh-map-style-btn @(_activeStyle == "tourist" ? "is-active" : "")"
@@ -234,6 +220,7 @@
     // continue to deserialize via the record's default value.
     private const string LayerStateKey = "oh-map-layers-v2";
     private const string RegionLabelStateKey = "oh-map-region-labels-v1";
+    private const string DoneLocationStateKey = "oh-map-done-locations-v1";
     private const string TreasurePhaseAll = "all";
     private const string TreasurePhaseStart = "start";
     private const string TreasurePhaseEarly = "early";
@@ -258,6 +245,7 @@
     private bool _organizerOverlayVisible = true;
     private bool _isOrganizer;
     private bool _showRegionsOnMap;
+    private bool _showDoneLocations;
     // Per-LocationKind hide set. Empty (default) = all kinds visible.
     // Persists alongside the layer-visibility flags.
     private HashSet<LocationKind> _hiddenKinds = new();
@@ -288,9 +276,6 @@
     private string _placeSearch = "";
     private bool _placeSaving;
     private string? _placeError;
-    // Issue #216 — phone-only layer rail toggle. CSS gates the visible
-    // surface so on tablet/desktop this flag has no effect.
-    private bool _railOpen;
     private bool _firstStyleLoadDone;
     // Monotonically increasing token so a slow peek fetch doesn't overwrite
     // a newer one if the user clicks pins faster than the network responds.
@@ -363,6 +348,7 @@
             await HydrateLayerStateAsync();
         }
         await HydrateRegionLabelStateAsync();
+        await HydrateDoneLocationStateAsync();
         // Apply URL-derived style now that the basemap is ready (default
         // is "tourist", so we only need to switch when URL asked for
         // something else). Calling switchStyle directly here — going
@@ -433,6 +419,25 @@
         catch { /* localStorage unavailable — session-only toggle */ }
     }
 
+    private async Task HydrateDoneLocationStateAsync()
+    {
+        try
+        {
+            var raw = await JS.InvokeAsync<string?>("localStorage.getItem", DoneLocationStateKey);
+            _showDoneLocations = raw is "1" || string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase);
+        }
+        catch { /* localStorage unavailable — keep default off */ }
+    }
+
+    private async Task PersistDoneLocationStateAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", DoneLocationStateKey, _showDoneLocations ? "true" : "false");
+        }
+        catch { /* localStorage unavailable — session-only toggle */ }
+    }
+
     private async Task ReloadDataAndRenderAsync()
     {
         var gameId = GameContext.SelectedGameId;
@@ -475,6 +480,7 @@
 
         var locationLabelCount = 0;
         var regionLabelCount = 0;
+        var doneLocationCount = 0;
         if (_locationsVisible)
         {
             foreach (var l in _data.Locations.OrderBy(l => l.EffectiveKind == LocationKind.Hobbit ? 1 : 0))
@@ -487,14 +493,21 @@
                 var totalCount = l.TreasureCounts?.Total ?? 0;
                 locationLabelCount++;
                 if (_showRegionsOnMap && !string.IsNullOrWhiteSpace(l.Region)) regionLabelCount++;
+                if (l.IsPlacementDone) doneLocationCount++;
                 Console.WriteLine($"[treasure-map] count-pin render locationId={l.Id} totalCount={totalCount} filteredCount={filteredCount} phase={TreasurePhaseLogName(_treasurePhaseFilter)}");
+                if (_showDoneLocations && l.IsPlacementDone)
+                {
+                    Console.WriteLine($"[map-done] pin-render locationId={l.Id} done=true");
+                }
                 await JS.InvokeVoidAsync("ovcinaMap.addLocationPin",
                     l.Id, l.Lat, l.Lon, l.EffectiveName, l.EffectiveKind.ToString(),
                     filteredCount, TreasurePhaseUiName(_treasurePhaseFilter),
-                    l.Region, _showRegionsOnMap);
+                    l.Region, _showRegionsOnMap,
+                    l.IsPlacementDone, _showDoneLocations);
             }
         }
         Console.WriteLine($"[map-region-toggle] render labelCount={locationLabelCount} withRegion={_showRegionsOnMap.ToString().ToLowerInvariant()} regionLabelCount={regionLabelCount}");
+        Console.WriteLine($"[map-done] render visible={_showDoneLocations.ToString().ToLowerInvariant()} doneCount={doneLocationCount}");
         if (_stashesVisible)
         {
             foreach (var s in _data.Stashes)
@@ -516,14 +529,23 @@
         await PaintPinsAsync();
     }
 
-    private async Task SetRegionLabelsAsync(ChangeEventArgs e)
+    private async Task SetRegionLabelsAsync(bool enabled)
     {
-        var enabled = e.Value is bool value && value;
         if (_showRegionsOnMap == enabled) return;
 
         _showRegionsOnMap = enabled;
         Console.WriteLine($"[map-region-toggle] state-changed enabled={enabled.ToString().ToLowerInvariant()}");
         await PersistRegionLabelStateAsync();
+        await PaintPinsAsync();
+    }
+
+    private async Task SetDoneLocationsAsync(bool enabled)
+    {
+        if (_showDoneLocations == enabled) return;
+
+        _showDoneLocations = enabled;
+        Console.WriteLine($"[map-done] toggle changed enabled={enabled.ToString().ToLowerInvariant()}");
+        await PersistDoneLocationStateAsync();
         await PaintPinsAsync();
     }
 
