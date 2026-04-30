@@ -48,8 +48,10 @@ public class ApiWebApplicationFactory : WebApplicationFactory<Program>
             if (descriptor != null)
                 services.Remove(descriptor);
 
-            services.AddDbContext<WorldDbContext>(options =>
-                options.UseNpgsql(_connectionString));
+            services.AddDbContext<WorldDbContext>((sp, options) =>
+                options
+                    .UseNpgsql(_connectionString)
+                    .AddInterceptors(sp.GetRequiredService<WorldChangeAuditInterceptor>()));
 
             // Replace blob storage with in-memory stub for tests
             var blobDescriptor = services.SingleOrDefault(
