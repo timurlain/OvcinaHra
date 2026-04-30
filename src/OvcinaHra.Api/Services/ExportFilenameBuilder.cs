@@ -5,10 +5,14 @@ namespace OvcinaHra.Api.Services;
 
 public static class ExportFilenameBuilder
 {
-    public static string BuildExportFilename(string exportType, string gameName, bool includeDate = false)
+    public static string BuildExportFilename(
+        string exportType,
+        string gameName,
+        bool includeDate = false,
+        string extension = "pdf")
     {
         var date = includeDate ? $"_{DateTime.Today:yyyy-MM-dd}" : string.Empty;
-        return $"{SanitizePart(exportType, "Export")}_{SanitizePart(gameName, "Hra")}{date}.pdf";
+        return $"{SanitizePart(exportType, "Export")}_{SanitizePart(gameName, "Hra")}{date}.{SanitizeExtension(extension)}";
     }
 
     private static string SanitizePart(string value, string fallback)
@@ -49,5 +53,14 @@ public static class ExportFilenameBuilder
 
         var result = builder.ToString().Trim('-');
         return string.IsNullOrWhiteSpace(result) ? fallback : result;
+    }
+
+    private static string SanitizeExtension(string extension)
+    {
+        if (string.IsNullOrWhiteSpace(extension))
+            return "pdf";
+
+        var sanitized = string.Concat(extension.Trim().TrimStart('.').Where(char.IsLetterOrDigit));
+        return string.IsNullOrWhiteSpace(sanitized) ? "pdf" : sanitized.ToLowerInvariant();
     }
 }
