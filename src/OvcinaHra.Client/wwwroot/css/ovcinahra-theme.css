@@ -2686,7 +2686,7 @@
 .oh-mo-label input[type="range"]{width:80px;margin:0}
 .oh-mo-stroke-val{font-family:var(--oh-font-mono,Menlo,monospace);color:var(--oh-text,#2a2a2a);
     font-size:.75rem;min-width:30px;text-align:right}
-.oh-map-overlay-edit-btn{position:absolute;top:12px;left:12px;right:auto;z-index:19}
+.oh-map-overlay-edit-btn{position:absolute;top:56px;left:50%;transform:translateX(-50%);right:auto;z-index:19}
 .oh-map-overlay-audience{position:absolute;top:12px;left:12px;right:auto;z-index:21;
     display:flex;gap:6px;padding:6px;background:rgba(250,246,236,.94);
     border:1px solid var(--oh-border,#d8d2be);border-radius:6px;
