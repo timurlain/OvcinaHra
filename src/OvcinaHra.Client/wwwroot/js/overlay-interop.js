@@ -32,6 +32,10 @@
     // SVGs use fill="currentColor"; we rasterize them with a black silhouette
     // and add to MapLibre as SDF icons so `icon-color` tints them per shape.
     const ICON_ASSETS = ['flag', 'tent', 'chest', 'skull', 'door', 'fire'];
+    const FREEHAND_SIMPLIFY_EPSILON_PX = 2.5;
+    const FREEHAND_EDGE_JOIN_THRESHOLD_PX = 10;
+    const FREEHAND_SPLINE_SAMPLE_PX = 8;
+    const FREEHAND_SPLINE_MAX_STEPS = 8;
 
     // Singleton state, keyed by mapId so future multi-map callers don't collide.
     const instances = {};
@@ -39,6 +43,15 @@
     function mapDiag(event, data) {
         try {
             console.log('[map-diag] overlay.' + event + ' ' + JSON.stringify(data || {}));
+        } catch (e) { }
+    }
+
+    function handdrawDiag(event, data) {
+        try {
+            const values = Object.entries(data || {})
+                .map(function (entry) { return entry[0] + '=' + entry[1]; })
+                .join(' ');
+            console.log('[map-handdraw] ' + event + (values ? ' ' + values : ''));
         } catch (e) { }
     }
 
@@ -115,6 +128,179 @@
         return (points || [])
             .map(normalizeCoord)
             .filter(p => p !== null);
+    }
+
+    function projectedDistance(a, b) {
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function projectOverlayPoint(map, point) {
+        const projected = map.project([point.lng, point.lat]);
+        return { x: projected.x, y: projected.y };
+    }
+
+    function unprojectOverlayPoint(map, point) {
+        const lngLat = map.unproject([point.x, point.y]);
+        return { lat: lngLat.lat, lng: lngLat.lng };
+    }
+
+    function perpendicularDistance(point, start, end) {
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        if (dx === 0 && dy === 0) return projectedDistance(point, start);
+        const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / (dx * dx + dy * dy)));
+        return projectedDistance(point, { x: start.x + t * dx, y: start.y + t * dy });
+    }
+
+    function simplifyProjectedPoints(points, epsilon) {
+        if (!points || points.length <= 2) return (points || []).slice();
+
+        let index = 0;
+        let maxDistance = 0;
+        const lastIndex = points.length - 1;
+        for (let i = 1; i < lastIndex; i++) {
+            const distance = perpendicularDistance(points[i], points[0], points[lastIndex]);
+            if (distance > maxDistance) {
+                index = i;
+                maxDistance = distance;
+            }
+        }
+
+        if (maxDistance <= epsilon) {
+            return [points[0], points[lastIndex]];
+        }
+
+        const left = simplifyProjectedPoints(points.slice(0, index + 1), epsilon);
+        const right = simplifyProjectedPoints(points.slice(index), epsilon);
+        return left.slice(0, -1).concat(right);
+    }
+
+    function catmullRomPoint(p0, p1, p2, p3, t) {
+        const t2 = t * t;
+        const t3 = t2 * t;
+        return {
+            x: 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * t
+                + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2
+                + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
+            y: 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * t
+                + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2
+                + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3)
+        };
+    }
+
+    function catmullRomSpline(points) {
+        if (!points || points.length <= 2) return (points || []).slice();
+
+        const output = [];
+        for (let i = 0; i < points.length - 1; i++) {
+            const p0 = points[Math.max(0, i - 1)];
+            const p1 = points[i];
+            const p2 = points[i + 1];
+            const p3 = points[Math.min(points.length - 1, i + 2)];
+            const segmentLength = projectedDistance(p1, p2);
+            const steps = Math.max(2, Math.min(FREEHAND_SPLINE_MAX_STEPS, Math.ceil(segmentLength / FREEHAND_SPLINE_SAMPLE_PX)));
+            for (let step = 0; step < steps; step++) {
+                if (i > 0 && step === 0) continue;
+                output.push(catmullRomPoint(p0, p1, p2, p3, step / steps));
+            }
+        }
+        output.push(points[points.length - 1]);
+        return output;
+    }
+
+    function smoothFreehandPoints(map, points, logDiagnostics) {
+        const normalized = normalizePoints(points);
+        if (logDiagnostics) handdrawDiag('smoothing.input', { pointCount: normalized.length });
+        if (normalized.length <= 2) {
+            if (logDiagnostics) {
+                handdrawDiag('smoothing.simplified', { pointCount: normalized.length });
+                handdrawDiag('smoothing.splined', { controlPoints: normalized.length, pointCount: normalized.length });
+            }
+            return normalized;
+        }
+
+        const projected = normalized.map(function (p) { return projectOverlayPoint(map, p); });
+        const simplified = simplifyProjectedPoints(projected, FREEHAND_SIMPLIFY_EPSILON_PX);
+        const splined = catmullRomSpline(simplified);
+        if (logDiagnostics) {
+            handdrawDiag('smoothing.simplified', { pointCount: simplified.length });
+            handdrawDiag('smoothing.splined', { controlPoints: simplified.length, pointCount: splined.length });
+        }
+        return splined.map(function (p) { return unprojectOverlayPoint(map, p); });
+    }
+
+    function sameFreehandStyle(a, b) {
+        if (!a || !b || a.type !== 'freehand' || b.type !== 'freehand') return false;
+        const colorA = (a.color || '').toLowerCase();
+        const colorB = (b.color || '').toLowerCase();
+        return colorA === colorB && Math.abs(numberOr(a.strokeWidth, 2) - numberOr(b.strokeWidth, 2)) < 0.01;
+    }
+
+    function endpointDistancePx(map, a, b) {
+        return projectedDistance(projectOverlayPoint(map, a), projectOverlayPoint(map, b));
+    }
+
+    function closestFreehandJoin(map, existingShape, newShape) {
+        const existing = normalizePoints(existingShape.points || []);
+        const incoming = normalizePoints(newShape.points || []);
+        if (existing.length < 2 || incoming.length < 2) return null;
+
+        const candidates = [
+            { mode: 'existing-end:new-start', distance: endpointDistancePx(map, existing[existing.length - 1], incoming[0]) },
+            { mode: 'existing-start:new-end', distance: endpointDistancePx(map, existing[0], incoming[incoming.length - 1]) },
+            { mode: 'existing-start:new-start', distance: endpointDistancePx(map, existing[0], incoming[0]) },
+            { mode: 'existing-end:new-end', distance: endpointDistancePx(map, existing[existing.length - 1], incoming[incoming.length - 1]) }
+        ].sort(function (a, b) { return a.distance - b.distance; });
+
+        return candidates[0].distance <= FREEHAND_EDGE_JOIN_THRESHOLD_PX ? candidates[0] : null;
+    }
+
+    function joinFreehandPoints(existing, incoming, mode) {
+        switch (mode) {
+            case 'existing-end:new-start':
+                return existing.concat(incoming);
+            case 'existing-start:new-end':
+                return incoming.concat(existing);
+            case 'existing-start:new-start':
+                return incoming.slice().reverse().concat(existing);
+            case 'existing-end:new-end':
+                return existing.concat(incoming.slice().reverse());
+            default:
+                return incoming;
+        }
+    }
+
+    function maybeJoinFreehandShape(map, inst, newShape) {
+        const freehands = (inst.shapes || []).filter(function (shape) {
+            return sameFreehandStyle(shape, newShape);
+        });
+        const strokesBefore = freehands.length + 1;
+        let best = null;
+        for (const shape of freehands) {
+            const join = closestFreehandJoin(map, shape, newShape);
+            if (join && (!best || join.distance < best.join.distance)) {
+                best = { shape: shape, join: join };
+            }
+        }
+
+        if (!best) {
+            handdrawDiag('edge-join.merged', { strokesBefore: strokesBefore, strokesAfter: strokesBefore });
+            return newShape;
+        }
+
+        const combinedPoints = joinFreehandPoints(
+            normalizePoints(best.shape.points || []),
+            normalizePoints(newShape.points || []),
+            best.join.mode);
+        const joined = {
+            ...best.shape,
+            type: 'freehand',
+            points: smoothFreehandPoints(map, combinedPoints, false)
+        };
+        handdrawDiag('edge-join.merged', { strokesBefore: strokesBefore, strokesAfter: strokesBefore - 1 });
+        return joined;
     }
 
     function normalizeShape(shape) {
@@ -745,13 +931,15 @@
             if (map.dragPan && map.dragPan.enable) map.dragPan.enable();
             mapDiag('freehand.up', { mapId: inst.mapId, pointCount: inst.tempPoints.length });
             if (inst.tempPoints.length >= 2) {
-                emitShape(inst, {
+                const points = smoothFreehandPoints(map, inst.tempPoints.slice(), true);
+                const shape = maybeJoinFreehandShape(map, inst, {
                     id: uuid(),
                     type: 'freehand',
                     color: currentStyle().color,
                     strokeWidth: currentStyle().strokeWidth,
-                    points: inst.tempPoints.slice()
+                    points: points
                 });
+                emitShape(inst, shape);
             }
             inst.tempPoints = [];
             teardownPreview(map);
@@ -1215,6 +1403,8 @@
         focusTextPopup: focusTextPopup,
         // Exposed for unit-testability / future tools; not called by Blazor.
         _circleToPolygonRing: circleToPolygonRing,
-        _normalizeShape: normalizeShape
+        _normalizeShape: normalizeShape,
+        _simplifyProjectedPoints: simplifyProjectedPoints,
+        _catmullRomSpline: catmullRomSpline
     };
 })();
