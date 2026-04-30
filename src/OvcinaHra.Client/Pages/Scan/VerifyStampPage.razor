@@ -22,6 +22,14 @@
     {
         <p class="text-center text-muted sken-mt-lg">Načítám…</p>
     }
+    else if (_loadError is not null)
+    {
+        <div class="alert alert-danger" role="alert">
+            <strong>Načtení selhalo.</strong>
+            <p class="mb-0 small">@_loadError</p>
+        </div>
+        <button class="btn-sken btn-sken-secondary" @onclick="GoBack">Zpět na hrdinu</button>
+    }
     else if (_quest is null)
     {
         <div class="alert alert-warning" role="alert">
@@ -46,7 +54,7 @@
             <p class="text-muted sken-mt-md">
                 Vyfoť otisk razítka v glejtu hrdiny. Systém porovná otisk s referenčním razítkem lokace.
             </p>
-            <CameraCapture OnCaptured="OnPhotoCaptured" OnRetakeRequested="OnRetake" />
+            <CameraCapture OnCaptured="OnPhotoCaptured" />
         }
         else if (_step == Step.Verifying)
         {
@@ -132,6 +140,7 @@
     private bool _loading = true;
     private bool _submitting;
     private string? _error;
+    private string? _loadError;
     private PendingTreasureQuestDto? _quest;
     private Step _step = Step.PickPhoto;
     private string? _capturedDataUrl;
@@ -148,7 +157,11 @@
         }
         catch (Exception ex)
         {
+            // Distinguish from "quest not in pending list" — connectivity / API
+            // failures get their own banner so the organizer knows to retry,
+            // not blame the player for chasing the wrong quest.
             Console.WriteLine($"[sken][verify] pending fetch failed: {ex.Message}");
+            _loadError = $"Nepodařilo se načíst čekající úkoly: {ex.Message}";
         }
         finally
         {
@@ -163,14 +176,6 @@
         _error = null;
         StateHasChanged();
         await VerifyAsync();
-    }
-
-    private void OnRetake()
-    {
-        _capturedDataUrl = null;
-        _llmResponse = null;
-        _step = Step.PickPhoto;
-        _error = null;
     }
 
     private async Task VerifyAsync()

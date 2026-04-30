@@ -6,7 +6,6 @@
 
 <div class="sken-stack sken-mt-md">
     <button class="btn-sken btn-sken-primary" @onclick="DoCapture">Vyfotit</button>
-    <button class="btn-sken btn-sken-secondary" @onclick="OnRetake">Znovu otevřít kameru</button>
 </div>
 
 @if (_error is not null)
@@ -15,8 +14,12 @@
 }
 
 @code {
+    // Component lifecycle: openOn fires on first render; the parent re-instantiates
+    // the component (by toggling its rendered branch) to retake/reset, which in
+    // turn triggers DisposeAsync → openOn(new _videoId). No explicit "retake"
+    // button on this control — the parent owns the retake flow.
+
     [Parameter] public EventCallback<string> OnCaptured { get; set; }
-    [Parameter] public EventCallback OnRetakeRequested { get; set; }
 
     private readonly string _videoId = $"cam-{Guid.NewGuid():N}";
     private string? _error;
@@ -57,8 +60,6 @@
             _error = $"Snímek selhal: {ex.Message}";
         }
     }
-
-    private Task OnRetake() => OnRetakeRequested.InvokeAsync();
 
     public async ValueTask DisposeAsync()
     {

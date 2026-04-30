@@ -197,7 +197,7 @@
     <div class="sken-modal-backdrop" @onclick="() => _classPickerOpen = false">
         <div class="sken-modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true">
             <h3>Zvol povolání (5 zk)</h3>
-            <p class="text-muted">Vybrané povolání zůstává po celou hru. Hrdina dostane 1. úroveň zdarma.</p>
+            <p class="text-muted">Vybrané povolání zůstává po celou hru. Cena 5 zk pokrývá zároveň postup na 1. úroveň.</p>
             <div class="sken-class-grid">
                 @foreach (var cls in Enum.GetValues<PlayerClass>())
                 {
@@ -387,6 +387,7 @@
     private string? _error;
     private ScanCharacterDto? _character;
     private List<PendingTreasureQuestDto>? _pending;
+    private int? _loadedPersonId;
 
     private bool _classPickerOpen;
     private bool _levelUpConfirmOpen;
@@ -421,8 +422,11 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        // Re-load when navigating /p/12 → /p/13 in-app (PersonId changes)
-        if (_character is not null && _character.ExternalPersonId != PersonId)
+        // Re-load when navigating /p/12 → /p/13 in-app. Track the route's
+        // PersonId separately from _character so a not-found / failed load
+        // (where _character stays null) still triggers a fresh load when
+        // the user navigates away and back.
+        if (_loadedPersonId is { } loaded && loaded != PersonId)
         {
             await LoadAsync();
         }
@@ -432,6 +436,7 @@
     {
         Console.WriteLine($"[sken] LoadAsync personId={PersonId}");
         _loading = true;
+        _loadedPersonId = PersonId;
         StateHasChanged();
         try
         {

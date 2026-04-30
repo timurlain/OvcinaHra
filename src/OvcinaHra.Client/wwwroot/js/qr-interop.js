@@ -23,9 +23,11 @@ window.ohQr = {
     async _startInternal() {
         if (this._starting) return true;
         this._starting = true;
+        let scanner = null;
         try {
-            this._scanner = new Html5Qrcode(this._lastElementId);
-            await this._scanner.start(
+            scanner = new Html5Qrcode(this._lastElementId);
+            this._scanner = scanner;
+            await scanner.start(
                 { facingMode: 'environment' },
                 { fps: 10, qrbox: { width: 250, height: 250 } },
                 (decodedText) => {
@@ -38,6 +40,13 @@ window.ohQr = {
             return true;
         } catch (err) {
             console.error('QR start failed', err);
+            // Clear _scanner on failure so visibilitychange + manual restart
+            // paths can retry. Defensive clear() in case Html5Qrcode allocated
+            // a video element before throwing.
+            if (scanner) {
+                try { await scanner.clear(); } catch (_) { /* ignore */ }
+            }
+            this._scanner = null;
             return false;
         } finally {
             this._starting = false;
@@ -52,16 +61,37 @@ window.ohQr = {
             } catch (_) { /* ignore */ }
             this._scanner = null;
         }
+    },
+
+    // Internal — release the camera stream without forgetting _lastElementId
+    // so the visibilitychange listener can restart on foreground.
+    async _suspend() {
+        if (this._scanner) {
+            try {
+                await this._scanner.stop();
+                await this._scanner.clear();
+            } catch (_) { /* ignore */ }
+            this._scanner = null;
+        }
     }
 };
 
 // Wake the camera up when the tab returns to the foreground. Mobile browsers
-// release the getUserMedia stream when the page is backgrounded, and html5-qrcode
-// doesn't auto-resume — without this the user has to min/max the app to wake it.
+// release the getUserMedia stream when the page is backgrounded, and
+// html5-qrcode doesn't auto-resume. We actively tear down the scanner on
+// hide so the visible-branch can restart cleanly — gating on _scanner==null
+// alone wouldn't fire because _scanner stays non-null even after the OS
+// has revoked the camera stream.
 document.addEventListener('visibilitychange', async () => {
-    if (document.visibilityState !== 'visible') return;
     const q = window.ohQr;
-    if (!q || !q._lastElementId || q._scanner || q._starting) return;
+    if (!q || !q._lastElementId) return;
+
+    if (document.visibilityState !== 'visible') {
+        await q._suspend();
+        return;
+    }
+
+    if (q._scanner || q._starting) return;
     const el = document.getElementById(q._lastElementId);
     if (el) {
         await q._startInternal();

@@ -8,6 +8,10 @@ window.ohCamera = {
 
     async openOn(videoElementId) {
         try {
+            // Defensive cleanup — if openOn is called twice (retake flow,
+            // re-init after navigation), don't leak the previous stream.
+            await this.close();
+
             this._videoEl = document.getElementById(videoElementId);
             if (!this._videoEl) {
                 return { ok: false, error: `video element '${videoElementId}' not found` };
