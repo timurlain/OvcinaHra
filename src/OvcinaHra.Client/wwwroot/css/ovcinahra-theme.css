@@ -3841,6 +3841,9 @@
 .oh-map-region-toggle input{width:13px;height:13px;margin:0;accent-color:#2D5016}
 .oh-map-region-toggle:hover{background:rgba(45,80,22,.08);color:#2D5016}
 .oh-map-region-toggle.is-active{background:#2D5016;color:#fff}
+.oh-map-done-toggle input{accent-color:#1F8F3A}
+.oh-map-done-toggle:hover{background:rgba(31,143,58,.08);color:#1F8F3A}
+.oh-map-done-toggle.is-active{background:#1F8F3A;color:#fff}
 @media (max-width: 900px){
     .oh-map-treasure-filter{top:48px;right:8px;max-width:calc(100% - 16px)}
 }
@@ -3892,6 +3895,10 @@
     border-radius:99px;padding:0 4px;font:700 .65rem var(--oh-font-body);
     border:1.5px solid var(--oh-border,#d8d2be);min-width:14px;text-align:center;
     box-shadow:0 1px 2px rgba(0,0,0,.18);z-index:3}
+.oh-map-pin-done{position:absolute;top:-5px;right:-6px;z-index:4;width:17px;height:17px;
+    border-radius:50%;background:#fff;color:#1F8F3A;font-size:16px;line-height:1;
+    box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.oh-map-pin.oh-map-pin-has-count .oh-map-pin-done{top:11px;right:-7px}
 /* Ctrl/Meta held over the map → crosshair cursor (visual hint that
    Ctrl+Click places an ungeocoded location and Ctrl+Shift+Click opens
    the relocation picker). Class toggled by map-interop.js keydown/keyup. */
