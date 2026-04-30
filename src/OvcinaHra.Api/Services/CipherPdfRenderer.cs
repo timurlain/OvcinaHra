@@ -17,8 +17,8 @@ public interface ICipherPdfRenderer
 
 public sealed record CipherPdfCard(
     string LocationName,
-    CipherSkillKey SkillKey,
-    string MessageNormalized);
+    AdventuringSkill Skill,
+    string CipherText);
 
 public sealed class CipherPdfRenderer(IWebHostEnvironment environment) : ICipherPdfRenderer
 {
@@ -38,17 +38,17 @@ public sealed class CipherPdfRenderer(IWebHostEnvironment environment) : ICipher
     private static readonly CultureInfo Invariant = CultureInfo.InvariantCulture;
     private static readonly Regex NumberRegex = new(@"-?\d+(?:\.\d+)?", RegexOptions.Compiled);
 
-    private static readonly IReadOnlyDictionary<CipherSkillKey, string> FillerText =
-        new Dictionary<CipherSkillKey, string>
+    private static readonly IReadOnlyDictionary<AdventuringSkill, string> FillerText =
+        new Dictionary<AdventuringSkill, string>
         {
-            [CipherSkillKey.HledaniMagie] = "MAGIEKAMENLESPLAMENHVEZDARUNA",
-            [CipherSkillKey.Prohledavani] = "STOPAKORENKLICLUCERNAKAPSASTIN",
-            [CipherSkillKey.SestySmysl] = "TICHOSENSTINHLASDUCHVETRKROK",
-            [CipherSkillKey.ZnalostBytosti] = "BESTIARSTVOPOTVORAKOSTTESAK",
-            [CipherSkillKey.Lezeni] = "SKALALANOHAAKSTENAKOPECSMYCKA"
+            [AdventuringSkill.HledaniMagie] = "MAGIEKAMENLESPLAMENHVEZDARUNA",
+            [AdventuringSkill.Prohledavani] = "STOPAKORENKLICLUCERNAKAPSASTIN",
+            [AdventuringSkill.SestySmysl] = "TICHOSENSTINHLASDUCHVETRKROK",
+            [AdventuringSkill.ZnalostBytosti] = "BESTIARSTVOPOTVORAKOSTTESAK",
+            [AdventuringSkill.Lezeni] = "SKALALANOHAAKSTENAKOPECSMYCKA"
         };
 
-    private readonly ConcurrentDictionary<CipherSkillKey, OverlayGeometry> overlayCache = new();
+    private readonly ConcurrentDictionary<AdventuringSkill, OverlayGeometry> overlayCache = new();
 
     public byte[] RenderSingle(CipherPdfCard card)
     {
@@ -85,7 +85,7 @@ public sealed class CipherPdfRenderer(IWebHostEnvironment environment) : ICipher
 
     private void RenderCard(StringBuilder content, double pageHeight, CipherPdfCard card, double xOffset, double yOffset)
     {
-        var overlay = overlayCache.GetOrAdd(card.SkillKey, LoadOverlay);
+        var overlay = overlayCache.GetOrAdd(card.Skill, LoadOverlay);
         var grid = BuildGrid(card, overlay.ActiveCells);
 
         FillRectangle(content, pageHeight, xOffset, yOffset, CardWidth, CardHeight, "1 g");
@@ -106,7 +106,7 @@ public sealed class CipherPdfRenderer(IWebHostEnvironment environment) : ICipher
             FillRectangle(content, pageHeight, xOffset + rect.X, yOffset + rect.Y, rect.Width, rect.Height, "0 g");
 
         DrawCenteredText(content, pageHeight, ToHeaderText(card.LocationName), xOffset + 74, yOffset + 14, 8, "F1", "0 g");
-        DrawCenteredText(content, pageHeight, ToHeaderText(card.SkillKey.GetDisplayName()), xOffset + 74, yOffset + 25, 10, "F2", "0 g");
+        DrawCenteredText(content, pageHeight, ToHeaderText(card.Skill.GetDisplayName()), xOffset + 74, yOffset + 25, 10, "F2", "0 g");
 
         var active = overlay.ActiveCells.ToHashSet();
         for (var row = 0; row < GridRows; row++)
@@ -131,13 +131,13 @@ public sealed class CipherPdfRenderer(IWebHostEnvironment environment) : ICipher
         }
     }
 
-    private OverlayGeometry LoadOverlay(CipherSkillKey skillKey)
+    private OverlayGeometry LoadOverlay(AdventuringSkill skill)
     {
         var path = Path.Combine(
             environment.ContentRootPath,
             "Ciphers",
             "Overlays",
-            $"test-overlay-{skillKey.GetSlug()}.svg");
+            $"test-overlay-{skill.GetSlug()}.svg");
         var doc = XDocument.Load(path);
 
         var lines = doc.Descendants()
@@ -197,7 +197,7 @@ public sealed class CipherPdfRenderer(IWebHostEnvironment environment) : ICipher
 
     private static char[,] BuildGrid(CipherPdfCard card, IReadOnlyList<GridCell> activeCells)
     {
-        var filler = CipherTextNormalizer.NormalizeMessage(FillerText[card.SkillKey]);
+        var filler = CipherTextNormalizer.NormalizeMessage(FillerText[card.Skill]);
         var grid = new char[GridRows, GridColumns];
         for (var row = 0; row < GridRows; row++)
         {
@@ -205,10 +205,10 @@ public sealed class CipherPdfRenderer(IWebHostEnvironment environment) : ICipher
                 grid[row, column] = filler[(row * GridColumns + column) % filler.Length];
         }
 
-        var encoded = $"XOX{CipherTextNormalizer.NormalizeMessage(card.MessageNormalized)}XOX";
+        var encoded = CipherTextNormalizer.NormalizeMessage(card.CipherText);
         if (encoded.Length > activeCells.Count)
             throw new InvalidOperationException(
-                $"Cipher message for {card.SkillKey} needs {encoded.Length} cells, but the overlay contains {activeCells.Count}.");
+                $"Cipher message for {card.Skill} needs {encoded.Length} cells, but the overlay contains {activeCells.Count}.");
 
         for (var i = 0; i < encoded.Length; i++)
         {
