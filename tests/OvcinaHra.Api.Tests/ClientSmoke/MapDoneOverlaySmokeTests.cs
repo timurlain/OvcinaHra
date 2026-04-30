@@ -20,6 +20,12 @@ public class MapDoneOverlaySmokeTests
             "wwwroot",
             "js",
             "map-interop.js"));
+        var mapLayerRail = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OvcinaHra.Client",
+            "Components",
+            "MapLayerRail.razor"));
         var theme = File.ReadAllText(Path.Combine(
             root,
             "src",
@@ -28,7 +34,9 @@ public class MapDoneOverlaySmokeTests
             "css",
             "ovcinahra-theme.css"));
 
-        Assert.Contains("Hotové lokace", mapPage);
+        Assert.Contains("Hotové lokace", mapLayerRail);
+        Assert.Contains("ShowDoneLocations", mapLayerRail);
+        Assert.Contains("OnDoneLocationsChange", mapLayerRail);
         Assert.Contains("DoneLocationStateKey", mapPage);
         Assert.Contains("[map-done] toggle changed", mapPage);
         Assert.Contains("l.IsPlacementDone", mapPage);
@@ -36,7 +44,7 @@ public class MapDoneOverlaySmokeTests
         Assert.Contains("bi-check-circle-fill", mapInterop);
         Assert.Contains("oh-map-pin-done", mapInterop);
         Assert.Contains("oh-map-pin-has-count", mapInterop);
-        Assert.Contains(".oh-map-done-toggle", theme);
+        Assert.Contains(".oh-map-layer-done", theme);
         Assert.Contains(".oh-map-pin-done", theme);
         Assert.Contains(".oh-map-pin.oh-map-pin-has-count .oh-map-pin-done", theme);
     }
