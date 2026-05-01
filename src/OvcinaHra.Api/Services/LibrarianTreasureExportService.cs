@@ -417,7 +417,11 @@ public sealed class LibrarianTreasureExportService(
         var lines = WrapText(text, font, width, maxLines);
         var lineHeight = font.Size * 1.2f;
         var totalHeight = lines.Count * lineHeight;
-        var startY = center ? y + Math.Max(0, (height - totalHeight) / 2) : y;
+        // Issue #507 follow-up — always vertical-centre within the cell,
+        // regardless of the horizontal `center` flag. With the strip grown
+        // to 295 px, top-aligned text left a lot of empty space at the
+        // bottom of every Obsah / Skrýše / Razítko cell.
+        var startY = y + Math.Max(0, (height - totalHeight) / 2);
 
         for (var i = 0; i < lines.Count; i++)
         {
