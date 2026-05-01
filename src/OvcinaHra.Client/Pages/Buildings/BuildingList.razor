@@ -37,11 +37,26 @@
                 <i class="bi bi-list-ul"></i> Seznam
             </button>
         </div>
+        @if (!Catalog)
+        {
+            <button class="btn btn-outline-primary" type="button"
+                    title="Stáhnout PDF se seznamem staveb"
+                    disabled="@(GameContext.SelectedGameId is null || isPdfDownloading)"
+                    @onclick="DownloadPdfAsync">
+                <i class="bi @(isPdfDownloading ? "bi-arrow-repeat oh-spin" : "bi-file-earmark-pdf")"></i>
+                <span class="d-none d-md-inline ms-1">Stáhnout PDF</span>
+            </button>
+        }
         <button class="btn btn-primary" type="button" @onclick="OpenCreateModal">
             <i class="bi bi-plus-lg"></i> Nová stavba
         </button>
     </div>
 </div>
+
+@if (pdfDownloadError is not null)
+{
+    <div class="alert alert-warning" role="alert">@pdfDownloadError</div>
+}
 
 <div class="oh-bld-filters mb-3">
     <DxTextBox Text="@searchText" TextChanged="@((string v) => searchText = v)"
@@ -532,5 +547,41 @@ else
         }
         catch (Exception ex) { associationError = ex.Message; }
         finally { isAssociationBusy = false; }
+    }
+
+    // Issue #512 — printable A4 building catalogue per game.
+    private bool isPdfDownloading;
+    private string? pdfDownloadError;
+
+    private async Task DownloadPdfAsync()
+    {
+        if (GameContext.SelectedGameId is not int gameId || isPdfDownloading) return;
+        isPdfDownloading = true;
+        pdfDownloadError = null;
+        try
+        {
+            var (ok, file, problem) = await Api.DownloadWithProblemAsync(
+                $"/api/games/{gameId}/exports/buildings.pdf");
+            if (!ok || file is null)
+            {
+                pdfDownloadError = problem ?? "PDF se nepodařilo připravit.";
+                Console.WriteLine($"[buildings-export] download.failed gameId={gameId} message={pdfDownloadError}");
+                return;
+            }
+
+            await using var stream = new MemoryStream(file.Bytes);
+            using var streamReference = new Microsoft.JSInterop.DotNetStreamReference(stream);
+            await JS.InvokeVoidAsync("ovcinaDownloadFile", file.FileName, file.ContentType, streamReference);
+            Console.WriteLine($"[buildings-export] download.ok gameId={gameId} fileName={file.FileName} bytes={file.Bytes.Length}");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            pdfDownloadError = "PDF se nepodařilo připravit.";
+        }
+        finally
+        {
+            isPdfDownloading = false;
+        }
     }
 }
