@@ -175,4 +175,103 @@ public class ScanMonsterCombatEndpointTests(PostgresFixture postgres)
         Assert.Single(saved);
         Assert.Contains("\"monsterNpcId\":" + npcId, saved[0].Data);
     }
+
+    [Fact]
+    public async Task PostMonsterVictory_SlotAlreadyEnded_BeyondBuffer_Returns403()
+    {
+        // Slot ended 30 min ago — outside the +15 min trailing buffer.
+        var (_, personId, npcId) = await SeedActiveMonsterRoleAsync(
+            externalPersonId: 201,
+            slotStartUtc: DateTime.UtcNow.AddHours(-2).AddMinutes(-30),
+            slotDuration: TimeSpan.FromHours(2));
+
+        var dto = new CreateCharacterEventDto(
+            CharacterEventType.MonsterVictory,
+            JsonSerializer.Serialize(new { monsterNpcId = npcId, monsterName = "Skret" }),
+            Location: "Glejt");
+
+        var response = await PostJsonWithIdempotencyAsync(
+            $"/api/scan/{personId}/events", dto, $"victory-late-{personId}");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostMonsterVictory_SlotStartsInFuture_BeyondBuffer_Returns403()
+    {
+        // Slot starts in 30 min — outside the -15 min leading buffer.
+        var (_, personId, npcId) = await SeedActiveMonsterRoleAsync(
+            externalPersonId: 202,
+            slotStartUtc: DateTime.UtcNow.AddMinutes(30),
+            slotDuration: TimeSpan.FromHours(2));
+
+        var dto = new CreateCharacterEventDto(
+            CharacterEventType.MonsterVictory,
+            JsonSerializer.Serialize(new { monsterNpcId = npcId, monsterName = "Skret" }),
+            Location: "Glejt");
+
+        var response = await PostJsonWithIdempotencyAsync(
+            $"/api/scan/{personId}/events", dto, $"victory-early-{personId}");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostMonsterVictory_NpcRoleIsNotMonster_Returns403()
+    {
+        // Caller is assigned to this NPC in an active slot, but the NPC has
+        // role Merchant — only Monster roles may record monster combat.
+        var (_, personId, npcId) = await SeedActiveMonsterRoleAsync(
+            externalPersonId: 203,
+            npcRole: NpcRole.Merchant);
+
+        var dto = new CreateCharacterEventDto(
+            CharacterEventType.MonsterVictory,
+            JsonSerializer.Serialize(new { monsterNpcId = npcId, monsterName = "Kupec" }),
+            Location: "Glejt");
+
+        var response = await PostJsonWithIdempotencyAsync(
+            $"/api/scan/{personId}/events", dto, $"victory-merchant-{personId}");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostMonsterVictory_CallerNotAssignedToNpc_Returns403()
+    {
+        // Active monster role exists, but for a DIFFERENT email — the test
+        // caller (test@ovcina.cz) does not own this monster.
+        var (_, personId, npcId) = await SeedActiveMonsterRoleAsync(
+            externalPersonId: 204,
+            assignedEmail: "kdosi-jiny@ovcina.cz");
+
+        var dto = new CreateCharacterEventDto(
+            CharacterEventType.MonsterVictory,
+            JsonSerializer.Serialize(new { monsterNpcId = npcId, monsterName = "Skret" }),
+            Location: "Glejt");
+
+        var response = await PostJsonWithIdempotencyAsync(
+            $"/api/scan/{personId}/events", dto, $"victory-other-{personId}");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostMonsterVictory_NoOrganizerRoleAssignmentAtAll_Returns403()
+    {
+        // Game + hero exist, but no monster NPC seeded and no role assignment
+        // for the caller — payload references an NPC id that nobody owns.
+        var gameId = await CreateGameAsync();
+        await SeedHeroAsync(gameId, externalPersonId: 205);
+
+        var dto = new CreateCharacterEventDto(
+            CharacterEventType.MonsterVictory,
+            JsonSerializer.Serialize(new { monsterNpcId = 99999, monsterName = "Fiktivní" }),
+            Location: "Glejt");
+
+        var response = await PostJsonWithIdempotencyAsync(
+            "/api/scan/205/events", dto, "victory-no-role");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
 }
