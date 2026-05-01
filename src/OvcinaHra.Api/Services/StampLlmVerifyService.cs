@@ -639,7 +639,10 @@ public sealed class StampLlmVerifyService : IStampLlmVerifyService, IDisposable
     {
         try
         {
-            using var doc = JsonDocument.Parse(raw);
+            // Haiku-4.5 sometimes wraps JSON in ```json ... ``` markdown fences
+            // or emits a short prose preamble. Extract the outermost {…} block.
+            var json = ExtractJsonObject(raw);
+            using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
             if (!root.TryGetProperty("candidates", out var candidatesEl) || candidatesEl.ValueKind != JsonValueKind.Array)
                 throw new JsonException("Expected 'candidates' array.");
@@ -669,6 +672,16 @@ public sealed class StampLlmVerifyService : IStampLlmVerifyService, IDisposable
                 $"Anthropic vrátil neplatnou odpověď: {raw}",
                 ex);
         }
+    }
+
+    private static string ExtractJsonObject(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return raw;
+        var first = raw.IndexOf('{');
+        var last = raw.LastIndexOf('}');
+        if (first >= 0 && last > first)
+            return raw.Substring(first, last - first + 1);
+        return raw;
     }
 
     public void Dispose()
