@@ -96,6 +96,13 @@ public static class ScanEndpoints
         if (assignment is null) return TypedResults.NotFound();
 
         var idempotencyKey = GetIdempotencyKey(httpContext);
+        // Idempotency keys are scoped to (assignmentId, key) and are trusted to
+        // be unique per caller — Glejt always generates Guid.NewGuid() per tap,
+        // so collision across organizers is essentially impossible. NOTE: this
+        // replay check runs BEFORE the monster-auth gate below, so a key
+        // collision across two callers WOULD replay the original caller's
+        // monster-combat response without re-running auth. Keep keys per-caller
+        // unique (Guids) to preserve that invariant.
         if (await TryGetIdempotentEventAsync(db, assignment.Id, idempotencyKey) is { } replay)
             return TypedResults.Ok(replay);
         if (!IsValidIdempotencyKey(idempotencyKey))
@@ -580,8 +587,8 @@ public static class ScanEndpoints
     {
         const int bufferMinutes = 15;
 
-        var callerEmail = httpContext.User.FindFirstValue(ClaimTypes.Email)
-            ?? httpContext.User.FindFirstValue("email");
+        var callerEmail = (httpContext.User.FindFirstValue(ClaimTypes.Email)
+            ?? httpContext.User.FindFirstValue("email"))?.Trim();
         if (string.IsNullOrWhiteSpace(callerEmail))
         {
             return TypedResults.Problem(
@@ -609,6 +616,7 @@ public static class ScanEndpoints
             .Where(a => a.GameId == gameId
                 && a.NpcId == monsterNpcId.Value
                 && a.PersonEmail != null
+                // Npgsql can't translate ToUpperInvariant — ToUpper maps to Postgres UPPER(), equivalent for ASCII emails.
                 && a.PersonEmail.ToUpper() == callerEmailUpper
                 && a.Npc.Role == NpcRole.Monster
                 && a.TimeSlot.StartTime <= leadingEdge
