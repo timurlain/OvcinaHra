@@ -17,10 +17,56 @@ public static class ExportEndpoints
         group.MapGet("/{gameId:int}/exports/magic-book.pdf", DownloadMagicBookPdf);
         group.MapGet("/{gameId:int}/exports/cenik.pdf", DownloadCenikPdf);
         group.MapGet("/{gameId:int}/exports/librarian-treasures.pdf", DownloadLibrarianTreasuresPdf);
+        group.MapGet("/{gameId:int}/exports/buildings.pdf", DownloadBuildingsPdf);
         group.MapGet("/{gameId:int}/exports/organizer-map.pdf", DownloadOrganizerMapPdf);
         group.MapGet("/{gameId:int}/exports/kingdom-map.pdf", DownloadKingdomMapPdf);
 
         return group;
+    }
+
+    // Issue #512 — printable building catalogue per game.
+    private static async Task<Results<FileContentHttpResult, NotFound, BadRequest<ProblemDetails>>> DownloadBuildingsPdf(
+        int gameId,
+        IBuildingsExportService exporter,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.ExportEndpoints");
+        var timer = Stopwatch.StartNew();
+        logger.LogInformation("[export-server] buildings.entry gameId={GameId}", gameId);
+        try
+        {
+            var pdf = await exporter.RenderBuildingsAsync(gameId, ct);
+            logger.LogInformation(
+                "[export-server] buildings.exit status=200 elapsedMs={ElapsedMs}",
+                timer.ElapsedMilliseconds);
+            return TypedResults.File(
+                pdf.Bytes,
+                contentType: "application/pdf",
+                fileDownloadName: pdf.FileName);
+        }
+        catch (KeyNotFoundException)
+        {
+            logger.LogInformation(
+                "[export-server] buildings.exit status=404 gameId={GameId} elapsedMs={ElapsedMs}",
+                gameId,
+                timer.ElapsedMilliseconds);
+            return TypedResults.NotFound();
+        }
+        catch (BuildingsExportProblemException ex)
+        {
+            logger.LogInformation(
+                "[export-server] buildings.exit status=400 gameId={GameId} elapsedMs={ElapsedMs} detail={Detail}",
+                gameId,
+                timer.ElapsedMilliseconds,
+                ex.Detail);
+            return TypedResults.BadRequest(ValidationProblem(ex.Title, ex.Detail));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[export-server] buildings.exception detail={Detail}", ex.Message);
+            throw;
+        }
     }
 
     private static Task<IResult> DownloadExplorerMapPdf(
