@@ -42,30 +42,30 @@ public sealed class BuildingsExportService(
     private const double A4HeightPt = 841.89;
     private const int A4WidthPx = 2480;
     private const int A4HeightPx = 3508;
-    private const int MarginPx = 80;
-    private const int Columns = 2;
-    private const int ColumnGapPx = 60;
-    private const int CardGapPx = 24;
-    private const int CardPaddingPx = 28;
-    private const int CardBorderPx = 4;
+    // Issue #512 follow-up — compact 1-A4 grid per user feedback. Card
+    // height is computed dynamically from the building count so the entire
+    // catalogue fits on a single sheet for typical game sizes (≈25-35);
+    // we still page-break gracefully if the count + minimum readable card
+    // size would overflow.
+    private const int MarginPx = 60;
+    private const int Columns = 4;
+    private const int ColumnGapPx = 24;
+    private const int CardGapPx = 14;
+    private const int CardPaddingPx = 16;
+    private const int CardBorderPx = 3;
+    private const int CardMinHeightPx = 320;
 
-    // Fixed-height card so flow-packing is trivial and predictable. 4 cards
-    // per column × 2 columns = 8 buildings per page; long content is wrapped
-    // with bounded lines and gracefully truncated if it would otherwise
-    // overflow the box.
-    private const int CardHeightPx = 800;
     private const int NameLines = 2;
-    private const int EffectLines = 5;
-    private const int RecipeLines = 8;
+    private const int EffectLines = 3;
+    // Recipe consumes whatever vertical room remains in the card; lines
+    // computed at draw time from the dynamic card height.
 
-    private const float NameFontPx = 42;
-    private const float SectionLabelFontPx = 22;
-    private const float BodyFontPx = 28;
+    private const float NameFontPx = 24;
+    private const float BodyFontPx = 16;
 
     private static readonly Color Paper = Color.White;
     private static readonly Color Ink = Color.Black;
     private static readonly Color MutedInk = Color.ParseHex("#404040");
-    private static readonly Color SectionLabel = Color.ParseHex("#6B5A2B");
     private static readonly Color CardBg = Color.ParseHex("#FBF7EB");
     private static readonly Color CardBorder = Color.ParseHex("#C9BC9A");
 
@@ -118,13 +118,23 @@ public sealed class BuildingsExportService(
 
         var renderStopwatch = Stopwatch.StartNew();
         var fonts = LoadFonts();
-        var rowsPerPage = ((A4HeightPx - MarginPx * 2 + CardGapPx) / (CardHeightPx + CardGapPx)) * Columns;
+
+        // Issue #512 follow-up — fit ALL buildings on a single A4 sheet
+        // when the count + minimum readable card size allow. Card height
+        // shrinks to fit the requested rows; if it would drop below
+        // CardMinHeightPx we fall back to multi-page so cards stay legible.
+        var availableHeight = A4HeightPx - MarginPx * 2;
+        var requestedRows = Math.Max(1, (rows.Count + Columns - 1) / Columns);
+        var maxRowsPerPage = Math.Max(1, (availableHeight + CardGapPx) / (CardMinHeightPx + CardGapPx));
+        var rowsPerColumn = Math.Min(requestedRows, maxRowsPerPage);
+        var rowsPerPage = rowsPerColumn * Columns;
         var pageCount = Math.Max(1, (int)Math.Ceiling(rows.Count / (double)rowsPerPage));
+        var cardHeightPx = (availableHeight - (rowsPerColumn - 1) * CardGapPx) / rowsPerColumn;
         var pageImages = new List<PdfImagePage>(pageCount);
 
         for (var pageIndex = 0; pageIndex < pageCount; pageIndex++)
         {
-            var pdfImage = await RenderPageAsync(rows, fonts, pageIndex, rowsPerPage, ct);
+            var pdfImage = await RenderPageAsync(rows, fonts, pageIndex, rowsPerColumn, cardHeightPx, ct);
             pageImages.Add(new PdfImagePage(
                 A4WidthPt,
                 A4HeightPt,
@@ -215,15 +225,17 @@ public sealed class BuildingsExportService(
         IReadOnlyList<BuildingRow> rows,
         BuildingsFonts fonts,
         int pageIndex,
-        int rowsPerPage,
+        int rowsPerColumn,
+        int cardHeightPx,
         CancellationToken ct)
     {
         using var image = new Image<Rgba32>(A4WidthPx, A4HeightPx, Paper);
         image.Mutate(ctx =>
         {
+            var rowsPerPage = rowsPerColumn * Columns;
             var pageStart = pageIndex * rowsPerPage;
-            var rowsPerColumn = rowsPerPage / Columns;
-            var columnWidth = (A4WidthPx - MarginPx * 2 - ColumnGapPx) / Columns;
+            var totalGap = (Columns - 1) * ColumnGapPx;
+            var columnWidth = (A4WidthPx - MarginPx * 2 - totalGap) / Columns;
 
             for (var column = 0; column < Columns; column++)
             {
@@ -232,8 +244,8 @@ public sealed class BuildingsExportService(
                 {
                     var index = pageStart + column * rowsPerColumn + row;
                     if (index >= rows.Count) return;
-                    var y = MarginPx + row * (CardHeightPx + CardGapPx);
-                    DrawBuildingCard(ctx, rows[index], x, y, columnWidth, fonts);
+                    var y = MarginPx + row * (cardHeightPx + CardGapPx);
+                    DrawBuildingCard(ctx, rows[index], x, y, columnWidth, cardHeightPx, fonts);
                 }
             }
         });
@@ -249,9 +261,10 @@ public sealed class BuildingsExportService(
         float x,
         float y,
         float width,
+        int cardHeightPx,
         BuildingsFonts fonts)
     {
-        var rect = new RectangularPolygon(x, y, width, CardHeightPx);
+        var rect = new RectangularPolygon(x, y, width, cardHeightPx);
         ctx.Fill(CardBg, rect);
         ctx.Draw(CardBorder, CardBorderPx, rect);
 
@@ -259,29 +272,26 @@ public sealed class BuildingsExportService(
         var contentWidth = width - CardPaddingPx * 2;
         var cursorY = y + CardPaddingPx;
 
-        // Name
+        // Issue #512 follow-up — compact card without "Efekt" / "Recept"
+        // section labels. Name → Effect (italic-feel via MutedInk) → Recipe
+        // stacked tight; vertical space is reclaimed for more rows on the
+        // sheet.
         DrawWrappedText(ctx, row.Name, fonts.Name, Ink,
             contentX, cursorY, contentWidth, NameFontPx * 1.2f * NameLines, NameLines);
-        cursorY += NameFontPx * 1.2f * NameLines + 12f;
+        cursorY += NameFontPx * 1.2f * NameLines + 6f;
 
-        // Effect label
-        ctx.DrawText("Efekt", fonts.SectionLabel, SectionLabel, new PointF(contentX, cursorY));
-        cursorY += SectionLabelFontPx * 1.2f + 4f;
-
-        // Effect body
         var effectHeight = BodyFontPx * 1.3f * EffectLines;
         DrawWrappedText(ctx, row.Effect, fonts.Body, MutedInk,
             contentX, cursorY, contentWidth, effectHeight, EffectLines);
-        cursorY += effectHeight + 16f;
+        cursorY += effectHeight + 6f;
 
-        // Recipe label
-        ctx.DrawText("Recept", fonts.SectionLabel, SectionLabel, new PointF(contentX, cursorY));
-        cursorY += SectionLabelFontPx * 1.2f + 4f;
-
-        // Recipe body
-        var recipeHeight = BodyFontPx * 1.3f * RecipeLines;
+        // Recipe takes whatever vertical room remains in the card so we
+        // don't waste space when the card is taller than the minimum.
+        var recipeBottom = y + cardHeightPx - CardPaddingPx;
+        var availableRecipeHeight = Math.Max(BodyFontPx * 1.3f, recipeBottom - cursorY);
+        var availableRecipeLines = Math.Max(1, (int)Math.Floor(availableRecipeHeight / (BodyFontPx * 1.3f)));
         DrawWrappedText(ctx, row.Recipe, fonts.Body, Ink,
-            contentX, cursorY, contentWidth, recipeHeight, RecipeLines);
+            contentX, cursorY, contentWidth, availableRecipeHeight, availableRecipeLines);
     }
 
     private static void DrawWrappedText(
@@ -379,7 +389,6 @@ public sealed class BuildingsExportService(
             var bold = fontCollection.Add(System.IO.Path.Combine(fontRoot, "Inter-Bold.ttf"));
             return new BuildingsFonts(
                 Name: bold.CreateFont(NameFontPx),
-                SectionLabel: bold.CreateFont(SectionLabelFontPx),
                 Body: regular.CreateFont(BodyFontPx));
         }
         catch (Exception ex)
@@ -409,5 +418,5 @@ public sealed class BuildingsExportService(
 
     private sealed record BuildingRow(string Name, string Effect, string Recipe);
 
-    private sealed record BuildingsFonts(Font Name, Font SectionLabel, Font Body);
+    private sealed record BuildingsFonts(Font Name, Font Body);
 }
