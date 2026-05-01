@@ -99,6 +99,19 @@ public static class ScanEndpoints
         if (!IsValidIdempotencyKey(idempotencyKey))
             return SaveFailed("Hlavička X-Idempotency-Key je příliš dlouhá.");
 
+        // Glejt monster-combat (#518) — MonsterVictory/MonsterDefeat are gated
+        // by an active OrganizerRoleAssignment for the caller's email on an
+        // NPC with Role == Monster, where the slot covers now ± 15 min. The
+        // payload's monsterNpcId is the load-bearing identifier; monsterName
+        // is trusted from the client (see design doc §"Identity of the
+        // monster"). Any other event type falls through to the existing
+        // any-organizer flow.
+        if (dto.EventType is CharacterEventType.MonsterVictory or CharacterEventType.MonsterDefeat)
+        {
+            var monsterAuth = await AuthorizeMonsterEventAsync(dto, assignment.GameId, httpContext, db);
+            if (monsterAuth is { } denied) return denied;
+        }
+
         var organizer = GetOrganizer(httpContext);
 
         string eventData = dto.Data;
@@ -495,5 +508,82 @@ public static class ScanEndpoints
         return (
             user.FindFirstValue("sub") ?? user.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown",
             user.FindFirstValue("name") ?? user.FindFirstValue(ClaimTypes.Name) ?? "Unknown");
+    }
+
+    /// <summary>
+    /// Verifies the caller is currently playing the monster NPC referenced in
+    /// the payload. Returns a 403 result on any failure, or <c>null</c> when
+    /// authorization passes. Buffer is ±15 min around the slot's window per
+    /// the Glejt monster-combat design.
+    /// </summary>
+    private static async Task<IResult?> AuthorizeMonsterEventAsync(
+        CreateCharacterEventDto dto,
+        int gameId,
+        HttpContext httpContext,
+        WorldDbContext db)
+    {
+        const int bufferMinutes = 15;
+
+        var callerEmail = httpContext.User.FindFirstValue(ClaimTypes.Email)
+            ?? httpContext.User.FindFirstValue("email");
+        if (string.IsNullOrWhiteSpace(callerEmail))
+        {
+            return TypedResults.Problem(
+                title: "Souboj s nestvůrou nelze zapsat",
+                detail: "Token bez emailu — nelze ověřit monster roli.",
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        int? monsterNpcId = TryReadMonsterNpcId(dto.Data);
+        if (monsterNpcId is null)
+        {
+            return TypedResults.Problem(
+                title: "Souboj s nestvůrou nelze zapsat",
+                detail: "Payload musí obsahovat číselné monsterNpcId.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var nowUtc = DateTime.UtcNow;
+        var leadingEdge = nowUtc.AddMinutes(bufferMinutes);  // slot must start ≤ this
+        var trailingEdge = nowUtc.AddMinutes(-bufferMinutes); // slot must end ≥ this
+        var callerEmailUpper = callerEmail.ToUpperInvariant();
+
+        var hasActiveRole = await db.OrganizerRoleAssignments
+            .AsNoTracking()
+            .Where(a => a.GameId == gameId
+                && a.NpcId == monsterNpcId.Value
+                && a.PersonEmail != null
+                && a.PersonEmail.ToUpper() == callerEmailUpper
+                && a.Npc.Role == NpcRole.Monster
+                && a.TimeSlot.StartTime <= leadingEdge
+                && a.TimeSlot.StartTime + a.TimeSlot.Duration >= trailingEdge)
+            .AnyAsync();
+
+        if (!hasActiveRole)
+        {
+            return TypedResults.Problem(
+                title: "Souboj s nestvůrou nelze zapsat",
+                detail: "Nemáš v tuto chvíli aktivní monster roli pro tuto nestvůru.",
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        return null;
+    }
+
+    private static int? TryReadMonsterNpcId(string data)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(data);
+            return doc.RootElement.TryGetProperty("monsterNpcId", out var v)
+                && v.ValueKind == JsonValueKind.Number
+                && v.TryGetInt32(out var id)
+                    ? id
+                    : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 }
