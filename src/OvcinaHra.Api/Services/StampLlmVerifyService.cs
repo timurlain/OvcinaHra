@@ -582,6 +582,13 @@ public sealed class StampLlmVerifyService : IStampLlmVerifyService, IDisposable
                 ex.Message,
                 ex);
         }
+        catch (StampLlmProviderException)
+        {
+            // Already-typed provider exceptions (e.g. malformed JSON from ParseRecognizeResponse)
+            // bubble up unchanged. Wrapping here would discard the original Title/RawResponse
+            // and replace ex.RawResponse with ex.Message — debugging info lost.
+            throw;
+        }
         catch (Exception ex) when (ex is not StampLlmValidationException and not OperationCanceledException)
         {
             stopwatch.Stop();

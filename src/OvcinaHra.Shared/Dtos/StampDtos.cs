@@ -15,7 +15,7 @@ public record VerifyStampLlmResponse(
 
 /// <summary>
 /// Request body for POST /api/stamps/recognize. Photo of a glejt stamp →
-/// ranked candidate Locations from the active game.
+/// ranked candidate Locations from the hra s daným GameId.
 /// </summary>
 public record RecognizeStashRequest(
     int GameId,
@@ -25,7 +25,7 @@ public record RecognizeStashRequest(
 /// Response body for POST /api/stamps/recognize. Top-3 candidates, each with
 /// its inline list of stashes so the organizer can guide the player without
 /// further navigation. Empty <see cref="Candidates"/> + <c>NoReferences=true</c>
-/// means the active game has no stamped locations yet.
+/// means the vybraná hra has no stamped locations yet.
 /// </summary>
 public record RecognizeStashResponse(
     IReadOnlyList<StampMatchCandidate> Candidates,

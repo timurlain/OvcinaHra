@@ -28,7 +28,7 @@ public static class StampLlmEndpoints
         ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
-        var logger = loggerFactory.CreateLogger("StampLlmEndpoints");
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.StampLlmEndpoints");
         logger.LogInformation(
             "[stamp-llm-server] recognize endpoint enter gameId={GameId}",
             request.GameId);
@@ -108,7 +108,7 @@ public static class StampLlmEndpoints
         }
         catch (StampLlmRateLimitedException ex)
         {
-            await AuditRecognizeFailureAsync(db, request, organizer, ex, ct);
+            await AuditRecognizeFailureAsync(db, request, organizer, ex, references.Count, ct);
             logger.LogWarning(
                 ex,
                 "[stamp-llm-server] recognize endpoint rate-limited gameId={GameId} rawResponse={RawResponse}",
@@ -125,7 +125,7 @@ public static class StampLlmEndpoints
         }
         catch (StampLlmProviderException ex)
         {
-            await AuditRecognizeFailureAsync(db, request, organizer, ex, ct);
+            await AuditRecognizeFailureAsync(db, request, organizer, ex, references.Count, ct);
             logger.LogError(
                 ex,
                 "[stamp-llm-server] recognize endpoint provider-error gameId={GameId} rawResponse={RawResponse}",
@@ -221,6 +221,7 @@ public static class StampLlmEndpoints
         RecognizeStashRequest request,
         OrganizerIdentity organizer,
         StampLlmProviderException ex,
+        int referencesScanned,
         CancellationToken ct)
     {
         // For failure audit we don't have a top-1 location to attach to, but the LocationId
@@ -250,7 +251,9 @@ public static class StampLlmEndpoints
             RawResponse = Truncate(ex.RawResponse),
             Mode = StampLlmVerification.ModeRecognize,
             GameId = request.GameId,
-            ReferencesScanned = 0
+            // Persist the intended reference count even on failure: failing calls also cost
+            // (the request was sent), so cost analysis needs the count regardless of outcome.
+            ReferencesScanned = referencesScanned
         });
         await db.SaveChangesAsync(ct);
     }

@@ -160,6 +160,9 @@ public class RecognizeStashEndpointTests(PostgresFixture postgres) : Integration
         Assert.False(audit.Match);
         Assert.Equal(211, audit.LatencyMs);
         Assert.Equal(gameId, audit.GameId);
+        // Failing calls also cost — the intended reference count must be persisted
+        // on failure rows so cost analysis reflects every API call attempt.
+        Assert.Equal(2, audit.ReferencesScanned);
     }
 
     [Fact]
@@ -183,6 +186,8 @@ public class RecognizeStashEndpointTests(PostgresFixture postgres) : Integration
         var audit = await db.StampLlmVerifications.SingleAsync();
         Assert.Equal(StampLlmVerification.ModeRecognize, audit.Mode);
         Assert.Equal(150, audit.LatencyMs);
+        // Same as 502 case — rate-limit-killed calls still cost upstream attempts.
+        Assert.Equal(1, audit.ReferencesScanned);
     }
 
     [Fact]
