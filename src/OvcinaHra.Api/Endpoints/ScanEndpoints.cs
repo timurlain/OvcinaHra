@@ -95,15 +95,16 @@ public static class ScanEndpoints
 
         if (assignment is null) return TypedResults.NotFound();
 
-        // Glejt monster-combat (#518) — MonsterVictory/MonsterDefeat are gated
-        // by an active OrganizerRoleAssignment for the caller's email on an
-        // NPC with Role == Monster, where the slot covers now ± 15 min. The
-        // payload's monsterNpcId is the load-bearing identifier; monsterName
-        // is trusted from the client (see design doc §"Identity of the
-        // monster"). Runs BEFORE idempotency replay so an unauthorized caller
-        // who supplies a previously-seen X-Idempotency-Key can't bypass auth
-        // and receive the original event as a 200 replay. Any other event
-        // type falls through to the existing any-organizer flow.
+        // Glejt monster-combat (#518, loosened in #523) — MonsterVictory and
+        // MonsterDefeat originally required an active OrganizerRoleAssignment
+        // for the caller's email in a slot covering now ± 15 min. That gate
+        // blocked organizers using the Force Monster override (Glejt v0.1.23+),
+        // which is meant to be a real bypass when login/role plumbing is
+        // unreliable. We now keep only the cheap sanity check: payload must
+        // carry a numeric monsterNpcId pointing at an NPC flagged Monster in
+        // this game. monsterName is still trusted from the client (audit log,
+        // not a security boundary). Runs BEFORE idempotency replay to keep
+        // ordering symmetric with the previous gate.
         if (dto.EventType is CharacterEventType.MonsterVictory or CharacterEventType.MonsterDefeat)
         {
             var monsterAuth = await AuthorizeMonsterEventAsync(dto, assignment.GameId, httpContext, db);
@@ -569,10 +570,12 @@ public static class ScanEndpoints
     }
 
     /// <summary>
-    /// Verifies the caller is currently playing the monster NPC referenced in
-    /// the payload. Returns a 403 result on any failure, or <c>null</c> when
-    /// authorization passes. Buffer is ±15 min around the slot's window per
-    /// the Glejt monster-combat design.
+    /// Sanity-checks a monster combat event. The Glejt "Force Monster" toggle
+    /// is meant to be a true bypass when login/role plumbing is unreliable, so
+    /// the original ±15 min OrganizerRoleAssignment gate was dropped (#523).
+    /// What survives is the cheap correctness guard: payload must carry a
+    /// numeric <c>monsterNpcId</c>, and that NPC must actually be flagged
+    /// <see cref="NpcRole.Monster"/> in the assignment's game.
     /// </summary>
     private static async Task<IResult?> AuthorizeMonsterEventAsync(
         CreateCharacterEventDto dto,
@@ -580,18 +583,6 @@ public static class ScanEndpoints
         HttpContext httpContext,
         WorldDbContext db)
     {
-        const int bufferMinutes = 15;
-
-        var callerEmail = (httpContext.User.FindFirstValue(ClaimTypes.Email)
-            ?? httpContext.User.FindFirstValue("email"))?.Trim();
-        if (string.IsNullOrWhiteSpace(callerEmail))
-        {
-            return TypedResults.Problem(
-                title: "Souboj s nestvůrou nelze zapsat",
-                detail: "Token bez emailu — nelze ověřit monster roli.",
-                statusCode: StatusCodes.Status403Forbidden);
-        }
-
         int? monsterNpcId = TryReadMonsterNpcId(dto.Data);
         if (monsterNpcId is null)
         {
@@ -601,28 +592,17 @@ public static class ScanEndpoints
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
-        var nowUtc = DateTime.UtcNow;
-        var leadingEdge = nowUtc.AddMinutes(bufferMinutes);  // slot must start ≤ this
-        var trailingEdge = nowUtc.AddMinutes(-bufferMinutes); // slot must end ≥ this
-        var callerEmailUpper = callerEmail.ToUpperInvariant();
-
-        var hasActiveRole = await db.OrganizerRoleAssignments
+        var npcIsMonsterInGame = await db.GameNpcs
             .AsNoTracking()
-            .Where(a => a.GameId == gameId
-                && a.NpcId == monsterNpcId.Value
-                && a.PersonEmail != null
-                // Npgsql can't translate ToUpperInvariant — ToUpper maps to Postgres UPPER(), equivalent for ASCII emails.
-                && a.PersonEmail.ToUpper() == callerEmailUpper
-                && a.Npc.Role == NpcRole.Monster
-                && a.TimeSlot.StartTime <= leadingEdge
-                && a.TimeSlot.StartTime + a.TimeSlot.Duration >= trailingEdge)
-            .AnyAsync();
+            .AnyAsync(gn => gn.GameId == gameId
+                && gn.NpcId == monsterNpcId.Value
+                && gn.Npc.Role == NpcRole.Monster);
 
-        if (!hasActiveRole)
+        if (!npcIsMonsterInGame)
         {
             return TypedResults.Problem(
                 title: "Souboj s nestvůrou nelze zapsat",
-                detail: "Nemáš v tuto chvíli aktivní monster roli pro tuto nestvůru.",
+                detail: "Vybraná NPC není v této hře označená jako nestvůra.",
                 statusCode: StatusCodes.Status403Forbidden);
         }
 

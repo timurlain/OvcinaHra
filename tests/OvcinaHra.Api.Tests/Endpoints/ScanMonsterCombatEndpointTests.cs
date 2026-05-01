@@ -12,20 +12,18 @@ namespace OvcinaHra.Api.Tests.Endpoints;
 
 /// <summary>
 /// Integration tests for the Glejt monster-combat surface on /api/scan:
-/// MonsterVictory/MonsterDefeat event posting (with server-side
-/// OrganizerRoleAssignment authorization) plus the two undo endpoints
-/// (last-note, last-combat).
+/// MonsterVictory/MonsterDefeat event posting (with the loosened
+/// "NPC must be a Monster in this game" sanity gate, #523) plus the two
+/// undo endpoints (last-note, last-combat).
 ///
 /// The shared <see cref="PostgresFixture"/> client authenticates as
-/// <c>test@ovcina.cz</c> / "Test Organizátor" — that email is what
-/// <see cref="OrganizerRoleAssignment.PersonEmail"/> rows must match for
-/// the monster-role lookup to succeed.
+/// <c>test@ovcina.cz</c> / "Test Organizátor". Since #523 the auth path
+/// no longer reads OrganizerRoleAssignment rows, so the caller's email is
+/// not load-bearing for these tests — only the NPC's Role flag is.
 /// </summary>
 public class ScanMonsterCombatEndpointTests(PostgresFixture postgres)
     : IntegrationTestBase(postgres), IClassFixture<PostgresFixture>
 {
-    private const string CallerEmail = "test@ovcina.cz";
-
     private async Task<HttpResponseMessage> PostJsonWithIdempotencyAsync<T>(
         string url, T payload, string key)
     {
@@ -62,48 +60,6 @@ public class ScanMonsterCombatEndpointTests(PostgresFixture postgres)
         response.EnsureSuccessStatusCode();
     }
 
-    private async Task<int> CreateSlotAsync(int gameId)
-    {
-        // The exact StartTime / Duration we need is set directly via DbContext
-        // afterwards (see SetSlotWindowAsync), because the API's
-        // CreateGameTimeSlotDto pegs StartTime to a fixed game date that we
-        // can't easily move relative to DateTime.UtcNow.
-        var response = await Client.PostAsJsonAsync("/api/timeline/slots",
-            new CreateGameTimeSlotDto(
-                GameId: gameId,
-                StartTime: new DateTime(2026, 5, 1, 10, 0, 0, DateTimeKind.Utc),
-                DurationHours: 1m,
-                InGameYear: 1247,
-                Stage: GameTimePhase.Start));
-        response.EnsureSuccessStatusCode();
-        var slot = await response.Content.ReadFromJsonAsync<GameTimeSlotDto>();
-        return slot!.Id;
-    }
-
-    /// <summary>
-    /// Mutates the slot's window directly in the database. Used so each
-    /// authorization test can control whether "now" falls inside the
-    /// slot's ±15 min window.
-    /// </summary>
-    private async Task SetSlotWindowAsync(int slotId, DateTime startUtc, TimeSpan duration)
-    {
-        using var scope = Factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
-        var slot = await db.GameTimeSlots.FirstAsync(s => s.Id == slotId);
-        slot.StartTime = startUtc;
-        slot.Duration = duration;
-        await db.SaveChangesAsync();
-    }
-
-    private async Task UpsertOrganizerRoleAsync(
-        int gameId, int slotId, int npcId, string email)
-    {
-        var response = await Client.PutAsJsonAsync(
-            $"/api/games/{gameId}/organizer-role-assignments/slots/{slotId}/npcs/{npcId}",
-            new UpsertOrganizerRoleAssignmentDto(501, "Test Organizátor", email));
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-    }
-
     private async Task<int> SeedHeroAsync(int gameId, int externalPersonId)
     {
         var createResponse = await Client.PostAsJsonAsync("/api/characters",
@@ -123,38 +79,28 @@ public class ScanMonsterCombatEndpointTests(PostgresFixture postgres)
     }
 
     /// <summary>
-    /// One-call seed: game + slot in active window + monster NPC + role
-    /// assignment for the test caller + scanned hero. Returns the personId,
-    /// the npcId of the monster, and the gameId.
+    /// One-call seed for a game with a Monster NPC linked to it and a hero
+    /// scanned in. Returns gameId, the hero's external personId, and the
+    /// monster NpcId. Since the #523 loosening there is no slot or
+    /// OrganizerRoleAssignment in the seed — the auth gate only checks
+    /// the NPC's Role + GameNpc link.
     /// </summary>
-    private async Task<(int gameId, int personId, int monsterNpcId)> SeedActiveMonsterRoleAsync(
+    private async Task<(int gameId, int personId, int monsterNpcId)> SeedMonsterInGameAsync(
         int externalPersonId,
-        DateTime? slotStartUtc = null,
-        TimeSpan? slotDuration = null,
         NpcRole npcRole = NpcRole.Monster,
-        string? assignedEmail = null)
+        string npcName = "Skret hlídač u brány")
     {
         var gameId = await CreateGameAsync();
-        var npcId = await CreateNpcAsync("Skret hlídač u brány", npcRole);
+        var npcId = await CreateNpcAsync(npcName, npcRole);
         await AssignNpcToGameAsync(gameId, npcId);
-        var slotId = await CreateSlotAsync(gameId);
-
-        // Default: slot started 30 min ago, runs 2h — caller is mid-window.
-        await SetSlotWindowAsync(
-            slotId,
-            slotStartUtc ?? DateTime.UtcNow.AddMinutes(-30),
-            slotDuration ?? TimeSpan.FromHours(2));
-
-        await UpsertOrganizerRoleAsync(gameId, slotId, npcId, assignedEmail ?? CallerEmail);
         await SeedHeroAsync(gameId, externalPersonId);
-
         return (gameId, externalPersonId, npcId);
     }
 
     [Fact]
-    public async Task PostMonsterVictory_WithActiveMonsterRole_ReturnsCreatedAndPersistsEvent()
+    public async Task PostMonsterVictory_NpcIsMonsterInGame_ReturnsCreatedAndPersistsEvent()
     {
-        var (_, personId, npcId) = await SeedActiveMonsterRoleAsync(externalPersonId: 200);
+        var (_, personId, npcId) = await SeedMonsterInGameAsync(externalPersonId: 200);
 
         var dto = new CreateCharacterEventDto(
             CharacterEventType.MonsterVictory,
@@ -177,53 +123,15 @@ public class ScanMonsterCombatEndpointTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task PostMonsterVictory_SlotAlreadyEnded_BeyondBuffer_Returns403()
-    {
-        // Slot ended 30 min ago — outside the +15 min trailing buffer.
-        var (_, personId, npcId) = await SeedActiveMonsterRoleAsync(
-            externalPersonId: 201,
-            slotStartUtc: DateTime.UtcNow.AddHours(-2).AddMinutes(-30),
-            slotDuration: TimeSpan.FromHours(2));
-
-        var dto = new CreateCharacterEventDto(
-            CharacterEventType.MonsterVictory,
-            JsonSerializer.Serialize(new { monsterNpcId = npcId, monsterName = "Skret" }),
-            Location: "Glejt");
-
-        var response = await PostJsonWithIdempotencyAsync(
-            $"/api/scan/{personId}/events", dto, $"victory-late-{personId}");
-
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task PostMonsterVictory_SlotStartsInFuture_BeyondBuffer_Returns403()
-    {
-        // Slot starts in 30 min — outside the -15 min leading buffer.
-        var (_, personId, npcId) = await SeedActiveMonsterRoleAsync(
-            externalPersonId: 202,
-            slotStartUtc: DateTime.UtcNow.AddMinutes(30),
-            slotDuration: TimeSpan.FromHours(2));
-
-        var dto = new CreateCharacterEventDto(
-            CharacterEventType.MonsterVictory,
-            JsonSerializer.Serialize(new { monsterNpcId = npcId, monsterName = "Skret" }),
-            Location: "Glejt");
-
-        var response = await PostJsonWithIdempotencyAsync(
-            $"/api/scan/{personId}/events", dto, $"victory-early-{personId}");
-
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-    }
-
-    [Fact]
     public async Task PostMonsterVictory_NpcRoleIsNotMonster_Returns403()
     {
-        // Caller is assigned to this NPC in an active slot, but the NPC has
-        // role Merchant — only Monster roles may record monster combat.
-        var (_, personId, npcId) = await SeedActiveMonsterRoleAsync(
+        // The NPC exists in this game but its role is Merchant — only NPCs
+        // flagged Monster may receive monster-combat events. This is the
+        // single role gate that survives the #523 loosening.
+        var (_, personId, npcId) = await SeedMonsterInGameAsync(
             externalPersonId: 203,
-            npcRole: NpcRole.Merchant);
+            npcRole: NpcRole.Merchant,
+            npcName: "Kupec");
 
         var dto = new CreateCharacterEventDto(
             CharacterEventType.MonsterVictory,
@@ -237,21 +145,25 @@ public class ScanMonsterCombatEndpointTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task PostMonsterVictory_CallerNotAssignedToNpc_Returns403()
+    public async Task PostMonsterVictory_NpcInDifferentGame_Returns403()
     {
-        // Active monster role exists, but for a DIFFERENT email — the test
-        // caller (test@ovcina.cz) does not own this monster.
-        var (_, personId, npcId) = await SeedActiveMonsterRoleAsync(
-            externalPersonId: 204,
-            assignedEmail: "kdosi-jiny@ovcina.cz");
+        // Monster NPC exists, and there's a hero in gameA, but the NPC is
+        // linked to gameB. The auth gate must reject because the GameNpc
+        // join doesn't connect them — preserves cross-game isolation.
+        var gameA = await CreateGameAsync("Game A");
+        await SeedHeroAsync(gameA, externalPersonId: 207);
+
+        var gameB = await CreateGameAsync("Game B");
+        var npcId = await CreateNpcAsync("Skret z jiné hry", NpcRole.Monster);
+        await AssignNpcToGameAsync(gameB, npcId);
 
         var dto = new CreateCharacterEventDto(
             CharacterEventType.MonsterVictory,
-            JsonSerializer.Serialize(new { monsterNpcId = npcId, monsterName = "Skret" }),
+            JsonSerializer.Serialize(new { monsterNpcId = npcId, monsterName = "Skret z jiné hry" }),
             Location: "Glejt");
 
         var response = await PostJsonWithIdempotencyAsync(
-            $"/api/scan/{personId}/events", dto, $"victory-other-{personId}");
+            "/api/scan/207/events", dto, "victory-cross-game");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -302,7 +214,7 @@ public class ScanMonsterCombatEndpointTests(PostgresFixture postgres)
     [Fact]
     public async Task DeleteLastCombat_RemovesNewestMonsterEvent()
     {
-        var (_, personId, npcId) = await SeedActiveMonsterRoleAsync(externalPersonId: 310);
+        var (_, personId, npcId) = await SeedMonsterInGameAsync(externalPersonId: 310);
 
         // Two combat events, second one is the newest.
         var first = await PostJsonWithIdempotencyAsync(
@@ -347,7 +259,7 @@ public class ScanMonsterCombatEndpointTests(PostgresFixture postgres)
         // The undo scope is "newest combat row", NOT "newest event of any
         // type". A LevelUp recorded AFTER a MonsterVictory must not be
         // touched by last-combat — that's last-levelup's job.
-        var (_, personId, npcId) = await SeedActiveMonsterRoleAsync(externalPersonId: 311);
+        var (_, personId, npcId) = await SeedMonsterInGameAsync(externalPersonId: 311);
 
         var combat = await PostJsonWithIdempotencyAsync(
             $"/api/scan/{personId}/events",
@@ -381,7 +293,7 @@ public class ScanMonsterCombatEndpointTests(PostgresFixture postgres)
     [Fact]
     public async Task PostMonsterVictory_SameIdempotencyKey_Twice_PersistsOnceAndReplaysResponse()
     {
-        var (_, personId, npcId) = await SeedActiveMonsterRoleAsync(externalPersonId: 320);
+        var (_, personId, npcId) = await SeedMonsterInGameAsync(externalPersonId: 320);
 
         var dto = new CreateCharacterEventDto(
             CharacterEventType.MonsterVictory,
@@ -429,13 +341,12 @@ public class ScanMonsterCombatEndpointTests(PostgresFixture postgres)
     [Fact]
     public async Task PostMonsterVictory_PayloadMissingMonsterNpcId_Returns400()
     {
-        // Caller has an active monster role, but the payload omits the
-        // load-bearing monsterNpcId field. AuthorizeMonsterEventAsync must
-        // refuse to assume an NPC id and return 400 with a Czech problem
-        // detail naming the missing field. This same branch also fires when
-        // dto.Data is malformed JSON (TryReadMonsterNpcId returns null in
-        // both cases).
-        var (_, personId, _) = await SeedActiveMonsterRoleAsync(externalPersonId: 206);
+        // The payload omits the load-bearing monsterNpcId field.
+        // AuthorizeMonsterEventAsync must refuse to assume an NPC id and
+        // return 400 with a Czech problem detail naming the missing field.
+        // This same branch also fires when dto.Data is malformed JSON
+        // (TryReadMonsterNpcId returns null in both cases).
+        var (_, personId, _) = await SeedMonsterInGameAsync(externalPersonId: 206);
 
         var dto = new CreateCharacterEventDto(
             CharacterEventType.MonsterVictory,
@@ -448,24 +359,5 @@ public class ScanMonsterCombatEndpointTests(PostgresFixture postgres)
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("monsterNpcId", body, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task PostMonsterVictory_NoOrganizerRoleAssignmentAtAll_Returns403()
-    {
-        // Game + hero exist, but no monster NPC seeded and no role assignment
-        // for the caller — payload references an NPC id that nobody owns.
-        var gameId = await CreateGameAsync();
-        await SeedHeroAsync(gameId, externalPersonId: 205);
-
-        var dto = new CreateCharacterEventDto(
-            CharacterEventType.MonsterVictory,
-            JsonSerializer.Serialize(new { monsterNpcId = 99999, monsterName = "Fiktivní" }),
-            Location: "Glejt");
-
-        var response = await PostJsonWithIdempotencyAsync(
-            "/api/scan/205/events", dto, "victory-no-role");
-
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 }
