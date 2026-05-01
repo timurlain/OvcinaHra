@@ -3,19 +3,20 @@
 @inject ApiClient Api
 @inject NavigationManager Nav
 @inject GameContextService GameContext
-@implements IDisposable
+@implements IAsyncDisposable
 @using OvcinaHra.Shared.Domain.Enums
 @using OvcinaHra.Shared.Dtos
 
-@* Full-page WorldChange audit log — same source as the cockpit
-   "Co se nedávno dělo" sliver, but uncapped and rendered through
-   OvcinaGrid so organizers can filter, group, search, and sort the
-   whole roll. *@
+@* Full-page WorldActivity audit log — same source as the cockpit
+   "Aktivity světa" sliver, but uncapped and rendered through OvcinaGrid
+   so organizers can filter, group, search, and sort the whole roll.
+   Polled every 15 s so live game progression (level-ups, placements,
+   quest completions) shows up without a manual refresh. *@
 
-<PageTitle>Aktivita ve světě</PageTitle>
+<PageTitle>Aktivity světa</PageTitle>
 
 <div class="oh-act-page-head">
-    <h1>Aktivita ve světě</h1>
+    <h1>Aktivity světa</h1>
     @if (_rows is not null)
     {
         @* Default cap is 500 (max 2000); when the audit grows past 500
@@ -50,83 +51,72 @@ else if (_rows.Count == 0)
 {
     <div class="oh-act-empty">
         <i class="bi bi-inbox fs-1 d-block mb-2 text-muted"></i>
-        <p class="text-muted">Zatím žádné zaznamenané změny.</p>
+        <p class="text-muted">Zatím žádné aktivity. Až organizátoři začnou
+            zapisovat postupy, umístění a dokončené questy (přímo v aplikaci
+            nebo přes Glejt), uvidíte je tady.</p>
     </div>
 }
 else
 {
     <OvcinaGrid Data="@_rows"
-                KeyFieldName="@nameof(WorldChangeRowDto.Id)"
-                LayoutKey="grid-layout-world-activity-v1"
+                KeyFieldName="@nameof(WorldActivityRowDto.Id)"
+                LayoutKey="grid-layout-world-activity-page-v1"
                 ShowGroupPanel="true"
                 ShowSearchBox="true"
                 AutoExpandAllGroupRows="true"
                 CssClass="oh-act-grid"
                 RowClick="@OnRowClick">
         <Columns>
-            <DxGridDataColumn FieldName="@nameof(WorldChangeRowDto.ChangedAtUtc)"
+            <DxGridDataColumn FieldName="@nameof(WorldActivityRowDto.TimestampUtc)"
                               Caption="Čas"
                               Width="160px"
                               SortIndex="0"
                               SortOrder="GridColumnSortOrder.Descending">
                 <CellDisplayTemplate>
                     @{
-                        var row = (WorldChangeRowDto)context.DataItem;
+                        var row = (WorldActivityRowDto)context.DataItem;
                     }
-                    <span title="@row.ChangedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")">
-                        @row.ChangedAtUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
+                    <span title="@row.TimestampUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")">
+                        @row.TimestampUtc.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
                     </span>
                 </CellDisplayTemplate>
             </DxGridDataColumn>
 
-            <DxGridDataColumn FieldName="@nameof(WorldChangeRowDto.EntityType)"
+            <DxGridDataColumn FieldName="@nameof(WorldActivityRowDto.ActivityType)"
                               Caption="Typ"
-                              Width="140px">
+                              Width="180px">
                 <CellDisplayTemplate>
                     @{
-                        var row = (WorldChangeRowDto)context.DataItem;
+                        var row = (WorldActivityRowDto)context.DataItem;
                     }
-                    <span class="oh-act-type-pill" title="@row.EntityType">
-                        <i class="bi @IconFor(row.EntityType)"></i>
-                        @TypeLabel(row.EntityType)
+                    <span class="oh-act-op-badge oh-act-op-badge--@BadgeTone(row.ActivityType)">
+                        <i class="bi @IconFor(row.ActivityType)"></i>
+                        @TypeLabel(row.ActivityType)
                     </span>
                 </CellDisplayTemplate>
             </DxGridDataColumn>
 
-            <DxGridDataColumn FieldName="@nameof(WorldChangeRowDto.Operation)"
-                              Caption="Operace"
-                              Width="120px">
+            <DxGridDataColumn FieldName="@nameof(WorldActivityRowDto.Description)"
+                              Caption="Popis"
+                              MinWidth="280">
                 <CellDisplayTemplate>
                     @{
-                        var row = (WorldChangeRowDto)context.DataItem;
-                    }
-                    <span class="oh-act-op-badge oh-act-op-badge--@OpBadgeTone(row.Operation)">
-                        @OpVerb(row.Operation)
-                    </span>
-                </CellDisplayTemplate>
-            </DxGridDataColumn>
-
-            <DxGridDataColumn FieldName="@nameof(WorldChangeRowDto.EntityName)"
-                              Caption="Název"
-                              MinWidth="240">
-                <CellDisplayTemplate>
-                    @{
-                        var row = (WorldChangeRowDto)context.DataItem;
+                        var row = (WorldActivityRowDto)context.DataItem;
                         var route = RouteFor(row);
                     }
                     @if (route is not null)
                     {
                         <a href="@route" class="oh-act-name-link"
-                           @onclick:stopPropagation="true">@row.EntityName</a>
+                           @onclick:stopPropagation="true">@row.Description</a>
                     }
                     else
                     {
-                        <span>@row.EntityName</span>
+                        <span>@row.Description</span>
                     }
                 </CellDisplayTemplate>
             </DxGridDataColumn>
 
-            <DxGridDataColumn FieldName="@nameof(WorldChangeRowDto.ActorDisplayName)"
+            <DxGridDataColumn FieldName="@nameof(WorldActivityRowDto.OrganizerName)"
                               Caption="Aktér"
                               Width="180px" />
         </Columns>
@@ -134,43 +124,69 @@ else
 }
 
 @code {
-    private List<WorldChangeRowDto>? _rows;
-    private int? _loadedGameId;
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(15);
+
+    private List<WorldActivityRowDto>? _rows;
+    private int? _activeGameId;
+    private CancellationTokenSource? _pollCts;
     private bool _isRefreshing;
 
     protected override async Task OnInitializedAsync()
     {
         await GameContext.InitializeAsync();
         GameContext.OnGameChanged += HandleGameChanged;
-        await LoadAsync();
+        await StartForCurrentGameAsync();
     }
 
-    private void HandleGameChanged() => _ = LoadAsync();
+    private void HandleGameChanged() => _ = StartForCurrentGameAsync();
 
-    private async Task LoadAsync()
+    private async Task StartForCurrentGameAsync()
     {
         var gameId = GameContext.SelectedGameId;
         if (gameId is null)
         {
+            StopPolling();
             _rows = null;
-            _loadedGameId = null;
+            _activeGameId = null;
             await InvokeAsync(StateHasChanged);
             return;
         }
 
-        if (_loadedGameId == gameId.Value && _rows is not null) return;
-        _loadedGameId = gameId.Value;
+        if (_activeGameId == gameId.Value && _pollCts is not null) return;
 
+        StopPolling();
+        _activeGameId = gameId.Value;
+        _rows = null;
+        _pollCts = new CancellationTokenSource();
+        await LoadAsync(gameId.Value, _pollCts.Token);
+        _ = PollAsync(gameId.Value, _pollCts.Token);
+    }
+
+    private async Task PollAsync(int gameId, CancellationToken ct)
+    {
         try
         {
-            var rows = await Api.GetListAsync<WorldChangeRowDto>(
-                $"/api/dashboard/world-change?gameId={gameId.Value}&take=500");
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(PollInterval, ct);
+                await LoadAsync(gameId, ct);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+    }
+
+    private async Task LoadAsync(int gameId, CancellationToken ct)
+    {
+        try
+        {
+            var rows = await Api.GetListAsync<WorldActivityRowDto>(
+                $"/api/dashboard/world-activity?gameId={gameId}&take=500", ct);
+            if (ct.IsCancellationRequested) return;
             _rows = rows;
         }
         catch (Exception)
         {
-            // ApiClient already logs the failure; keep prior _rows if any
-            // so a transient flake doesn't blank the table mid-session.
+            // ApiClient already logs; keep prior rows on a transient flake.
             _rows ??= [];
         }
         await InvokeAsync(StateHasChanged);
@@ -178,13 +194,12 @@ else
 
     private async Task OnRefreshAsync()
     {
-        if (GameContext.SelectedGameId is not { } gameId || _isRefreshing) return;
+        if (_activeGameId is null || _isRefreshing) return;
         _isRefreshing = true;
         try
         {
-            // Force a reload even if the game didn't change.
-            _loadedGameId = null;
-            await LoadAsync();
+            var token = _pollCts?.Token ?? CancellationToken.None;
+            await LoadAsync(_activeGameId.Value, token);
         }
         finally
         {
@@ -195,77 +210,56 @@ else
 
     private void OnRowClick(GridRowClickEventArgs e)
     {
-        var row = (WorldChangeRowDto)e.Grid.GetDataItem(e.VisibleIndex);
+        var row = (WorldActivityRowDto)e.Grid.GetDataItem(e.VisibleIndex);
         var route = RouteFor(row);
         if (route is not null) Nav.NavigateTo(route);
     }
 
-    private static string OpVerb(WorldChangeOperation operation) => operation switch
+    private static string TypeLabel(WorldActivityType type) => type switch
     {
-        WorldChangeOperation.Created => "vytvořil",
-        WorldChangeOperation.Updated => "upravil",
-        WorldChangeOperation.Deleted => "smazal",
-        _ => "?"
+        WorldActivityType.LocationPlaced => "Umístění lokace",
+        WorldActivityType.CharacterLevelUp => "Postup postavy",
+        WorldActivityType.CharacterLevelReverted => "Vrácená úroveň",
+        WorldActivityType.QuestCompleted => "Dokončený quest",
+        _ => "Aktivita"
     };
 
-    private static string OpBadgeTone(WorldChangeOperation operation) => operation switch
+    private static string IconFor(WorldActivityType type) => type switch
     {
-        WorldChangeOperation.Created => "created",
-        WorldChangeOperation.Updated => "updated",
-        WorldChangeOperation.Deleted => "deleted",
-        _ => "default"
-    };
-
-    // EntityType comes straight from the audit log (typically the EF entity
-    // class name — "Location", "Character", "Quest", etc.). The label table
-    // keeps the common ones Czech for organizer eyes; anything not listed
-    // falls through as the raw class name (catches new entity types we
-    // wire later without code changes here).
-    private static string TypeLabel(string entityType) => entityType switch
-    {
-        "Location" => "Lokace",
-        "Character" => "Postava",
-        "CharacterAssignment" => "Hrdina",
-        "Quest" => "Quest",
-        "Item" => "Předmět",
-        "Skill" => "Dovednost",
-        "Spell" => "Kouzlo",
-        "Building" => "Stavba",
-        "Npc" => "Postava NPC",
-        "GameEvent" => "Událost",
-        "GameTimeSlot" => "Časový úsek",
-        "TreasureQuest" => "Poklad",
-        "SecretStash" => "Skrýše",
-        "OrganizerRoleAssignment" => "Rozpis rolí",
-        _ => entityType
-    };
-
-    private static string IconFor(string entityType) => entityType switch
-    {
-        "Location" => "bi-geo-alt",
-        "Character" or "CharacterAssignment" => "bi-person",
-        "Quest" => "bi-flag",
-        "Item" => "bi-box",
-        "Skill" => "bi-lightning-charge",
-        "Spell" => "bi-stars",
-        "Building" => "bi-house",
-        "Npc" => "bi-person-badge",
-        "GameEvent" => "bi-calendar-event",
-        "GameTimeSlot" => "bi-clock",
-        "TreasureQuest" => "bi-safe",
-        "SecretStash" => "bi-bag",
-        "OrganizerRoleAssignment" => "bi-people",
+        WorldActivityType.LocationPlaced => "bi-geo-alt-fill",
+        WorldActivityType.CharacterLevelUp => "bi-stars",
+        WorldActivityType.CharacterLevelReverted => "bi-arrow-counterclockwise",
+        WorldActivityType.QuestCompleted => "bi-patch-check-fill",
         _ => "bi-circle"
     };
 
-    private static string? RouteFor(WorldChangeRowDto row) => row.EntityType switch
+    private static string BadgeTone(WorldActivityType type) => type switch
     {
-        "Location" => $"/locations/{row.EntityId}",
-        "Quest" => $"/quests/{row.EntityId}",
-        "Item" => $"/items/{row.EntityId}",
-        "Building" => $"/buildings/{row.EntityId}",
-        _ => null
+        WorldActivityType.LocationPlaced => "created",
+        WorldActivityType.CharacterLevelUp => "updated",
+        WorldActivityType.CharacterLevelReverted => "deleted",
+        WorldActivityType.QuestCompleted => "created",
+        _ => "default"
     };
 
-    public void Dispose() => GameContext.OnGameChanged -= HandleGameChanged;
+    private static string? RouteFor(WorldActivityRowDto row)
+    {
+        if (row.LocationId.HasValue) return $"/locations/{row.LocationId.Value}";
+        if (row.QuestId.HasValue) return $"/quests/{row.QuestId.Value}";
+        return null;
+    }
+
+    private void StopPolling()
+    {
+        _pollCts?.Cancel();
+        _pollCts?.Dispose();
+        _pollCts = null;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        GameContext.OnGameChanged -= HandleGameChanged;
+        StopPolling();
+        return ValueTask.CompletedTask;
+    }
 }
