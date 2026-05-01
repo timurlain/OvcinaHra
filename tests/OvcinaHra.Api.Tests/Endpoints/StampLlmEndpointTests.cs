@@ -279,6 +279,11 @@ public class StampLlmEndpointTests(PostgresFixture postgres) : IntegrationTestBa
             Jobs.Add(job);
             return Task.FromResult(verify(job));
         }
+
+        // Recognize endpoint has its own dedicated test class with its own fake; verify-llm
+        // tests should never reach this method. Throwing makes accidental coupling loud.
+        public Task<StampLlmRecognizeResult> RecognizeAsync(StampLlmRecognizeJob job, CancellationToken ct = default)
+            => throw new InvalidOperationException("Verify tests must not call recognize.");
     }
 
     private sealed record TestResources(ApiWebApplicationFactory Factory, HttpClient Client) : IAsyncDisposable

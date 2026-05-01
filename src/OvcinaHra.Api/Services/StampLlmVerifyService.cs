@@ -10,6 +10,7 @@ public interface IStampLlmVerifyService
 {
     bool IsConfigured { get; }
     Task<StampLlmVerifyResult> VerifyAsync(StampLlmVerifyJob job, CancellationToken ct = default);
+    Task<StampLlmRecognizeResult> RecognizeAsync(StampLlmRecognizeJob job, CancellationToken ct = default);
 }
 
 public sealed record StampLlmVerifyJob(
@@ -17,6 +18,30 @@ public sealed record StampLlmVerifyJob(
     string ReferenceLocationName,
     string ReferenceBlobKey,
     StampImagePayload CapturedImage);
+
+/// <summary>
+/// Multi-image recognition job: rank captured photo against N reference stamps in a single
+/// Anthropic Vision call (or batched 2–3 calls when N &gt; 20).
+/// </summary>
+public sealed record StampLlmRecognizeJob(
+    StampImagePayload CapturedImage,
+    IReadOnlyList<StampReference> References);
+
+public sealed record StampReference(
+    int LocationId,
+    string LocationName,
+    string ReferenceBlobKey);
+
+public sealed record StampLlmRecognizeResult(
+    IReadOnlyList<StampLlmRankedCandidate> Candidates,
+    int TotalReferencesScanned,
+    int LatencyMs,
+    string RawResponse);
+
+public sealed record StampLlmRankedCandidate(
+    int LocationId,
+    string LocationName,
+    double Confidence);
 
 public sealed record StampImagePayload(byte[] Bytes, string MediaType)
 {
@@ -345,6 +370,303 @@ public sealed class StampLlmVerifyService : IStampLlmVerifyService, IDisposable
                 "Anthropic API call failed",
                 (int)stopwatch.ElapsedMilliseconds,
                 ex.Message,
+                ex);
+        }
+    }
+
+    /// <summary>
+    /// Anthropic Vision allows up to 20 images per request. With 1 captured image we can fit 19
+    /// references per call; if there are more we batch into 2–3 sequential calls and aggregate by
+    /// max confidence per location. The vast majority of games stay under one batch.
+    /// </summary>
+    private const int MaxReferencesPerBatch = 19;
+
+    private const string RecognizeSystemPrompt = """
+        You are a stamp recognition assistant for Ovčina, a Czech children's LARP game.
+
+        You will receive:
+        1. CAPTURED — a photograph of an ink impression of a rubber stamp on paper, taken with a phone.
+        2. A numbered set of REFERENCE — clean digital designs of rubber stamps belonging to specific locations in the game world.
+
+        Your job is to RANK the references by visual similarity to the captured impression. Account for:
+        - Ink density and coverage variations (children press unevenly).
+        - Paper texture and lighting differences.
+        - Slight rotation (up to ~30°) and translation.
+        - Partial smudges, missing edges, or doubled impressions.
+        - The difference between a vector/digital design and a physical ink impression of it.
+
+        Focus on the SILHOUETTE and DISTINCTIVE FEATURES — the overall shape, recognizable elements
+        (e.g. an owl, an anchor, a tree, a runic mark). Ignore color (impressions are usually
+        black-on-white regardless of reference color).
+
+        Respond ONLY with a single JSON object, no prose, no markdown fence:
+
+        {"candidates": [{"index": <reference number>, "confidence": <0.0-1.0>}, ...]}
+
+        Rules:
+        - Include EVERY reference number exactly once.
+        - "index" matches the 1-based number printed before each reference image.
+        - "confidence" interpretation:
+          - 0.90+ : silhouette and key features clearly match
+          - 0.70-0.89 : likely match, minor doubts
+          - 0.50-0.69 : ambiguous
+          - below 0.50 : unlikely / different stamp
+        - Sort by confidence descending.
+        - No prose, no comments, JSON only.
+        """;
+
+    public async Task<StampLlmRecognizeResult> RecognizeAsync(StampLlmRecognizeJob job, CancellationToken ct = default)
+    {
+        if (!IsConfigured || _client is null)
+            throw new StampLlmConfigurationException();
+
+        if (job.References.Count == 0)
+        {
+            // Defensive — endpoint should already 400 before we get here. Kept so that
+            // future callers don't accidentally pay the round-trip for an empty batch.
+            return new StampLlmRecognizeResult(
+                Array.Empty<StampLlmRankedCandidate>(),
+                0,
+                0,
+                "{\"candidates\":[]}");
+        }
+
+        var batches = await ResolveBatchesAsync(job.References, MaxReferencesPerBatch, ct);
+        var resolvedCount = batches.Sum(b => b.Count);
+        var stopwatch = Stopwatch.StartNew();
+        var aggregated = new Dictionary<int, StampLlmRankedCandidate>();
+        var rawResponses = new List<string>(batches.Count);
+
+        _logger.LogInformation(
+            "[stamp-llm-server] recognize service enter references={ReferenceCount} resolved={ResolvedCount} batches={BatchCount} model={Model} capturedBytes={CapturedBytes}",
+            job.References.Count,
+            resolvedCount,
+            batches.Count,
+            _model,
+            job.CapturedImage.Bytes.Length);
+
+        if (resolvedCount == 0)
+        {
+            stopwatch.Stop();
+            return new StampLlmRecognizeResult(
+                Array.Empty<StampLlmRankedCandidate>(),
+                0,
+                (int)stopwatch.ElapsedMilliseconds,
+                "{\"candidates\":[]}");
+        }
+
+        foreach (var batch in batches)
+        {
+            ct.ThrowIfCancellationRequested();
+            var batchResult = await RecognizeBatchAsync(job.CapturedImage, batch, ct);
+            rawResponses.Add(batchResult.RawResponse);
+
+            // Aggregate by max confidence per location across batches. A reference seen
+            // in multiple batches (we never split a single ref) cannot happen, but if a
+            // future change ever overlaps batches we'd want max-of-confidences anyway.
+            foreach (var candidate in batchResult.Candidates)
+            {
+                if (!aggregated.TryGetValue(candidate.LocationId, out var existing)
+                    || candidate.Confidence > existing.Confidence)
+                {
+                    aggregated[candidate.LocationId] = candidate;
+                }
+            }
+        }
+
+        stopwatch.Stop();
+
+        var ranked = aggregated.Values
+            .OrderByDescending(c => c.Confidence)
+            .ToList();
+
+        _logger.LogInformation(
+            "[stamp-llm-server] recognize service exit references={ReferenceCount} candidates={CandidateCount} top1Confidence={Top1Confidence} latencyMs={LatencyMs}",
+            job.References.Count,
+            ranked.Count,
+            ranked.Count > 0 ? ranked[0].Confidence : 0,
+            stopwatch.ElapsedMilliseconds);
+
+        return new StampLlmRecognizeResult(
+            ranked,
+            resolvedCount,
+            (int)stopwatch.ElapsedMilliseconds,
+            Truncate(string.Join("\n---\n", rawResponses), MaxRawResponseLength));
+    }
+
+    private async Task<StampLlmRecognizeResult> RecognizeBatchAsync(
+        StampImagePayload captured,
+        IReadOnlyList<(StampReference Reference, byte[] Bytes)> batch,
+        CancellationToken ct)
+    {
+        var content = new List<ContentBase>
+        {
+            new TextContent { Text = "CAPTURED — child's stamped paper:" },
+            new ImageContent
+            {
+                Source = new ImageSource
+                {
+                    MediaType = captured.MediaType,
+                    Data = captured.Base64Data
+                }
+            }
+        };
+
+        for (var i = 0; i < batch.Count; i++)
+        {
+            var (reference, bytes) = batch[i];
+            var refImage = StampImagePayload.FromReferenceBytes(bytes);
+            content.Add(new TextContent
+            {
+                Text = $"\nREFERENCE {i + 1} — \"{reference.LocationName}\":"
+            });
+            content.Add(new ImageContent
+            {
+                Source = new ImageSource
+                {
+                    MediaType = refImage.MediaType,
+                    Data = refImage.Base64Data
+                }
+            });
+        }
+
+        content.Add(new TextContent
+        {
+            Text = $"\nRank ALL {batch.Count} references by visual similarity to the captured impression. JSON only."
+        });
+
+        var systemMessages = new List<SystemMessage>
+        {
+            new(RecognizeSystemPrompt, new CacheControl { Type = CacheControlType.ephemeral })
+        };
+
+        var messages = new List<Message>
+        {
+            new() { Role = RoleType.User, Content = content }
+        };
+
+        // Larger token cap than verify because we emit one JSON entry per reference (≤19 entries).
+        var maxTokens = Math.Max(_maxTokens, 50 + batch.Count * 30);
+
+        var parameters = new MessageParameters
+        {
+            Messages = messages,
+            MaxTokens = maxTokens,
+            Model = _model,
+            Stream = false,
+            Temperature = 0m,
+            System = systemMessages,
+            PromptCaching = PromptCacheType.FineGrained
+        };
+
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            var response = await _client!.Messages.GetClaudeMessageAsync(parameters, ct);
+            stopwatch.Stop();
+            var raw = Truncate(response.Message.ToString(), MaxRawResponseLength);
+            var ranked = ParseRecognizeResponse(raw, batch);
+            return new StampLlmRecognizeResult(ranked, batch.Count, (int)stopwatch.ElapsedMilliseconds, raw);
+        }
+        catch (RateLimitsExceeded ex)
+        {
+            stopwatch.Stop();
+            _logger.LogWarning(
+                ex,
+                "[stamp-llm-server] recognize service rate-limited references={ReferenceCount} latencyMs={LatencyMs}",
+                batch.Count,
+                stopwatch.ElapsedMilliseconds);
+            throw new StampLlmRateLimitedException(
+                "Anthropic rate limit",
+                (int)stopwatch.ElapsedMilliseconds,
+                ex.Message,
+                ex);
+        }
+        catch (StampLlmProviderException)
+        {
+            // Already-typed provider exceptions (e.g. malformed JSON from ParseRecognizeResponse)
+            // bubble up unchanged. Wrapping here would discard the original Title/RawResponse
+            // and replace ex.RawResponse with ex.Message — debugging info lost.
+            throw;
+        }
+        catch (Exception ex) when (ex is not StampLlmValidationException and not OperationCanceledException)
+        {
+            stopwatch.Stop();
+            _logger.LogError(
+                ex,
+                "[stamp-llm-server] recognize service provider-error references={ReferenceCount} latencyMs={LatencyMs}",
+                batch.Count,
+                stopwatch.ElapsedMilliseconds);
+            throw new StampLlmProviderException(
+                "Anthropic API call failed",
+                (int)stopwatch.ElapsedMilliseconds,
+                ex.Message,
+                ex);
+        }
+    }
+
+    private async Task<List<List<(StampReference Reference, byte[] Bytes)>>> ResolveBatchesAsync(
+        IReadOnlyList<StampReference> references,
+        int batchSize,
+        CancellationToken ct)
+    {
+        var resolved = new List<(StampReference Reference, byte[] Bytes)>(references.Count);
+        foreach (var reference in references)
+        {
+            var bytes = await _blobStorage.DownloadAsync(reference.ReferenceBlobKey, ct);
+            if (bytes is null || bytes.Length == 0)
+            {
+                _logger.LogWarning(
+                    "[stamp-llm-server] recognize skipping missing reference locationId={LocationId} blobKey={BlobKey}",
+                    reference.LocationId,
+                    reference.ReferenceBlobKey);
+                continue;
+            }
+            resolved.Add((reference, bytes));
+        }
+
+        var batches = new List<List<(StampReference, byte[])>>();
+        for (var i = 0; i < resolved.Count; i += batchSize)
+        {
+            batches.Add(resolved.GetRange(i, Math.Min(batchSize, resolved.Count - i)));
+        }
+        return batches;
+    }
+
+    private static List<StampLlmRankedCandidate> ParseRecognizeResponse(
+        string raw,
+        IReadOnlyList<(StampReference Reference, byte[] Bytes)> batch)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("candidates", out var candidatesEl) || candidatesEl.ValueKind != JsonValueKind.Array)
+                throw new JsonException("Expected 'candidates' array.");
+
+            var ranked = new List<StampLlmRankedCandidate>(batch.Count);
+            foreach (var entry in candidatesEl.EnumerateArray())
+            {
+                var index = entry.GetProperty("index").GetInt32();
+                var confidence = entry.GetProperty("confidence").GetDouble();
+                if (index < 1 || index > batch.Count) continue;
+                if (confidence < 0) confidence = 0;
+                if (confidence > 1) confidence = 1;
+                var reference = batch[index - 1].Reference;
+                ranked.Add(new StampLlmRankedCandidate(reference.LocationId, reference.LocationName, confidence));
+            }
+
+            if (ranked.Count == 0)
+                throw new JsonException("Response contained no usable candidates.");
+
+            return ranked;
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException or FormatException)
+        {
+            throw new StampLlmProviderException(
+                "Anthropic returned malformed recognize JSON",
+                0,
+                $"Anthropic vrátil neplatnou odpověď: {raw}",
                 ex);
         }
     }

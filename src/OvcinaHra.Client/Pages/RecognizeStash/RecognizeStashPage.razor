@@ -1,0 +1,174 @@
+@page "/recognize-stash"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject GameContextService GameContext
+@inject ILogger<RecognizeStashPage> Logger
+
+<PageTitle>Rozpoznat skrýš · Ovčina</PageTitle>
+
+<section class="oh-recognize-page container py-3">
+    <header class="oh-recognize-head mb-3">
+        <h1 class="h4 mb-1">
+            <i class="bi bi-search me-2"></i>Rozpoznat skrýš
+        </h1>
+        <p class="text-muted small mb-0">
+            Vyfoť otisk razítka v glejtu hrdiny — Ovčina porovná snímek s razítky lokací vybrané hry
+            a ukáže nejpravděpodobnější skrýše.
+        </p>
+    </header>
+
+    @if (GameContext.SelectedGameId is null)
+    {
+        @* Mirrors Home.razor's no-game empty state — same shape so the user immediately
+           recognises the path: pick or create a game in Správa her. *@
+        <div class="oh-home-no-game">
+            <div class="oh-home-no-game-art">
+                <i class="bi bi-shield-slash"></i>
+            </div>
+            <h2>Zatím není vybrána žádná hra</h2>
+            <p class="text-muted">
+                Vyberte hru v horním pruhu nebo založte novou ve Správě her.
+            </p>
+            <a class="btn btn-primary" href="/games">
+                <i class="bi bi-plus-lg me-1"></i>Otevřít Správu her
+            </a>
+        </div>
+    }
+    else
+    {
+        <div class="oh-recognize-stage">
+            @if (_capturedDataUrl is null)
+            {
+                <p class="text-muted">
+                    Zarovnej razítko na střed obrazu, vyhni se ostrému stínu a pak ťukni
+                    na <strong>Vyfotit</strong>.
+                </p>
+                <CameraCapture OnCaptured="OnPhotoCaptured" />
+            }
+            else
+            {
+                <div class="oh-recognize-preview text-center">
+                    <img src="@_capturedDataUrl" alt="Vyfocený otisk razítka"
+                         class="oh-recognize-preview-img" />
+                </div>
+
+                <div class="d-flex gap-2 justify-content-center mt-3">
+                    <button type="button" class="btn btn-outline-secondary"
+                            @onclick="ResetCapture" disabled="@_loading">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Vyfotit znovu
+                    </button>
+                    <button type="button" class="btn btn-primary"
+                            @onclick="RecognizeAsync" disabled="@_loading">
+                        @if (_loading)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                            <span>Hledám shodu…</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-search me-1"></i>
+                            <span>Rozpoznat</span>
+                        }
+                    </button>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <div class="alert alert-danger mt-3" role="alert">
+                    <i class="bi bi-exclamation-triangle me-2"></i>@_errorMessage
+                </div>
+            }
+        </div>
+    }
+</section>
+
+<StampMatchModal Visible="_modalVisible" Result="_result" OnClose="CloseModal" />
+
+@code {
+    private string? _capturedDataUrl;
+    private bool _loading;
+    private string? _errorMessage;
+    private RecognizeStashResponse? _result;
+    private bool _modalVisible;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Re-init in case the page is opened directly (deep link / nav menu) before
+        // the layout has had a chance to wake the GameContextService.
+        await GameContext.InitializeAsync();
+    }
+
+    private void OnPhotoCaptured(string dataUrl)
+    {
+        _capturedDataUrl = dataUrl;
+        _errorMessage = null;
+    }
+
+    private void ResetCapture()
+    {
+        _capturedDataUrl = null;
+        _result = null;
+        _modalVisible = false;
+        _errorMessage = null;
+    }
+
+    private void CloseModal()
+    {
+        _modalVisible = false;
+    }
+
+    private async Task RecognizeAsync()
+    {
+        if (_capturedDataUrl is null || GameContext.SelectedGameId is not int gameId)
+            return;
+
+        _loading = true;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var request = new RecognizeStashRequest(gameId, _capturedDataUrl);
+            var response = await Api.PostAsync<RecognizeStashRequest, RecognizeStashResponse>(
+                "/api/stamps/recognize",
+                request);
+
+            if (response is null)
+            {
+                _errorMessage = "Server vrátil prázdnou odpověď. Zkus to znovu.";
+                return;
+            }
+
+            _result = response;
+            _modalVisible = true;
+        }
+        catch (HttpRequestException ex)
+        {
+            // Surface a friendly Czech message regardless of underlying HTTP code; the API
+            // already returns ProblemDetails with a usable detail string but the typed
+            // PostAsync wrapper EnsureSuccessStatusCodes and throws — we lose the body.
+            // Future improvement: switch to a *WithProblemAsync wrapper to round-trip the
+            // server's Czech detail (e.g. "LLM rozpoznání selhalo").
+            Logger.LogWarning(ex, "[recognize-stash] HTTP error");
+            _errorMessage = ex.StatusCode switch
+            {
+                System.Net.HttpStatusCode.BadGateway => "LLM rozpoznání selhalo, zkus snímek znovu nebo použij ruční výběr.",
+                (System.Net.HttpStatusCode)429 => "LLM rozpoznání je dočasně omezené. Počkej chvíli a zkus to znovu.",
+                System.Net.HttpStatusCode.ServiceUnavailable => "LLM rozpoznání není v tomto prostředí nakonfigurované.",
+                System.Net.HttpStatusCode.BadRequest => "Snímek se nepodařilo zpracovat. Zkus jinou fotku.",
+                _ => "Volání serveru selhalo. Zkus to prosím znovu."
+            };
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "[recognize-stash] unexpected error");
+            _errorMessage = "Něco se pokazilo. Zkus to znovu.";
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+}
