@@ -379,6 +379,38 @@ public class ScanMonsterCombatEndpointTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task PostMonsterVictory_SameIdempotencyKey_Twice_PersistsOnceAndReplaysResponse()
+    {
+        var (_, personId, npcId) = await SeedActiveMonsterRoleAsync(externalPersonId: 320);
+
+        var dto = new CreateCharacterEventDto(
+            CharacterEventType.MonsterVictory,
+            JsonSerializer.Serialize(new { monsterNpcId = npcId, monsterName = "Skret" }),
+            Location: "Glejt");
+        const string key = "monster-victory-replay";
+
+        var first = await PostJsonWithIdempotencyAsync(
+            $"/api/scan/{personId}/events", dto, key);
+        var second = await PostJsonWithIdempotencyAsync(
+            $"/api/scan/{personId}/events", dto, key);
+
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+
+        var firstDto = await first.Content.ReadFromJsonAsync<CharacterEventDto>();
+        var secondDto = await second.Content.ReadFromJsonAsync<CharacterEventDto>();
+        Assert.Equal(firstDto!.Id, secondDto!.Id);
+
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        var combatRows = await db.CharacterEvents
+            .Where(e => e.Assignment.ExternalPersonId == personId
+                && e.EventType == CharacterEventType.MonsterVictory)
+            .CountAsync();
+        Assert.Equal(1, combatRows);
+    }
+
+    [Fact]
     public async Task DeleteLastCombat_NoCombatHistory_Returns404()
     {
         var gameId = await CreateGameAsync("Combat 404");
