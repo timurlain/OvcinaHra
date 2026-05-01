@@ -38,22 +38,35 @@ public sealed class LibrarianTreasureExportService(
     private const int A4WidthPx = 2480;
     private const int A4HeightPx = 3508;
     private const int MarginPx = 70;
-    private const int HeaderHeightPx = 220;
+    // Issue #507 — title/subtitle banner dropped per user request; the page
+    // now starts straight with the table header. HeaderHeightPx kept as a
+    // named constant (set to 0) so the existing layout math still reads.
+    private const int HeaderHeightPx = 0;
     private const int TableHeaderHeightPx = 72;
     private const int FooterHeightPx = 44;
     private const int ColumnGapPx = 46;
-    private const int StripHeightPx = 230;
+    // Issue #507 — stamp box is 2.5 cm × 2.5 cm at 300 DPI = 295 px square.
+    // The strip height is matched to the stamp width so the rightmost cell
+    // ends up square; the cell rectangles all use StripHeightPx.
+    private const int StampBoxPx = 295;
+    private const int StripHeightPx = StampBoxPx;
     private const int Columns = 2;
     private const int BorderThicknessPx = 5;
     private const int CellsPerStrip = 4;
-    private const float BodyFontPx = 30;
-    private const float HeaderFontPx = 24;
-    private const float PhaseFontPx = 32;
+    // Issue #507 — bumped to fill the now-larger 295 px strip with the
+    // banner gone. Body covers Obsah pokladu / Skrýše. Phase stays compact
+    // so long labels ("Závěr hry", "Konec hry") fit in the narrow column.
+    private const float BodyFontPx = 40;
+    private const float HeaderFontPx = 28;
+    private const float PhaseFontPx = 36;
 
     private static readonly Color Paper = Color.White;
     private static readonly Color Ink = Color.Black;
     private static readonly Color MutedInk = Color.ParseHex("#333333");
     private static readonly Color HeaderFill = Color.ParseHex("#f1f1f1");
+    // Issue #507 — phase cell foreground. White stays readable on every
+    // canon stage colour from Start (#7FA657) to EndGame (#4A1D24).
+    private static readonly Color PhaseInk = Color.White;
     private static readonly StringComparer CzechComparer =
         StringComparer.Create(CultureInfo.GetCultureInfo("cs-CZ"), ignoreCase: false);
     public async Task<LibrarianTreasureExportFile> RenderLibrarianTreasuresAsync(
@@ -88,7 +101,8 @@ public sealed class LibrarianTreasureExportService(
                     .ToList()),
                 Place: t.SecretStash?.Name ?? t.Location?.Name ?? "Bez umístění",
                 Phase: PhaseLabel(t.Difficulty),
-                PhaseOrder: PhaseOrder(t.Difficulty)))
+                PhaseOrder: PhaseOrder(t.Difficulty),
+                Difficulty: t.Difficulty))
             .OrderBy(r => r.PhaseOrder)
             .ThenBy(r => r.Place, CzechComparer)
             .ThenBy(r => r.Contents, CzechComparer)
@@ -107,7 +121,7 @@ public sealed class LibrarianTreasureExportService(
         var pageImages = new List<PdfImagePage>(layout.PageCount);
         for (var pageIndex = 0; pageIndex < layout.PageCount; pageIndex++)
         {
-            var pdfImage = await RenderPageAsync(game.Name, rows, layout, pageIndex, ct);
+            var pdfImage = await RenderPageAsync(rows, layout, pageIndex, ct);
             pageImages.Add(new PdfImagePage(
                 A4WidthPt,
                 A4HeightPt,
@@ -158,7 +172,6 @@ public sealed class LibrarianTreasureExportService(
     }
 
     private async Task<PdfImage> RenderPageAsync(
-        string gameName,
         IReadOnlyList<LibrarianTreasureRow> rows,
         LibrarianTreasureLayout layout,
         int pageIndex,
@@ -168,35 +181,14 @@ public sealed class LibrarianTreasureExportService(
         using var image = new Image<Rgba32>(A4WidthPx, A4HeightPx, Paper);
         image.Mutate(ctx =>
         {
-            DrawHeader(ctx, gameName, pageIndex + 1, layout.PageCount, fonts);
+            // Issue #507 — title/subtitle/page-number banner removed per user
+            // request; the page now starts straight with the table header.
             DrawTable(ctx, rows, layout, pageIndex, fonts);
         });
 
         await using var stream = new MemoryStream();
         await image.SaveAsJpegAsync(stream, new JpegEncoder { Quality = 95 }, ct);
         return new PdfImage(A4WidthPx, A4HeightPx, stream.ToArray());
-    }
-
-    private static void DrawHeader(
-        IImageProcessingContext ctx,
-        string gameName,
-        int pageNumber,
-        int pageCount,
-        LibrarianTreasureFonts fonts)
-    {
-        DrawCenteredText(ctx, "Knihovník - poklady", fonts.Title, Ink, MarginPx, 44, A4WidthPx - MarginPx * 2);
-        DrawCenteredText(ctx, gameName, fonts.Subtitle, MutedInk, MarginPx, 112, A4WidthPx - MarginPx * 2);
-        if (pageCount > 1)
-        {
-            DrawCenteredText(
-                ctx,
-                $"Strana {pageNumber}/{pageCount}",
-                fonts.Small,
-                MutedInk,
-                MarginPx,
-                164,
-                A4WidthPx - MarginPx * 2);
-        }
     }
 
     private static void DrawTable(
@@ -269,7 +261,12 @@ public sealed class LibrarianTreasureExportService(
         for (var i = 0; i < values.Length; i++)
         {
             var rect = new RectangularPolygon(cellX, y, widths[i], StripHeightPx);
-            ctx.Fill(Paper, rect);
+            // Issue #507 — phase cell (index 2) painted with the canon
+            // GameTimePhase color so organizers can sort by glance. Other
+            // cells keep the paper background.
+            var fill = i == 2 ? PhaseColor(row.Difficulty) : Paper;
+            var textColor = i == 2 ? PhaseInk : Ink;
+            ctx.Fill(fill, rect);
             ctx.Draw(Ink, BorderThicknessPx, rect);
             if (!string.IsNullOrWhiteSpace(values[i].Text))
             {
@@ -277,7 +274,7 @@ public sealed class LibrarianTreasureExportService(
                     ctx,
                     values[i].Text,
                     values[i].Font,
-                    Ink,
+                    textColor,
                     cellX + 18,
                     y + 16,
                     widths[i] - 36,
@@ -290,12 +287,30 @@ public sealed class LibrarianTreasureExportService(
         }
     }
 
+    // Issue #507 — canon stage palette from
+    // src/OvcinaHra.Client/wwwroot/css/app.css :root (--oh-stage-*).
+    // Mirroring the client's StageChip so the print matches the screen.
+    private static Color PhaseColor(GameTimePhase phase) => phase switch
+    {
+        GameTimePhase.Start => Color.ParseHex("#7FA657"),
+        GameTimePhase.Early => Color.ParseHex("#D4A63C"),
+        GameTimePhase.Midgame => Color.ParseHex("#C17B3D"),
+        GameTimePhase.Lategame => Color.ParseHex("#8C2423"),
+        GameTimePhase.EndGame => Color.ParseHex("#4A1D24"),
+        _ => Paper
+    };
+
+    // Issue #507 — stamp cell pinned to <see cref="StampBoxPx"/> (= 2.5 cm
+    // at 300 DPI). The remaining columnWidth is split across content / place
+    // / phase keeping the original 42 : 25 : 13 ratio so the textual columns
+    // shrink proportionally without a relayout.
     private static float[] CellWidths(float columnWidth)
     {
-        var content = MathF.Round(columnWidth * 0.42f);
-        var place = MathF.Round(columnWidth * 0.25f);
-        var phase = MathF.Round(columnWidth * 0.13f);
-        var stamp = columnWidth - content - place - phase;
+        var stamp = (float)StampBoxPx;
+        var remaining = columnWidth - stamp;
+        var content = MathF.Round(remaining * (42f / 80f));
+        var place = MathF.Round(remaining * (25f / 80f));
+        var phase = remaining - content - place;
         return [content, place, phase, stamp];
     }
 
@@ -467,7 +482,8 @@ public sealed class LibrarianTreasureExportService(
 
     private sealed record LibrarianTreasureItem(string Name, int Count);
 
-    private sealed record LibrarianTreasureRow(string Contents, string Place, string Phase, int PhaseOrder);
+    private sealed record LibrarianTreasureRow(
+        string Contents, string Place, string Phase, int PhaseOrder, GameTimePhase Difficulty);
 
     private sealed record LibrarianTreasureLayout(
         int Columns,
