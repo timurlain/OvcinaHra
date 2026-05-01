@@ -206,6 +206,58 @@ public static class ScanEndpoints
             }
         }
 
+        // Monster combat audit overlay — mirror MonsterVictory/MonsterDefeat
+        // into Aktivity světa so organizers see fights in the cockpit feed
+        // alongside placements + level-ups. Same best-effort pattern as
+        // CharacterLevelUp above; failures must not roll back the primary
+        // CharacterEvent.
+        if ((dto.EventType == CharacterEventType.MonsterVictory
+             || dto.EventType == CharacterEventType.MonsterDefeat)
+            && await db.Games.AnyAsync(g => g.Id == assignment.GameId))
+        {
+            try
+            {
+                string monsterName = "nestvůrou";
+                try
+                {
+                    using var doc = JsonDocument.Parse(eventData);
+                    if (doc.RootElement.TryGetProperty("monsterName", out var mn)
+                        && mn.GetString() is { Length: > 0 } parsed)
+                    {
+                        monsterName = parsed;
+                    }
+                }
+                catch (JsonException) { }
+
+                var (activityType, description) = dto.EventType switch
+                {
+                    CharacterEventType.MonsterVictory =>
+                        (WorldActivityType.HeroFell,
+                         $"{assignment.Character.Name} padl pod nestvůrou: {monsterName}"),
+                    _ =>
+                        (WorldActivityType.MonsterDefeated,
+                         $"{assignment.Character.Name} přemohl nestvůru: {monsterName}"),
+                };
+
+                db.WorldActivities.Add(new WorldActivity
+                {
+                    GameId = assignment.GameId,
+                    TimestampUtc = ev.Timestamp,
+                    OrganizerUserId = organizer.UserId,
+                    OrganizerName = organizer.Name,
+                    ActivityType = activityType,
+                    Description = description,
+                    CharacterAssignmentId = assignment.Id,
+                    DataJson = eventData
+                });
+                await db.SaveChangesAsync();
+            }
+            catch (Exception)
+            {
+                // Audit overlay only — primary combat event is persisted.
+            }
+        }
+
         return TypedResults.Created($"/api/scan/{personId}/events/{ev.Id}", ToDto(ev));
     }
 
