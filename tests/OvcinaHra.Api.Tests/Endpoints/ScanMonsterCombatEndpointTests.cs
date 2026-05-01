@@ -427,6 +427,30 @@ public class ScanMonsterCombatEndpointTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task PostMonsterVictory_PayloadMissingMonsterNpcId_Returns400()
+    {
+        // Caller has an active monster role, but the payload omits the
+        // load-bearing monsterNpcId field. AuthorizeMonsterEventAsync must
+        // refuse to assume an NPC id and return 400 with a Czech problem
+        // detail naming the missing field. This same branch also fires when
+        // dto.Data is malformed JSON (TryReadMonsterNpcId returns null in
+        // both cases).
+        var (_, personId, _) = await SeedActiveMonsterRoleAsync(externalPersonId: 206);
+
+        var dto = new CreateCharacterEventDto(
+            CharacterEventType.MonsterVictory,
+            JsonSerializer.Serialize(new { monsterName = "Skret" }),
+            Location: "Glejt");
+
+        var response = await PostJsonWithIdempotencyAsync(
+            $"/api/scan/{personId}/events", dto, $"victory-no-npcid-{personId}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("monsterNpcId", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task PostMonsterVictory_NoOrganizerRoleAssignmentAtAll_Returns403()
     {
         // Game + hero exist, but no monster NPC seeded and no role assignment
