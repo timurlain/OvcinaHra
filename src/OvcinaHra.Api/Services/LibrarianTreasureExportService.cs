@@ -270,21 +270,55 @@ public sealed class LibrarianTreasureExportService(
             ctx.Draw(Ink, BorderThicknessPx, rect);
             if (!string.IsNullOrWhiteSpace(values[i].Text))
             {
-                DrawWrappedText(
-                    ctx,
-                    values[i].Text,
-                    values[i].Font,
-                    textColor,
-                    cellX + 18,
-                    y + 16,
-                    widths[i] - 36,
-                    StripHeightPx - 32,
-                    values[i].Lines,
-                    values[i].Center);
+                if (i == 2)
+                {
+                    // Phase cell — single short label centred geometrically
+                    // in the rectangle. DrawWrappedText's centring uses
+                    // line-height not measured glyph height, which left
+                    // the label visually drifting toward the top of the
+                    // taller (295 px) strip; this places it at the dead
+                    // centre.
+                    DrawCentered(ctx, values[i].Text, values[i].Font, textColor,
+                        cellX, y, widths[i], StripHeightPx);
+                }
+                else
+                {
+                    DrawWrappedText(
+                        ctx,
+                        values[i].Text,
+                        values[i].Font,
+                        textColor,
+                        cellX + 18,
+                        y + 16,
+                        widths[i] - 36,
+                        StripHeightPx - 32,
+                        values[i].Lines,
+                        values[i].Center);
+                }
             }
 
             cellX += widths[i];
         }
+    }
+
+    // Issue #507 follow-up — geometric centring helper using TextMeasurer
+    // for both axes. Used by the phase cell because its single-line label
+    // sits inside a tall coloured rectangle and the line-height-based
+    // centring in DrawWrappedText left visible top-bias on the bigger strip.
+    private static void DrawCentered(
+        IImageProcessingContext ctx,
+        string text,
+        Font font,
+        Color color,
+        float rectX,
+        float rectY,
+        float rectWidth,
+        float rectHeight)
+    {
+        var size = TextMeasurer.MeasureSize(text, new TextOptions(font));
+        var textX = rectX + (rectWidth - size.Width) / 2;
+        var textY = rectY + (rectHeight - size.Height) / 2;
+        ctx.DrawText(text, font, color, new PointF(textX, textY));
     }
 
     // Issue #507 — canon stage palette from
@@ -342,20 +376,30 @@ public sealed class LibrarianTreasureExportService(
             ? i.Name
             : $"{i.Name} × {i.Count.ToString(CultureInfo.InvariantCulture)}"));
 
+    // Issue #507 follow-up — five distinct labels per user feedback so the
+    // canon stage palette in the print actually means something. The previous
+    // collapse (Early+Midgame → "Hra", Lategame+EndGame → "Konec") rendered
+    // the colour band useless because two different stages shared a tone.
+    // EndGame typically carries no treasure quests but the case is preserved
+    // for completeness.
     private static string PhaseLabel(GameTimePhase phase) => phase switch
     {
         GameTimePhase.Start => "Start",
-        GameTimePhase.Early or GameTimePhase.Midgame => "Hra",
-        GameTimePhase.Lategame or GameTimePhase.EndGame => "Konec",
+        GameTimePhase.Early => "Early",
+        GameTimePhase.Midgame => "Middle",
+        GameTimePhase.Lategame => "Later",
+        GameTimePhase.EndGame => "End",
         _ => phase.ToString()
     };
 
     private static int PhaseOrder(GameTimePhase phase) => phase switch
     {
         GameTimePhase.Start => 0,
-        GameTimePhase.Early or GameTimePhase.Midgame => 1,
-        GameTimePhase.Lategame or GameTimePhase.EndGame => 2,
-        _ => 3
+        GameTimePhase.Early => 1,
+        GameTimePhase.Midgame => 2,
+        GameTimePhase.Lategame => 3,
+        GameTimePhase.EndGame => 4,
+        _ => 5
     };
 
     private static void DrawWrappedText(
