@@ -282,7 +282,10 @@ public class ScanMonsterCombatEndpointTests(PostgresFixture postgres)
             .OrderBy(e => e.Timestamp)
             .ToListAsync();
         Assert.Single(notes);
-        Assert.Contains("\"první\"", notes[0].Data);
+        // Note payload is forwarded verbatim by the API; assert against the
+        // JSON-encoded form actually stored.
+        Assert.Contains("prvn", notes[0].Data, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("druh", notes[0].Data, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -292,6 +295,101 @@ public class ScanMonsterCombatEndpointTests(PostgresFixture postgres)
         await SeedHeroAsync(gameId, externalPersonId: 301);
 
         var response = await Client.DeleteAsync("/api/scan/301/events/last-note");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteLastCombat_RemovesNewestMonsterEvent()
+    {
+        var (_, personId, npcId) = await SeedActiveMonsterRoleAsync(externalPersonId: 310);
+
+        // Two combat events, second one is the newest.
+        var first = await PostJsonWithIdempotencyAsync(
+            $"/api/scan/{personId}/events",
+            new CreateCharacterEventDto(
+                CharacterEventType.MonsterVictory,
+                JsonSerializer.Serialize(new { monsterNpcId = npcId, monsterName = "První" }),
+                Location: "Glejt"),
+            $"combat-1-{personId}");
+        first.EnsureSuccessStatusCode();
+
+        var second = await PostJsonWithIdempotencyAsync(
+            $"/api/scan/{personId}/events",
+            new CreateCharacterEventDto(
+                CharacterEventType.MonsterDefeat,
+                JsonSerializer.Serialize(new { monsterNpcId = npcId, monsterName = "Druhý" }),
+                Location: "Glejt"),
+            $"combat-2-{personId}");
+        second.EnsureSuccessStatusCode();
+
+        var response = await Client.DeleteAsync($"/api/scan/{personId}/events/last-combat");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        var combat = await db.CharacterEvents
+            .Where(e => e.Assignment.ExternalPersonId == personId
+                && (e.EventType == CharacterEventType.MonsterVictory
+                    || e.EventType == CharacterEventType.MonsterDefeat))
+            .ToListAsync();
+        Assert.Single(combat);
+        Assert.Equal(CharacterEventType.MonsterVictory, combat[0].EventType);
+        // JsonSerializer escapes non-ASCII by default; match the escaped form
+        // so the assertion isn't sensitive to encoder settings.
+        Assert.Contains("Prvn\\u00ED", combat[0].Data, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DeleteLastCombat_IgnoresLevelUpAfterCombat()
+    {
+        // The undo scope is "newest combat row", NOT "newest event of any
+        // type". A LevelUp recorded AFTER a MonsterVictory must not be
+        // touched by last-combat — that's last-levelup's job.
+        var (_, personId, npcId) = await SeedActiveMonsterRoleAsync(externalPersonId: 311);
+
+        var combat = await PostJsonWithIdempotencyAsync(
+            $"/api/scan/{personId}/events",
+            new CreateCharacterEventDto(
+                CharacterEventType.MonsterVictory,
+                JsonSerializer.Serialize(new { monsterNpcId = npcId, monsterName = "Skret" }),
+                Location: "Glejt"),
+            $"combat-{personId}");
+        combat.EnsureSuccessStatusCode();
+
+        var levelUp = await Client.PostAsJsonAsync($"/api/scan/{personId}/events",
+            new CreateCharacterEventDto(CharacterEventType.LevelUp, "{}"));
+        levelUp.EnsureSuccessStatusCode();
+
+        var response = await Client.DeleteAsync($"/api/scan/{personId}/events/last-combat");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        var events = await db.CharacterEvents
+            .Where(e => e.Assignment.ExternalPersonId == personId)
+            .OrderBy(e => e.Timestamp)
+            .ToListAsync();
+
+        // LevelUp is preserved; MonsterVictory is gone.
+        Assert.Single(events);
+        Assert.Equal(CharacterEventType.LevelUp, events[0].EventType);
+    }
+
+    [Fact]
+    public async Task DeleteLastCombat_NoCombatHistory_Returns404()
+    {
+        var gameId = await CreateGameAsync("Combat 404");
+        await SeedHeroAsync(gameId, externalPersonId: 312);
+
+        // Hero has a Note but no combat — must return 404.
+        var note = await Client.PostAsJsonAsync("/api/scan/312/events",
+            new CreateCharacterEventDto(CharacterEventType.Note, """{"note":"jen poznámka"}"""));
+        note.EnsureSuccessStatusCode();
+
+        var response = await Client.DeleteAsync("/api/scan/312/events/last-combat");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }

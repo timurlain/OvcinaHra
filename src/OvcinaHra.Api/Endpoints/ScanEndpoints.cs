@@ -22,6 +22,7 @@ public static class ScanEndpoints
         group.MapPost("/{personId:int}/events", PostEvent);
         group.MapDelete("/{personId:int}/events/last-levelup", DeleteLastLevelUp);
         group.MapDelete("/{personId:int}/events/last-note", DeleteLastNote);
+        group.MapDelete("/{personId:int}/events/last-combat", DeleteLastCombat);
         group.MapGet("/{personId:int}/events", GetRecentEvents);
         group.MapGet("/{personId:int}/treasure-quests/pending", GetPendingTreasureQuests);
         group.MapPost("/{personId:int}/treasure-quests/{questId:int}/verify", VerifyTreasureQuest);
@@ -314,6 +315,33 @@ public static class ScanEndpoints
         if (lastNote is null) return TypedResults.NotFound();
 
         db.CharacterEvents.Remove(lastNote);
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
+    }
+
+    /// <summary>
+    /// Glejt monster-combat (#518) — undo the most recent monster-combat
+    /// event (MonsterVictory or MonsterDefeat) on a hero. An intervening
+    /// LevelUp recorded after the combat is intentionally ignored — the
+    /// scope is "newest combat row, even if other event types are newer".
+    /// </summary>
+    private static async Task<Results<NoContent, NotFound>> DeleteLastCombat(
+        int personId, WorldDbContext db)
+    {
+        var assignment = await db.CharacterAssignments
+            .FirstOrDefaultAsync(a => a.ExternalPersonId == personId && a.IsActive);
+        if (assignment is null) return TypedResults.NotFound();
+
+        var lastCombat = await db.CharacterEvents
+            .Where(e => e.CharacterAssignmentId == assignment.Id
+                && (e.EventType == CharacterEventType.MonsterVictory
+                    || e.EventType == CharacterEventType.MonsterDefeat))
+            .OrderByDescending(e => e.Timestamp)
+            .ThenByDescending(e => e.Id)
+            .FirstOrDefaultAsync();
+        if (lastCombat is null) return TypedResults.NotFound();
+
+        db.CharacterEvents.Remove(lastCombat);
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
     }
