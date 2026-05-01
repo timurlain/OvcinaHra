@@ -95,31 +95,26 @@ public static class ScanEndpoints
 
         if (assignment is null) return TypedResults.NotFound();
 
-        var idempotencyKey = GetIdempotencyKey(httpContext);
-        // Idempotency keys are scoped to (assignmentId, key) and are trusted to
-        // be unique per caller — Glejt always generates Guid.NewGuid() per tap,
-        // so collision across organizers is essentially impossible. NOTE: this
-        // replay check runs BEFORE the monster-auth gate below, so a key
-        // collision across two callers WOULD replay the original caller's
-        // monster-combat response without re-running auth. Keep keys per-caller
-        // unique (Guids) to preserve that invariant.
-        if (await TryGetIdempotentEventAsync(db, assignment.Id, idempotencyKey) is { } replay)
-            return TypedResults.Ok(replay);
-        if (!IsValidIdempotencyKey(idempotencyKey))
-            return SaveFailed("Hlavička X-Idempotency-Key je příliš dlouhá.");
-
         // Glejt monster-combat (#518) — MonsterVictory/MonsterDefeat are gated
         // by an active OrganizerRoleAssignment for the caller's email on an
         // NPC with Role == Monster, where the slot covers now ± 15 min. The
         // payload's monsterNpcId is the load-bearing identifier; monsterName
         // is trusted from the client (see design doc §"Identity of the
-        // monster"). Any other event type falls through to the existing
-        // any-organizer flow.
+        // monster"). Runs BEFORE idempotency replay so an unauthorized caller
+        // who supplies a previously-seen X-Idempotency-Key can't bypass auth
+        // and receive the original event as a 200 replay. Any other event
+        // type falls through to the existing any-organizer flow.
         if (dto.EventType is CharacterEventType.MonsterVictory or CharacterEventType.MonsterDefeat)
         {
             var monsterAuth = await AuthorizeMonsterEventAsync(dto, assignment.GameId, httpContext, db);
             if (monsterAuth is { } denied) return denied;
         }
+
+        var idempotencyKey = GetIdempotencyKey(httpContext);
+        if (await TryGetIdempotentEventAsync(db, assignment.Id, idempotencyKey) is { } replay)
+            return TypedResults.Ok(replay);
+        if (!IsValidIdempotencyKey(idempotencyKey))
+            return SaveFailed("Hlavička X-Idempotency-Key je příliš dlouhá.");
 
         var organizer = GetOrganizer(httpContext);
 

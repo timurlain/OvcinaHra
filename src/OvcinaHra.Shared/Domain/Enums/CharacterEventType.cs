@@ -27,9 +27,9 @@ public enum CharacterEventType
     [Display(Name = "Ověření pokladového razítka")]
     TreasureQuestStampVerified,
 
-    [Display(Name = "vítězství nad nestvůrou")]
+    [Display(Name = "Vítězství nad nestvůrou")]
     MonsterVictory,
 
-    [Display(Name = "porážka nestvůrou")]
+    [Display(Name = "Porážka nestvůrou")]
     MonsterDefeat
 }
