@@ -1,10 +1,13 @@
-@* Issue #432 — keep the cockpit quick action focused on field placement. *@
+@* Issue #432 — keep the cockpit quick action focused on field placement.
+   2026-05-01 — added second tile for "Rozpoznat skrýš". Multi-tile layout
+   uses the default oh-home-qlaunch-grid (4 cols desktop, 2 cols mobile);
+   the --single modifier is dropped once we exceed one tile. *@
 
 <section class="oh-home-qlaunch" aria-labelledby="oh-home-q-title">
     <header class="oh-home-qlaunch-head">
         <h2 id="oh-home-q-title">Rychlý přístup</h2>
     </header>
-    <div class="oh-home-qlaunch-grid oh-home-qlaunch-grid--single">
+    <div class="oh-home-qlaunch-grid">
         @foreach (var tile in Tiles)
         {
             <a class="oh-home-tile oh-home-k-@tile.Key" href="@tile.Href">
@@ -21,5 +24,6 @@
     private static readonly Tile[] Tiles =
     {
         new("place", "Umístění lokace", "bi-camera-fill", "/locations?placement=1"),
+        new("recognize", "Rozpoznat skrýš", "bi-search", "/recognize-stash"),
     };
 }
