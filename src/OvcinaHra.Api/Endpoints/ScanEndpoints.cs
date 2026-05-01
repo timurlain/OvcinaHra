@@ -21,6 +21,7 @@ public static class ScanEndpoints
         group.MapGet("/{personId:int}", GetCharacterProfile);
         group.MapPost("/{personId:int}/events", PostEvent);
         group.MapDelete("/{personId:int}/events/last-levelup", DeleteLastLevelUp);
+        group.MapDelete("/{personId:int}/events/last-note", DeleteLastNote);
         group.MapGet("/{personId:int}/events", GetRecentEvents);
         group.MapGet("/{personId:int}/treasure-quests/pending", GetPendingTreasureQuests);
         group.MapPost("/{personId:int}/treasure-quests/{questId:int}/verify", VerifyTreasureQuest);
@@ -288,6 +289,33 @@ public static class ScanEndpoints
         }
 
         return TypedResults.Ok(ToDto(audit));
+    }
+
+    /// <summary>
+    /// Glejt monster-combat (#518) — undo the most recent Note event on a
+    /// hero. Mirrors the regular-mode "Vrátit poznámku" affordance. No
+    /// monster-role gating: any signed-in organizer who can hit
+    /// <c>/api/scan/*</c> may undo, matching the existing
+    /// <see cref="DeleteLastLevelUp"/> permission model.
+    /// </summary>
+    private static async Task<Results<NoContent, NotFound>> DeleteLastNote(
+        int personId, WorldDbContext db)
+    {
+        var assignment = await db.CharacterAssignments
+            .FirstOrDefaultAsync(a => a.ExternalPersonId == personId && a.IsActive);
+        if (assignment is null) return TypedResults.NotFound();
+
+        var lastNote = await db.CharacterEvents
+            .Where(e => e.CharacterAssignmentId == assignment.Id
+                && e.EventType == CharacterEventType.Note)
+            .OrderByDescending(e => e.Timestamp)
+            .ThenByDescending(e => e.Id)
+            .FirstOrDefaultAsync();
+        if (lastNote is null) return TypedResults.NotFound();
+
+        db.CharacterEvents.Remove(lastNote);
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
     }
 
     private static async Task<Results<Ok<List<CharacterEventDto>>, NotFound>> GetRecentEvents(

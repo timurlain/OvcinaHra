@@ -257,6 +257,46 @@ public class ScanMonsterCombatEndpointTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task DeleteLastNote_WithExistingNote_Returns204AndRemovesEvent()
+    {
+        var gameId = await CreateGameAsync("Note undo");
+        await SeedHeroAsync(gameId, externalPersonId: 300);
+
+        // Two notes; the newest one should be removed.
+        var firstNote = await Client.PostAsJsonAsync("/api/scan/300/events",
+            new CreateCharacterEventDto(CharacterEventType.Note, """{"note":"první"}""", "Bran"));
+        firstNote.EnsureSuccessStatusCode();
+        var secondNote = await Client.PostAsJsonAsync("/api/scan/300/events",
+            new CreateCharacterEventDto(CharacterEventType.Note, """{"note":"druhá"}""", "Bran"));
+        secondNote.EnsureSuccessStatusCode();
+
+        var response = await Client.DeleteAsync("/api/scan/300/events/last-note");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        var notes = await db.CharacterEvents
+            .Where(e => e.Assignment.ExternalPersonId == 300
+                && e.EventType == CharacterEventType.Note)
+            .OrderBy(e => e.Timestamp)
+            .ToListAsync();
+        Assert.Single(notes);
+        Assert.Contains("\"první\"", notes[0].Data);
+    }
+
+    [Fact]
+    public async Task DeleteLastNote_NoNoteHistory_Returns404()
+    {
+        var gameId = await CreateGameAsync("Note 404");
+        await SeedHeroAsync(gameId, externalPersonId: 301);
+
+        var response = await Client.DeleteAsync("/api/scan/301/events/last-note");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task PostMonsterVictory_NoOrganizerRoleAssignmentAtAll_Returns403()
     {
         // Game + hero exist, but no monster NPC seeded and no role assignment
