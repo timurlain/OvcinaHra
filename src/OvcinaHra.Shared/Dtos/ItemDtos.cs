@@ -20,7 +20,11 @@ public record ItemListDto(
     string? ImagePath,
     string? Note = null,
     string? ImageUrl = null,
-    bool HasRecipe = false)
+    bool HasRecipe = false,
+    int? StockCount = null,
+    string? StockNote = null,
+    DateTime? StockUpdatedUtc = null,
+    string? StockUpdatedBy = null)
 {
     [JsonIgnore]
     public string ItemTypeDisplay => ItemType.GetDisplayName();
@@ -87,7 +91,11 @@ public record ItemDetailDto(
     string? ImagePath,
     string? Note = null,
     string? ImageUrl = null,
-    bool HasRecipe = false);
+    bool HasRecipe = false,
+    int StockCount = 0,
+    string? StockNote = null,
+    DateTime? StockUpdatedUtc = null,
+    string? StockUpdatedBy = null);
 
 public record CreateItemDto(
     string Name,
@@ -116,6 +124,10 @@ public record UpdateItemDto(
     bool IsUnique,
     bool IsLimited,
     string? Note = null);
+
+public record UpdateItemStockDto(
+    int StockCount,
+    string? StockNote = null);
 
 // Per-game item configuration
 public record GameItemDto(

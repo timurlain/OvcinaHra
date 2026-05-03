@@ -15,6 +15,10 @@ public class Item
     public bool IsUnique { get; set; }
     public bool IsLimited { get; set; }
     public string? ImagePath { get; set; }
+    public int StockCount { get; set; }
+    public string? StockNote { get; set; }
+    public DateTime? StockUpdatedUtc { get; set; }
+    public string? StockUpdatedBy { get; set; }
 
     // Free-text organizer note — issue #120. Visible in catalog + game grid
     // columns and on the detail page. Catalog-scoped (no per-game override).

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
@@ -21,6 +22,7 @@ public static class ItemEndpoints
         group.MapGet("/{id:int}", GetById);
         group.MapPost("/", Create);
         group.MapPut("/{id:int}", Update);
+        group.MapPut("/{id:int}/stock", UpdateStock);
         group.MapDelete("/{id:int}", Delete);
 
         // Class/level query — "can this class at this level use this item?"
@@ -58,7 +60,11 @@ public static class ItemEndpoints
                 i.IsUnique,
                 i.IsLimited,
                 i.ImagePath,
-                i.Note
+                i.Note,
+                i.StockCount,
+                i.StockNote,
+                i.StockUpdatedUtc,
+                i.StockUpdatedBy
             })
             .ToListAsync();
 
@@ -81,7 +87,11 @@ public static class ItemEndpoints
             // (5:7) so the bytes match the .oh-it-tile container ratio and
             // ImageSharp's Crop mode no longer eats the card art.
             ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "items", r.Id, "medium"),
-            HasRecipe: craftedSet.Contains(r.Id))).ToList();
+            HasRecipe: craftedSet.Contains(r.Id),
+            StockCount: r.StockCount,
+            StockNote: r.StockNote,
+            StockUpdatedUtc: r.StockUpdatedUtc,
+            StockUpdatedBy: r.StockUpdatedBy)).ToList();
         return TypedResults.Ok(items);
     }
 
@@ -109,6 +119,8 @@ public static class ItemEndpoints
     // belongs in the wiki. DevExpress DxMemo MaxLength isn't reliable in
     // 25.2.5 so the cap is enforced server-side.
     private const int NoteMaxLength = 2000;
+    private const int StockNoteMaxLength = 500;
+    private const int StockUpdatedByMaxLength = 200;
 
     private static async Task<Results<Created<ItemDetailDto>, ProblemHttpResult>> Create(CreateItemDto dto, WorldDbContext db)
     {
@@ -171,6 +183,37 @@ public static class ItemEndpoints
         item.IsUnique = dto.IsUnique;
         item.IsLimited = dto.IsLimited;
         item.Note = string.IsNullOrWhiteSpace(note) ? null : note;
+
+        await db.SaveChangesAsync();
+        return TypedResults.NoContent();
+    }
+
+    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> UpdateStock(
+        int id,
+        UpdateItemStockDto dto,
+        WorldDbContext db,
+        HttpContext http)
+    {
+        var item = await db.Items.FindAsync(id);
+        if (item is null) return TypedResults.NotFound();
+
+        if (dto.StockCount < 0)
+            return TypedResults.Problem(
+                title: "Neplatný počet kusů",
+                detail: "Počet kusů na skladě nesmí být záporný.",
+                statusCode: StatusCodes.Status400BadRequest);
+
+        var stockNote = dto.StockNote?.Trim();
+        if (!string.IsNullOrEmpty(stockNote) && stockNote.Length > StockNoteMaxLength)
+            return TypedResults.Problem(
+                title: "Poznámka inventury je příliš dlouhá",
+                detail: $"Poznámka inventury nesmí být delší než {StockNoteMaxLength} znaků.",
+                statusCode: StatusCodes.Status400BadRequest);
+
+        item.StockCount = dto.StockCount;
+        item.StockNote = string.IsNullOrWhiteSpace(stockNote) ? null : stockNote;
+        item.StockUpdatedUtc = DateTime.UtcNow;
+        item.StockUpdatedBy = GetOrganizerDisplayName(http.User);
 
         await db.SaveChangesAsync();
         return TypedResults.NoContent();
@@ -454,7 +497,25 @@ public static class ItemEndpoints
         item.ClassRequirements.Warrior, item.ClassRequirements.Archer,
         item.ClassRequirements.Mage, item.ClassRequirements.Thief,
         item.IsUnique, item.IsLimited, item.ImagePath,
-        Note: item.Note);
+        Note: item.Note,
+        StockCount: item.StockCount,
+        StockNote: item.StockNote,
+        StockUpdatedUtc: item.StockUpdatedUtc,
+        StockUpdatedBy: item.StockUpdatedBy);
+
+    private static string? GetOrganizerDisplayName(ClaimsPrincipal user)
+    {
+        var value = user.FindFirstValue("name")
+            ?? user.FindFirstValue(ClaimTypes.Name)
+            ?? user.FindFirstValue("sub")
+            ?? user.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(value)) return null;
+
+        var trimmed = value.Trim();
+        return trimmed.Length <= StockUpdatedByMaxLength
+            ? trimmed
+            : trimmed[..StockUpdatedByMaxLength];
+    }
 
     // Detail-page aggregate. One round-trip returns:
     //  - CraftedBy:    recipes whose OutputItemId == this item
