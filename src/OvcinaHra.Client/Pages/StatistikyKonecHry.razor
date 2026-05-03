@@ -1,0 +1,274 @@
+@page "/statistiky-konec-hry"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject GameContextService GameContext
+@implements IDisposable
+
+<PageTitle>Statistiky konce hry</PageTitle>
+
+<div class="oh-endstats-page">
+    <header class="oh-endstats-head">
+        <div>
+            <p class="oh-endstats-kicker">Přehled Ovčiny</p>
+            <h1>Statistiky konce hry</h1>
+        </div>
+        @if (_stats is not null)
+        {
+            <span class="oh-endstats-pill">@_stats.Kingdoms.Sum(k => k.HeroCount) hrdinové</span>
+        }
+    </header>
+
+    @if (_isLoading)
+    {
+        <p class="text-muted">Načítám…</p>
+    }
+    else if (ActiveGameId is null)
+    {
+        <div class="oh-endstats-empty">Vyber hru, aby bylo co zobrazit.</div>
+    }
+    else if (_stats is null)
+    {
+        <div class="oh-endstats-empty">@(_error ?? "Statistiky nejsou dostupné.")</div>
+    }
+    else
+    {
+        <section class="oh-endstats-summary">
+            <article class="oh-endstats-highlight">
+                <span class="oh-endstats-label">První pátá úroveň</span>
+                @if (_stats.FirstToLevel5 is { } first)
+                {
+                    <strong>@first.HeroName</strong>
+                    <span>
+                        @first.KingdomName, @first.TimestampUtc.ToLocalTime().ToString("d. M. yyyy HH:mm")
+                    </span>
+                }
+                else
+                {
+                    <strong>Pátou úroveň zatím nikdo nedosáhl.</strong>
+                }
+            </article>
+            <article class="oh-endstats-highlight">
+                <span class="oh-endstats-label">Nejzkušenější království</span>
+                @if (_stats.ExperienceLeaderboard.FirstOrDefault() is { } leader)
+                {
+                    <strong>@leader.KingdomName</strong>
+                    <span>@leader.TotalLevelsGained získaných úrovní, průměr @leader.AverageLevel</span>
+                }
+                else
+                {
+                    <strong>Žádná data</strong>
+                }
+            </article>
+        </section>
+
+        <section class="oh-endstats-section">
+            <div class="oh-endstats-section-head">
+                <h2>Úrovně hrdinů podle království</h2>
+            </div>
+            @if (HasLevelData)
+            {
+                <DxChart Data="@_levelChartRows" CssClass="oh-endstats-chart">
+                    <DxChartBarSeries ArgumentField="@((LevelChartRow r) => r.LevelLabel)"
+                                      ValueField="@((LevelChartRow r) => r.Esgaroth)"
+                                      Name="Esgaroth"
+                                      Color="@EsgarothColor" />
+                    <DxChartBarSeries ArgumentField="@((LevelChartRow r) => r.LevelLabel)"
+                                      ValueField="@((LevelChartRow r) => r.Aradhryand)"
+                                      Name="Aradhryand"
+                                      Color="@AradhryandColor" />
+                    <DxChartBarSeries ArgumentField="@((LevelChartRow r) => r.LevelLabel)"
+                                      ValueField="@((LevelChartRow r) => r.Azanulinbar)"
+                                      Name="Azanulinbar"
+                                      Color="@AzanulinbarColor" />
+                    <DxChartBarSeries ArgumentField="@((LevelChartRow r) => r.LevelLabel)"
+                                      ValueField="@((LevelChartRow r) => r.Arnor)"
+                                      Name="Arnor"
+                                      Color="@ArnorColor" />
+                    <DxChartBarSeries ArgumentField="@((LevelChartRow r) => r.LevelLabel)"
+                                      ValueField="@((LevelChartRow r) => r.Other)"
+                                      Name="Ostatní"
+                                      Color="@OtherColor" />
+                </DxChart>
+            }
+            else
+            {
+                <div class="oh-endstats-empty">Žádná data</div>
+            }
+        </section>
+
+        <section class="oh-endstats-grid">
+            <article class="oh-endstats-section">
+                <h2>Žebříček zkušeností</h2>
+                @if (_stats.ExperienceLeaderboard.Length == 0)
+                {
+                    <div class="oh-endstats-empty">Žádná data</div>
+                }
+                else
+                {
+                    <table class="oh-endstats-table">
+                        <thead>
+                            <tr><th>Království</th><th>Hrdinové</th><th>Úrovně</th><th>Průměr</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _stats.ExperienceLeaderboard)
+                            {
+                                <tr>
+                                    <td><span class="oh-endstats-swatch" style="background:@row.ColorHex"></span>@row.KingdomName</td>
+                                    <td>@row.HeroCount</td>
+                                    <td>@row.TotalLevelsGained</td>
+                                    <td>@row.AverageLevel</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </article>
+
+            <article class="oh-endstats-section">
+                <h2>Nestvůry a pády</h2>
+                @if (!HasMonsterData)
+                {
+                    <div class="oh-endstats-empty">Žádná data</div>
+                }
+                else
+                {
+                    <div class="oh-endstats-monsters">
+                        <div>
+                            <h3>Přemožené nestvůry</h3>
+                            @foreach (var row in _stats.MonsterStats.MostDefeatedMonsters)
+                            {
+                                <div class="oh-endstats-row"><span>@row.MonsterName</span><strong>@row.Count</strong></div>
+                            }
+                        </div>
+                        <div>
+                            <h3>Padlí hrdinové</h3>
+                            @foreach (var row in _stats.MonsterStats.HeroesFallenByKingdom)
+                            {
+                                <div class="oh-endstats-row">
+                                    <span><span class="oh-endstats-swatch" style="background:@row.ColorHex"></span>@row.KingdomName</span>
+                                    <strong>@row.Count</strong>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </article>
+        </section>
+    }
+</div>
+
+@code {
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "gameId")]
+    public int? GameId { get; set; }
+
+    private EndGameStatsDto? _stats;
+    private List<LevelChartRow> _levelChartRows = [];
+    private bool _isLoading;
+    private string? _error;
+    private int _loadVersion;
+
+    private static readonly System.Drawing.Color EsgarothColor = System.Drawing.Color.FromArgb(0x24, 0x2F, 0x3D);
+    private static readonly System.Drawing.Color AradhryandColor = System.Drawing.Color.FromArgb(0x24, 0x35, 0x25);
+    private static readonly System.Drawing.Color AzanulinbarColor = System.Drawing.Color.FromArgb(0x8C, 0x24, 0x23);
+    private static readonly System.Drawing.Color ArnorColor = System.Drawing.Color.FromArgb(0x50, 0x4B, 0x25);
+    private static readonly System.Drawing.Color OtherColor = System.Drawing.Color.FromArgb(0x6A, 0x6A, 0x6A);
+
+    private int? ActiveGameId => GameId ?? GameContext.SelectedGameId;
+    private bool HasLevelData => _levelChartRows.Any(r => r.Total > 0);
+    private bool HasMonsterData => _stats?.MonsterStats.MonsterDefeatedCount > 0
+        || _stats?.MonsterStats.HeroFellCount > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GameContext.InitializeAsync();
+        GameContext.OnGameChanged += HandleGameChanged;
+    }
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private void HandleGameChanged()
+    {
+        if (GameId is null)
+            _ = InvokeAsync(LoadAsync);
+    }
+
+    private async Task LoadAsync()
+    {
+        var loadVersion = System.Threading.Interlocked.Increment(ref _loadVersion);
+        var gameId = ActiveGameId;
+        _error = null;
+        if (gameId is null)
+        {
+            _stats = null;
+            _levelChartRows = [];
+            _isLoading = false;
+            return;
+        }
+
+        _isLoading = true;
+        try
+        {
+            var stats = await Api.GetAsync<EndGameStatsDto>($"/api/games/{gameId.Value}/end-game-stats");
+            if (loadVersion != _loadVersion) return;
+
+            _stats = stats;
+            _levelChartRows = BuildLevelChartRows(stats);
+            if (_stats is null)
+                _error = "Hra nebyla nalezena.";
+        }
+        catch (Exception)
+        {
+            if (loadVersion != _loadVersion) return;
+
+            _stats = null;
+            _levelChartRows = [];
+            _error = "Statistiky se nepodařilo načíst.";
+        }
+        finally
+        {
+            if (loadVersion == _loadVersion)
+                _isLoading = false;
+        }
+    }
+
+    private static List<LevelChartRow> BuildLevelChartRows(EndGameStatsDto? stats)
+    {
+        if (stats is null) return [];
+
+        return Enumerable.Range(1, 5)
+            .Select(level => new LevelChartRow(
+                LevelLabel(level),
+                CountFor(stats, level, "Esgaroth"),
+                CountFor(stats, level, "Aradhryand"),
+                CountFor(stats, level, "Azanulinbar"),
+                CountFor(stats, level, "Arnor"),
+                stats.Kingdoms
+                    .Where(k => !IsCanonKingdom(k.KingdomName))
+                    .Sum(k => k.Levels.FirstOrDefault(l => l.Level == level)?.HeroCount ?? 0)))
+            .ToList();
+    }
+
+    private static int CountFor(EndGameStatsDto stats, int level, string kingdomName) =>
+        stats.Kingdoms
+            .Where(k => k.KingdomName == kingdomName)
+            .Sum(k => k.Levels.FirstOrDefault(l => l.Level == level)?.HeroCount ?? 0);
+
+    private static bool IsCanonKingdom(string kingdomName) =>
+        kingdomName is "Esgaroth" or "Aradhryand" or "Azanulinbar" or "Arnor";
+
+    private static string LevelLabel(int level) => level >= 5 ? "5+" : level.ToString();
+
+    public void Dispose() => GameContext.OnGameChanged -= HandleGameChanged;
+
+    private sealed record LevelChartRow(
+        string LevelLabel,
+        int Esgaroth,
+        int Aradhryand,
+        int Azanulinbar,
+        int Arnor,
+        int Other)
+    {
+        public int Total => Esgaroth + Aradhryand + Azanulinbar + Arnor + Other;
+    }
+}
