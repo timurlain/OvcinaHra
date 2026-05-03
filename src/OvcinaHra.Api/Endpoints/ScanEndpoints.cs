@@ -1,7 +1,10 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
@@ -486,7 +489,7 @@ public static class ScanEndpoints
             "[scan-idem] entry endpoint={Endpoint} personId={PersonId} idempotencyKey={IdempotencyKey}",
             endpoint,
             personId,
-            rawIdempotencyKey ?? "<missing>");
+            DescribeIdempotencyKey(rawIdempotencyKey));
 
         var assignment = await db.CharacterAssignments
             .Include(a => a.Character)
@@ -520,7 +523,7 @@ public static class ScanEndpoints
                     "[scan-idem] lookup-start endpoint={Endpoint} assignmentId={AssignmentId} idempotencyKey={IdempotencyKey}",
                     endpoint,
                     assignment.Id,
-                    rawIdempotencyKey);
+                    DescribeIdempotencyKey(rawIdempotencyKey));
 
                 var alreadyReverted = await db.EventIdempotencies.AnyAsync(e =>
                     e.CharacterAssignmentId == assignment.Id && e.IdempotencyKey == scopedIdempotencyKey);
@@ -536,7 +539,7 @@ public static class ScanEndpoints
                         "[scan-idem] idempotency-hit endpoint={Endpoint} assignmentId={AssignmentId} idempotencyKey={IdempotencyKey}",
                         endpoint,
                         assignment.Id,
-                        rawIdempotencyKey);
+                        DescribeIdempotencyKey(rawIdempotencyKey));
                     await transaction.CommitAsync();
                     return TypedResults.NoContent();
                 }
@@ -622,6 +625,17 @@ public static class ScanEndpoints
                 audit.Id);
             return TypedResults.NoContent();
         }
+        catch (DbUpdateException ex) when (IsEventIdempotencyUniqueViolation(ex))
+        {
+            await transaction.RollbackAsync();
+            logger.LogInformation(
+                ex,
+                "[scan-idem] idempotency-duplicate-race endpoint={Endpoint} assignmentId={AssignmentId} idempotencyKey={IdempotencyKey}",
+                endpoint,
+                assignment.Id,
+                DescribeIdempotencyKey(rawIdempotencyKey));
+            return TypedResults.NoContent();
+        }
         catch (Exception ex)
         {
             logger.LogError(
@@ -629,7 +643,7 @@ public static class ScanEndpoints
                 "[scan-idem] transaction-failed endpoint={Endpoint} assignmentId={AssignmentId} idempotencyKey={IdempotencyKey}",
                 endpoint,
                 assignment.Id,
-                rawIdempotencyKey ?? "<missing>");
+                DescribeIdempotencyKey(rawIdempotencyKey));
             throw;
         }
     }
@@ -668,8 +682,11 @@ public static class ScanEndpoints
             return true;
         }
 
-        scopedKey = $"revert:{endpoint}:{key}";
-        if (IsValidIdempotencyKey(scopedKey)) return true;
+        if (IsValidIdempotencyKey(key))
+        {
+            scopedKey = $"revert:{endpoint}:{HashIdempotencyKey(key)}";
+            return true;
+        }
 
         logger.LogWarning(
             "[scan-idem] idempotency-key-too-long endpoint={Endpoint} personId={PersonId} length={Length}",
@@ -717,11 +734,27 @@ public static class ScanEndpoints
         });
     }
 
+    private static bool IsEventIdempotencyUniqueViolation(DbUpdateException ex) =>
+        ex.Entries.Any(e => e.Entity is EventIdempotency)
+        && ex.InnerException is PostgresException
+        {
+            SqlState: PostgresErrorCodes.UniqueViolation,
+            ConstraintName: "PK_EventIdempotencies"
+        };
+
     private static ProblemHttpResult SaveFailed(string detail) =>
         TypedResults.Problem(
             title: "Uložení selhalo",
             detail: detail,
             statusCode: StatusCodes.Status400BadRequest);
+
+    private static string DescribeIdempotencyKey(string? key) =>
+        key is null
+            ? "<missing>"
+            : $"present:length={key.Length}:sha256={HashIdempotencyKey(key)[..12]}";
+
+    private static string HashIdempotencyKey(string key) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key))).ToLowerInvariant();
 
     private static string CreateGenericRevertData(CharacterEvent original, string? key, DateTime revertedAtUtc) =>
         JsonSerializer.Serialize(new
