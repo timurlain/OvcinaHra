@@ -14,7 +14,7 @@ using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Endpoints;
 
-public static class GameEndpoints
+public static partial class GameEndpoints
 {
     public static RouteGroupBuilder MapGameEndpoints(this IEndpointRouteBuilder routes)
     {
@@ -52,6 +52,7 @@ public static class GameEndpoints
         group.MapPost("/{gameId:int}/creatures/{monsterId:int}", AddCreatureToGame);
         group.MapDelete("/{gameId:int}/creatures/{monsterId:int}", RemoveCreatureFromGame);
         group.MapDelete("/{gameId:int}/quests/{questId:int}", RemoveQuestFromGame);
+        group.MapGet("/{gameId:int}/end-game-stats", GetEndGameStats);
 
         return group;
     }
