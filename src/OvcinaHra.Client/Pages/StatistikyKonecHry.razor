@@ -1,5 +1,6 @@
 @page "/statistiky-konec-hry"
 @attribute [Authorize]
+@using System.Globalization
 @inject ApiClient Api
 @inject GameContextService GameContext
 @implements IDisposable
@@ -68,26 +69,14 @@
             @if (HasLevelData)
             {
                 <DxChart Data="@_levelChartRows" CssClass="oh-endstats-chart">
-                    <DxChartBarSeries ArgumentField="@((LevelChartRow r) => r.LevelLabel)"
-                                      ValueField="@((LevelChartRow r) => r.Esgaroth)"
-                                      Name="Esgaroth"
-                                      Color="@EsgarothColor" />
-                    <DxChartBarSeries ArgumentField="@((LevelChartRow r) => r.LevelLabel)"
-                                      ValueField="@((LevelChartRow r) => r.Aradhryand)"
-                                      Name="Aradhryand"
-                                      Color="@AradhryandColor" />
-                    <DxChartBarSeries ArgumentField="@((LevelChartRow r) => r.LevelLabel)"
-                                      ValueField="@((LevelChartRow r) => r.Azanulinbar)"
-                                      Name="Azanulinbar"
-                                      Color="@AzanulinbarColor" />
-                    <DxChartBarSeries ArgumentField="@((LevelChartRow r) => r.LevelLabel)"
-                                      ValueField="@((LevelChartRow r) => r.Arnor)"
-                                      Name="Arnor"
-                                      Color="@ArnorColor" />
-                    <DxChartBarSeries ArgumentField="@((LevelChartRow r) => r.LevelLabel)"
-                                      ValueField="@((LevelChartRow r) => r.Other)"
-                                      Name="Ostatní"
-                                      Color="@OtherColor" />
+                    @foreach (var series in _levelChartSeries)
+                    {
+                        var currentSeries = series;
+                        <DxChartBarSeries ArgumentField="@((LevelChartRow r) => r.LevelLabel)"
+                                          ValueField="@((LevelChartRow r) => r.CountFor(currentSeries.Key))"
+                                          Name="@currentSeries.Name"
+                                          Color="@currentSeries.Color" />
+                    }
                 </DxChart>
             }
             else
@@ -113,7 +102,7 @@
                             @foreach (var row in _stats.ExperienceLeaderboard)
                             {
                                 <tr>
-                                    <td><span class="oh-endstats-swatch" style="background:@row.ColorHex"></span>@row.KingdomName</td>
+                                    <td><span class="oh-endstats-swatch" style="background:@SwatchBackground(row.ColorHex)"></span>@row.KingdomName</td>
                                     <td>@row.HeroCount</td>
                                     <td>@row.TotalLevelsGained</td>
                                     <td>@row.AverageLevel</td>
@@ -145,7 +134,7 @@
                             @foreach (var row in _stats.MonsterStats.HeroesFallenByKingdom)
                             {
                                 <div class="oh-endstats-row">
-                                    <span><span class="oh-endstats-swatch" style="background:@row.ColorHex"></span>@row.KingdomName</span>
+                                    <span><span class="oh-endstats-swatch" style="background:@SwatchBackground(row.ColorHex)"></span>@row.KingdomName</span>
                                     <strong>@row.Count</strong>
                                 </div>
                             }
@@ -164,15 +153,10 @@
 
     private EndGameStatsDto? _stats;
     private List<LevelChartRow> _levelChartRows = [];
+    private List<LevelChartSeries> _levelChartSeries = [];
     private bool _isLoading;
     private string? _error;
     private int _loadVersion;
-
-    private static readonly System.Drawing.Color EsgarothColor = System.Drawing.Color.FromArgb(0x24, 0x2F, 0x3D);
-    private static readonly System.Drawing.Color AradhryandColor = System.Drawing.Color.FromArgb(0x24, 0x35, 0x25);
-    private static readonly System.Drawing.Color AzanulinbarColor = System.Drawing.Color.FromArgb(0x8C, 0x24, 0x23);
-    private static readonly System.Drawing.Color ArnorColor = System.Drawing.Color.FromArgb(0x50, 0x4B, 0x25);
-    private static readonly System.Drawing.Color OtherColor = System.Drawing.Color.FromArgb(0x6A, 0x6A, 0x6A);
 
     private int? ActiveGameId => GameId ?? GameContext.SelectedGameId;
     private bool HasLevelData => _levelChartRows.Any(r => r.Total > 0);
@@ -202,6 +186,7 @@
         {
             _stats = null;
             _levelChartRows = [];
+            _levelChartSeries = [];
             _isLoading = false;
             return;
         }
@@ -214,6 +199,7 @@
 
             _stats = stats;
             _levelChartRows = BuildLevelChartRows(stats);
+            _levelChartSeries = BuildLevelChartSeries(stats);
             if (_stats is null)
                 _error = "Hra nebyla nalezena.";
         }
@@ -223,6 +209,7 @@
 
             _stats = null;
             _levelChartRows = [];
+            _levelChartSeries = [];
             _error = "Statistiky se nepodařilo načíst.";
         }
         finally
@@ -236,39 +223,64 @@
     {
         if (stats is null) return [];
 
-        return Enumerable.Range(1, 5)
-            .Select(level => new LevelChartRow(
-                LevelLabel(level),
-                CountFor(stats, level, "Esgaroth"),
-                CountFor(stats, level, "Aradhryand"),
-                CountFor(stats, level, "Azanulinbar"),
-                CountFor(stats, level, "Arnor"),
-                stats.Kingdoms
-                    .Where(k => !IsCanonKingdom(k.KingdomName))
-                    .Sum(k => k.Levels.FirstOrDefault(l => l.Level == level)?.HeroCount ?? 0)))
+        return stats.Kingdoms
+            .SelectMany(k => k.Levels)
+            .GroupBy(level => level.Level)
+            .OrderBy(g => g.Key)
+            .Select(g => new LevelChartRow(
+                g.First().Label,
+                stats.Kingdoms.ToDictionary(
+                    SeriesKey,
+                    kingdom => kingdom.Levels.FirstOrDefault(level => level.Level == g.Key)?.HeroCount ?? 0)))
             .ToList();
     }
 
-    private static int CountFor(EndGameStatsDto stats, int level, string kingdomName) =>
-        stats.Kingdoms
-            .Where(k => k.KingdomName == kingdomName)
-            .Sum(k => k.Levels.FirstOrDefault(l => l.Level == level)?.HeroCount ?? 0);
+    private static List<LevelChartSeries> BuildLevelChartSeries(EndGameStatsDto? stats) =>
+        stats?.Kingdoms
+            .Select(k => new LevelChartSeries(SeriesKey(k), k.KingdomName, ParseColor(k.ColorHex)))
+            .ToList() ?? [];
 
-    private static bool IsCanonKingdom(string kingdomName) =>
-        kingdomName is "Esgaroth" or "Aradhryand" or "Azanulinbar" or "Arnor";
+    private static string SeriesKey(KingdomLevelBreakdownDto kingdom) =>
+        kingdom.KingdomId?.ToString(CultureInfo.InvariantCulture) ?? kingdom.KingdomName;
 
-    private static string LevelLabel(int level) => level >= 5 ? "5+" : level.ToString();
+    private static string SwatchBackground(string? colorHex) =>
+        IsHexColor(colorHex) ? colorHex!.Trim() : System.Drawing.Color.Gray.Name;
+
+    private static System.Drawing.Color ParseColor(string? colorHex)
+    {
+        if (!IsHexColor(colorHex))
+            return System.Drawing.Color.Gray;
+
+        var hex = colorHex.AsSpan().Trim();
+        return System.Drawing.Color.FromArgb(
+            int.Parse(hex.Slice(1, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture),
+            int.Parse(hex.Slice(3, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture),
+            int.Parse(hex.Slice(5, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture));
+    }
+
+    private static bool IsHexColor(string? colorHex)
+    {
+        if (string.IsNullOrWhiteSpace(colorHex))
+            return false;
+
+        var hex = colorHex.AsSpan().Trim();
+        return hex.Length == 7
+            && hex[0] == '#'
+            && int.TryParse(hex[1..], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out _);
+    }
 
     public void Dispose() => GameContext.OnGameChanged -= HandleGameChanged;
 
     private sealed record LevelChartRow(
         string LevelLabel,
-        int Esgaroth,
-        int Aradhryand,
-        int Azanulinbar,
-        int Arnor,
-        int Other)
+        Dictionary<string, int> Counts)
     {
-        public int Total => Esgaroth + Aradhryand + Azanulinbar + Arnor + Other;
+        public int CountFor(string key) => Counts.TryGetValue(key, out var count) ? count : 0;
+        public int Total => Counts.Values.Sum();
     }
+
+    private sealed record LevelChartSeries(
+        string Key,
+        string Name,
+        System.Drawing.Color Color);
 }

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Shared.Domain.Enums;
+using OvcinaHra.Shared.Domain.Rules;
 using OvcinaHra.Shared.Dtos;
 
 namespace OvcinaHra.Api.Endpoints;
@@ -11,7 +12,7 @@ namespace OvcinaHra.Api.Endpoints;
 public static partial class GameEndpoints
 {
     private const string NoKingdomName = "Bez království";
-    private const string NoKingdomColor = "#6A6A6A";
+    private const int MaxStatsLevel = LevelingRules.MaxLevel + LevelingRules.MaxBuyableMasteries;
 
     private static async Task<Results<Ok<EndGameStatsDto>, NotFound>> GetEndGameStats(
         int gameId,
@@ -20,12 +21,24 @@ public static partial class GameEndpoints
         if (!await db.Games.AsNoTracking().AnyAsync(g => g.Id == gameId))
             return TypedResults.NotFound();
 
+        var kingdoms = await db.Kingdoms
+            .AsNoTracking()
+            .OrderBy(k => k.SortOrder)
+            .ThenBy(k => k.Name)
+            .Select(k => new EndGameKingdomRow(
+                k.Id,
+                k.Name,
+                k.HexColor,
+                k.SortOrder))
+            .ToListAsync();
+
         var assignments = await db.CharacterAssignments
             .AsNoTracking()
             .Where(a => a.GameId == gameId && a.IsActive)
             .Select(a => new EndGameAssignmentRow(
                 a.Id,
                 a.Character.Name,
+                a.Class,
                 a.KingdomId,
                 a.Kingdom != null ? a.Kingdom.Name : NoKingdomName,
                 a.Kingdom != null ? a.Kingdom.HexColor : null,
@@ -68,12 +81,21 @@ public static partial class GameEndpoints
         var currentLevelByAssignment = levelEvents
             .GroupBy(e => e.AssignmentId)
             .ToDictionary(g => g.Key, g => Math.Max(1, g.Max(e => e.Level)));
+        var masteryCountByAssignment = await BuildMasteryCountByAssignment(
+            db,
+            assignments.Select(a => a.AssignmentId).ToArray(),
+            assignmentById);
 
-        var kingdomBreakdowns = BuildKingdomBreakdowns(assignments, currentLevelByAssignment);
+        var kingdomBreakdowns = BuildKingdomBreakdowns(
+            kingdoms,
+            assignments,
+            currentLevelByAssignment,
+            masteryCountByAssignment);
         var firstToLevel5 = BuildFirstToLevel5(levelEvents, assignmentById);
         var monsterStats = BuildMonsterStats(parsedActivities, assignmentById, monsterNamesById);
 
         var leaderboard = kingdomBreakdowns
+            .Where(k => k.HeroCount > 0)
             .Select(k => new KingdomLeaderboardEntryDto(
                 k.KingdomId,
                 k.KingdomName,
@@ -94,27 +116,41 @@ public static partial class GameEndpoints
     }
 
     private static KingdomLevelBreakdownDto[] BuildKingdomBreakdowns(
+        List<EndGameKingdomRow> kingdoms,
         List<EndGameAssignmentRow> assignments,
-        Dictionary<int, int> currentLevelByAssignment)
+        Dictionary<int, int> currentLevelByAssignment,
+        Dictionary<int, int> masteryCountByAssignment)
     {
-        return assignments
-            .GroupBy(a => new EndGameKingdomKey(
-                a.KingdomId,
-                a.KingdomName,
-                CanonKingdomColor(a.KingdomName, a.KingdomColor),
-                a.SortOrder))
-            .OrderBy(g => g.Key.SortOrder)
-            .ThenBy(g => g.Key.KingdomName)
-            .Select(g =>
+        var kingdomKeys = kingdoms
+            .Select(k => new EndGameKingdomKey(
+                k.KingdomId,
+                k.KingdomName,
+                StoredColorOrEmpty(k.KingdomColor),
+                k.SortOrder))
+            .ToList();
+
+        if (assignments.Any(a => a.KingdomId is null))
+            kingdomKeys.Add(new EndGameKingdomKey(null, NoKingdomName, string.Empty, int.MaxValue));
+
+        var assignmentsByKingdomId = assignments.ToLookup(a => a.KingdomId);
+
+        return kingdomKeys
+            .OrderBy(k => k.SortOrder)
+            .ThenBy(k => k.KingdomName)
+            .Select(k =>
             {
-                var levels = g
-                    .Select(a => CurrentLevel(a.AssignmentId, currentLevelByAssignment))
+                var kingdomAssignments = assignmentsByKingdomId[k.KingdomId];
+                var levels = kingdomAssignments
+                    .Select(a => EffectiveLevel(
+                        a.AssignmentId,
+                        currentLevelByAssignment,
+                        masteryCountByAssignment))
                     .ToArray();
-                var buckets = Enumerable.Range(1, 5)
+                var buckets = Enumerable.Range(1, MaxStatsLevel)
                     .Select(level => new LevelCountDto(
                         level,
                         LevelLabel(level),
-                        levels.Count(heroLevel => Math.Min(heroLevel, 5) == level)))
+                        levels.Count(heroLevel => heroLevel == level)))
                     .ToArray();
                 var totalLevelsGained = levels.Sum(level => Math.Max(0, level - 1));
                 var averageLevel = levels.Length == 0
@@ -122,9 +158,9 @@ public static partial class GameEndpoints
                     : Math.Round((decimal)levels.Average(), 2, MidpointRounding.AwayFromZero);
 
                 return new KingdomLevelBreakdownDto(
-                    g.Key.KingdomId,
-                    g.Key.KingdomName,
-                    g.Key.ColorHex,
+                    k.KingdomId,
+                    k.KingdomName,
+                    k.ColorHex,
                     levels.Length,
                     totalLevelsGained,
                     averageLevel,
@@ -150,7 +186,7 @@ public static partial class GameEndpoints
             assignment.HeroName,
             assignment.KingdomId,
             assignment.KingdomName,
-            CanonKingdomColor(assignment.KingdomName, assignment.KingdomColor),
+            StoredColorOrEmpty(assignment.KingdomColor),
             first.TimestampUtc);
     }
 
@@ -254,11 +290,11 @@ public static partial class GameEndpoints
             return new EndGameKingdomKey(
                 assignment.KingdomId,
                 assignment.KingdomName,
-                CanonKingdomColor(assignment.KingdomName, assignment.KingdomColor),
+                StoredColorOrEmpty(assignment.KingdomColor),
                 assignment.SortOrder);
         }
 
-        return new EndGameKingdomKey(null, NoKingdomName, NoKingdomColor, int.MaxValue);
+        return new EndGameKingdomKey(null, NoKingdomName, string.Empty, int.MaxValue);
     }
 
     private static string MonsterName(
@@ -289,20 +325,82 @@ public static partial class GameEndpoints
         return string.IsNullOrWhiteSpace(name) ? null : name;
     }
 
-    private static string CanonKingdomColor(string kingdomName, string? storedHex) =>
-        kingdomName switch
+    private static async Task<Dictionary<int, int>> BuildMasteryCountByAssignment(
+        WorldDbContext db,
+        int[] assignmentIds,
+        Dictionary<int, EndGameAssignmentRow> assignmentById)
+    {
+        if (assignmentIds.Length == 0)
+            return [];
+
+        var skillEvents = await db.CharacterEvents
+            .AsNoTracking()
+            .Where(e => assignmentIds.Contains(e.CharacterAssignmentId)
+                && e.EventType == CharacterEventType.SkillGained)
+            .Select(e => new EndGameSkillEventRow(e.CharacterAssignmentId, e.Data))
+            .ToListAsync();
+
+        return skillEvents
+            .Where(e => IsMasterySkillEvent(e, assignmentById))
+            .GroupBy(e => e.AssignmentId)
+            .ToDictionary(g => g.Key, g => g.Count());
+    }
+
+    private static bool IsMasterySkillEvent(
+        EndGameSkillEventRow skillEvent,
+        Dictionary<int, EndGameAssignmentRow> assignmentById)
+    {
+        if (string.IsNullOrWhiteSpace(skillEvent.Data))
+            return false;
+
+        try
         {
-            "Esgaroth" => "#242F3D",
-            "Aradhryand" => "#243525",
-            "Azanulinbar" => "#8C2423",
-            "Arnor" => "#504B25",
-            NoKingdomName => NoKingdomColor,
-            _ when !string.IsNullOrWhiteSpace(storedHex) => storedHex,
-            _ => NoKingdomColor
-        };
+            using var doc = JsonDocument.Parse(skillEvent.Data);
+            if (TryReadBool(doc.RootElement, "mastery") is { } mastery)
+                return mastery;
+
+            var skillName = TryReadString(doc.RootElement, "skill");
+            if (string.IsNullOrWhiteSpace(skillName)
+                || !assignmentById.TryGetValue(skillEvent.AssignmentId, out var assignment)
+                || assignment.Class is not { } playerClass)
+                return false;
+
+            return LevelingRules.BuyableMasteriesAtL5(playerClass)
+                .Any(m => string.Equals(m.Name, skillName, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static int EffectiveLevel(
+        int assignmentId,
+        Dictionary<int, int> currentLevelByAssignment,
+        Dictionary<int, int> masteryCountByAssignment)
+    {
+        var level = Math.Clamp(
+            CurrentLevel(assignmentId, currentLevelByAssignment),
+            1,
+            LevelingRules.MaxLevel);
+
+        if (level < LevelingRules.MaxLevel)
+            return level;
+
+        var masteryCount = masteryCountByAssignment.TryGetValue(assignmentId, out var count)
+            ? Math.Min(count, LevelingRules.MaxBuyableMasteries)
+            : 0;
+
+        return level + masteryCount;
+    }
+
+    private static string StoredColorOrEmpty(string? storedHex) =>
+        string.IsNullOrWhiteSpace(storedHex) ? string.Empty : storedHex;
 
     private static string LevelLabel(int level) =>
-        level >= 5 ? "5+" : level.ToString(CultureInfo.InvariantCulture);
+        level > LevelingRules.MaxLevel
+            ? $"({level.ToString(CultureInfo.InvariantCulture)})"
+            : level.ToString(CultureInfo.InvariantCulture);
 
     private static int? TryReadInt(JsonElement root, string propertyName)
     {
@@ -330,9 +428,30 @@ public static partial class GameEndpoints
                 : null;
     }
 
+    private static bool? TryReadBool(JsonElement root, string propertyName)
+    {
+        if (!root.TryGetProperty(propertyName, out var property))
+            return null;
+
+        return property.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.String when bool.TryParse(property.GetString(), out var value) => value,
+            _ => null
+        };
+    }
+
+    private sealed record EndGameKingdomRow(
+        int KingdomId,
+        string KingdomName,
+        string? KingdomColor,
+        int SortOrder);
+
     private sealed record EndGameAssignmentRow(
         int AssignmentId,
         string HeroName,
+        PlayerClass? Class,
         int? KingdomId,
         string KingdomName,
         string? KingdomColor,
@@ -367,4 +486,6 @@ public static partial class GameEndpoints
         string KingdomName,
         string ColorHex,
         int SortOrder);
+
+    private sealed record EndGameSkillEventRow(int AssignmentId, string Data);
 }
