@@ -285,9 +285,13 @@ public class ScanMonsterCombatEndpointTests(PostgresFixture postgres)
             .OrderBy(e => e.Timestamp)
             .ToListAsync();
 
-        // LevelUp is preserved; MonsterVictory is gone.
-        Assert.Single(events);
-        Assert.Equal(CharacterEventType.LevelUp, events[0].EventType);
+        // LevelUp is preserved; MonsterVictory is gone. The revert audit row is
+        // intentionally observable and must not count as remaining combat.
+        Assert.Equal(2, events.Count);
+        Assert.Single(events, e => e.EventType == CharacterEventType.LevelUp);
+        Assert.DoesNotContain(events, e => e.EventType == CharacterEventType.MonsterVictory);
+        Assert.DoesNotContain(events, e => e.EventType == CharacterEventType.MonsterDefeat);
+        Assert.Single(events, e => e.EventType == CharacterEventType.MonsterCombatReverted);
     }
 
     [Fact]

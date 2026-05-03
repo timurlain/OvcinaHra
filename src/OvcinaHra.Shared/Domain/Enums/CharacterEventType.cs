@@ -31,5 +31,11 @@ public enum CharacterEventType
     MonsterVictory,
 
     [Display(Name = "Porážka nestvůrou")]
-    MonsterDefeat
+    MonsterDefeat,
+
+    [Display(Name = "Vrácení poznámky")]
+    NoteReverted,
+
+    [Display(Name = "Vrácení souboje s nestvůrou")]
+    MonsterCombatReverted
 }
