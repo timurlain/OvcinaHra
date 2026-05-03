@@ -166,6 +166,7 @@
     private List<LevelChartRow> _levelChartRows = [];
     private bool _isLoading;
     private string? _error;
+    private int _loadVersion;
 
     private static readonly System.Drawing.Color EsgarothColor = System.Drawing.Color.FromArgb(0x24, 0x2F, 0x3D);
     private static readonly System.Drawing.Color AradhryandColor = System.Drawing.Color.FromArgb(0x24, 0x35, 0x25);
@@ -194,6 +195,7 @@
 
     private async Task LoadAsync()
     {
+        var loadVersion = System.Threading.Interlocked.Increment(ref _loadVersion);
         var gameId = ActiveGameId;
         _error = null;
         if (gameId is null)
@@ -207,20 +209,26 @@
         _isLoading = true;
         try
         {
-            _stats = await Api.GetAsync<EndGameStatsDto>($"/api/games/{gameId.Value}/end-game-stats");
-            _levelChartRows = BuildLevelChartRows(_stats);
+            var stats = await Api.GetAsync<EndGameStatsDto>($"/api/games/{gameId.Value}/end-game-stats");
+            if (loadVersion != _loadVersion) return;
+
+            _stats = stats;
+            _levelChartRows = BuildLevelChartRows(stats);
             if (_stats is null)
                 _error = "Hra nebyla nalezena.";
         }
         catch (Exception)
         {
+            if (loadVersion != _loadVersion) return;
+
             _stats = null;
             _levelChartRows = [];
             _error = "Statistiky se nepodařilo načíst.";
         }
         finally
         {
-            _isLoading = false;
+            if (loadVersion == _loadVersion)
+                _isLoading = false;
         }
     }
 

@@ -47,8 +47,12 @@ public static partial class GameEndpoints
                 a.DataJson))
             .ToListAsync();
 
-        var monsterIds = activities
-            .Select(a => TryReadInt(a.DataJson, "monsterId"))
+        var parsedActivities = activities
+            .Select(ParseActivity)
+            .ToList();
+
+        var monsterIds = parsedActivities
+            .Select(a => a.MonsterId)
             .OfType<int>()
             .Distinct()
             .ToArray();
@@ -60,14 +64,14 @@ public static partial class GameEndpoints
                 .ToDictionaryAsync(m => m.Id, m => m.Name);
 
         var assignmentById = assignments.ToDictionary(a => a.AssignmentId);
-        var levelEvents = ExtractLevelEvents(activities);
+        var levelEvents = ExtractLevelEvents(parsedActivities);
         var currentLevelByAssignment = levelEvents
             .GroupBy(e => e.AssignmentId)
             .ToDictionary(g => g.Key, g => Math.Max(1, g.Max(e => e.Level)));
 
         var kingdomBreakdowns = BuildKingdomBreakdowns(assignments, currentLevelByAssignment);
         var firstToLevel5 = BuildFirstToLevel5(levelEvents, assignmentById);
-        var monsterStats = BuildMonsterStats(activities, assignmentById, monsterNamesById);
+        var monsterStats = BuildMonsterStats(parsedActivities, assignmentById, monsterNamesById);
 
         var leaderboard = kingdomBreakdowns
             .Select(k => new KingdomLeaderboardEntryDto(
@@ -151,7 +155,7 @@ public static partial class GameEndpoints
     }
 
     private static MonsterStatsDto BuildMonsterStats(
-        List<EndGameActivityRow> activities,
+        List<EndGameParsedActivityRow> activities,
         Dictionary<int, EndGameAssignmentRow> assignmentById,
         Dictionary<int, string> monsterNamesById)
     {
@@ -183,7 +187,7 @@ public static partial class GameEndpoints
             fallen.Sum(e => e.Count));
     }
 
-    private static List<EndGameLevelEvent> ExtractLevelEvents(List<EndGameActivityRow> activities)
+    private static List<EndGameLevelEvent> ExtractLevelEvents(List<EndGameParsedActivityRow> activities)
     {
         var events = new List<EndGameLevelEvent>();
         foreach (var activity in activities)
@@ -192,7 +196,7 @@ public static partial class GameEndpoints
                 || activity.CharacterAssignmentId is not { } assignmentId)
                 continue;
 
-            if (TryReadInt(activity.DataJson, "level") is { } level)
+            if (activity.Level is { } level)
             {
                 events.Add(new EndGameLevelEvent(
                     activity.ActivityId,
@@ -202,6 +206,40 @@ public static partial class GameEndpoints
             }
         }
         return events;
+    }
+
+    private static EndGameParsedActivityRow ParseActivity(EndGameActivityRow activity)
+    {
+        int? level = null;
+        int? monsterId = null;
+        string? monsterName = null;
+
+        if (!string.IsNullOrWhiteSpace(activity.DataJson))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(activity.DataJson);
+                level = TryReadInt(doc.RootElement, "level");
+                monsterName = TryReadString(doc.RootElement, "monsterName")
+                    ?? TryReadString(doc.RootElement, "monster");
+                monsterId = TryReadInt(doc.RootElement, "monsterId")
+                    ?? TryReadInt(doc.RootElement, "monsterNpcId");
+            }
+            catch (JsonException)
+            {
+                // Treat malformed audit JSON as missing optional stats fields.
+            }
+        }
+
+        return new EndGameParsedActivityRow(
+            activity.ActivityId,
+            activity.TimestampUtc,
+            activity.ActivityType,
+            activity.CharacterAssignmentId,
+            activity.Description,
+            level,
+            monsterName,
+            monsterId);
     }
 
     private static int CurrentLevel(int assignmentId, Dictionary<int, int> currentLevelByAssignment) =>
@@ -224,20 +262,31 @@ public static partial class GameEndpoints
     }
 
     private static string MonsterName(
-        EndGameActivityRow activity,
+        EndGameParsedActivityRow activity,
         Dictionary<int, string> monsterNamesById)
     {
-        if (TryReadString(activity.DataJson, "monsterName") is { } jsonName)
-            return jsonName;
-        if (TryReadString(activity.DataJson, "monster") is { } monster)
-            return monster;
+        if (!string.IsNullOrWhiteSpace(activity.MonsterName))
+            return activity.MonsterName;
 
-        var monsterId = TryReadInt(activity.DataJson, "monsterId")
-            ?? TryReadInt(activity.DataJson, "monsterNpcId");
-        if (monsterId is { } id)
-            return monsterNamesById.TryGetValue(id, out var name) ? name : $"Nestvůra #{id}";
+        if (activity.MonsterId is { } id && monsterNamesById.TryGetValue(id, out var name))
+            return name;
+
+        if (MonsterNameFromDescription(activity.Description) is { } descriptionName)
+            return descriptionName;
+
+        if (activity.MonsterId is { } unknownId)
+            return $"Nestvůra #{unknownId}";
 
         return "Neznámá nestvůra";
+    }
+
+    private static string? MonsterNameFromDescription(string description)
+    {
+        var colonIndex = description.LastIndexOf(':');
+        if (colonIndex < 0 || colonIndex == description.Length - 1) return null;
+
+        var name = description[(colonIndex + 1)..].Trim();
+        return string.IsNullOrWhiteSpace(name) ? null : name;
     }
 
     private static string CanonKingdomColor(string kingdomName, string? storedHex) =>
@@ -255,48 +304,30 @@ public static partial class GameEndpoints
     private static string LevelLabel(int level) =>
         level >= 5 ? "5+" : level.ToString(CultureInfo.InvariantCulture);
 
-    private static int? TryReadInt(string? dataJson, string propertyName)
+    private static int? TryReadInt(JsonElement root, string propertyName)
     {
-        if (string.IsNullOrWhiteSpace(dataJson)) return null;
-        try
-        {
-            using var doc = JsonDocument.Parse(dataJson);
-            if (!doc.RootElement.TryGetProperty(propertyName, out var property))
-                return null;
-
-            return property.ValueKind switch
-            {
-                JsonValueKind.Number when property.TryGetInt32(out var value) => value,
-                JsonValueKind.String when int.TryParse(
-                    property.GetString(),
-                    NumberStyles.Integer,
-                    CultureInfo.InvariantCulture,
-                    out var value) => value,
-                _ => null
-            };
-        }
-        catch (JsonException)
-        {
+        if (!root.TryGetProperty(propertyName, out var property))
             return null;
-        }
+
+        return property.ValueKind switch
+        {
+            JsonValueKind.Number when property.TryGetInt32(out var value) => value,
+            JsonValueKind.String when int.TryParse(
+                property.GetString(),
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var value) => value,
+            _ => null
+        };
     }
 
-    private static string? TryReadString(string? dataJson, string propertyName)
+    private static string? TryReadString(JsonElement root, string propertyName)
     {
-        if (string.IsNullOrWhiteSpace(dataJson)) return null;
-        try
-        {
-            using var doc = JsonDocument.Parse(dataJson);
-            return doc.RootElement.TryGetProperty(propertyName, out var property)
-                && property.ValueKind == JsonValueKind.String
-                && !string.IsNullOrWhiteSpace(property.GetString())
-                    ? property.GetString()
-                    : null;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
+        return root.TryGetProperty(propertyName, out var property)
+            && property.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(property.GetString())
+                ? property.GetString()
+                : null;
     }
 
     private sealed record EndGameAssignmentRow(
@@ -314,6 +345,16 @@ public static partial class GameEndpoints
         int? CharacterAssignmentId,
         string Description,
         string? DataJson);
+
+    private sealed record EndGameParsedActivityRow(
+        int ActivityId,
+        DateTime TimestampUtc,
+        WorldActivityType ActivityType,
+        int? CharacterAssignmentId,
+        string Description,
+        int? Level,
+        string? MonsterName,
+        int? MonsterId);
 
     private sealed record EndGameLevelEvent(
         int ActivityId,

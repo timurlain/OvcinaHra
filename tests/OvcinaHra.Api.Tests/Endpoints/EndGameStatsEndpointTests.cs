@@ -96,6 +96,17 @@ public class EndGameStatsEndpointTests(PostgresFixture postgres)
                     TimestampUtc = start.AddMinutes(7),
                     OrganizerUserId = "org",
                     OrganizerName = "Org",
+                    ActivityType = WorldActivityType.MonsterDefeated,
+                    Description = "Míra přemohl nestvůru: Vlk",
+                    CharacterAssignmentId = miraAssignment.Id,
+                    DataJson = "{}"
+                },
+                new WorldActivity
+                {
+                    GameId = game.Id,
+                    TimestampUtc = start.AddMinutes(8),
+                    OrganizerUserId = "org",
+                    OrganizerName = "Org",
                     ActivityType = WorldActivityType.HeroFell,
                     Description = "Míra padl pod nestvůrou: Vlk",
                     CharacterAssignmentId = miraAssignment.Id,
@@ -124,9 +135,12 @@ public class EndGameStatsEndpointTests(PostgresFixture postgres)
         Assert.Equal("Esgaroth", stats.ExperienceLeaderboard[0].KingdomName);
         Assert.Equal(6, stats.ExperienceLeaderboard[0].TotalLevelsGained);
 
-        var topMonster = Assert.Single(stats.MonsterStats.MostDefeatedMonsters);
+        Assert.Equal(2, stats.MonsterStats.MostDefeatedMonsters.Length);
+        var topMonster = stats.MonsterStats.MostDefeatedMonsters[0];
         Assert.Equal("Skřet", topMonster.MonsterName);
         Assert.Equal(2, topMonster.Count);
+        Assert.Contains(stats.MonsterStats.MostDefeatedMonsters,
+            m => m.MonsterName == "Vlk" && m.Count == 1);
 
         var fallen = Assert.Single(stats.MonsterStats.HeroesFallenByKingdom);
         Assert.Equal("Aradhryand", fallen.KingdomName);
