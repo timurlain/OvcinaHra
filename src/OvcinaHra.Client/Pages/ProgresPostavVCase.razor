@@ -1,0 +1,330 @@
+@page "/progres-postav-v-case"
+@attribute [Authorize]
+@using System.Globalization
+@using Microsoft.JSInterop
+@inject ApiClient Api
+@inject GameContextService GameContext
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>Progres postav v čase</PageTitle>
+
+<div class="oh-progression-page">
+    <header class="oh-progression-head">
+        <div>
+            <p class="oh-progression-kicker">Vývoj hrdinů</p>
+            <h1>Progres postav v čase</h1>
+        </div>
+        <button type="button"
+                class="btn btn-primary oh-progression-export"
+                disabled="@(_isLoading || _isDownloading || ActiveGameId is null)"
+                @onclick="DownloadExcelAsync">
+            <i class="bi bi-file-earmark-excel"></i>
+            <span>@(_isDownloading ? "Stahuji…" : "XLSX")</span>
+        </button>
+    </header>
+
+    @if (_isLoading)
+    {
+        <p class="text-muted">Načítám…</p>
+    }
+    else if (ActiveGameId is null)
+    {
+        <div class="oh-progression-empty">Vyber hru, aby bylo co zobrazit.</div>
+    }
+    else if (_stats is null)
+    {
+        <div class="oh-progression-empty">@(_error ?? "Progres není dostupný.")</div>
+    }
+    else
+    {
+        <section class="oh-progression-charts">
+            @foreach (var kingdom in _kingdomCharts)
+            {
+                <article class="oh-progression-panel">
+                    <div class="oh-progression-panel-head">
+                        <span class="oh-progression-swatch" style="background:@SwatchBackground(kingdom.HexColor)"></span>
+                        <h2>@kingdom.KingdomName</h2>
+                    </div>
+                    @if (kingdom.HasData)
+                    {
+                        <DxChart Data="@kingdom.Rows" CssClass="oh-progression-chart">
+                            @foreach (var level in Levels)
+                            {
+                                var currentLevel = level;
+                                <DxChartStackedBarSeries ArgumentField="@((ProgressionChartRow r) => r.TimeSlotLabel)"
+                                                         ValueField="@((ProgressionChartRow r) => r.CountFor(currentLevel))"
+                                                         Name="@LevelSeriesName(currentLevel)"
+                                                         Color="@LevelColor(currentLevel)"
+                                                         Stack="Úrovně" />
+                            }
+                            <DxChartTooltip Enabled="true" Context="tooltip">
+                                <div>
+                                    <strong>@tooltip.Point.SeriesName</strong>
+                                    <div>@tooltip.Point.Argument: @tooltip.Point.Value</div>
+                                </div>
+                            </DxChartTooltip>
+                        </DxChart>
+                    }
+                    else
+                    {
+                        <div class="oh-progression-empty">Žádné události</div>
+                    }
+                </article>
+            }
+        </section>
+
+        <section class="oh-progression-grid-section">
+            <div class="oh-progression-section-head">
+                <h2>Události progrese</h2>
+                <span>@_eventRows.Count událostí</span>
+            </div>
+            <OvcinaGrid Data="@_eventRows"
+                        KeyFieldName="Id"
+                        LayoutKey="grid-progression-v1"
+                        ShowGroupPanel="true"
+                        AutoExpandAllGroupRows="false"
+                        SelectionMode="GridSelectionMode.Multiple">
+                <Columns>
+                    <DxGridDataColumn FieldName="PlayerName" Caption="Hráč" MinWidth="170" />
+                    <DxGridDataColumn FieldName="CharacterName" Caption="Postava" MinWidth="170" />
+                    <DxGridDataColumn FieldName="KingdomName" Caption="Království" Width="180px">
+                        <CellDisplayTemplate>
+                            @{
+                                var row = (ProgressionEventGridRow)context.DataItem;
+                            }
+                            <span class="oh-progression-kingdom-cell"
+                                  style="border-left-color:@SwatchBackground(row.KingdomHexColor);background:@TintBackground(row.KingdomHexColor)">
+                                @row.KingdomName
+                            </span>
+                        </CellDisplayTemplate>
+                    </DxGridDataColumn>
+                    <DxGridDataColumn FieldName="TimeSlotLabel" Caption="Časový blok" MinWidth="260" />
+                    <DxGridDataColumn FieldName="EventTypeDisplay" Caption="Událost" Width="160px" />
+                    <DxGridDataColumn FieldName="LevelDisplay" Caption="Úroveň" Width="110px" />
+                </Columns>
+                <EmptyDataAreaTemplate>
+                    <div class="text-center text-muted py-5">Žádné události progrese.</div>
+                </EmptyDataAreaTemplate>
+            </OvcinaGrid>
+        </section>
+    }
+</div>
+
+@code {
+    private static readonly int[] Levels = [1, 2, 3, 4, 5, 6, 7];
+
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "gameId")]
+    public int? GameId { get; set; }
+
+    private ProgressionStatsDto? _stats;
+    private List<KingdomProgressionChart> _kingdomCharts = [];
+    private List<ProgressionEventGridRow> _eventRows = [];
+    private bool _isLoading;
+    private bool _isDownloading;
+    private string? _error;
+    private int _loadVersion;
+
+    private int? ActiveGameId => GameId ?? GameContext.SelectedGameId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GameContext.InitializeAsync();
+        GameContext.OnGameChanged += HandleGameChanged;
+    }
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private void HandleGameChanged()
+    {
+        if (GameId is null)
+            _ = InvokeAsync(LoadAsync);
+    }
+
+    private async Task LoadAsync()
+    {
+        var loadVersion = System.Threading.Interlocked.Increment(ref _loadVersion);
+        var gameId = ActiveGameId;
+        _error = null;
+        if (gameId is null)
+        {
+            _stats = null;
+            _kingdomCharts = [];
+            _eventRows = [];
+            _isLoading = false;
+            return;
+        }
+
+        _isLoading = true;
+        try
+        {
+            Console.WriteLine($"[progression] fetch start gameId={gameId.Value}");
+            var stats = await Api.GetAsync<ProgressionStatsDto>($"/api/games/{gameId.Value}/progression-stats");
+            if (loadVersion != _loadVersion) return;
+
+            _stats = stats;
+            _kingdomCharts = BuildKingdomCharts(stats);
+            _eventRows = BuildEventRows(stats);
+            Console.WriteLine(
+                $"[progression] fetch complete gameId={gameId.Value} kingdoms={_kingdomCharts.Count} events={_eventRows.Count}");
+            if (_stats is null)
+                _error = "Hra nebyla nalezena.";
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[progression] fetch failed {ex}");
+            if (loadVersion != _loadVersion) return;
+
+            _stats = null;
+            _kingdomCharts = [];
+            _eventRows = [];
+            _error = "Progres se nepodařilo načíst.";
+        }
+        finally
+        {
+            if (loadVersion == _loadVersion)
+                _isLoading = false;
+        }
+    }
+
+    private async Task DownloadExcelAsync()
+    {
+        if (ActiveGameId is not int gameId)
+            return;
+
+        _isDownloading = true;
+        _error = null;
+        try
+        {
+            Console.WriteLine($"[progression] excel download start gameId={gameId}");
+            var (ok, file, problem) = await Api.DownloadWithProblemAsync($"/api/games/{gameId}/progression-stats.xlsx");
+            if (!ok || file is null)
+            {
+                _error = problem ?? "XLSX se nepodařilo připravit.";
+                return;
+            }
+
+            await using var stream = new MemoryStream(file.Bytes);
+            using var streamReference = new DotNetStreamReference(stream);
+            Console.WriteLine($"[progression] excel interop start gameId={gameId} bytes={file.Bytes.Length}");
+            await JS.InvokeVoidAsync("ovcinaDownloadFile", file.FileName, file.ContentType, streamReference);
+            Console.WriteLine($"[progression] excel interop complete gameId={gameId}");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[progression] excel download failed {ex}");
+            _error = "XLSX se nepodařilo stáhnout.";
+        }
+        finally
+        {
+            _isDownloading = false;
+        }
+    }
+
+    private static List<KingdomProgressionChart> BuildKingdomCharts(ProgressionStatsDto? stats) =>
+        stats?.Kingdoms
+            .Select(k => new KingdomProgressionChart(
+                k.KingdomId,
+                k.KingdomName,
+                k.HexColor,
+                k.SortOrder,
+                k.Buckets.Select(b => new ProgressionChartRow(b.TimeSlotId, b.Label, b.HeroCountByLevel)).ToList()))
+            .ToList() ?? [];
+
+    private static List<ProgressionEventGridRow> BuildEventRows(ProgressionStatsDto? stats) =>
+        stats?.Events
+            .Select((e, index) => new ProgressionEventGridRow(
+                index + 1,
+                e.PlayerName,
+                e.CharacterName,
+                e.KingdomName,
+                e.KingdomHexColor,
+                e.TimeSlotLabel,
+                EventTypeDisplay(e.EventType),
+                LevelDisplay(e.LevelGained)))
+            .ToList() ?? [];
+
+    private static string EventTypeDisplay(string eventType) => eventType switch
+    {
+        "LevelUp" => "Zvýšení úrovně",
+        "MasterySkillGained" => "Mistrovství",
+        _ => eventType
+    };
+
+    private static string LevelDisplay(int level)
+    {
+        var masteryCount = level - LevelingRules.MaxLevel;
+        return masteryCount > 0
+            ? $"{level.ToString(CultureInfo.InvariantCulture)} ({masteryCount} mistrovství)"
+            : level.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static string LevelSeriesName(int level) => level switch
+    {
+        6 => "Úroveň 6 (1 mistrovství)",
+        7 => "Úroveň 7 (2 mistrovství)",
+        _ => $"Úroveň {level.ToString(CultureInfo.InvariantCulture)}"
+    };
+
+    private static System.Drawing.Color LevelColor(int level) => level switch
+    {
+        1 => System.Drawing.Color.FromArgb(0xD5, 0xD8, 0xD0),
+        2 => System.Drawing.Color.FromArgb(0xB9, 0xBD, 0xAF),
+        3 => System.Drawing.Color.FromArgb(0x98, 0x9F, 0x8D),
+        4 => System.Drawing.Color.FromArgb(0x73, 0x7C, 0x6E),
+        5 => System.Drawing.Color.FromArgb(0x4F, 0x59, 0x4D),
+        6 => System.Drawing.Color.FromArgb(0xD7, 0x9B, 0x2D),
+        _ => System.Drawing.Color.FromArgb(0xF9, 0xC7, 0x4F)
+    };
+
+    private static string SwatchBackground(string? colorHex) =>
+        IsHexColor(colorHex) ? colorHex!.Trim() : "#6A6A6A";
+
+    private static string TintBackground(string? colorHex) =>
+        IsHexColor(colorHex) ? $"{colorHex!.Trim()}22" : "#6A6A6A22";
+
+    private static bool IsHexColor(string? colorHex)
+    {
+        if (string.IsNullOrWhiteSpace(colorHex))
+            return false;
+
+        var hex = colorHex.AsSpan().Trim();
+        return hex.Length == 7
+            && hex[0] == '#'
+            && int.TryParse(hex[1..], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out _);
+    }
+
+    public void Dispose() => GameContext.OnGameChanged -= HandleGameChanged;
+
+    private sealed record KingdomProgressionChart(
+        int KingdomId,
+        string KingdomName,
+        string HexColor,
+        int SortOrder,
+        List<ProgressionChartRow> Rows)
+    {
+        public bool HasData => Rows.Any(r => r.Total > 0);
+    }
+
+    private sealed record ProgressionChartRow(
+        int TimeSlotId,
+        string TimeSlotLabel,
+        int[] Counts)
+    {
+        public int CountFor(int level) =>
+            level >= 1 && level <= Counts.Length ? Counts[level - 1] : 0;
+
+        public int Total => Counts.Sum();
+    }
+
+    private sealed record ProgressionEventGridRow(
+        int Id,
+        string PlayerName,
+        string CharacterName,
+        string KingdomName,
+        string KingdomHexColor,
+        string TimeSlotLabel,
+        string EventTypeDisplay,
+        string LevelDisplay);
+}

@@ -13,10 +13,16 @@
             <p class="oh-endstats-kicker">Přehled Ovčiny</p>
             <h1>Statistiky konce hry</h1>
         </div>
-        @if (_stats is not null)
-        {
-            <span class="oh-endstats-pill">@_stats.Kingdoms.Sum(k => k.HeroCount) hrdinové</span>
-        }
+        <div class="oh-endstats-actions">
+            <a class="btn btn-sm btn-outline-secondary" href="@ProgressionHref">
+                <i class="bi bi-graph-up-arrow"></i>
+                <span>Progrese v čase</span>
+            </a>
+            @if (_stats is not null)
+            {
+                <span class="oh-endstats-pill">@_stats.Kingdoms.Sum(k => k.HeroCount) hrdinové</span>
+            }
+        </div>
     </header>
 
     @if (_isLoading)
@@ -165,6 +171,9 @@
     private int _loadVersion;
 
     private int? ActiveGameId => GameId ?? GameContext.SelectedGameId;
+    private string ProgressionHref => ActiveGameId is int gameId
+        ? $"progres-postav-v-case?gameId={gameId.ToString(CultureInfo.InvariantCulture)}"
+        : "progres-postav-v-case";
     private bool HasLevelData => _levelChartRows.Any(r => r.Total > 0);
     private bool HasMonsterData => _stats?.MonsterStats.MonsterDefeatedCount > 0
         || _stats?.MonsterStats.HeroFellCount > 0;

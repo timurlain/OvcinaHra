@@ -53,6 +53,8 @@ public static partial class GameEndpoints
         group.MapDelete("/{gameId:int}/creatures/{monsterId:int}", RemoveCreatureFromGame);
         group.MapDelete("/{gameId:int}/quests/{questId:int}", RemoveQuestFromGame);
         group.MapGet("/{gameId:int}/end-game-stats", GetEndGameStats);
+        group.MapGet("/{gameId:int}/progression-stats", GetProgressionStats);
+        group.MapGet("/{gameId:int}/progression-stats.xlsx", DownloadProgressionStatsXlsx);
 
         return group;
     }

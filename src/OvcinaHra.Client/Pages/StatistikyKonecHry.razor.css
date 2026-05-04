@@ -41,6 +41,14 @@
     white-space: nowrap;
 }
 
+.oh-endstats-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
 .oh-endstats-summary,
 .oh-endstats-grid {
     display: grid;
@@ -156,5 +164,9 @@
     .oh-endstats-head {
         display: grid;
         align-items: start;
+    }
+
+    .oh-endstats-actions {
+        justify-content: flex-start;
     }
 }
