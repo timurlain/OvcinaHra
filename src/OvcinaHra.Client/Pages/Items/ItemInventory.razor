@@ -87,71 +87,31 @@ else
     </OvcinaGrid>
 }
 
-<DxPopup @bind-Visible="@isUploadPopupVisible" HeaderText="@UploadHeader" Width="460px">
+<DxPopup Visible="@isUploadPopupVisible" VisibleChanged="OnUploadPopupVisibleChanged" HeaderText="@UploadHeader" Width="460px">
     <BodyContentTemplate Context="popupContext">
-        @if (!string.IsNullOrWhiteSpace(uploadError))
+        @if (uploadItem is { } item)
         {
-            <div class="alert alert-danger">@uploadError</div>
-        }
-
-        <div class="d-flex flex-column gap-3">
-            <div style="width: 180px; aspect-ratio: 2 / 3; border: 1px solid var(--bs-border-color); border-radius: 6px; overflow: hidden; background: var(--oh-surface-muted, #f6f2e8);">
-                @if (!string.IsNullOrWhiteSpace(uploadPreviewUrl) && !uploadPreviewImageFailed)
-                {
-                    <img src="@uploadPreviewUrl"
-                         alt="Náhled obrázku"
-                         style="width: 100%; height: 100%; object-fit: cover;"
-                         @onerror="() => uploadPreviewImageFailed = true" />
-                }
-                else if (!string.IsNullOrWhiteSpace(uploadItem?.ImageUrl) && !uploadExistingImageFailed)
-                {
-                    <img src="@uploadItem.ImageUrl"
-                         alt="Obrázek předmětu"
-                         style="width: 100%; height: 100%; object-fit: cover;"
-                         @onerror="() => uploadExistingImageFailed = true" />
-                }
-                else
-                {
-                    <div class="d-flex align-items-center justify-content-center h-100 text-muted">
-                        <i class="bi bi-image" style="font-size: 2rem;"></i>
-                    </div>
-                }
-            </div>
-
-            <InputFile OnChange="OnUploadFileSelected" accept=".jpg,.jpeg,.png,.webp" disabled="@isUploading" />
+            <ImagePicker @key="item.Id"
+                         EntityType="items"
+                         EntityId="item.Id"
+                         Alt="Obrázek předmětu"
+                         AspectRatio="2:3"
+                         Width="180px" />
 
             <div class="d-flex gap-2 justify-content-end">
-                <button type="button" class="btn btn-secondary" @onclick="CloseUploadPopup" disabled="@isUploading">Zrušit</button>
-                <button type="button" class="btn btn-primary" @onclick="UploadImageAsync" disabled="@(isUploading || uploadBytes is null)">
-                    @if (isUploading)
-                    {
-                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                    }
-                    <i class="bi bi-upload"></i>
-                    Nahrát
-                </button>
+                <button type="button" class="btn btn-secondary" @onclick="CloseUploadPopupAsync">Zavřít</button>
             </div>
-        </div>
+        }
     </BodyContentTemplate>
 </DxPopup>
 
 @code {
-    private const long MaxUploadFileSize = 5 * 1024 * 1024;
-
     private List<ItemListDto> items = [];
     private bool loading = true;
     private string? error;
 
     private bool isUploadPopupVisible;
-    private bool isUploading;
     private ItemListDto? uploadItem;
-    private byte[]? uploadBytes;
-    private string? uploadPreviewUrl;
-    private string? uploadError;
-    private string uploadFileName = "item-image";
-    private string uploadContentType = "image/jpeg";
-    private bool uploadPreviewImageFailed;
-    private bool uploadExistingImageFailed;
 
     private string UploadHeader => uploadItem is null ? "Nahrát obrázek" : $"Nahrát obrázek: {uploadItem.Name}";
 
@@ -273,102 +233,38 @@ else
     {
         Console.WriteLine($"[inventory] description=upload-popup.open itemId={item.Id} hasImage={item.HasImage}");
         uploadItem = item;
-        uploadBytes = null;
-        uploadPreviewUrl = null;
-        uploadError = null;
-        uploadFileName = "item-image";
-        uploadContentType = "image/jpeg";
-        uploadPreviewImageFailed = false;
-        uploadExistingImageFailed = false;
         isUploadPopupVisible = true;
     }
 
-    private void CloseUploadPopup()
+    private async Task OnUploadPopupVisibleChanged(bool visible)
     {
-        isUploadPopupVisible = false;
-        uploadItem = null;
-        uploadBytes = null;
-        uploadPreviewUrl = null;
-        uploadError = null;
-        uploadPreviewImageFailed = false;
-        uploadExistingImageFailed = false;
-    }
-
-    private async Task OnUploadFileSelected(InputFileChangeEventArgs e)
-    {
-        uploadError = null;
-        var file = e.File;
-        if (file.Size > MaxUploadFileSize)
+        if (visible)
         {
-            uploadError = $"Soubor je příliš velký (max {MaxUploadFileSize / 1024 / 1024} MB).";
-            uploadBytes = null;
-            uploadPreviewUrl = null;
-            uploadPreviewImageFailed = false;
-            Console.WriteLine($"[inventory] description=file-select.rejected reason=too-large size={file.Size}");
+            isUploadPopupVisible = true;
             return;
         }
 
-        try
-        {
-            Console.WriteLine($"[inventory] description=file-select.read.before fileName={file.Name} size={file.Size}");
-            uploadFileName = string.IsNullOrWhiteSpace(file.Name) ? "item-image" : file.Name;
-            uploadContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "image/jpeg" : file.ContentType;
-
-            await using var stream = file.OpenReadStream(MaxUploadFileSize);
-            using var buffer = new MemoryStream();
-            await stream.CopyToAsync(buffer);
-            uploadBytes = buffer.ToArray();
-            uploadPreviewUrl = $"data:{uploadContentType};base64,{Convert.ToBase64String(uploadBytes)}";
-            uploadPreviewImageFailed = false;
-            Console.WriteLine($"[inventory] description=file-select.read.after fileName={uploadFileName} bytes={uploadBytes.Length}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[inventory] description=file-select.catch detail={ex.Message}");
-            uploadError = "Obrázek se nepodařilo načíst.";
-            uploadBytes = null;
-            uploadPreviewUrl = null;
-            uploadPreviewImageFailed = false;
-        }
+        await CloseUploadPopupAsync();
     }
 
-    private async Task UploadImageAsync()
+    private async Task CloseUploadPopupAsync()
     {
-        if (uploadItem is null || uploadBytes is null) return;
+        var itemId = uploadItem?.Id;
+        Console.WriteLine($"[inventory] description=upload-popup.close itemId={itemId}");
 
-        uploadError = null;
-        isUploading = true;
+        isUploadPopupVisible = false;
+        uploadItem = null;
+
+        if (itemId is null) return;
+
         try
         {
-            using var content = new MultipartFormDataContent();
-            using var fileContent = new ByteArrayContent(uploadBytes);
-            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(uploadContentType);
-            content.Add(fileContent, "file", uploadFileName);
-
-            Console.WriteLine($"[inventory] description=image-upload.api.before itemId={uploadItem.Id} fileName={uploadFileName} bytes={uploadBytes.Length}");
-            var uploadTimer = System.Diagnostics.Stopwatch.StartNew();
-            var (ok, _, problemDetail, _) = await Api.PostMultipartWithProblemAsync<ImageUploadResult>(
-                $"/api/images/items/{uploadItem.Id}",
-                content);
-            uploadTimer.Stop();
-            Console.WriteLine($"[inventory] description=image-upload.api.after itemId={uploadItem.Id} ok={ok} elapsedMs={uploadTimer.ElapsedMilliseconds}");
-            if (!ok)
-            {
-                uploadError = problemDetail ?? "Nahrání obrázku selhalo.";
-                return;
-            }
-
-            await RefreshItemRowAsync(uploadItem.Id);
-            CloseUploadPopup();
+            await RefreshItemRowAsync(itemId.Value);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[inventory] description=image-upload.catch itemId={uploadItem?.Id} detail={ex.Message}");
-            uploadError = ex.Message;
-        }
-        finally
-        {
-            isUploading = false;
+            Console.WriteLine($"[inventory] description=upload-popup.refresh.catch itemId={itemId.Value} detail={ex.Message}");
+            error = ex.Message;
         }
     }
 
