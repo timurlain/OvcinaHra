@@ -100,7 +100,8 @@ public static partial class GameEndpoints
                     s.Stage,
                     s.InGameYear,
                     s.StartTime,
-                    (decimal)s.Duration.TotalHours)))
+                    (decimal)s.Duration.TotalHours),
+                ShortTimeSlotDisplay(s.StartTime)))
             .ToListAsync(ct);
 
         logger.LogInformation("[progression] CharacterEvent query start gameId={GameId}", gameId);
@@ -142,6 +143,7 @@ public static partial class GameEndpoints
                 e.KingdomHexColor,
                 e.TimeSlotId,
                 e.TimeSlotLabel,
+                e.TimeSlotShortLabel,
                 e.EventType,
                 e.LevelGained,
                 e.TimestampUtc))
@@ -191,6 +193,7 @@ public static partial class GameEndpoints
                 bucket.Id,
                 timeSlots.IndexOf(bucket),
                 bucket.Label,
+                bucket.ShortLabel,
                 PlayerFullName(ev.PlayerFirstName, ev.PlayerLastName) ?? "Neznámý hráč",
                 ev.CharacterName,
                 ev.EventType == CharacterEventType.LevelUp ? "LevelUp" : "MasterySkillGained",
@@ -358,6 +361,7 @@ public static partial class GameEndpoints
                     .Select((slot, index) => new TimeSlotBucketDto(
                         slot.Id,
                         slot.Label,
+                        slot.ShortLabel,
                         countsByKingdomAndBucket[k.KingdomId][index]))
                     .ToArray()))
             .ToArray();
@@ -411,6 +415,9 @@ public static partial class GameEndpoints
         return string.IsNullOrWhiteSpace(fullName) ? null : fullName;
     }
 
+    private static string ShortTimeSlotDisplay(DateTime startTime) =>
+        startTime.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture);
+
     private sealed record ProgressionKingdomRow(
         int KingdomId,
         string KingdomName,
@@ -423,7 +430,8 @@ public static partial class GameEndpoints
         TimeSpan Duration,
         GameTimePhase Stage,
         int? InGameYear,
-        string Label);
+        string Label,
+        string ShortLabel);
 
     private sealed record ProgressionCharacterEventRow(
         int EventId,
@@ -447,6 +455,7 @@ public static partial class GameEndpoints
         int TimeSlotId,
         int TimeSlotIndex,
         string TimeSlotLabel,
+        string TimeSlotShortLabel,
         string PlayerName,
         string CharacterName,
         string EventType,

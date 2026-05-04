@@ -14,6 +14,7 @@ public record KingdomProgressionDto(
 public record TimeSlotBucketDto(
     int TimeSlotId,
     string Label,
+    string TimeSlotShortLabel,
     int[] HeroCountByLevel);
 
 public record ProgressionEventRow(
@@ -23,6 +24,7 @@ public record ProgressionEventRow(
     string KingdomHexColor,
     int TimeSlotId,
     string TimeSlotLabel,
+    string TimeSlotShortLabel,
     string EventType,
     int LevelGained,
     DateTime TimestampUtc);
