@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
@@ -41,8 +42,12 @@ public static class ItemEndpoints
         return group;
     }
 
-    private static async Task<Ok<List<ItemListDto>>> GetAll(WorldDbContext db, HttpContext http)
+    private static async Task<Ok<List<ItemListDto>>> GetAll(
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory)
     {
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.ItemInventory");
         var rows = await db.Items
             .OrderBy(i => i.Name)
             .Select(i => new
@@ -86,7 +91,7 @@ public static class ItemEndpoints
             // top + bottom of 5:7 portrait card photos. "medium" is 240×336
             // (5:7) so the bytes match the .oh-it-tile container ratio and
             // ImageSharp's Crop mode no longer eats the card art.
-            ImageUrl: string.IsNullOrWhiteSpace(r.ImagePath) ? null : ImageEndpoints.ThumbUrl(http, "items", r.Id, "medium"),
+            ImageUrl: GetInventoryThumbUrl(http, logger, "items-list", r.Id, r.ImagePath),
             HasRecipe: craftedSet.Contains(r.Id),
             StockCount: r.StockCount,
             StockNote: r.StockNote,
@@ -95,17 +100,20 @@ public static class ItemEndpoints
         return TypedResults.Ok(items);
     }
 
-    private static async Task<Results<Ok<ItemDetailDto>, NotFound>> GetById(int id, WorldDbContext db, HttpContext http)
+    private static async Task<Results<Ok<ItemDetailDto>, NotFound>> GetById(
+        int id,
+        WorldDbContext db,
+        HttpContext http,
+        ILoggerFactory loggerFactory)
     {
         var item = await db.Items.FindAsync(id);
         if (item is null) return TypedResults.NotFound();
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.ItemInventory");
 
         // Populate ImageUrl on the detail DTO so the new ItemDetail page (and any
         // future caller) doesn't have to make a second /api/images/items/{id}
         // round-trip just to render the hero (per Copilot review on PR #90).
-        var imageUrl = string.IsNullOrWhiteSpace(item.ImagePath)
-            ? null
-            : ImageEndpoints.ThumbUrl(http, "items", item.Id, "medium");
+        var imageUrl = GetInventoryThumbUrl(http, logger, "item-detail", item.Id, item.ImagePath);
 
         // Issue #154 — same flag as the catalog list, populated here so the
         // quick-peek popup can gate the IsCraftable badge consistently.
@@ -192,31 +200,87 @@ public static class ItemEndpoints
         int id,
         UpdateItemStockDto dto,
         WorldDbContext db,
-        HttpContext http)
+        HttpContext http,
+        ILoggerFactory loggerFactory)
     {
-        var item = await db.Items.FindAsync(id);
-        if (item is null) return TypedResults.NotFound();
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.Endpoints.ItemInventory");
+        var endpointTimer = Stopwatch.StartNew();
+        logger.LogInformation(
+            "[inventory] description=stock-update.entry itemId={ItemId} stockCount={StockCount} hasNote={HasNote}",
+            id,
+            dto.StockCount,
+            !string.IsNullOrWhiteSpace(dto.StockNote));
 
-        if (dto.StockCount < 0)
-            return TypedResults.Problem(
-                title: "Neplatný počet kusů",
-                detail: "Počet kusů na skladě nesmí být záporný.",
-                statusCode: StatusCodes.Status400BadRequest);
+        try
+        {
+            var item = await db.Items.FindAsync(id);
+            if (item is null)
+            {
+                logger.LogInformation(
+                    "[inventory] description=stock-update.not-found itemId={ItemId} elapsedMs={ElapsedMs}",
+                    id,
+                    endpointTimer.ElapsedMilliseconds);
+                return TypedResults.NotFound();
+            }
 
-        var stockNote = dto.StockNote?.Trim();
-        if (!string.IsNullOrEmpty(stockNote) && stockNote.Length > StockNoteMaxLength)
-            return TypedResults.Problem(
-                title: "Poznámka inventury je příliš dlouhá",
-                detail: $"Poznámka inventury nesmí být delší než {StockNoteMaxLength} znaků.",
-                statusCode: StatusCodes.Status400BadRequest);
+            if (dto.StockCount < 0)
+            {
+                logger.LogInformation(
+                    "[inventory] description=stock-update.validation-failed itemId={ItemId} reason=negative-count elapsedMs={ElapsedMs}",
+                    id,
+                    endpointTimer.ElapsedMilliseconds);
+                return TypedResults.Problem(
+                    title: "Neplatný počet kusů",
+                    detail: "Počet kusů na skladě nesmí být záporný.",
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
 
-        item.StockCount = dto.StockCount;
-        item.StockNote = string.IsNullOrWhiteSpace(stockNote) ? null : stockNote;
-        item.StockUpdatedUtc = DateTime.UtcNow;
-        item.StockUpdatedBy = GetOrganizerDisplayName(http.User);
+            var stockNote = dto.StockNote?.Trim();
+            if (!string.IsNullOrEmpty(stockNote) && stockNote.Length > StockNoteMaxLength)
+            {
+                logger.LogInformation(
+                    "[inventory] description=stock-update.validation-failed itemId={ItemId} reason=note-too-long noteLength={NoteLength} elapsedMs={ElapsedMs}",
+                    id,
+                    stockNote.Length,
+                    endpointTimer.ElapsedMilliseconds);
+                return TypedResults.Problem(
+                    title: "Poznámka inventury je příliš dlouhá",
+                    detail: $"Poznámka inventury nesmí být delší než {StockNoteMaxLength} znaků.",
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
 
-        await db.SaveChangesAsync();
-        return TypedResults.NoContent();
+            item.StockCount = dto.StockCount;
+            item.StockNote = string.IsNullOrWhiteSpace(stockNote) ? null : stockNote;
+            item.StockUpdatedUtc = DateTime.UtcNow;
+            item.StockUpdatedBy = GetOrganizerDisplayName(http.User);
+
+            logger.LogInformation(
+                "[inventory] description=stock-update.db-write.before itemId={ItemId}",
+                id);
+            var dbTimer = Stopwatch.StartNew();
+            var rowsAffected = await db.SaveChangesAsync();
+            dbTimer.Stop();
+            logger.LogInformation(
+                "[inventory] description=stock-update.db-write.after itemId={ItemId} rowsAffected={RowsAffected} elapsedMs={ElapsedMs}",
+                id,
+                rowsAffected,
+                dbTimer.ElapsedMilliseconds);
+            logger.LogInformation(
+                "[inventory] description=stock-update.exit itemId={ItemId} status=204 elapsedMs={ElapsedMs}",
+                id,
+                endpointTimer.ElapsedMilliseconds);
+            return TypedResults.NoContent();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "[inventory] description=stock-update.catch itemId={ItemId} elapsedMs={ElapsedMs} detail={Detail}",
+                id,
+                endpointTimer.ElapsedMilliseconds,
+                ex.Message);
+            throw;
+        }
     }
 
     private static async Task<Results<NoContent, NotFound>> Delete(int id, WorldDbContext db)
@@ -502,6 +566,46 @@ public static class ItemEndpoints
         StockNote: item.StockNote,
         StockUpdatedUtc: item.StockUpdatedUtc,
         StockUpdatedBy: item.StockUpdatedBy);
+
+    private static string? GetInventoryThumbUrl(
+        HttpContext http,
+        ILogger logger,
+        string source,
+        int itemId,
+        string? imagePath)
+    {
+        if (string.IsNullOrWhiteSpace(imagePath)) return null;
+
+        logger.LogInformation(
+            "[inventory] description=image-sas.before source={Source} itemId={ItemId}",
+            source,
+            itemId);
+        var timer = Stopwatch.StartNew();
+        try
+        {
+            var url = ImageEndpoints.ThumbUrl(http, "items", itemId, "medium");
+            timer.Stop();
+            logger.LogInformation(
+                "[inventory] description=image-sas.after source={Source} itemId={ItemId} hasUrl={HasUrl} elapsedMs={ElapsedMs}",
+                source,
+                itemId,
+                !string.IsNullOrWhiteSpace(url),
+                timer.ElapsedMilliseconds);
+            return url;
+        }
+        catch (Exception ex)
+        {
+            timer.Stop();
+            logger.LogWarning(
+                ex,
+                "[inventory] description=image-sas.catch source={Source} itemId={ItemId} elapsedMs={ElapsedMs} detail={Detail}",
+                source,
+                itemId,
+                timer.ElapsedMilliseconds,
+                ex.Message);
+            return null;
+        }
+    }
 
     private static string? GetOrganizerDisplayName(ClaimsPrincipal user)
     {
