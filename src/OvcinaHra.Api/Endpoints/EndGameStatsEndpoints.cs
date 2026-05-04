@@ -38,7 +38,6 @@ public static partial class GameEndpoints
             .Select(a => new EndGameAssignmentRow(
                 a.Id,
                 a.Character.Name,
-                a.Class,
                 a.KingdomId,
                 a.Kingdom != null ? a.Kingdom.Name : NoKingdomName,
                 a.Kingdom != null ? a.Kingdom.HexColor : null,
@@ -83,8 +82,7 @@ public static partial class GameEndpoints
             .ToDictionary(g => g.Key, g => Math.Max(1, g.Max(e => e.Level)));
         var masteryCountByAssignment = await BuildMasteryCountByAssignment(
             db,
-            assignments.Select(a => a.AssignmentId).ToArray(),
-            assignmentById);
+            assignments.Select(a => a.AssignmentId).ToArray());
 
         var kingdomBreakdowns = BuildKingdomBreakdowns(
             kingdoms,
@@ -327,8 +325,7 @@ public static partial class GameEndpoints
 
     private static async Task<Dictionary<int, int>> BuildMasteryCountByAssignment(
         WorldDbContext db,
-        int[] assignmentIds,
-        Dictionary<int, EndGameAssignmentRow> assignmentById)
+        int[] assignmentIds)
     {
         if (assignmentIds.Length == 0)
             return [];
@@ -341,14 +338,12 @@ public static partial class GameEndpoints
             .ToListAsync();
 
         return skillEvents
-            .Where(e => IsMasterySkillEvent(e, assignmentById))
+            .Where(IsMasterySkillEvent)
             .GroupBy(e => e.AssignmentId)
             .ToDictionary(g => g.Key, g => g.Count());
     }
 
-    private static bool IsMasterySkillEvent(
-        EndGameSkillEventRow skillEvent,
-        Dictionary<int, EndGameAssignmentRow> assignmentById)
+    private static bool IsMasterySkillEvent(EndGameSkillEventRow skillEvent)
     {
         if (string.IsNullOrWhiteSpace(skillEvent.Data))
             return false;
@@ -356,17 +351,7 @@ public static partial class GameEndpoints
         try
         {
             using var doc = JsonDocument.Parse(skillEvent.Data);
-            if (TryReadBool(doc.RootElement, "mastery") is { } mastery)
-                return mastery;
-
-            var skillName = TryReadString(doc.RootElement, "skill");
-            if (string.IsNullOrWhiteSpace(skillName)
-                || !assignmentById.TryGetValue(skillEvent.AssignmentId, out var assignment)
-                || assignment.Class is not { } playerClass)
-                return false;
-
-            return LevelingRules.BuyableMasteriesAtL5(playerClass)
-                .Any(m => string.Equals(m.Name, skillName, StringComparison.OrdinalIgnoreCase));
+            return TryReadBool(doc.RootElement, "mastery") == true;
         }
         catch (JsonException)
         {
@@ -451,7 +436,6 @@ public static partial class GameEndpoints
     private sealed record EndGameAssignmentRow(
         int AssignmentId,
         string HeroName,
-        PlayerClass? Class,
         int? KingdomId,
         string KingdomName,
         string? KingdomColor,

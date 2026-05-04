@@ -77,6 +77,12 @@
                                           Name="@currentSeries.Name"
                                           Color="@currentSeries.Color" />
                     }
+                    <DxChartTooltip Enabled="true" Context="tooltip">
+                        <div>
+                            <strong>@TooltipLevelText(tooltip)</strong>
+                            <div>@tooltip.Point.SeriesName: @tooltip.Point.Value</div>
+                        </div>
+                    </DxChartTooltip>
                 </DxChart>
             }
             else
@@ -245,6 +251,30 @@
 
     private static string SwatchBackground(string? colorHex) =>
         IsHexColor(colorHex) ? colorHex!.Trim() : System.Drawing.Color.Gray.Name;
+
+    private static string TooltipLevelText(DevExpress.Blazor.ChartTooltipData tooltip)
+    {
+        if (!TryReadTooltipLevel(tooltip.Point.Argument?.ToString(), out var level))
+            return "Úroveň";
+
+        var masteryCount = level - OvcinaHra.Shared.Domain.Rules.LevelingRules.MaxLevel;
+        return masteryCount > 0
+            ? $"Úroveň {level} ({masteryCount} mistrovství)"
+            : $"Úroveň {level}";
+    }
+
+    private static bool TryReadTooltipLevel(string? label, out int level)
+    {
+        level = 0;
+        if (string.IsNullOrWhiteSpace(label))
+            return false;
+
+        var normalized = label.Trim();
+        if (normalized.Length > 2 && normalized[0] == '(' && normalized[^1] == ')')
+            normalized = normalized[1..^1];
+
+        return int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out level);
+    }
 
     private static System.Drawing.Color ParseColor(string? colorHex)
     {
