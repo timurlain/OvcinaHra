@@ -1,7 +1,10 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
@@ -261,90 +264,27 @@ public static class ScanEndpoints
         return TypedResults.Created($"/api/scan/{personId}/events/{ev.Id}", ToDto(ev));
     }
 
-    private static async Task<IResult> DeleteLastLevelUp(
+    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> DeleteLastLevelUp(
         int personId, WorldDbContext db, HttpContext httpContext, ILoggerFactory loggerFactory)
     {
-        var assignment = await db.CharacterAssignments
-            .Include(a => a.Character)
-            .Include(a => a.Events)
-            .FirstOrDefaultAsync(a => a.ExternalPersonId == personId && a.IsActive);
-
-        if (assignment is null) return TypedResults.NotFound();
-
-        var idempotencyKey = GetIdempotencyKey(httpContext);
-        if (await TryGetIdempotentEventAsync(db, assignment.Id, idempotencyKey) is { } replay)
-            return TypedResults.Ok(replay);
-
-        var levelUp = assignment.Events
-            .Where(e => e.EventType == CharacterEventType.LevelUp)
-            .OrderByDescending(e => e.Timestamp)
-            .ThenByDescending(e => e.Id)
-            .FirstOrDefault();
-
-        if (levelUp is null) return TypedResults.NotFound();
-        if (!IsValidIdempotencyKey(idempotencyKey))
-            return SaveFailed("Hlavička X-Idempotency-Key je příliš dlouhá.");
-
-        var organizer = GetOrganizer(httpContext);
-        var audit = new CharacterEvent
-        {
-            CharacterAssignmentId = assignment.Id,
-            Timestamp = DateTime.UtcNow,
-            OrganizerUserId = organizer.UserId,
-            OrganizerName = organizer.Name,
-            EventType = CharacterEventType.LevelUpReverted,
-            Data = JsonSerializer.Serialize(new
+        return await DeleteLastMatchingEventAsync(
+            personId,
+            db,
+            httpContext,
+            loggerFactory,
+            "last-levelup",
+            [CharacterEventType.LevelUp],
+            CharacterEventType.LevelUpReverted,
+            WorldActivityType.CharacterLevelReverted,
+            assignment => $"{assignment.Character.Name} – vrácena úroveň",
+            (original, key, revertedAtUtc) => JsonSerializer.Serialize(new
             {
-                revertedEventId = levelUp.Id,
-                revertedLevel = ExtractLevel(levelUp.Data)
-            }),
-            Location = levelUp.Location
-        };
-
-        db.CharacterEvents.Remove(levelUp);
-        db.CharacterEvents.Add(audit);
-        TrackIdempotency(db, assignment.Id, idempotencyKey, audit);
-        await db.SaveChangesAsync();
-
-        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.WorldActivityMirror");
-        if (!await db.Games.AnyAsync(g => g.Id == assignment.GameId))
-        {
-            logger.LogInformation(
-                "[world-activity-mirror] level-reverted assignmentId={AssignmentId} gameId={GameId} skipped-no-game=true",
-                assignment.Id,
-                assignment.GameId);
-        }
-        else
-        {
-            logger.LogInformation(
-                "[world-activity-mirror] level-reverted assignmentId={AssignmentId} gameId={GameId} skipped-no-game=false",
-                assignment.Id,
-                assignment.GameId);
-            try
-            {
-                db.WorldActivities.Add(new WorldActivity
-                {
-                    GameId = assignment.GameId,
-                    TimestampUtc = audit.Timestamp,
-                    OrganizerUserId = organizer.UserId,
-                    OrganizerName = organizer.Name,
-                    ActivityType = WorldActivityType.CharacterLevelReverted,
-                    Description = $"{assignment.Character.Name} – vrácena úroveň",
-                    CharacterAssignmentId = assignment.Id,
-                    DataJson = audit.Data
-                });
-                await db.SaveChangesAsync();
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex,
-                    "[world-activity-mirror] level-reverted audit-failed assignmentId={AssignmentId} gameId={GameId}",
-                    assignment.Id,
-                    assignment.GameId);
-            }
-        }
-
-        return TypedResults.Ok(ToDto(audit));
+                revertedEventId = original.Id,
+                revertedLevel = ExtractLevel(original.Data),
+                originalTimestampUtc = original.Timestamp,
+                revertedAtUtc,
+                idempotencyKey = key
+            }));
     }
 
     /// <summary>
@@ -354,24 +294,20 @@ public static class ScanEndpoints
     /// <c>/api/scan/*</c> may undo, matching the existing
     /// <see cref="DeleteLastLevelUp"/> permission model.
     /// </summary>
-    private static async Task<Results<NoContent, NotFound>> DeleteLastNote(
-        int personId, WorldDbContext db)
+    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> DeleteLastNote(
+        int personId, WorldDbContext db, HttpContext httpContext, ILoggerFactory loggerFactory)
     {
-        var assignment = await db.CharacterAssignments
-            .FirstOrDefaultAsync(a => a.ExternalPersonId == personId && a.IsActive);
-        if (assignment is null) return TypedResults.NotFound();
-
-        var lastNote = await db.CharacterEvents
-            .Where(e => e.CharacterAssignmentId == assignment.Id
-                && e.EventType == CharacterEventType.Note)
-            .OrderByDescending(e => e.Timestamp)
-            .ThenByDescending(e => e.Id)
-            .FirstOrDefaultAsync();
-        if (lastNote is null) return TypedResults.NotFound();
-
-        db.CharacterEvents.Remove(lastNote);
-        await db.SaveChangesAsync();
-        return TypedResults.NoContent();
+        return await DeleteLastMatchingEventAsync(
+            personId,
+            db,
+            httpContext,
+            loggerFactory,
+            "last-note",
+            [CharacterEventType.Note],
+            CharacterEventType.NoteReverted,
+            WorldActivityType.NoteReverted,
+            assignment => $"{assignment.Character.Name} – vrácena poznámka",
+            CreateGenericRevertData);
     }
 
     /// <summary>
@@ -380,25 +316,20 @@ public static class ScanEndpoints
     /// LevelUp recorded after the combat is intentionally ignored — the
     /// scope is "newest combat row, even if other event types are newer".
     /// </summary>
-    private static async Task<Results<NoContent, NotFound>> DeleteLastCombat(
-        int personId, WorldDbContext db)
+    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> DeleteLastCombat(
+        int personId, WorldDbContext db, HttpContext httpContext, ILoggerFactory loggerFactory)
     {
-        var assignment = await db.CharacterAssignments
-            .FirstOrDefaultAsync(a => a.ExternalPersonId == personId && a.IsActive);
-        if (assignment is null) return TypedResults.NotFound();
-
-        var lastCombat = await db.CharacterEvents
-            .Where(e => e.CharacterAssignmentId == assignment.Id
-                && (e.EventType == CharacterEventType.MonsterVictory
-                    || e.EventType == CharacterEventType.MonsterDefeat))
-            .OrderByDescending(e => e.Timestamp)
-            .ThenByDescending(e => e.Id)
-            .FirstOrDefaultAsync();
-        if (lastCombat is null) return TypedResults.NotFound();
-
-        db.CharacterEvents.Remove(lastCombat);
-        await db.SaveChangesAsync();
-        return TypedResults.NoContent();
+        return await DeleteLastMatchingEventAsync(
+            personId,
+            db,
+            httpContext,
+            loggerFactory,
+            "last-combat",
+            [CharacterEventType.MonsterVictory, CharacterEventType.MonsterDefeat],
+            CharacterEventType.MonsterCombatReverted,
+            WorldActivityType.MonsterCombatReverted,
+            assignment => $"{assignment.Character.Name} – vrácen souboj s nestvůrou",
+            CreateGenericRevertData);
     }
 
     private static async Task<Results<Ok<List<CharacterEventDto>>, NotFound>> GetRecentEvents(
@@ -540,6 +471,183 @@ public static class ScanEndpoints
         return TypedResults.Created($"/api/scan/{personId}/events/{ev.Id}", ToDto(ev));
     }
 
+    private static async Task<Results<NoContent, NotFound, ProblemHttpResult>> DeleteLastMatchingEventAsync(
+        int personId,
+        WorldDbContext db,
+        HttpContext httpContext,
+        ILoggerFactory loggerFactory,
+        string endpoint,
+        IReadOnlyCollection<CharacterEventType> eventTypes,
+        CharacterEventType auditEventType,
+        WorldActivityType worldActivityType,
+        Func<CharacterAssignment, string> description,
+        Func<CharacterEvent, string?, DateTime, string> data)
+    {
+        var rawIdempotencyKey = GetIdempotencyKey(httpContext);
+        var logger = loggerFactory.CreateLogger("OvcinaHra.Api.ScanIdempotency");
+        logger.LogInformation(
+            "[scan-idem] entry endpoint={Endpoint} personId={PersonId} idempotencyKey={IdempotencyKey}",
+            endpoint,
+            personId,
+            DescribeIdempotencyKey(rawIdempotencyKey));
+
+        var assignment = await db.CharacterAssignments
+            .Include(a => a.Character)
+            .FirstOrDefaultAsync(a => a.ExternalPersonId == personId && a.IsActive);
+        if (assignment is null)
+        {
+            logger.LogInformation(
+                "[scan-idem] assignment-miss endpoint={Endpoint} personId={PersonId}",
+                endpoint,
+                personId);
+            return TypedResults.NotFound();
+        }
+
+        if (!TryScopeRevertIdempotencyKey(
+            endpoint,
+            rawIdempotencyKey,
+            logger,
+            personId,
+            out var scopedIdempotencyKey,
+            out var problem))
+        {
+            return problem!;
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        try
+        {
+            if (scopedIdempotencyKey is not null)
+            {
+                logger.LogInformation(
+                    "[scan-idem] lookup-start endpoint={Endpoint} assignmentId={AssignmentId} idempotencyKey={IdempotencyKey}",
+                    endpoint,
+                    assignment.Id,
+                    DescribeIdempotencyKey(rawIdempotencyKey));
+
+                var alreadyReverted = await db.EventIdempotencies.AnyAsync(e =>
+                    e.CharacterAssignmentId == assignment.Id && e.IdempotencyKey == scopedIdempotencyKey);
+                logger.LogInformation(
+                    "[scan-idem] lookup-complete endpoint={Endpoint} assignmentId={AssignmentId} idempotencyHit={IdempotencyHit}",
+                    endpoint,
+                    assignment.Id,
+                    alreadyReverted);
+
+                if (alreadyReverted)
+                {
+                    logger.LogInformation(
+                        "[scan-idem] idempotency-hit endpoint={Endpoint} assignmentId={AssignmentId} idempotencyKey={IdempotencyKey}",
+                        endpoint,
+                        assignment.Id,
+                        DescribeIdempotencyKey(rawIdempotencyKey));
+                    await transaction.CommitAsync();
+                    return TypedResults.NoContent();
+                }
+            }
+
+            var original = await db.CharacterEvents
+                .Where(e => e.CharacterAssignmentId == assignment.Id && eventTypes.Contains(e.EventType))
+                .OrderByDescending(e => e.Timestamp)
+                .ThenByDescending(e => e.Id)
+                .FirstOrDefaultAsync();
+            if (original is null)
+            {
+                logger.LogInformation(
+                    "[scan-idem] no-matching-event endpoint={Endpoint} assignmentId={AssignmentId}",
+                    endpoint,
+                    assignment.Id);
+                await transaction.CommitAsync();
+                return TypedResults.NotFound();
+            }
+
+            var organizer = GetOrganizer(httpContext);
+            var revertedAtUtc = DateTime.UtcNow;
+            var audit = new CharacterEvent
+            {
+                CharacterAssignmentId = assignment.Id,
+                Timestamp = revertedAtUtc,
+                OrganizerUserId = organizer.UserId,
+                OrganizerName = organizer.Name,
+                EventType = auditEventType,
+                Data = data(original, rawIdempotencyKey, revertedAtUtc),
+                Location = original.Location
+            };
+
+            logger.LogInformation(
+                "[scan-idem] fresh-revert-start endpoint={Endpoint} assignmentId={AssignmentId} originalEventId={OriginalEventId} originalEventType={OriginalEventType}",
+                endpoint,
+                assignment.Id,
+                original.Id,
+                original.EventType);
+
+            db.CharacterEvents.Remove(original);
+            db.CharacterEvents.Add(audit);
+            TrackIdempotency(db, assignment.Id, scopedIdempotencyKey, audit);
+
+            if (await db.Games.AnyAsync(g => g.Id == assignment.GameId))
+            {
+                db.WorldActivities.Add(new WorldActivity
+                {
+                    GameId = assignment.GameId,
+                    TimestampUtc = audit.Timestamp,
+                    OrganizerUserId = organizer.UserId,
+                    OrganizerName = organizer.Name,
+                    ActivityType = worldActivityType,
+                    Description = description(assignment),
+                    CharacterAssignmentId = assignment.Id,
+                    DataJson = audit.Data
+                });
+                logger.LogInformation(
+                    "[scan-idem] world-activity-added endpoint={Endpoint} assignmentId={AssignmentId} gameId={GameId}",
+                    endpoint,
+                    assignment.Id,
+                    assignment.GameId);
+            }
+            else
+            {
+                logger.LogWarning(
+                    "[scan-idem] world-activity-skipped-no-game endpoint={Endpoint} assignmentId={AssignmentId} gameId={GameId}",
+                    endpoint,
+                    assignment.Id,
+                    assignment.GameId);
+            }
+
+            logger.LogInformation(
+                "[scan-idem] transaction-save-start endpoint={Endpoint} assignmentId={AssignmentId}",
+                endpoint,
+                assignment.Id);
+            await db.SaveChangesAsync();
+            await transaction.CommitAsync();
+            logger.LogInformation(
+                "[scan-idem] transaction-committed endpoint={Endpoint} assignmentId={AssignmentId} auditEventId={AuditEventId}",
+                endpoint,
+                assignment.Id,
+                audit.Id);
+            return TypedResults.NoContent();
+        }
+        catch (DbUpdateException ex) when (IsEventIdempotencyUniqueViolation(ex))
+        {
+            await transaction.RollbackAsync();
+            logger.LogInformation(
+                ex,
+                "[scan-idem] idempotency-duplicate-race endpoint={Endpoint} assignmentId={AssignmentId} idempotencyKey={IdempotencyKey}",
+                endpoint,
+                assignment.Id,
+                DescribeIdempotencyKey(rawIdempotencyKey));
+            return TypedResults.NoContent();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "[scan-idem] transaction-failed endpoint={Endpoint} assignmentId={AssignmentId} idempotencyKey={IdempotencyKey}",
+                endpoint,
+                assignment.Id,
+                DescribeIdempotencyKey(rawIdempotencyKey));
+            throw;
+        }
+    }
+
     private static CharacterEventDto ToDto(CharacterEvent ev) =>
         new(ev.Id, ev.EventType, ev.Data, ev.Location, ev.OrganizerName, ev.Timestamp);
 
@@ -554,6 +662,40 @@ public static class ScanEndpoints
 
     private static bool IsValidIdempotencyKey(string? key) =>
         key is null || key.Length <= MaxIdempotencyKeyLength;
+
+    private static bool TryScopeRevertIdempotencyKey(
+        string endpoint,
+        string? key,
+        ILogger logger,
+        int personId,
+        out string? scopedKey,
+        out ProblemHttpResult? problem)
+    {
+        scopedKey = null;
+        problem = null;
+        if (key is null)
+        {
+            logger.LogWarning(
+                "[scan-idem] missing-idempotency-key endpoint={Endpoint} personId={PersonId}",
+                endpoint,
+                personId);
+            return true;
+        }
+
+        if (IsValidIdempotencyKey(key))
+        {
+            scopedKey = $"revert:{endpoint}:{HashIdempotencyKey(key)}";
+            return true;
+        }
+
+        logger.LogWarning(
+            "[scan-idem] idempotency-key-too-long endpoint={Endpoint} personId={PersonId} length={Length}",
+            endpoint,
+            personId,
+            key.Length);
+        problem = SaveFailed("Hlavička X-Idempotency-Key je příliš dlouhá.");
+        return false;
+    }
 
     private static async Task<CharacterEventDto?> TryGetIdempotentEventAsync(
         WorldDbContext db,
@@ -592,11 +734,39 @@ public static class ScanEndpoints
         });
     }
 
-    private static IResult SaveFailed(string detail) =>
+    private static bool IsEventIdempotencyUniqueViolation(DbUpdateException ex) =>
+        ex.Entries.Any(e => e.Entity is EventIdempotency)
+        && ex.InnerException is PostgresException
+        {
+            SqlState: PostgresErrorCodes.UniqueViolation,
+            ConstraintName: "PK_EventIdempotencies"
+        };
+
+    private static ProblemHttpResult SaveFailed(string detail) =>
         TypedResults.Problem(
             title: "Uložení selhalo",
             detail: detail,
             statusCode: StatusCodes.Status400BadRequest);
+
+    private static string DescribeIdempotencyKey(string? key) =>
+        key is null
+            ? "<missing>"
+            : $"present:length={key.Length}:sha256={HashIdempotencyKey(key)[..12]}";
+
+    private static string HashIdempotencyKey(string key) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key))).ToLowerInvariant();
+
+    private static string CreateGenericRevertData(CharacterEvent original, string? key, DateTime revertedAtUtc) =>
+        JsonSerializer.Serialize(new
+        {
+            revertedEventId = original.Id,
+            originalEventType = original.EventType.ToString(),
+            originalTimestampUtc = original.Timestamp,
+            originalData = original.Data,
+            originalLocation = original.Location,
+            revertedAtUtc,
+            idempotencyKey = key
+        });
 
     private static int? ExtractLevel(string data)
     {

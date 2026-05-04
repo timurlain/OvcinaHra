@@ -11,4 +11,6 @@ public enum WorldActivityType
     CharacterLevelReverted = 3,
     MonsterDefeated = 4,
     HeroFell = 5,
+    NoteReverted = 6,
+    MonsterCombatReverted = 7,
 }

@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using OvcinaHra.Api.Data;
 using OvcinaHra.Api.Services;
 using OvcinaHra.Api.Tests.Fixtures;
+using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
 
@@ -61,6 +62,34 @@ public class ScanEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
         using var request = new HttpRequestMessage(HttpMethod.Delete, url);
         request.Headers.Add("X-Idempotency-Key", key);
         return await Client.SendAsync(request);
+    }
+
+    private async Task SeedScanEventAsync(
+        int assignmentId,
+        CharacterEventType eventType,
+        string data,
+        DateTime timestamp)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        db.CharacterEvents.Add(new CharacterEvent
+        {
+            CharacterAssignmentId = assignmentId,
+            Timestamp = timestamp,
+            OrganizerUserId = "test-organizer",
+            OrganizerName = "Test Organizátor",
+            EventType = eventType,
+            Data = data
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private async Task<int> CountWorldActivitiesAsync(int gameId, WorldActivityType activityType)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+        return await db.WorldActivities.CountAsync(a =>
+            a.GameId == gameId && a.ActivityType == activityType);
     }
 
     private async Task<(CharacterDetailDto character, CharacterAssignmentDto assignment)> SeedCharacterWithAssignment(
@@ -215,12 +244,7 @@ public class ScanEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
 
         var response = await Client.DeleteAsync("/api/scan/105/events/last-levelup");
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var audit = await response.Content.ReadFromJsonAsync<CharacterEventDto>();
-        Assert.NotNull(audit);
-        Assert.Equal(CharacterEventType.LevelUpReverted, audit.EventType);
-        Assert.Equal("Test Organizátor", audit.OrganizerName);
-        Assert.Contains("\"revertedLevel\":2", audit.Data);
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
         var profile = await Client.GetFromJsonAsync<ScanCharacterDto>("/api/scan/105");
         Assert.NotNull(profile);
@@ -243,7 +267,7 @@ public class ScanEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
 
         var response = await Client.DeleteAsync("/api/scan/115/events/last-levelup");
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
         using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
@@ -266,9 +290,12 @@ public class ScanEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
     }
 
     [Fact]
-    public async Task DeleteLastLevelUp_WithSameIdempotencyKey_ReplaysAuditEvent()
+    public async Task DeleteLastLevelUp_WithSameIdempotencyKey_DoesNotDeleteNextLevelUp()
     {
-        await SeedCharacterWithAssignment(externalPersonId: 112);
+        var game = await CreateGameAsync("Scan level retry");
+        await SeedCharacterWithAssignment(externalPersonId: 112, gameId: game.Id);
+        await Client.PostAsJsonAsync("/api/scan/112/events",
+            new CreateCharacterEventDto(CharacterEventType.LevelUp, "{}"));
         await Client.PostAsJsonAsync("/api/scan/112/events",
             new CreateCharacterEventDto(CharacterEventType.LevelUp, "{}"));
 
@@ -277,16 +304,135 @@ public class ScanEndpointTests(PostgresFixture postgres) : IntegrationTestBase(p
         var secondResponse = await DeleteWithIdempotencyAsync(
             "/api/scan/112/events/last-levelup", "undo-level-112");
 
-        Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
-        Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
-        var first = await firstResponse.Content.ReadFromJsonAsync<CharacterEventDto>();
-        var second = await secondResponse.Content.ReadFromJsonAsync<CharacterEventDto>();
-        Assert.Equal(first!.Id, second!.Id);
+        firstResponse.EnsureSuccessStatusCode();
+        secondResponse.EnsureSuccessStatusCode();
 
         var events = await Client.GetFromJsonAsync<List<CharacterEventDto>>("/api/scan/112/events");
         Assert.NotNull(events);
-        Assert.DoesNotContain(events, e => e.EventType == CharacterEventType.LevelUp);
+        Assert.Equal(1, events.Count(e => e.EventType == CharacterEventType.LevelUp));
         Assert.Single(events, e => e.EventType == CharacterEventType.LevelUpReverted);
+        Assert.Equal(1, await CountWorldActivitiesAsync(game.Id, WorldActivityType.CharacterLevelReverted));
+
+        var thirdResponse = await DeleteWithIdempotencyAsync(
+            "/api/scan/112/events/last-levelup", "undo-level-112-second");
+        thirdResponse.EnsureSuccessStatusCode();
+
+        events = await Client.GetFromJsonAsync<List<CharacterEventDto>>("/api/scan/112/events");
+        Assert.NotNull(events);
+        Assert.DoesNotContain(events, e => e.EventType == CharacterEventType.LevelUp);
+        Assert.Equal(2, events.Count(e => e.EventType == CharacterEventType.LevelUpReverted));
+        Assert.Equal(2, await CountWorldActivitiesAsync(game.Id, WorldActivityType.CharacterLevelReverted));
+    }
+
+    [Fact]
+    public async Task DeleteLastNote_WithoutIdempotencyKey_RemovesNewestNoteAndWritesAudit()
+    {
+        var game = await CreateGameAsync("Scan note legacy");
+        var (_, assignment) = await SeedCharacterWithAssignment(externalPersonId: 116, gameId: game.Id);
+        await SeedScanEventAsync(assignment.Id, CharacterEventType.Note, """{"text":"Starší"}""",
+            DateTime.UtcNow.AddMinutes(-2));
+        await SeedScanEventAsync(assignment.Id, CharacterEventType.Note, """{"text":"Novější"}""",
+            DateTime.UtcNow.AddMinutes(-1));
+
+        var response = await Client.DeleteAsync("/api/scan/116/events/last-note");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var events = await Client.GetFromJsonAsync<List<CharacterEventDto>>("/api/scan/116/events");
+        Assert.NotNull(events);
+        Assert.Equal(1, events.Count(e => e.EventType == CharacterEventType.Note));
+        Assert.Single(events, e => e.EventType == CharacterEventType.NoteReverted);
+        Assert.Equal(1, await CountWorldActivitiesAsync(game.Id, WorldActivityType.NoteReverted));
+    }
+
+    [Fact]
+    public async Task DeleteLastNote_WithSameIdempotencyKey_DoesNotDeleteNextNote()
+    {
+        var game = await CreateGameAsync("Scan note retry");
+        var (_, assignment) = await SeedCharacterWithAssignment(externalPersonId: 117, gameId: game.Id);
+        await SeedScanEventAsync(assignment.Id, CharacterEventType.Note, """{"text":"První"}""",
+            DateTime.UtcNow.AddMinutes(-2));
+        await SeedScanEventAsync(assignment.Id, CharacterEventType.Note, """{"text":"Druhá"}""",
+            DateTime.UtcNow.AddMinutes(-1));
+
+        var firstResponse = await DeleteWithIdempotencyAsync(
+            "/api/scan/117/events/last-note", "undo-note-117");
+        var secondResponse = await DeleteWithIdempotencyAsync(
+            "/api/scan/117/events/last-note", "undo-note-117");
+
+        firstResponse.EnsureSuccessStatusCode();
+        secondResponse.EnsureSuccessStatusCode();
+        var events = await Client.GetFromJsonAsync<List<CharacterEventDto>>("/api/scan/117/events");
+        Assert.NotNull(events);
+        Assert.Equal(1, events.Count(e => e.EventType == CharacterEventType.Note));
+        Assert.Single(events, e => e.EventType == CharacterEventType.NoteReverted);
+        Assert.Equal(1, await CountWorldActivitiesAsync(game.Id, WorldActivityType.NoteReverted));
+
+        var thirdResponse = await DeleteWithIdempotencyAsync(
+            "/api/scan/117/events/last-note", "undo-note-117-second");
+        thirdResponse.EnsureSuccessStatusCode();
+
+        events = await Client.GetFromJsonAsync<List<CharacterEventDto>>("/api/scan/117/events");
+        Assert.NotNull(events);
+        Assert.DoesNotContain(events, e => e.EventType == CharacterEventType.Note);
+        Assert.Equal(2, events.Count(e => e.EventType == CharacterEventType.NoteReverted));
+        Assert.Equal(2, await CountWorldActivitiesAsync(game.Id, WorldActivityType.NoteReverted));
+    }
+
+    [Fact]
+    public async Task DeleteLastCombat_WithoutIdempotencyKey_RemovesNewestCombatAndWritesAudit()
+    {
+        var game = await CreateGameAsync("Scan combat legacy");
+        var (_, assignment) = await SeedCharacterWithAssignment(externalPersonId: 118, gameId: game.Id);
+        await SeedScanEventAsync(assignment.Id, CharacterEventType.MonsterVictory, """{"monsterName":"Skřet"}""",
+            DateTime.UtcNow.AddMinutes(-2));
+        await SeedScanEventAsync(assignment.Id, CharacterEventType.MonsterDefeat, """{"monsterName":"Vlk"}""",
+            DateTime.UtcNow.AddMinutes(-1));
+
+        var response = await Client.DeleteAsync("/api/scan/118/events/last-combat");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var events = await Client.GetFromJsonAsync<List<CharacterEventDto>>("/api/scan/118/events");
+        Assert.NotNull(events);
+        Assert.Equal(1, events.Count(e =>
+            e.EventType is CharacterEventType.MonsterVictory or CharacterEventType.MonsterDefeat));
+        Assert.Single(events, e => e.EventType == CharacterEventType.MonsterCombatReverted);
+        Assert.Equal(1, await CountWorldActivitiesAsync(game.Id, WorldActivityType.MonsterCombatReverted));
+    }
+
+    [Fact]
+    public async Task DeleteLastCombat_WithSameIdempotencyKey_DoesNotDeleteNextCombat()
+    {
+        var game = await CreateGameAsync("Scan combat retry");
+        var (_, assignment) = await SeedCharacterWithAssignment(externalPersonId: 119, gameId: game.Id);
+        await SeedScanEventAsync(assignment.Id, CharacterEventType.MonsterVictory, """{"monsterName":"Skřet"}""",
+            DateTime.UtcNow.AddMinutes(-2));
+        await SeedScanEventAsync(assignment.Id, CharacterEventType.MonsterDefeat, """{"monsterName":"Vlk"}""",
+            DateTime.UtcNow.AddMinutes(-1));
+
+        var firstResponse = await DeleteWithIdempotencyAsync(
+            "/api/scan/119/events/last-combat", "undo-combat-119");
+        var secondResponse = await DeleteWithIdempotencyAsync(
+            "/api/scan/119/events/last-combat", "undo-combat-119");
+
+        firstResponse.EnsureSuccessStatusCode();
+        secondResponse.EnsureSuccessStatusCode();
+        var events = await Client.GetFromJsonAsync<List<CharacterEventDto>>("/api/scan/119/events");
+        Assert.NotNull(events);
+        Assert.Equal(1, events.Count(e =>
+            e.EventType is CharacterEventType.MonsterVictory or CharacterEventType.MonsterDefeat));
+        Assert.Single(events, e => e.EventType == CharacterEventType.MonsterCombatReverted);
+        Assert.Equal(1, await CountWorldActivitiesAsync(game.Id, WorldActivityType.MonsterCombatReverted));
+
+        var thirdResponse = await DeleteWithIdempotencyAsync(
+            "/api/scan/119/events/last-combat", "undo-combat-119-second");
+        thirdResponse.EnsureSuccessStatusCode();
+
+        events = await Client.GetFromJsonAsync<List<CharacterEventDto>>("/api/scan/119/events");
+        Assert.NotNull(events);
+        Assert.DoesNotContain(events,
+            e => e.EventType is CharacterEventType.MonsterVictory or CharacterEventType.MonsterDefeat);
+        Assert.Equal(2, events.Count(e => e.EventType == CharacterEventType.MonsterCombatReverted));
+        Assert.Equal(2, await CountWorldActivitiesAsync(game.Id, WorldActivityType.MonsterCombatReverted));
     }
 
     [Fact]

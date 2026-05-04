@@ -94,6 +94,10 @@
                         <span class="oh-nav-rail"></span>
                         <i class="bi bi-activity ni"></i><span class="oh-nav-label">Aktivita</span>
                     </NavLink>
+                    <NavLink class="oh-nav-item" href="@EndGameStatsHref">
+                        <span class="oh-nav-rail"></span>
+                        <i class="bi bi-bar-chart-line-fill ni"></i><span class="oh-nav-label">Statistiky</span>
+                    </NavLink>
                     <NavLink class="oh-nav-item" href="treasures">
                         <span class="oh-nav-rail"></span>
                         <i class="bi bi-safe-fill ni"></i><span class="oh-nav-label">Poklady</span>
@@ -291,6 +295,10 @@
     private string QuestGameHref => GameContext.SelectedGameId is int gameId
         ? $"games/{gameId}/quests"
         : "quests?mode=game";
+
+    private string EndGameStatsHref => GameContext.SelectedGameId is int gameId
+        ? $"statistiky-konec-hry?gameId={gameId}"
+        : "statistiky-konec-hry";
 
     protected override void OnInitialized()
     {
