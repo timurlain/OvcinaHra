@@ -222,6 +222,45 @@ public class EndGameStatsEndpointTests(PostgresFixture postgres)
         Assert.Equal(2, esgarothStats.Levels.Single(l => l.Level == 7).HeroCount);
     }
 
+    [Fact]
+    public async Task EndGameStats_DoesNotCountSkillNamesWithoutMasteryFlagAsMasteries()
+    {
+        // Arrange
+        var game = await CreateGameAsync();
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<WorldDbContext>();
+            var esgaroth = await GetKingdomAsync(db, "Esgaroth");
+
+            var hrdina = new Character { Name = $"Legacy Skill {game.Id}", IsPlayedCharacter = true };
+            db.Characters.Add(hrdina);
+            await db.SaveChangesAsync();
+
+            var assignment = Assignment(game, hrdina, esgaroth, 21);
+            db.CharacterAssignments.Add(assignment);
+            await db.SaveChangesAsync();
+
+            var start = DateTime.UtcNow.AddHours(-1);
+            db.WorldActivities.Add(LevelUp(game.Id, assignment.Id, start.AddMinutes(1), """{"level":5}"""));
+            db.CharacterEvents.AddRange(
+                SkillEvent(assignment.Id, start.AddMinutes(2), JsonSerializer.Serialize(new { skill = "Berserk" })),
+                SkillEvent(assignment.Id, start.AddMinutes(3), JsonSerializer.Serialize(new { skill = "Houževnatý", mastery = false })),
+                SkillEvent(assignment.Id, start.AddMinutes(4), string.Empty));
+            await db.SaveChangesAsync();
+        }
+
+        // Act
+        var stats = await Client.GetFromJsonAsync<EndGameStatsDto>(
+            $"/api/games/{game.Id}/end-game-stats");
+
+        // Assert
+        Assert.NotNull(stats);
+        var esgarothStats = stats.Kingdoms.Single(k => k.KingdomName == "Esgaroth");
+        Assert.Equal(1, esgarothStats.Levels.Single(l => l.Level == 5).HeroCount);
+        Assert.Equal(0, esgarothStats.Levels.Single(l => l.Level == 6).HeroCount);
+        Assert.Equal(0, esgarothStats.Levels.Single(l => l.Level == 7).HeroCount);
+    }
+
     private async Task<GameDetailDto> CreateGameAsync()
     {
         var response = await Client.PostAsJsonAsync("/api/games",
@@ -273,6 +312,19 @@ public class EndGameStatsEndpointTests(PostgresFixture postgres)
         OrganizerName = "Org",
         EventType = CharacterEventType.SkillGained,
         Data = JsonSerializer.Serialize(new { skill = skillName, mastery = true })
+    };
+
+    private static CharacterEvent SkillEvent(
+        int assignmentId,
+        DateTime timestampUtc,
+        string data) => new()
+    {
+        CharacterAssignmentId = assignmentId,
+        Timestamp = timestampUtc,
+        OrganizerUserId = "org",
+        OrganizerName = "Org",
+        EventType = CharacterEventType.SkillGained,
+        Data = data
     };
 
     private static void AssertCompleteLevelGrid(KingdomLevelBreakdownDto kingdom)
