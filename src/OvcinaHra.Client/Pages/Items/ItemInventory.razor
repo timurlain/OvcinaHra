@@ -1,0 +1,384 @@
+@page "/items/inventory"
+@attribute [Authorize]
+@inject ApiClient Api
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Inventura katalogu</h1>
+    <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="LoadAsync" disabled="@loading">
+        <i class="bi bi-arrow-clockwise"></i>
+        Obnovit
+    </button>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(error))
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+@if (loading)
+{
+    <p>Načítám inventuru...</p>
+}
+else
+{
+    <OvcinaGrid Data="@items" KeyFieldName="Id" LayoutKey="grid-inventory-v1"
+                EditMode="GridEditMode.EditCell"
+                CustomizeEditModel="OnCustomizeEdit"
+                EditModelSaving="OnStockSaving"
+                ShowColumnChooserButton="true">
+        <Columns>
+            <DxGridDataColumn Caption="Foto" Width="92px" AllowSort="false" AllowGroup="false">
+                <CellDisplayTemplate>
+                    @{
+                        var item = (ItemListDto)context.DataItem;
+                    }
+                    @if (!string.IsNullOrWhiteSpace(item.ImageUrl))
+                    {
+                        <button type="button"
+                                class="btn btn-link p-0"
+                                title="Změnit obrázek"
+                                @onclick="() => OpenUploadPopup(item)"
+                                @onclick:stopPropagation="true">
+                            <ItemGridImageTile @key="item.Id" Name="@item.Name" ImageUrl="@item.ImageUrl" />
+                        </button>
+                    }
+                    else
+                    {
+                        <button type="button"
+                                class="btn btn-sm btn-outline-primary"
+                                @onclick="() => OpenUploadPopup(item)"
+                                @onclick:stopPropagation="true">
+                            <i class="bi bi-upload"></i>
+                            Nahrát
+                        </button>
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="Name" Caption="Název" Width="240px" ReadOnly="true" />
+            <DxGridDataColumn FieldName="ItemTypeDisplay" Caption="Typ" Width="140px" ReadOnly="true" />
+            <DxGridDataColumn FieldName="StockCount" Caption="Kusů" Width="110px">
+                <CellEditTemplate>
+                    <DxSpinEdit TValue="int"
+                                Value="@(((StockEditBuffer)context.EditModel).StockCount)"
+                                ValueExpression="@(() => ((StockEditBuffer)context.EditModel).StockCount)"
+                                ValueChanged="@((int v) => ((StockEditBuffer)context.EditModel).StockCount = v)"
+                                MinValue="0" />
+                </CellEditTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="StockNote" Caption="Poznámka inventury" Width="320px">
+                <CellEditTemplate>
+                    <DxTextBox Text="@(((StockEditBuffer)context.EditModel).StockNote)"
+                               TextExpression="@(() => ((StockEditBuffer)context.EditModel).StockNote)"
+                               TextChanged="@(v => ((StockEditBuffer)context.EditModel).StockNote = v)"
+                               NullText="(bez poznámky)" />
+                </CellEditTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="StockUpdatedUtc" Caption="Aktualizováno" Width="210px" ReadOnly="true">
+                <CellDisplayTemplate>
+                    @{
+                        var item = (ItemListDto)context.DataItem;
+                    }
+                    @FormatUpdated(item)
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="ImagePath" Caption="Cesta obrázku" Width="220px" Visible="false" ReadOnly="true" />
+            <DxGridDataColumn FieldName="Note" Caption="Katalogová poznámka" Width="260px" Visible="false" ReadOnly="true" />
+        </Columns>
+    </OvcinaGrid>
+}
+
+<DxPopup @bind-Visible="@isUploadPopupVisible" HeaderText="@UploadHeader" Width="460px">
+    <BodyContentTemplate Context="popupContext">
+        @if (!string.IsNullOrWhiteSpace(uploadError))
+        {
+            <div class="alert alert-danger">@uploadError</div>
+        }
+
+        <div class="d-flex flex-column gap-3">
+            <div style="width: 180px; aspect-ratio: 2 / 3; border: 1px solid var(--bs-border-color); border-radius: 6px; overflow: hidden; background: var(--oh-surface-muted, #f6f2e8);">
+                @if (!string.IsNullOrWhiteSpace(uploadPreviewUrl) && !uploadPreviewImageFailed)
+                {
+                    <img src="@uploadPreviewUrl"
+                         alt="Náhled obrázku"
+                         style="width: 100%; height: 100%; object-fit: cover;"
+                         @onerror="() => uploadPreviewImageFailed = true" />
+                }
+                else if (!string.IsNullOrWhiteSpace(uploadItem?.ImageUrl) && !uploadExistingImageFailed)
+                {
+                    <img src="@uploadItem.ImageUrl"
+                         alt="Obrázek předmětu"
+                         style="width: 100%; height: 100%; object-fit: cover;"
+                         @onerror="() => uploadExistingImageFailed = true" />
+                }
+                else
+                {
+                    <div class="d-flex align-items-center justify-content-center h-100 text-muted">
+                        <i class="bi bi-image" style="font-size: 2rem;"></i>
+                    </div>
+                }
+            </div>
+
+            <InputFile OnChange="OnUploadFileSelected" accept=".jpg,.jpeg,.png,.webp" disabled="@isUploading" />
+
+            <div class="d-flex gap-2 justify-content-end">
+                <button type="button" class="btn btn-secondary" @onclick="CloseUploadPopup" disabled="@isUploading">Zrušit</button>
+                <button type="button" class="btn btn-primary" @onclick="UploadImageAsync" disabled="@(isUploading || uploadBytes is null)">
+                    @if (isUploading)
+                    {
+                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                    }
+                    <i class="bi bi-upload"></i>
+                    Nahrát
+                </button>
+            </div>
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    private const long MaxUploadFileSize = 5 * 1024 * 1024;
+
+    private List<ItemListDto> items = [];
+    private bool loading = true;
+    private string? error;
+
+    private bool isUploadPopupVisible;
+    private bool isUploading;
+    private ItemListDto? uploadItem;
+    private byte[]? uploadBytes;
+    private string? uploadPreviewUrl;
+    private string? uploadError;
+    private string uploadFileName = "item-image";
+    private string uploadContentType = "image/jpeg";
+    private bool uploadPreviewImageFailed;
+    private bool uploadExistingImageFailed;
+
+    private string UploadHeader => uploadItem is null ? "Nahrát obrázek" : $"Nahrát obrázek: {uploadItem.Name}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        error = null;
+        try
+        {
+            items = await Api.GetListAsync<ItemListDto>("/api/items");
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private sealed class StockEditBuffer
+    {
+        public int StockCount { get; set; }
+        public string? StockNote { get; set; }
+    }
+
+    private void OnCustomizeEdit(GridCustomizeEditModelEventArgs e)
+    {
+        if (e.IsNew) return;
+        var src = (ItemListDto)e.DataItem;
+        e.EditModel = new StockEditBuffer
+        {
+            StockCount = src.StockCount ?? 0,
+            StockNote = src.StockNote,
+        };
+    }
+
+    private async Task OnStockSaving(GridEditModelSavingEventArgs e)
+    {
+        if (e.IsNew) return;
+        var src = (ItemListDto)e.DataItem;
+        var buf = (StockEditBuffer)e.EditModel;
+        var normalizedNote = string.IsNullOrWhiteSpace(buf.StockNote) ? null : buf.StockNote.Trim();
+
+        if (buf.StockCount == src.StockCount.GetValueOrDefault()
+            && string.Equals(normalizedNote, src.StockNote, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        try
+        {
+            Console.WriteLine($"[inventory] description=stock-save.api.before itemId={src.Id} stockCount={buf.StockCount}");
+            var timer = System.Diagnostics.Stopwatch.StartNew();
+            var (ok, problem) = await Api.PutWithProblemAsync(
+                $"/api/items/{src.Id}/stock",
+                new UpdateItemStockDto(buf.StockCount, normalizedNote));
+            timer.Stop();
+            Console.WriteLine($"[inventory] description=stock-save.api.after itemId={src.Id} ok={ok} elapsedMs={timer.ElapsedMilliseconds}");
+            if (!ok)
+            {
+                error = problem ?? "Uložení inventury se nezdařilo.";
+                e.Cancel = true;
+                return;
+            }
+
+            await RefreshItemRowAsync(src.Id);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[inventory] description=stock-save.catch itemId={src.Id} detail={ex.Message}");
+            error = ex.Message;
+            e.Cancel = true;
+        }
+    }
+
+    private async Task RefreshItemRowAsync(int itemId)
+    {
+        Console.WriteLine($"[inventory] description=row-refresh.api.before itemId={itemId}");
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        ItemDetailDto? detail;
+        try
+        {
+            detail = await Api.GetAsync<ItemDetailDto>($"/api/items/{itemId}");
+        }
+        catch (Exception ex)
+        {
+            timer.Stop();
+            Console.WriteLine($"[inventory] description=row-refresh.catch itemId={itemId} elapsedMs={timer.ElapsedMilliseconds} detail={ex.Message}");
+            throw;
+        }
+
+        timer.Stop();
+        Console.WriteLine($"[inventory] description=row-refresh.api.after itemId={itemId} found={detail is not null} elapsedMs={timer.ElapsedMilliseconds}");
+        if (detail is null) return;
+
+        var idx = items.FindIndex(i => i.Id == itemId);
+        if (idx < 0) return;
+
+        var current = items[idx];
+        items[idx] = current with
+        {
+            ImagePath = detail.ImagePath,
+            ImageUrl = detail.ImageUrl,
+            StockCount = detail.StockCount,
+            StockNote = detail.StockNote,
+            StockUpdatedUtc = detail.StockUpdatedUtc,
+            StockUpdatedBy = detail.StockUpdatedBy,
+        };
+    }
+
+    private void OpenUploadPopup(ItemListDto item)
+    {
+        Console.WriteLine($"[inventory] description=upload-popup.open itemId={item.Id} hasImage={item.HasImage}");
+        uploadItem = item;
+        uploadBytes = null;
+        uploadPreviewUrl = null;
+        uploadError = null;
+        uploadFileName = "item-image";
+        uploadContentType = "image/jpeg";
+        uploadPreviewImageFailed = false;
+        uploadExistingImageFailed = false;
+        isUploadPopupVisible = true;
+    }
+
+    private void CloseUploadPopup()
+    {
+        isUploadPopupVisible = false;
+        uploadItem = null;
+        uploadBytes = null;
+        uploadPreviewUrl = null;
+        uploadError = null;
+        uploadPreviewImageFailed = false;
+        uploadExistingImageFailed = false;
+    }
+
+    private async Task OnUploadFileSelected(InputFileChangeEventArgs e)
+    {
+        uploadError = null;
+        var file = e.File;
+        if (file.Size > MaxUploadFileSize)
+        {
+            uploadError = $"Soubor je příliš velký (max {MaxUploadFileSize / 1024 / 1024} MB).";
+            uploadBytes = null;
+            uploadPreviewUrl = null;
+            uploadPreviewImageFailed = false;
+            Console.WriteLine($"[inventory] description=file-select.rejected reason=too-large size={file.Size}");
+            return;
+        }
+
+        try
+        {
+            Console.WriteLine($"[inventory] description=file-select.read.before fileName={file.Name} size={file.Size}");
+            uploadFileName = string.IsNullOrWhiteSpace(file.Name) ? "item-image" : file.Name;
+            uploadContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "image/jpeg" : file.ContentType;
+
+            await using var stream = file.OpenReadStream(MaxUploadFileSize);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            uploadBytes = buffer.ToArray();
+            uploadPreviewUrl = $"data:{uploadContentType};base64,{Convert.ToBase64String(uploadBytes)}";
+            uploadPreviewImageFailed = false;
+            Console.WriteLine($"[inventory] description=file-select.read.after fileName={uploadFileName} bytes={uploadBytes.Length}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[inventory] description=file-select.catch detail={ex.Message}");
+            uploadError = "Obrázek se nepodařilo načíst.";
+            uploadBytes = null;
+            uploadPreviewUrl = null;
+            uploadPreviewImageFailed = false;
+        }
+    }
+
+    private async Task UploadImageAsync()
+    {
+        if (uploadItem is null || uploadBytes is null) return;
+
+        uploadError = null;
+        isUploading = true;
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            using var fileContent = new ByteArrayContent(uploadBytes);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(uploadContentType);
+            content.Add(fileContent, "file", uploadFileName);
+
+            Console.WriteLine($"[inventory] description=image-upload.api.before itemId={uploadItem.Id} fileName={uploadFileName} bytes={uploadBytes.Length}");
+            var uploadTimer = System.Diagnostics.Stopwatch.StartNew();
+            var (ok, _, problemDetail, _) = await Api.PostMultipartWithProblemAsync<ImageUploadResult>(
+                $"/api/images/items/{uploadItem.Id}",
+                content);
+            uploadTimer.Stop();
+            Console.WriteLine($"[inventory] description=image-upload.api.after itemId={uploadItem.Id} ok={ok} elapsedMs={uploadTimer.ElapsedMilliseconds}");
+            if (!ok)
+            {
+                uploadError = problemDetail ?? "Nahrání obrázku selhalo.";
+                return;
+            }
+
+            await RefreshItemRowAsync(uploadItem.Id);
+            CloseUploadPopup();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[inventory] description=image-upload.catch itemId={uploadItem?.Id} detail={ex.Message}");
+            uploadError = ex.Message;
+        }
+        finally
+        {
+            isUploading = false;
+        }
+    }
+
+    private static string FormatUpdated(ItemListDto item)
+    {
+        if (item.StockUpdatedUtc is null) return "";
+
+        var value = item.StockUpdatedUtc.Value.ToLocalTime().ToString("dd.MM. HH:mm");
+        return string.IsNullOrWhiteSpace(item.StockUpdatedBy)
+            ? value
+            : $"{value} - {item.StockUpdatedBy}";
+    }
+}

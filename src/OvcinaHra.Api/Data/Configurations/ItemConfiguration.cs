@@ -14,6 +14,11 @@ public class ItemConfiguration : IEntityTypeConfiguration<Item>
         builder.Property(e => e.ItemType).HasConversion<string>().HasMaxLength(30);
         builder.Property(e => e.PhysicalForm).HasConversion<string>().HasMaxLength(30);
         builder.Property(e => e.Note).HasMaxLength(2000);
+        builder.Property(e => e.StockNote).HasMaxLength(500);
+        builder.Property(e => e.StockUpdatedBy).HasMaxLength(200);
+        builder.ToTable(t => t.HasCheckConstraint(
+            "CK_Item_StockCount_NonNegative",
+            "\"StockCount\" >= 0"));
 
         builder.OwnsOne(e => e.ClassRequirements, cr =>
         {
