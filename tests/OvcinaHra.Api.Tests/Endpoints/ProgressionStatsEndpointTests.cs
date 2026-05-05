@@ -32,6 +32,9 @@ public class ProgressionStatsEndpointTests(PostgresFixture postgres)
         int day1LastSlotId;
         int slot5Id;
         int slot7Id;
+        string day1LastSlotShortLabel;
+        string day1LastSlotLongLabel;
+        string slot5ShortLabel;
 
         using (var scope = Factory.Services.CreateScope())
         {
@@ -48,6 +51,9 @@ public class ProgressionStatsEndpointTests(PostgresFixture postgres)
             day1LastSlotId = slots[2].Id;
             slot5Id = slots[4].Id;
             slot7Id = slots[6].Id;
+            day1LastSlotShortLabel = slots[2].StartTime.ToLocalTime().ToString("HH:mm");
+            day1LastSlotLongLabel = StatsLabel(slots[2]);
+            slot5ShortLabel = slots[4].StartTime.ToLocalTime().ToString("HH:mm");
 
             var gapHero = Character("Gap Hero", "Gita", "Mezera");
             var finalHero = Character("Final Hero", "Fero", "Finále");
@@ -89,8 +95,14 @@ public class ProgressionStatsEndpointTests(PostgresFixture postgres)
         });
 
         var esgarothStats = stats.Kingdoms.Single(k => k.KingdomName == "Esgaroth");
-        Assert.Equal(1, esgarothStats.Buckets.Single(b => b.TimeSlotId == day1LastSlotId).HeroCountByLevel[0]);
-        Assert.Equal(1, esgarothStats.Buckets.Single(b => b.TimeSlotId == slot5Id).HeroCountByLevel[1]);
+        var day1LastBucket = esgarothStats.Buckets.Single(b => b.TimeSlotId == day1LastSlotId);
+        Assert.Equal(day1LastSlotShortLabel, day1LastBucket.TimeSlotShortLabel);
+        Assert.Equal(day1LastSlotLongLabel, day1LastBucket.Label);
+        Assert.Equal(1, day1LastBucket.HeroCountByLevel[0]);
+
+        var slot5Bucket = esgarothStats.Buckets.Single(b => b.TimeSlotId == slot5Id);
+        Assert.Equal(slot5ShortLabel, slot5Bucket.TimeSlotShortLabel);
+        Assert.Equal(1, slot5Bucket.HeroCountByLevel[1]);
         Assert.Equal(1, esgarothStats.Buckets.Single(b => b.TimeSlotId == slot7Id).HeroCountByLevel[5]);
 
         var aradhryandStats = stats.Kingdoms.Single(k => k.KingdomName == "Aradhryand");
@@ -105,6 +117,8 @@ public class ProgressionStatsEndpointTests(PostgresFixture postgres)
         Assert.Contains(stats.Events, e =>
             e.CharacterName.StartsWith("Gap Hero", StringComparison.Ordinal)
             && e.TimeSlotId == day1LastSlotId
+            && e.TimeSlotShortLabel == day1LastSlotShortLabel
+            && e.TimeSlotLabel == day1LastSlotLongLabel
             && e.LevelGained == 1);
         Assert.Contains(stats.Events, e =>
             e.EventType == "MasterySkillGained"
@@ -192,6 +206,13 @@ public class ProgressionStatsEndpointTests(PostgresFixture postgres)
         Stage = phase,
         InGameYear = 1
     };
+
+    private static string StatsLabel(GameTimeSlot slot) =>
+        OvcinaHra.Shared.Extensions.TimeSlotDisplayExtensions.FormatTimeSlotDisplay(
+            slot.Stage,
+            slot.InGameYear,
+            slot.StartTime,
+            (decimal)slot.Duration.TotalHours);
 
     private static Character Character(string name, string firstName, string lastName) => new()
     {

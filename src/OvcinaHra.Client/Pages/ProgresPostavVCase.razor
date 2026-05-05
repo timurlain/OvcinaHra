@@ -52,7 +52,7 @@
                             @foreach (var level in Levels)
                             {
                                 var currentLevel = level;
-                                <DxChartStackedBarSeries ArgumentField="@((ProgressionChartRow r) => r.TimeSlotLabel)"
+                                <DxChartStackedBarSeries ArgumentField="@((ProgressionChartRow r) => r.TimeSlotShortLabel)"
                                                          ValueField="@((ProgressionChartRow r) => r.CountFor(currentLevel))"
                                                          Name="@LevelSeriesName(currentLevel)"
                                                          Color="@LevelColor(currentLevel)"
@@ -61,7 +61,7 @@
                             <DxChartTooltip Enabled="true" Context="tooltip">
                                 <div>
                                     <strong>@tooltip.Point.SeriesName</strong>
-                                    <div>@tooltip.Point.Argument: @tooltip.Point.Value</div>
+                                    <div>@TooltipTimeSlotLabel(tooltip): @tooltip.Point.Value</div>
                                 </div>
                             </DxChartTooltip>
                         </DxChart>
@@ -229,7 +229,11 @@
                 k.KingdomName,
                 k.HexColor,
                 k.SortOrder,
-                k.Buckets.Select(b => new ProgressionChartRow(b.TimeSlotId, b.Label, b.HeroCountByLevel)).ToList()))
+                k.Buckets.Select(b => new ProgressionChartRow(
+                    b.TimeSlotId,
+                    b.Label,
+                    b.TimeSlotShortLabel,
+                    b.HeroCountByLevel)).ToList()))
             .ToList() ?? [];
 
     private static List<ProgressionEventGridRow> BuildEventRows(ProgressionStatsDto? stats) =>
@@ -266,6 +270,23 @@
         7 => "Úroveň 7 (2 mistrovství)",
         _ => $"Úroveň {level.ToString(CultureInfo.InvariantCulture)}"
     };
+
+    private static string TooltipTimeSlotLabel(DevExpress.Blazor.ChartTooltipData tooltip)
+    {
+        var labels = tooltip.Point.DataItems
+            .OfType<ProgressionChartRow>()
+            .Select(r => r.TimeSlotLabel)
+            .Distinct()
+            .ToArray();
+
+        return labels.Length switch
+        {
+            0 => tooltip.Point.Argument?.ToString() ?? "Časový blok",
+            1 => labels[0],
+            _ => string.Join(", ", labels)
+        };
+    }
+
 
     private static System.Drawing.Color LevelColor(int level) => level switch
     {
@@ -310,6 +331,7 @@
     private sealed record ProgressionChartRow(
         int TimeSlotId,
         string TimeSlotLabel,
+        string TimeSlotShortLabel,
         int[] Counts)
     {
         public int CountFor(int level) =>
