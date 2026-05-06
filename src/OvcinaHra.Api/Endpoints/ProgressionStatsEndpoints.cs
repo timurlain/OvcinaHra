@@ -5,10 +5,10 @@ using ClosedXML.Excel;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
+using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Domain.Rules;
 using OvcinaHra.Shared.Dtos;
-using OvcinaHra.Shared.Extensions;
 
 namespace OvcinaHra.Api.Endpoints;
 
@@ -96,7 +96,7 @@ public static partial class GameEndpoints
                 s.Duration,
                 s.Stage,
                 s.InGameYear,
-                TimeSlotDisplayExtensions.FormatTimeSlotDisplay(
+                PragueTimeFormatter.FormatTimeSlotDisplay(
                     s.Stage,
                     s.InGameYear,
                     s.StartTime,
@@ -379,7 +379,7 @@ public static partial class GameEndpoints
             "Časový blok",
             "Událost",
             "Získaná úroveň",
-            "Čas UTC"
+            "Čas (Praha)"
         ];
 
         for (var column = 0; column < headers.Length; column++)
@@ -394,12 +394,13 @@ public static partial class GameEndpoints
             worksheet.Cell(rowIndex, 4).Value = row.TimeSlotLabel;
             worksheet.Cell(rowIndex, 5).Value = row.EventType;
             worksheet.Cell(rowIndex, 6).Value = row.LevelGained;
-            worksheet.Cell(rowIndex, 7).Value = row.TimestampUtc;
+            worksheet.Cell(rowIndex, 7).Value = PragueTimeFormatter.ToPragueTime(row.TimestampUtc);
             rowIndex++;
         }
 
         var usedRange = worksheet.Range(1, 1, Math.Max(1, rowIndex - 1), headers.Length);
         worksheet.Range(1, 1, 1, headers.Length).Style.Font.Bold = true;
+        worksheet.Column(7).Style.DateFormat.Format = "d.M.yyyy HH:mm";
         usedRange.SetAutoFilter();
         worksheet.SheetView.FreezeRows(1);
         worksheet.Columns().AdjustToContents();
@@ -416,7 +417,7 @@ public static partial class GameEndpoints
     }
 
     private static string ShortTimeSlotDisplay(DateTime startTime) =>
-        startTime.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture);
+        PragueTimeFormatter.Format(startTime, "HH:mm", CultureInfo.InvariantCulture);
 
     private sealed record ProgressionKingdomRow(
         int KingdomId,

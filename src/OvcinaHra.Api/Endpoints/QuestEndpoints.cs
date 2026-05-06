@@ -3,10 +3,10 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using OvcinaHra.Api.Data;
+using OvcinaHra.Api.Services;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
-using OvcinaHra.Shared.Extensions;
 
 namespace OvcinaHra.Api.Endpoints;
 
@@ -116,7 +116,7 @@ public static class QuestEndpoints
         int? inGameYear,
         DateTime startTime,
         TimeSpan duration) =>
-        TimeSlotDisplayExtensions.FormatTimeSlotDisplay(
+        PragueTimeFormatter.FormatTimeSlotDisplay(
             stage, inGameYear, startTime, (decimal)duration.TotalHours);
 
     private static string? FormatTimeSlotName(
