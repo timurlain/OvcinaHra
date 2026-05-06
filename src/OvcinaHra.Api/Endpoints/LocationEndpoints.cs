@@ -736,7 +736,7 @@ public static class LocationEndpoints
     {
         var trimmed = value?.Trim();
         return string.IsNullOrWhiteSpace(trimmed)
-            ? fallbackUtc.ToLocalTime().ToString("dd/MM HH:mm", CultureInfo.InvariantCulture)
+            ? PragueTimeFormatter.Format(fallbackUtc, "dd/MM HH:mm", CultureInfo.InvariantCulture)
             : trimmed.Length <= 32 ? trimmed : trimmed[..32];
     }
 }

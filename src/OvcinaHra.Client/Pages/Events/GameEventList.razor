@@ -170,7 +170,7 @@ else
             var slots = await Api.GetListAsync<GameTimeSlotDto>($"/api/timeline/slots/by-game/{gid}");
             availableTimeSlots = slots
                 .OrderBy(s => s.StartTime)
-                .Select(s => new TimeSlotOption(s.Id, $"{s.StartTime:d.M. HH:mm} ({s.DurationHours}h)"))
+                .Select(s => new TimeSlotOption(s.Id, $"{s.StartTime.ToLocalTime():d.M. HH:mm} ({s.DurationHours}h)"))
                 .ToList();
 
             availableLocations = await Api.GetListAsync<LocationListDto>($"/api/locations/by-game/{gid}");

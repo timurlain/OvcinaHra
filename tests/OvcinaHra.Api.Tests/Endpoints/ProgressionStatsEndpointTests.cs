@@ -5,6 +5,7 @@ using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OvcinaHra.Api.Data;
+using OvcinaHra.Api.Services;
 using OvcinaHra.Api.Tests.Fixtures;
 using OvcinaHra.Shared.Domain.Entities;
 using OvcinaHra.Shared.Domain.Enums;
@@ -51,9 +52,9 @@ public class ProgressionStatsEndpointTests(PostgresFixture postgres)
             day1LastSlotId = slots[2].Id;
             slot5Id = slots[4].Id;
             slot7Id = slots[6].Id;
-            day1LastSlotShortLabel = slots[2].StartTime.ToLocalTime().ToString("HH:mm");
+            day1LastSlotShortLabel = PragueTimeFormatter.Format(slots[2].StartTime, "HH:mm");
             day1LastSlotLongLabel = StatsLabel(slots[2]);
-            slot5ShortLabel = slots[4].StartTime.ToLocalTime().ToString("HH:mm");
+            slot5ShortLabel = PragueTimeFormatter.Format(slots[4].StartTime, "HH:mm");
 
             var gapHero = Character("Gap Hero", "Gita", "Mezera");
             var finalHero = Character("Final Hero", "Fero", "Finále");
@@ -171,8 +172,11 @@ public class ProgressionStatsEndpointTests(PostgresFixture postgres)
         var worksheet = workbook.Worksheet("Progres");
         Assert.Equal("Hráč", worksheet.Cell(1, 1).GetString());
         Assert.Equal("Postava", worksheet.Cell(1, 2).GetString());
+        Assert.Equal("Čas (Praha)", worksheet.Cell(1, 7).GetString());
         Assert.Equal("Eliška Export", worksheet.Cell(2, 1).GetString());
         Assert.StartsWith("Excel Hero", worksheet.Cell(2, 2).GetString(), StringComparison.Ordinal);
+        Assert.Equal(new DateTime(2026, 5, 1, 10, 5, 0), worksheet.Cell(2, 7).GetDateTime());
+        Assert.Equal("d.M.yyyy HH:mm", worksheet.Cell(2, 7).Style.DateFormat.Format);
     }
 
     private async Task<GameDetailDto> CreateGameAsync()
@@ -208,7 +212,7 @@ public class ProgressionStatsEndpointTests(PostgresFixture postgres)
     };
 
     private static string StatsLabel(GameTimeSlot slot) =>
-        OvcinaHra.Shared.Extensions.TimeSlotDisplayExtensions.FormatTimeSlotDisplay(
+        PragueTimeFormatter.FormatTimeSlotDisplay(
             slot.Stage,
             slot.InGameYear,
             slot.StartTime,

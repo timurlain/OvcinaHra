@@ -1,9 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
+using OvcinaHra.Api.Services;
 using OvcinaHra.Api.Tests.Fixtures;
 using OvcinaHra.Shared.Domain.Enums;
 using OvcinaHra.Shared.Dtos;
-using OvcinaHra.Shared.Extensions;
 
 namespace OvcinaHra.Api.Tests.Endpoints;
 
@@ -149,7 +149,7 @@ public class QuestEndpointTests(PostgresFixture postgres) : IntegrationTestBase(
         var game = await CreateGameAsync();
         var startTime = new DateTime(2026, 5, 1, 10, 0, 0, DateTimeKind.Utc);
         var slot = await CreateTimeSlotAsync(game.Id, startTime, GameTimePhase.Midgame);
-        var expectedName = TimeSlotDisplayExtensions.FormatTimeSlotDisplay(
+        var expectedName = PragueTimeFormatter.FormatTimeSlotDisplay(
             GameTimePhase.Midgame, 1247, startTime, 2);
 
         var response = await Client.PostAsJsonAsync("/api/quests",
